@@ -7,6 +7,7 @@
 
 | 场景 | 读哪个 |
 |------|--------|
+| 摸底 / 验收一台服务器 | [00-server-checklist.md](standards/00-server-checklist.md) |
 | 新机器命名、更新台账 | [01-naming-inventory.md](standards/01-naming-inventory.md) |
 | SSH/防火墙/时区基线 | [02-os-baseline.md](standards/02-os-baseline.md) |
 | 账号权限、密钥管理 | [03-security-access.md](standards/03-security-access.md) |

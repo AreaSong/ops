@@ -6,6 +6,7 @@
 
 | 编号 | 文档 | 内容 |
 |------|------|------|
+| 00 | server-checklist.md | 服务器企业化验收清单(摸底/验收用总标尺) |
 | 01 | naming-inventory.md | 命名规范、台账维护 |
 | 02 | os-baseline.md | 系统基线（SSH、防火墙、时区、日志） |
 | 03 | security-access.md | 账号权限、密钥、云子账号 |
