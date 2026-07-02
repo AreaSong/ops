@@ -7,8 +7,8 @@
 | 22 | TCP | SSH | 全部 | 限制来源 IP | 密钥登录 |
 | （示例）443 | TCP | nginx | prod-web-01 | 0.0.0.0/0 | 公网 HTTPS |
 | 80 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTP，反代多个域名 |
-| 443 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTPS，反代多个域名 |
-| 2096 | TCP | x-ui | LosAngeles | 0.0.0.0/0 | 公网监听，需确认用途和来源限制 |
+| 443 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTPS，反代多个域名；log.areasong.top 已新增 /sub/ 订阅反代到本机 2096 |
+| 2096 | TCP | x-ui | LosAngeles | 0.0.0.0/0 | 公网订阅分享端口，已新增 443 /sub/ 反代，迁移期暂保留公网兼容旧链接 |
 | 46585 | TCP | x-ui | LosAngeles | 0.0.0.0/0 | 公网监听，Nginx direct.log.areasong.top 反代相关 |
 | 10000 | TCP | xray | LosAngeles | 0.0.0.0/0 | 公网监听，需确认用途和来源限制 |
 | 11111 | TCP | xray | LosAngeles | 127.0.0.1 | 本机监听 |

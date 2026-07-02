@@ -87,7 +87,7 @@ services:
       - port: 443
         protocol: tcp
         expose: "0.0.0.0/0"
-        notes: "公网 HTTPS，反代多个域名"
+        notes: "公网 HTTPS，反代多个域名；log.areasong.top 已新增 /sub/ 订阅反代到本机 2096"
     dependencies:
       - resume-jadeai
       - sub2api
@@ -103,7 +103,7 @@ services:
       - port: 2096
         protocol: tcp
         expose: "0.0.0.0/0"
-        notes: "公网监听，需确认用途和来源限制"
+        notes: "公网订阅分享端口，已新增 443 /sub/ 反代，迁移期暂保留公网兼容旧链接"
       - port: 46585
         protocol: tcp
         expose: "0.0.0.0/0"
