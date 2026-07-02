@@ -4,3 +4,4 @@ secrets.env
 *.sql.gz
 *.dump
 *.log
+.DS_Store
