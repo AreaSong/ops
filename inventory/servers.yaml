@@ -57,7 +57,7 @@ servers:
       - account-vault-web
       - account-vault-postgres
     data_disk: false
-    notes: "主机名不符合规范；服务部署在 /root；ufw inactive；SSH 已禁用 root/password，仅 as key 登录；需确认云厂商、region、私网 IP、业务 owner。"
+    notes: "主机名不符合规范；服务部署在 /root；UFW active: allow 22/80/443, default deny incoming；SSH 已禁用 root/password，仅 as key 登录；需确认云厂商、region、私网 IP、业务 owner。"
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:
