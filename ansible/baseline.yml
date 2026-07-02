@@ -1,0 +1,8 @@
+---
+- name: Apply OS baseline to all servers
+  hosts: all
+  become: true
+  roles:
+    - common
+    - security
+    - node_exporter

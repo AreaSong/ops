@@ -1,0 +1,73 @@
+groups:
+  - name: node_alerts
+    rules:
+      - alert: HostDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "主机 {{ $labels.instance }} 不可达"
+          description: "主机 {{ $labels.instance }} 已宕机超过 2 分钟"
+
+      - alert: DiskUsageHigh
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘使用率 > 85%: {{ $labels.instance }}"
+          description: "{{ $labels.mountpoint }} 使用率 {{ $value | printf \"%.1f\" }}%"
+
+      - alert: DiskUsageCritical
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "磁盘使用率 > 95%: {{ $labels.instance }}"
+          description: "{{ $labels.mountpoint }} 使用率 {{ $value | printf \"%.1f\" }}%，需立即处理"
+
+      - alert: MemoryUsageHigh
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率 > 90%: {{ $labels.instance }}"
+
+      - alert: CpuUsageHigh
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "CPU 使用率 > 90%: {{ $labels.instance }}"
+
+  - name: ssl_alerts
+    rules:
+      - alert: SslCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL 证书 30 天内过期: {{ $labels.instance }}"
+
+      - alert: SslCertExpiringCritical
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 7
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL 证书 7 天内过期: {{ $labels.instance }}"
+
+  - name: service_alerts
+    rules:
+      - alert: ServiceDown
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务不可达: {{ $labels.instance }}"

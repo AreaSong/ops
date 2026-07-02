@@ -1,91 +1,23 @@
-# 服务器运维规范
+# 服务器运维规范（索引）
 
-> 本文档是所有服务器的目标规范：新建的一切必须遵守；存量不合规的，指出并记录，
-> 未经专项迁移不得擅自改动。
-> 每台服务器将本仓库克隆到 /opt/ops/，AI 助手在部署、变更前必须先读本文档。
+> 规范已拆分为八大域，详见 [standards/](standards/) 目录。
+> 新建/变更前读取对应域文档。
 
-## 0. 本仓库禁止入库的内容
+## 快速索引
 
-- 密码、AccessKey、token、证书私钥等一切凭证——脚本中用环境变量或
-  独立的未入库配置文件（如 /opt/ops/secrets.env，已在 .gitignore 中排除）引用
-- 备份数据本身、日志文件、数据库导出文件
-- 提交前自查：`git diff --cached` 里出现任何形似凭证的字符串，停止提交并上报
-
-## 1. 目录结构
-
-代码/配置、数据、日志三分离（备份策略、磁盘规划、清理策略各不相同）：
-
-| 路径 | 用途 |
-|------|------|
-| /opt/apps/<服务名>/ | 应用部署目录（二进制、代码、配置） |
-| /opt/compose/<项目名>/ | Docker Compose 项目，每项目一个目录 |
-| /opt/ops/ | 本仓库（规范、脚本、台账） |
-| /data/<服务名>/ | 持久化数据（数据库数据目录、Docker volume） |
-| /var/log/<服务名>/ | 应用日志，配 logrotate |
-
-- 数据盘单独挂载到 /data（无独立数据盘的机器在台账中注明）。
-- 任何服务在任何机器上的位置必须可预测。
-
-## 2. 命名
-
-- 主机名：`<环境>-<角色>-<序号>`，如 `prod-web-01`、`prod-db-02`；测试环境前缀 `test-`。
-- 容器名 / Compose 服务名：小写连字符，与目录名一致；禁止默认随机名上生产。
-- 云资源（实例、安全组、存储桶）命名同样遵循 环境-角色-用途 模式，两朵云一致。
-
-## 3. SSH 与账号
-
-- 只允许密钥登录，禁止密码认证（`PasswordAuthentication no`）。
-- 禁止 root 直接登录（`PermitRootLogin no`），使用个人账号 + sudo。
-- 每个服务用专属低权限系统账号运行（如 mysql、www-data），禁止用 root 跑服务。
-- **修改 sshd_config 的铁律**：改完先 `sshd -t` 验证语法；reload 后保持当前会话
-  不断开，新开一个会话验证能登录，成功后才算完成。
-
-## 4. 安全基线
-
-- 防火墙默认拒绝入站，按端口白名单放行；每次放行记入 inventory/ports.md。
-- 启用 fail2ban 防 SSH 爆破。
-- 启用自动安全更新：Ubuntu/Debian 用 unattended-upgrades，RHEL 系用 dnf-automatic。
-- 禁止：chmod 777、关闭防火墙/SELinux 当解决方案、curl | bash 执行远程脚本、
-  安全组放行 0.0.0.0/0（明确的公网服务端口除外，且需记录）。
-
-## 5. 时间
-
-- 所有服务器统一 **UTC 时区** + NTP 校时（chrony 或 systemd-timesyncd）。
-- 排障和沟通时，关键时间点同时换算为北京时间（UTC+8）标注。
-
-## 6. 部署
-
-- 新服务标准方式：**Docker Compose**，目录 /opt/compose/<项目名>/。
-  - `restart: unless-stopped`
-  - 数据卷挂 /data/<服务名>/，日志落 /var/log/<服务名>/
-  - 日志驱动配置 max-size / max-file，防止撑爆磁盘
-- 只有确有理由（内核模块依赖、极端性能需求等）才用 systemd 裸部署，需说明理由。
-- 所有服务必须开机自启，部署完成后验证（重启策略或 systemctl enable）。
-- **部署有状态服务时必须同时给出备份方案，没有备份方案的部署不算完成。**
-
-## 7. 备份
-
-- /data 下数据每日备份，备到**另一朵云**的对象存储，实现异云互备：
-  - 阿里云机器 → 腾讯云 COS；腾讯云机器 → 阿里云 OSS。
-- 保留策略：日备 7 份、周备 4 份。
-- 数据库用逻辑备份（mysqldump / redis RDB），不能只备文件目录。
-- 备份脚本统一放本仓库 scripts/，由 cron 调度；修改 crontab 前先 `crontab -l` 备份。
-- 每季度做一次恢复演练，验证备份真的能恢复。
-
-## 8. 台账
-
-- inventory/servers.md：机器清单（主机名、云、区域、公私网 IP、跑什么服务）。
-- inventory/ports.md：端口分配表（端口、服务、机器、放行范围）。
-- 任何变更涉及新增服务、端口、机器时，同步更新台账并 git 提交。
-
-## 9. 日志
-
-- 应用日志统一落 /var/log/<服务名>/，配 logrotate：每日轮转、保留 14 天、压缩。
-- 容器日志通过 Compose 的 logging 配置限制大小。
-- （规划中）后续接入集中日志平台（Loki 方向），届时本节更新。
+| 场景 | 读哪个 |
+|------|--------|
+| 新机器命名、更新台账 | [01-naming-inventory.md](standards/01-naming-inventory.md) |
+| SSH/防火墙/时区基线 | [02-os-baseline.md](standards/02-os-baseline.md) |
+| 账号权限、密钥管理 | [03-security-access.md](standards/03-security-access.md) |
+| 部署新服务 | [04-deployment.md](standards/04-deployment.md) |
+| 变更流程 | [05-change-management.md](standards/05-change-management.md) |
+| 备份与恢复 | [06-backup-dr.md](standards/06-backup-dr.md) |
+| 补丁更新 | [07-patching.md](standards/07-patching.md) |
+| 监控告警 | [08-observability.md](standards/08-observability.md) |
 
 ---
 
 修订记录：
 
-- 2026-07-02 初版，确立九项规范。
+- 2026-07-02 拆分为八大域规范体系，本文件改为索引

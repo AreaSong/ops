@@ -1,0 +1,56 @@
+---
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: UTC
+
+- name: Ensure chrony is installed (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Ensure chrony is installed (RHEL)
+  ansible.builtin.dnf:
+    name: chrony
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Ensure chrony is running
+  ansible.builtin.systemd:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Create standard directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/apps
+    - /opt/compose
+    - /opt/ops
+    - /data
+    - /var/log/backup
+
+- name: Configure journald retention
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/ops-retention.conf
+    content: |
+      [Journal]
+      SystemMaxUse=500M
+      MaxRetentionSec=7day
+    mode: "0644"
+  notify: restart journald
+
+- name: Configure sysctl baseline
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-ops-baseline.conf
+    content: |
+      net.ipv4.tcp_syncookies = 1
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      fs.file-max = 65535
+    mode: "0644"
+  notify: apply sysctl

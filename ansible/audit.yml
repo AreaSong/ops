@@ -1,0 +1,85 @@
+---
+- name: Audit server compliance against baseline
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Check timezone is UTC
+      ansible.builtin.command: timedatectl show -p Timezone --value
+      register: tz_result
+      changed_when: false
+
+    - name: Report timezone deviation
+      ansible.builtin.debug:
+        msg: "FAIL: timezone is {{ tz_result.stdout }}, expected UTC"
+      when: tz_result.stdout != "UTC"
+
+    - name: Check SSH PermitRootLogin
+      ansible.builtin.command: sshd -T
+      register: sshd_config
+      changed_when: false
+
+    - name: Report root login enabled
+      ansible.builtin.debug:
+        msg: "FAIL: PermitRootLogin is enabled"
+      when: "'permitrootlogin yes' in sshd_config.stdout"
+
+    - name: Check SSH password authentication
+      ansible.builtin.debug:
+        msg: "FAIL: PasswordAuthentication is enabled"
+      when: "'passwordauthentication yes' in sshd_config.stdout"
+
+    - name: Check fail2ban is running
+      ansible.builtin.systemd:
+        name: fail2ban
+      register: fail2ban_status
+      check_mode: true
+      failed_when: false
+
+    - name: Report fail2ban not running
+      ansible.builtin.debug:
+        msg: "FAIL: fail2ban is not active"
+      when: fail2ban_status.status is not defined or fail2ban_status.status.ActiveState != "active"
+
+    - name: Check node_exporter is running
+      ansible.builtin.systemd:
+        name: node_exporter
+      register: ne_status
+      check_mode: true
+      failed_when: false
+
+    - name: Report node_exporter not running
+      ansible.builtin.debug:
+        msg: "FAIL: node_exporter is not active"
+      when: ne_status.status is not defined or ne_status.status.ActiveState != "active"
+
+    - name: Check disk usage
+      ansible.builtin.shell: df --output=pcent,target / | tail -n +2 | awk '$1+0 > 85 {print}'
+      register: disk_usage
+      changed_when: false
+
+    - name: Report high disk usage
+      ansible.builtin.debug:
+        msg: "WARN: disk usage > 85%: {{ disk_usage.stdout_lines }}"
+      when: disk_usage.stdout_lines | length > 0
+
+    - name: Check required directories exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: dir_check
+      loop:
+        - /opt/ops
+        - /opt/compose
+        - /data
+        - /var/log/backup
+      changed_when: false
+
+    - name: Report missing directories
+      ansible.builtin.debug:
+        msg: "FAIL: directory {{ item.item }} does not exist"
+      loop: "{{ dir_check.results }}"
+      when: not item.stat.exists
+
+    - name: Audit summary
+      ansible.builtin.debug:
+        msg: "Audit complete for {{ inventory_hostname }}. Review FAIL/WARN messages above."
