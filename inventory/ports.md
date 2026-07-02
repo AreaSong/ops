@@ -10,7 +10,7 @@
 | 443 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTPS，反代多个域名；log.areasong.top 已新增 /sub/ 订阅反代到本机 2096 |
 | 2096 | TCP | x-ui | LosAngeles | 127.0.0.1 | 本机订阅分享后端；公网访问统一通过 Nginx 443 /sub/ |
 | 46585 | TCP | x-ui | LosAngeles | 127.0.0.1 | 本机 x-ui 面板后端；Nginx direct.log.areasong.top 反代相关 |
-| 10000 | TCP | xray | LosAngeles | 0.0.0.0/0 | 公网监听，需确认用途和来源限制 |
+| 10000 | TCP | xray | LosAngeles | 127.0.0.1 | 本机 xray WebSocket 后端；公网访问通过 Nginx 443 /as |
 | 11111 | TCP | xray | LosAngeles | 127.0.0.1 | 本机监听 |
 | 62789 | TCP | xray | LosAngeles | 127.0.0.1 | 本机监听 |
 | 2082 | TCP | resume-jadeai | LosAngeles | 127.0.0.1 | 映射到容器 3000，Nginx 反代 |

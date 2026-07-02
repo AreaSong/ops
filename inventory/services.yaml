@@ -118,8 +118,8 @@ services:
     ports:
       - port: 10000
         protocol: tcp
-        expose: "0.0.0.0/0"
-        notes: "公网监听，需确认用途和来源限制"
+        expose: "127.0.0.1"
+        notes: "xray WebSocket 后端已绑定 127.0.0.1；公网访问通过 Nginx 443 /as"
       - port: 11111
         protocol: tcp
         expose: "127.0.0.1"
