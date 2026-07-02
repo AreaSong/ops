@@ -4,7 +4,7 @@
 
 | 端口 | 协议 | 服务 | 所在机器 | 放行范围 | 备注 |
 |------|------|------|----------|----------|------|
-| 22 | TCP | SSH | 全部 | 限制来源 IP | 密钥登录 |
+| 22 | TCP | SSH | 全部 | Fail2ban sshd jail；后续有固定出口 IP 时再限制来源 | 密钥登录；root/password disabled |
 | （示例）443 | TCP | nginx | prod-web-01 | 0.0.0.0/0 | 公网 HTTPS |
 | 80 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTP，反代多个域名 |
 | 443 | TCP | nginx | LosAngeles | 0.0.0.0/0 | 公网 HTTPS，反代多个域名；log.areasong.top 已新增 /sub/ 订阅反代到本机 2096 |
