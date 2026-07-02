@@ -36,12 +36,41 @@ servers:
     data_disk: true
     notes: "可观测栈承载机器"
 
+  - hostname: LosAngeles
+    cloud: unknown
+    region: unknown
+    public_ip: "23.185.200.12"
+    private_ip: ""
+    os: ubuntu-24.04
+    roles:
+      - web
+      - docker-app
+      - proxy
+    services:
+      - nginx
+      - x-ui
+      - xray
+      - resume-jadeai
+      - sub2api
+      - sub2api-postgres
+      - sub2api-redis
+      - account-vault-web
+      - account-vault-postgres
+    data_disk: false
+    notes: "主机名不符合规范；服务部署在 /root；ufw inactive；SSH root/password 风险；需确认云厂商、region、私网 IP、业务 owner。"
+
 # Ansible 分组（自动生成 inventory 时使用）
 groups:
   prod:
     - prod-web-01
     - prod-monitor-01
+    - LosAngeles
   monitor:
     - prod-monitor-01
   web:
     - prod-web-01
+    - LosAngeles
+  docker_app:
+    - LosAngeles
+  proxy:
+    - LosAngeles

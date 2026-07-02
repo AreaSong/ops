@@ -76,6 +76,143 @@ services:
       - promtail
       - redis_exporter
 
+  - name: nginx
+    host: LosAngeles
+    deploy_type: systemd
+    ports:
+      - port: 80
+        protocol: tcp
+        expose: "0.0.0.0/0"
+        notes: "公网 HTTP，反代多个域名"
+      - port: 443
+        protocol: tcp
+        expose: "0.0.0.0/0"
+        notes: "公网 HTTPS，反代多个域名"
+    dependencies:
+      - resume-jadeai
+      - sub2api
+      - account-vault-web
+      - x-ui
+    backup: false
+    monitoring: []
+
+  - name: x-ui
+    host: LosAngeles
+    deploy_type: systemd
+    ports:
+      - port: 2096
+        protocol: tcp
+        expose: "0.0.0.0/0"
+        notes: "公网监听，需确认用途和来源限制"
+      - port: 46585
+        protocol: tcp
+        expose: "0.0.0.0/0"
+        notes: "公网监听，Nginx direct.log.areasong.top 反代相关"
+    dependencies: []
+    backup: true
+    monitoring: []
+
+  - name: xray
+    host: LosAngeles
+    deploy_type: systemd
+    ports:
+      - port: 10000
+        protocol: tcp
+        expose: "0.0.0.0/0"
+        notes: "公网监听，需确认用途和来源限制"
+      - port: 11111
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "本机监听"
+      - port: 62789
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "本机监听"
+    dependencies: []
+    backup: true
+    monitoring: []
+
+  - name: resume-jadeai
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sorryiosSearch
+    ports:
+      - port: 2082
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "映射到容器 3000，Nginx 反代"
+    dependencies: []
+    backup: false
+    monitoring: []
+
+  - name: account-vault-web
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sorryiosSearch
+    ports:
+      - port: 8392
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "映射到容器 3001，Nginx 反代"
+    dependencies:
+      - account-vault-postgres
+    backup: false
+    monitoring: []
+
+  - name: account-vault-postgres
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sorryiosSearch
+    ports:
+      - port: 25432
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "映射到容器 5432，仅本机访问"
+    dependencies: []
+    backup: true
+    monitoring: []
+
+  - name: sub2api
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sub2api-deploy
+    ports:
+      - port: 8080
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "映射到容器 8080，Nginx 反代"
+    dependencies:
+      - sub2api-postgres
+      - sub2api-redis
+    backup: false
+    monitoring: []
+
+  - name: sub2api-postgres
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sub2api-deploy
+    ports:
+      - port: 5432
+        protocol: tcp
+        expose: "docker-network"
+        notes: "仅容器网络暴露"
+    dependencies: []
+    backup: true
+    monitoring: []
+
+  - name: sub2api-redis
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /root/sub2api-deploy
+    ports:
+      - port: 6379
+        protocol: tcp
+        expose: "docker-network"
+        notes: "仅容器网络暴露"
+    dependencies: []
+    backup: true
+    monitoring: []
+
 # 全局端口（所有机器）
 global_ports:
   - port: 22
