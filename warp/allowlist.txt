@@ -1,47 +1,34 @@
-# Warp Command Allowlist — 逐行复制到 Settings > Agents > Profiles > Command allowlist
-# 匹配到的命令自动执行，无需确认
-# 注意：denylist 优先级更高，同时命中 denylist 仍需确认
-
-# 基础只读查看
 ^(cat|less|more|head|tail|grep|egrep|rg|ls|pwd|whoami|id|hostname|uname|date|uptime|w|last)\b
 ^(df|du|free|vmstat|iostat|lscpu|lsblk|lsmem|lsusb|lspci|mount|findmnt)\b
-^(ps|pgrep|pstree|top\s+-[a-zA-Z]*n|htop)\b
-^(ss|netstat|ip|ifconfig|route|arp|ping\s+-c|traceroute|dig|nslookup|host)\b
-^(env|printenv|echo|printf|wc|sort|uniq|cut|awk|sed\s+-n|tr|tee\s+-a)\b
+^(ps|pgrep|pstree|htop)\b
+^top\s+-[a-zA-Z]*n
+^(ss|netstat|ip|ifconfig|route|arp|traceroute|dig|nslookup|host)\b
+^ping\s+-c\s*\d+
+^(env|printenv|echo|printf|wc|sort|uniq|cut|awk|tr)\b
+^sed\s+-n\b
 ^(which|type|file|stat|readlink|realpath|basename|dirname)\b
-
-# 系统状态（只读）
 ^systemctl\s+(status|is-active|is-enabled|list-units|show|cat)\b
-^journalctl\s+(?!.*--vacuum)
+^journalctl\b
 ^crontab\s+-l\b
 ^timedatectl\s+(status|show)\b
 ^chronyc\s+(tracking|sources)\b
-
-# Docker 只读
-^docker\s+(ps|images|logs|inspect|stats|version|info|network\s+ls|volume\s+ls)\b
+^docker\s+(ps|images|logs|inspect|stats|version|info)\b
+^docker\s+(network|volume)\s+ls\b
 ^docker\s+compose\s+(ps|logs|config|top)\b
-
-# Kubernetes 只读
-^kubectl\s+(get|describe|logs|top|auth\s+can-i|config\s+(current-context|get-contexts|view))\b
+^kubectl\s+(get|describe|logs|top)\b
+^kubectl\s+auth\s+can-i\b
+^kubectl\s+config\s+(current-context|get-contexts|view)\b
 ^kubectl\s+rollout\s+status\b
-
-# Nginx / Web 只读
 ^nginx\s+-t\b
 ^curl\s+-s[S]?\s+(-[a-zA-Z]+\s+)*https?://
-
-# 基础设施只读
-^terraform\s+(plan|show|state\s+list|validate|fmt\s+-check|output)\b
-^ansible\s+(--version|--check|inventory\s+--list)\b
-^ansible-playbook\s+.*--check\b
-
-# Git 只读
-^git\s+(status|log|diff|show|branch|remote\s+-v|rev-parse)\b
-
-# 云平台只读（阿里云）
-^aliyun\s+.*\b(Describe|List|Get|Query)\w*
-
-# 云平台只读（腾讯云）
-^tccli\s+.*\b(Describe|List|Get|Query)\w*
-
-# 运维仓库只读
-^cd\s+/opt/ops\b
+^terraform\s+(plan|show|validate|output)\b
+^terraform\s+state\s+list\b
+^terraform\s+fmt\s+-check\b
+^ansible\s+--version\b
+^ansible-inventory\s+--list\b
+^git\s+(status|log|diff|show|branch|rev-parse)\b
+^git\s+remote\s+-v\b
+^git\s+pull\s+--ff-only\b
+^aliyun\s+\S+\s+(Describe|List|Get|Query)\w*
+^tccli\s+\S+\s+(Describe|List|Get|Query)\w*
+^cd\b

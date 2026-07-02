@@ -1,30 +1,22 @@
-# Warp Command Denylist — 逐行复制到 Settings > Agents > Profiles > Command denylist
-# 匹配到的命令强制人工批准，优先级高于 allowlist 和 Autonomy 设置
-
-# 文件系统破坏
 rm\s+(-\w+\s+)*-\w*r\w*f
 rm\s+-rf\s+/(etc|var|opt|data|usr|home|root|boot|sys|proc)
 mkfs(\.\w+)?\s
 dd\s+.*of=/dev/
 shred\s
 wipefs\s
-
-# 数据库破坏
+>{1,2}\s*/(etc|boot|usr|dev)/
 DROP\s+(DATABASE|TABLE|SCHEMA|INDEX)
 TRUNCATE\s+TABLE
 DELETE\s+FROM\s+\w+\s*;
 mysql\s+.*(-e|--execute).*(DROP|DELETE|TRUNCATE|UPDATE)
 redis-cli\s+.*FLUSH(ALL|DB)
-
-# 容器/K8s 破坏
+journalctl\s+.*--vacuum
 docker\s+system\s+prune
-docker\s+(rm|rmi|volume\s+rm)\s+(-f|--force)
-kubectl\s+delete\s+(namespace|pv|clusterrole|clusterrolebinding)
+docker\s+(rm|rmi)\s
+docker\s+volume\s+rm
+kubectl\s+delete\s
 kubectl\s+.*--force
-kubectl\s+drain\s+.*--delete-emptydir-data
-kubectl\s+cordon\s+.*&&\s*kubectl\s+delete
-
-# 系统级危险
+kubectl\s+drain\s
 reboot\b
 shutdown\b
 init\s+[06]\b
@@ -34,40 +26,29 @@ iptables\s+-P\s+\w+\s+ACCEPT
 ufw\s+disable
 setenforce\s+0
 systemctl\s+(stop|mask)\s+(firewalld|ufw|iptables)
-
-# 权限滥用
-chmod\s+777
-chmod\s+-R\s+777
-chown\s+-R\s+root:root\s+/data
-visudo\s
-
-# Git 破坏
+chmod\s+(-R\s+)?777
+chown\s+-R\s
+visudo\b
 git\s+push\s+.*--force
 git\s+reset\s+--hard
 git\s+clean\s+-[a-zA-Z]*f
-
-# 基础设施变更（需明确批准）
 terraform\s+(apply|destroy|import|taint|untaint)
-ansible-playbook(?!.*--check)
-kubectl\s+(apply|create|patch|replace|scale|rollout\s+(restart|undo))
-docker\s+(run|restart|stop|kill|compose\s+(up|down|restart))
-systemctl\s+(start|stop|restart|reload|enable|disable|mask)
-(apt|apt-get|dnf|yum|brew)\s+(install|remove|purge|upgrade|dist-upgrade|autoremove)
-pip\s+install
+ansible-playbook\b
+kubectl\s+(apply|create|patch|replace|scale)\b
+kubectl\s+rollout\s+(restart|undo)\b
+docker\s+(run|restart|stop|kill)\b
+docker\s+compose\s+(up|down|restart)\b
+systemctl\s+(start|stop|restart|reload|enable|disable|mask)\b
+(apt|apt-get|dnf|yum|brew)\s+(install|remove|purge|upgrade|dist-upgrade|autoremove)\b
+pip3?\s+install
 npm\s+install
-
-# 云平台破坏（阿里云）
-aliyun\s+.*\b(Delete|Release|Remove|Destroy|ModifySecurityGroupRule.*0\.0\.0\.0/0)\w*
-
-# 云平台破坏（腾讯云）
-tccli\s+.*\b(Delete|Release|Remove|Destroy|ModifySecurityGroupRule.*0\.0\.0\.0/0)\w*
-
-# 批量/远程执行风险
+crontab\s+(-r|\S+\.cron|[^-])
+aliyun\s+\S+\s+(Delete|Release|Remove|Destroy)\w*
+tccli\s+\S+\s+(Delete|Release|Remove|Destroy)\w*
+(aliyun|tccli)\s+.*0\.0\.0\.0/0
 curl\s+.*\|\s*(ba)?sh
 wget\s+.*\|\s*(ba)?sh
-bash\s+-c\s+
-xargs\s+.*(rm|delete|kill|shutdown)
-
-# 凭证泄露风险
-echo\s+.*(password|secret|token|key).*\|
-export\s+.*(PASSWORD|SECRET|TOKEN|KEY)=
+bash\s+-c\s
+sh\s+-c\s
+xargs\s+.*(rm|kill|shutdown)
+export\s+\w*(PASSWORD|SECRET|TOKEN|KEY)\w*=
