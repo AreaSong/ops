@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 08:45 BST
+更新时间：2026-07-03 09:20 BST
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 系统：Ubuntu 24.04  
@@ -14,7 +14,7 @@
 本次核查后需要修正和补充的重点如下：
 
 - `/opt/as_password` 明文密码文件已删除；仍建议用户尽快修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
-- 系统当前仍提示需要重启，且有 19 个可更新包；应安排维护窗口处理。
+- 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB。
@@ -29,6 +29,7 @@
 | 主机基础信息 | 完成 | hostname 为 `LosAngeles`；系统为 Ubuntu 24.04；`ens3` 地址为 `23.185.200.12/24`。 |
 | inventory 台账 | 完成但仍有 unknown 字段 | `/opt/ops/inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 均已有 LosAngeles 记录。 |
 | `/opt/ops` 仓库 | 完成 | remote 为 `git@github.com:AreaSong/ops.git`；前序加固、备份、监控提交已存在，当前提交状态以 `git log -1 --oneline` 和 `git status --short` 为准。 |
+| 系统更新与重启维护 | 完成 | 2026-07-03 已执行 `apt-get dist-upgrade` 并重启；升级日志为 `/var/log/ops/maintenance-20260703-apt-upgrade.log`；重启后内核为 `6.8.0-134-generic`，核心入口、监控、Docker、R2 dry-run 均通过。 |
 | 非 root sudo 用户 | 完成 | `as` 属于 `sudo` 组，当前 sudo 缓存可用。 |
 | SSH 加固 | 完成 | `sshd -T` 显示 `permitrootlogin no`、`passwordauthentication no`、`pubkeyauthentication yes`、`kbdinteractiveauthentication no`。 |
 | Fail2ban | 完成 | `fail2ban` enabled/active；`sshd` jail active，当前有封禁记录。 |
@@ -70,8 +71,11 @@
 
 ### P1
 
-1. 安排系统更新和重启维护窗口。
-   当前 `/var/run/reboot-required` 存在，`apt list --upgradable` 统计有 19 个可更新包。
+1. R2 拉回恢复演练。
+   当前已完成 R2 上传、远端列表/大小核验和 dry-run；还需要从 R2 拉回到临时目录，再抽样做 Postgres、Redis、configs、volumes 的恢复验证。
+
+2. Cloudflare R2 生命周期保留策略。
+   当前未记录 bucket 生命周期策略；建议设置按天/周/月分层保留，避免长期无限增长，同时保留足够恢复窗口。
 
 ### P2
 
@@ -118,9 +122,8 @@
 ## 6. 推荐下一步
 
 1. 由用户修改 `as` 密码；继续使用 `sudo -v` 临时授权，不再保存明文密码文件。
-2. 安排系统更新与重启维护窗口。
-3. 做一次 R2 拉回恢复演练，并配置 Cloudflare R2 生命周期保留策略。
-4. 清点 `/root` 历史服务目录，确认迁移/归档计划。
-5. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
-6. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
-7. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
+2. 做一次 R2 拉回恢复演练，并配置 Cloudflare R2 生命周期保留策略。
+3. 清点 `/root` 历史服务目录，确认迁移/归档计划。
+4. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
+5. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+6. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
