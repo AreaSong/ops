@@ -47,6 +47,7 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - /opt/ops/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/ops/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - /var/lib/observability/grafana:/var/lib/grafana
     networks:
       - monitoring
