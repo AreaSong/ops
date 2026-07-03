@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 09:20 BST
+更新时间：2026-07-03 09:45 BST
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 系统：Ubuntu 24.04  
@@ -13,11 +13,11 @@
 
 本次核查后需要修正和补充的重点如下：
 
-- `/opt/as_password` 明文密码文件已删除；仍建议用户尽快修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
+- `/opt/as_password` 明文密码文件已删除；用户已确认修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
-- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB。
+- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过。
 - 服务目录规范化已部分推进到 `/opt/services`，但 `/root` 下仍有历史服务目录和 compose 文件。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
 - Postgres / Redis exporter、SSH/Fail2ban/UFW/Nginx 安全日志告警、业务级健康检查仍未完成。
@@ -44,6 +44,7 @@
 | 备份完整性抽检 | 完成 | 最新 `.sql.gz` 通过 `gzip -t`；最新 `.tar.gz` 通过 `tar -tzf`。 |
 | 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
+| R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
@@ -66,15 +67,11 @@
 
 ### P0
 
-1. 修改 `as` 密码，并继续禁用明文密码文件。  
-   `/opt/as_password` 已删除。后续临时提权通过共享终端里的 `sudo -v` 授权；任务结束后可执行 `sudo -k` 清除 sudo 缓存。
+当前无 P0 未完成事项。
 
 ### P1
 
-1. R2 拉回恢复演练。
-   当前已完成 R2 上传、远端列表/大小核验和 dry-run；还需要从 R2 拉回到临时目录，再抽样做 Postgres、Redis、configs、volumes 的恢复验证。
-
-2. Cloudflare R2 生命周期保留策略。
+1. Cloudflare R2 生命周期保留策略。
    当前未记录 bucket 生命周期策略；建议设置按天/周/月分层保留，避免长期无限增长，同时保留足够恢复窗口。
 
 ### P2
@@ -116,14 +113,14 @@
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - 未登录 Cloudflare 控制台，因此 DNS、WAF、橙云/灰云状态只能标记为台账未发现，不能直接证明控制台未配置。
-- 未做从 R2 拉回后的完整恢复演练；当前已完成 R2 上传、远端列表/大小核验和 R2 同步告警接入。
+- 未测试跨机器恢复；当前 R2 拉回恢复演练是在当前主机上完成。
+- 未执行完整应用级接管验证；当前恢复演练验证到数据导入、RDB 校验和文件解包层面。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
 
 ## 6. 推荐下一步
 
-1. 由用户修改 `as` 密码；继续使用 `sudo -v` 临时授权，不再保存明文密码文件。
-2. 做一次 R2 拉回恢复演练，并配置 Cloudflare R2 生命周期保留策略。
-3. 清点 `/root` 历史服务目录，确认迁移/归档计划。
-4. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
-5. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
-6. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
+1. 配置 Cloudflare R2 生命周期保留策略。
+2. 清点 `/root` 历史服务目录，确认迁移/归档计划。
+3. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
+4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+5. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
