@@ -135,7 +135,7 @@ services:
   - name: resume-jadeai
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sorryiosSearch
+    compose_path: /opt/services/resume-jadeai
     ports:
       - port: 2082
         protocol: tcp
@@ -148,7 +148,7 @@ services:
   - name: account-vault-web
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sorryiosSearch
+    compose_path: /opt/services/account-vault
     ports:
       - port: 8392
         protocol: tcp
@@ -162,7 +162,7 @@ services:
   - name: account-vault-postgres
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sorryiosSearch
+    compose_path: /opt/services/account-vault
     ports:
       - port: 25432
         protocol: tcp
@@ -175,7 +175,7 @@ services:
   - name: sub2api
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sub2api-deploy
+    compose_path: /opt/services/sub2api
     ports:
       - port: 8080
         protocol: tcp
@@ -190,7 +190,7 @@ services:
   - name: sub2api-postgres
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sub2api-deploy
+    compose_path: /opt/services/sub2api
     ports:
       - port: 5432
         protocol: tcp
@@ -203,7 +203,7 @@ services:
   - name: sub2api-redis
     host: LosAngeles
     deploy_type: docker-compose
-    compose_path: /root/sub2api-deploy
+    compose_path: /opt/services/sub2api
     ports:
       - port: 6379
         protocol: tcp
