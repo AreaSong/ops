@@ -77,6 +77,14 @@ groups:
         annotations:
           summary: "Backup stale: {{ $labels.job }}"
 
+      - alert: R2BackupStale
+        expr: absent(r2_backup_last_success_timestamp) or time() - r2_backup_last_success_timestamp > 36 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "R2 backup stale"
+
   - name: docker_alerts
     rules:
       - alert: DockerContainerDown

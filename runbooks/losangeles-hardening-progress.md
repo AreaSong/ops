@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 07:35 BST
+更新时间：2026-07-03 08:45 BST
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 系统：Ubuntu 24.04  
@@ -17,7 +17,7 @@
 - 系统当前仍提示需要重启，且有 19 个可更新包；应安排维护窗口处理。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
-- 异地对象存储备份未接入；本机备份恢复演练已完成，异地恢复仍待对象存储接入后验证。
+- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB。
 - 服务目录规范化已部分推进到 `/opt/services`，但 `/root` 下仍有历史服务目录和 compose 文件。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
 - Postgres / Redis exporter、SSH/Fail2ban/UFW/Nginx 安全日志告警、业务级健康检查仍未完成。
@@ -42,10 +42,11 @@
 | 本机备份 | 完成 | root crontab 已配置 Postgres、Redis、configs、volumes 定时备份；`/var/backups/ops` 有 2026-07-03 最新产物。 |
 | 备份完整性抽检 | 完成 | 最新 `.sql.gz` 通过 `gzip -t`；最新 `.tar.gz` 通过 `tar -tzf`。 |
 | 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
-| 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom` 存在并持续更新。 |
+| Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
+| 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
-| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证。 |
+| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、R2BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证。 |
 | Grafana 基础 Dashboard | 完成 | 存在 `losangeles-host-overview.json` 和 `losangeles-services-backups.json`。 |
 | Loki / Promtail 基础采集 | 完成 | Promtail 配置采集 `/var/log/nginx/*.log`、`/var/log/backup/*.log`、`/var/log/syslog`；Loki `/ready` 返回 200。 |
 
@@ -69,10 +70,7 @@
 
 ### P1
 
-1. 接入异地对象存储备份。  
-   当前仅发现标准文档要求对象存储，未发现已落地的 R2/COS/OSS/S3/rclone 备份脚本或 cron。
-
-2. 安排系统更新和重启维护窗口。
+1. 安排系统更新和重启维护窗口。
    当前 `/var/run/reboot-required` 存在，`apt list --upgradable` 统计有 19 个可更新包。
 
 ### P2
@@ -114,14 +112,14 @@
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - 未登录 Cloudflare 控制台，因此 DNS、WAF、橙云/灰云状态只能标记为台账未发现，不能直接证明控制台未配置。
-- 未做异地对象存储恢复；当前仅完成本机备份的非破坏性恢复演练。
+- 未做从 R2 拉回后的完整恢复演练；当前已完成 R2 上传、远端列表/大小核验和 R2 同步告警接入。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
 
 ## 6. 推荐下一步
 
 1. 由用户修改 `as` 密码；继续使用 `sudo -v` 临时授权，不再保存明文密码文件。
 2. 安排系统更新与重启维护窗口。
-3. 接入异地对象存储备份。
+3. 做一次 R2 拉回恢复演练，并配置 Cloudflare R2 生命周期保留策略。
 4. 清点 `/root` 历史服务目录，确认迁移/归档计划。
 5. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
 6. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。

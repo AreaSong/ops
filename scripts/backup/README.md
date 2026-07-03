@@ -7,5 +7,8 @@ Scripts:
 - `backup-postgres.sh`: logical `pg_dumpall` backups for known Postgres containers.
 - `backup-redis.sh`: requests Redis BGSAVE when available and archives Redis persistence files.
 - `backup-volumes.sh`: archives non-database application data volumes/bind mounts.
+- `sync-r2.sh`: uploads local backup artifacts to Cloudflare R2 with `/etc/ops/r2-backup.env`.
 
-Retention: local backup files older than 7 days are deleted by each script.
+Retention:
+- Local backup files older than 7 days are deleted by each local backup script.
+- R2 sync uses copy semantics and does not delete remote objects. Configure Cloudflare R2 lifecycle rules separately when a remote retention window is decided.
