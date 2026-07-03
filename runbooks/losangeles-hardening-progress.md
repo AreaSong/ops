@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 04:58 BST  
+更新时间：2026-07-03 07:35 BST
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 系统：Ubuntu 24.04  
@@ -16,7 +16,8 @@
 - `/opt/as_password` 明文密码文件已删除；仍建议用户尽快修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统当前仍提示需要重启，且有 19 个可更新包；应安排维护窗口处理。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
-- 异地对象存储备份未接入，恢复演练未发现记录。
+- 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
+- 异地对象存储备份未接入；本机备份恢复演练已完成，异地恢复仍待对象存储接入后验证。
 - 服务目录规范化已部分推进到 `/opt/services`，但 `/root` 下仍有历史服务目录和 compose 文件。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
 - Postgres / Redis exporter、SSH/Fail2ban/UFW/Nginx 安全日志告警、业务级健康检查仍未完成。
@@ -40,6 +41,7 @@
 | x-ui / xray 本机化 | 完成 | x-ui active/enabled；`127.0.0.1:46585`、`127.0.0.1:2096`、`127.0.0.1:10000` 均仅本机监听。 |
 | 本机备份 | 完成 | root crontab 已配置 Postgres、Redis、configs、volumes 定时备份；`/var/backups/ops` 有 2026-07-03 最新产物。 |
 | 备份完整性抽检 | 完成 | 最新 `.sql.gz` 通过 `gzip -t`；最新 `.tar.gz` 通过 `tar -tzf`。 |
+| 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
@@ -70,10 +72,7 @@
 1. 接入异地对象存储备份。  
    当前仅发现标准文档要求对象存储，未发现已落地的 R2/COS/OSS/S3/rclone 备份脚本或 cron。
 
-2. 做一次备份恢复演练并留痕。  
-   当前只有恢复演练标准和通用 runbook，未发现 LosAngeles 的实际恢复演练记录。
-
-3. 安排系统更新和重启维护窗口。  
+2. 安排系统更新和重启维护窗口。
    当前 `/var/run/reboot-required` 存在，`apt list --upgradable` 统计有 19 个可更新包。
 
 ### P2
@@ -115,15 +114,15 @@
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - 未登录 Cloudflare 控制台，因此 DNS、WAF、橙云/灰云状态只能标记为台账未发现，不能直接证明控制台未配置。
-- 未做真实恢复演练；只验证了最新备份文件压缩/归档层面的完整性。
+- 未做异地对象存储恢复；当前仅完成本机备份的非破坏性恢复演练。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
 
 ## 6. 推荐下一步
 
 1. 由用户修改 `as` 密码；继续使用 `sudo -v` 临时授权，不再保存明文密码文件。
 2. 安排系统更新与重启维护窗口。
-3. 做一次备份恢复演练并记录 RTO/RPO。
-4. 接入异地对象存储备份。
-5. 清点 `/root` 历史服务目录，确认迁移/归档计划。
-6. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
-7. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+3. 接入异地对象存储备份。
+4. 清点 `/root` 历史服务目录，确认迁移/归档计划。
+5. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
+6. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+7. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
