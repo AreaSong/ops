@@ -143,7 +143,9 @@ services:
         notes: "映射到容器 3000，Nginx 反代"
     dependencies: []
     backup: false
-    monitoring: []
+    monitoring:
+      - docker_container_running
+      - blackbox_app_https
 
   - name: account-vault-web
     host: LosAngeles
@@ -157,7 +159,9 @@ services:
     dependencies:
       - account-vault-postgres
     backup: false
-    monitoring: []
+    monitoring:
+      - docker_container_running
+      - blackbox_app_https
 
   - name: account-vault-postgres
     host: LosAngeles
@@ -185,7 +189,9 @@ services:
       - sub2api-postgres
       - sub2api-redis
     backup: false
-    monitoring: []
+    monitoring:
+      - docker_container_running
+      - blackbox_app_https
 
   - name: sub2api-postgres
     host: LosAngeles

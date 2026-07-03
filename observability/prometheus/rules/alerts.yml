@@ -67,6 +67,40 @@ groups:
         annotations:
           summary: "TLS certificate expires within 7 days: {{ $labels.target }}"
 
+  - name: app_health_alerts
+    rules:
+      - alert: AppHttpProbeFailed
+        expr: probe_success{job="blackbox_app_https"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application HTTP probe failed: {{ $labels.service }} {{ $labels.target }}"
+
+      - alert: AppBlackboxTargetDown
+        expr: up{job="blackbox_app_https"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application blackbox scrape target down: {{ $labels.service }}"
+
+      - alert: AppHttpProbeSlow
+        expr: probe_duration_seconds{job="blackbox_app_https"} > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Application HTTP probe is slow: {{ $labels.service }}"
+
+      - alert: AppTlsCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_app_https"} - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Application TLS certificate expires within 30 days: {{ $labels.target }}"
+
   - name: backup_alerts
     rules:
       - alert: BackupStale

@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 18:16 BST
+更新时间：2026-07-03 18:35 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`JadeAI`、`sorryiosSearch` 已完成加强审计和归档；`account-vault` 已完成 build context 与 env_file 迁移，不再依赖 `/root/sorryiosSearch` compose 路径。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；业务级健康检查仍可继续增强。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api。
 
 ## 2. 已核实完成
 
@@ -52,6 +52,7 @@
 | Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、R2BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证。 |
 | Postgres / Redis exporter | 完成 | 已新增 sub2api PostgreSQL、account-vault PostgreSQL、sub2api Redis exporter；Prometheus 新增 `postgres`、`redis` jobs；Grafana 新增 `LosAngeles Datastores`。 |
 | 安全日志指标与告警 | 完成 | 已新增 `write-security-metrics.sh`、`security.prom`、`security_log_alerts` 和 `LosAngeles Security Overview`，覆盖 SSH 失败/无效用户/成功登录、Fail2ban sshd、UFW 状态、Nginx 4xx/5xx。 |
+| 应用级 HTTP 健康检查 | 完成 | 已新增 `blackbox_app_https`，覆盖 `resume.areasong.top/`、`sorryiossearch.areasong.top/health`、`cpa.areasong.top/health`；新增 `app_health_alerts` 和 `LosAngeles App Health`。 |
 | JadeAI fingerprint 事件处置 | 完成 | 数据未丢失，根因为浏览器 fingerprint 匿名身份错位；已归属修正并记录 `runbooks/losangeles-jadeai-fingerprint-incident-20260703.md`。 |
 | Grafana 基础 Dashboard | 完成 | 存在 `losangeles-host-overview.json` 和 `losangeles-services-backups.json`。 |
 | Loki / Promtail 基础采集 | 完成 | Promtail 配置采集 `/var/log/nginx/*.log`、`/var/log/backup/*.log`、`/var/log/syslog`；Loki `/ready` 返回 200。 |
@@ -63,8 +64,8 @@
 | Git 使用模型 | 部分完成 | 仓库由 root 拥有，`sudo git` 可正常查看且干净；`as` 直接运行 git 会触发 Git safe.directory 保护。后续可决定是保持 root 管理，还是配置受限的 safe.directory / 权限模型。 |
 | 服务目录规范化 | 部分完成 | `sub2api` 已完成迁移和旧目录清理；`JadeAI`、`sorryiosSearch` 已归档到本机备份并同步 R2；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 仍待删除确认。 |
 | 证书策略统一 | 部分完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt。当前可用，但策略尚未统一成台账。 |
-| Docker / 服务健康检查 | 部分完成 | Docker running 指标和部分容器 health 存在；业务 HTTP health、数据库连接、Redis ping、错误率指标仍未系统化。 |
-| Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志和 Nginx 4xx/5xx 已覆盖；应用错误率和业务健康视图仍未完成。 |
+| Docker / 服务健康检查 | 部分完成 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、Postgres / Redis exporter 已存在；业务错误率和关键接口延迟仍未系统化。 |
+| Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康已覆盖；应用错误率和关键接口视图仍未完成。 |
 | Cloudflare 配置台账 | 不完整 | 仓库里只发现通用 DNS/恢复文档线索，未发现 LosAngeles 专属 DNS、橙云/灰云、SSL/TLS、WAF、Origin Certificate 使用清单。 |
 
 ## 4. 未完成事项
@@ -86,7 +87,7 @@
    `sub2api` 数据目录已迁移到 `/var/lib/sub2api`，旧 `/root/sub2api-deploy` 已归档并删除。`JadeAI`、`sorryiosSearch` 已归档到 `/var/backups/ops/manual/root-history-archive-20260703-165244/root-history-dirs-20260703-165244.tar.gz`。`account-vault` 已消除对 `/root/sorryiosSearch` 的 compose 依赖，后续可在确认后删除旧目录。
 
 3. 应用级监控深化。
-   后续应补应用 HTTP health、业务错误率、关键接口延迟和数据库连接健康等指标。
+   后续应补业务错误率、关键接口延迟、登录/任务等核心业务指标和更细的数据库连接健康。
 
 4. Cloudflare 配置台账。
    补全 DNS 记录、代理状态、SSL/TLS 模式、WAF/安全规则、Origin Certificate 使用范围。
@@ -118,6 +119,6 @@
 
 1. 确认后删除 `/root/JadeAI`，并在 `account-vault` 迁移稳定后删除 `/root/sorryiosSearch`。
 2. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
-3. 深化应用健康、关键接口延迟和业务错误率告警。
+3. 深化关键接口延迟、业务错误率和核心业务指标告警。
 4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
 5. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。

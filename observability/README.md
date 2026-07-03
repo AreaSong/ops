@@ -28,6 +28,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Promtail for `/var/log/nginx/*.log`, `/var/log/backup/*.log`, and `/var/log/syslog`
 - Node Exporter with textfile collector
 - Blackbox Exporter for HTTPS and TLS checks
+- Blackbox app probes for resume-jadeai, account-vault, and sub2api public health checks
 - Postgres Exporter for sub2api and account-vault PostgreSQL metrics
 - Redis Exporter for sub2api Redis metrics
 
@@ -72,6 +73,13 @@ curl http://127.0.0.1:9090/-/ready
 curl http://127.0.0.1:3000/api/health
 curl http://127.0.0.1:9093/-/ready
 curl http://127.0.0.1:3100/ready
+```
+
+After changing `prometheus.yml`, recreate Prometheus so the single-file bind mount is refreshed:
+
+```bash
+cd /opt/ops/observability
+docker compose up -d --force-recreate --no-deps prometheus
 ```
 
 
