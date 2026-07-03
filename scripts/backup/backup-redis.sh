@@ -4,7 +4,7 @@ set -euo pipefail
 BACKUP_ROOT="/var/backups/ops/redis"
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="$BACKUP_ROOT/redis-$TS.tar.gz"
-DATA_DIR="/root/sub2api-deploy/redis_data"
+DATA_DIR="/var/lib/sub2api/redis_data"
 mkdir -p "$BACKUP_ROOT" /var/log/backup
 
 if docker ps --format "{{.Names}}" | grep -Fxq sub2api-redis; then

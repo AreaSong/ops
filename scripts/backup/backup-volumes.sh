@@ -6,9 +6,11 @@ TS="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_ROOT" /var/log/backup
 made=0
 
-if [ -d /root/sub2api-deploy/data ]; then
+if [ -d /var/lib/sub2api/data ]; then
   out="$BACKUP_ROOT/sub2api-data-$TS.tar.gz"
-  tar -czf "$out" -C /root/sub2api-deploy data
+  tar --exclude="data/logs" \
+      --exclude="data/logs/*" \
+      -czf "$out" -C /var/lib/sub2api data
   tar -tzf "$out" >/dev/null
   echo "$out"
   made=$((made + 1))

@@ -10,7 +10,7 @@ items=()
 for p in /etc/x-ui /etc/nginx /opt/ops /opt/services; do
   [ -e "$p" ] && items+=("$p")
 done
-for p in /root/sub2api-deploy/docker-compose.yml /root/sub2api-deploy/compose.yml /root/sub2api-deploy/.env /root/sub2api-deploy/*.env; do
+for p in /var/lib/sub2api/docker-compose.yml /var/lib/sub2api/compose.yml /var/lib/sub2api/.env /var/lib/sub2api/*.env; do
   [ -e "$p" ] && items+=("$p")
 done
 
@@ -20,9 +20,15 @@ if [ "${#items[@]}" -eq 0 ]; then
 fi
 
 tar --exclude="/opt/ops/.git" \
-    --exclude="/root/sub2api-deploy/postgres_data" \
-    --exclude="/root/sub2api-deploy/redis_data" \
-    --exclude="/root/sub2api-deploy/data" \
+    --exclude="opt/ops/.git" \
+    --exclude="/var/lib/sub2api/postgres_data" \
+    --exclude="var/lib/sub2api/postgres_data" \
+    --exclude="/var/lib/sub2api/redis_data" \
+    --exclude="var/lib/sub2api/redis_data" \
+    --exclude="/var/lib/sub2api/data" \
+    --exclude="var/lib/sub2api/data" \
+    --exclude="/var/lib/sub2api/data/*" \
+    --exclude="var/lib/sub2api/data/*" \
     -czf "$OUT" "${items[@]}"
 
 tar -tzf "$OUT" >/dev/null
