@@ -18,7 +18,7 @@
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
-- 服务目录规范化继续推进；`sub2api` compose 和数据目录已规范化，数据 bind mount 已从 `/root/sub2api-deploy` 迁移到 `/var/lib/sub2api`。
+- 服务目录规范化继续推进；`sub2api` compose 和数据目录已规范化，数据 bind mount 已从 `/root/sub2api-deploy` 迁移到 `/var/lib/sub2api`，旧目录已归档并删除。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
 - Postgres / Redis exporter、SSH/Fail2ban/UFW/Nginx 安全日志告警、业务级健康检查仍未完成。
 
@@ -58,7 +58,7 @@
 | 项目 | 当前状态 | 说明 |
 | --- | --- | --- |
 | Git 使用模型 | 部分完成 | 仓库由 root 拥有，`sudo git` 可正常查看且干净；`as` 直接运行 git 会触发 Git safe.directory 保护。后续可决定是保持 root 管理，还是配置受限的 safe.directory / 权限模型。 |
-| 服务目录规范化 | 部分完成 | `account-vault`、`resume-jadeai`、`sub2api` compose 均在 `/opt/services`；`sub2api` 数据 bind mount 已迁移到 `/var/lib/sub2api`；`JadeAI`、`sorryiosSearch` 暂未发现明确运行时引用，后续可归档；迁移记录见 `runbooks/losangeles-sub2api-data-migration-20260703.md`。 |
+| 服务目录规范化 | 部分完成 | `account-vault`、`resume-jadeai`、`sub2api` compose 均在 `/opt/services`；`sub2api` 数据 bind mount 已迁移到 `/var/lib/sub2api`，旧 `/root/sub2api-deploy` 已归档并删除；`JadeAI`、`sorryiosSearch` 暂未发现明确运行时引用，后续可归档；迁移记录见 `runbooks/losangeles-sub2api-data-migration-20260703.md`。 |
 | 证书策略统一 | 部分完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt。当前可用，但策略尚未统一成台账。 |
 | Docker / 服务健康检查 | 部分完成 | Docker running 指标和部分容器 health 存在；业务 HTTP health、数据库连接、Redis ping、错误率指标仍未系统化。 |
 | Grafana Dashboard | 基础完成 | 主机、HTTPS、TLS、Docker、Backup 已覆盖；Nginx 4xx/5xx、Postgres、Redis、应用错误率等深度面板未完成。 |
@@ -80,7 +80,7 @@
    当前 UFW 的 `22/tcp` 仍为 Anywhere。如果有固定出口 IP，应改为仅允许固定来源。
 
 2. 服务目录从 `/root` 清理/迁移到规范路径。
-   `sub2api` 数据目录已迁移到 `/var/lib/sub2api`；旧 `/root/sub2api-deploy` 暂留作短期回滚来源。下一步可归档 `JadeAI`、`sorryiosSearch`，并在观察期后处理旧 sub2api 目录。
+   `sub2api` 数据目录已迁移到 `/var/lib/sub2api`，旧 `/root/sub2api-deploy` 已归档到 `/var/backups/ops/manual/sub2api-root-cleanup-20260703-164425/root-sub2api-deploy-before-delete-20260703-164425.tar.gz` 并删除。下一步可归档 `JadeAI`、`sorryiosSearch`。
 
 3. Postgres / Redis exporter。
    当前未发现 `postgres_exporter` 或 `redis_exporter` 容器，也未发现对应 Prometheus job。
@@ -119,7 +119,7 @@
 
 ## 6. 推荐下一步
 
-1. 观察 sub2api 新数据目录运行至少 24 小时，再归档或删除旧 `/root/sub2api-deploy`。
+1. 继续确认 `JadeAI`、`sorryiosSearch` 等历史目录是否仍有运行时引用，并按需归档。
 2. 归档 `/root/JadeAI`、`/root/sorryiosSearch` 等未发现运行时引用的历史目录。
 3. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
 4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
