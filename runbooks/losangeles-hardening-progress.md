@@ -15,7 +15,7 @@
 
 - `/opt/as_password` 明文密码文件已删除；仍建议用户尽快修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统当前仍提示需要重启，且有 19 个可更新包；应安排维护窗口处理。
-- Alertmanager 仍是 `local-only`，外部通知未闭环。
+- Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 异地对象存储备份未接入，恢复演练未发现记录。
 - 服务目录规范化已部分推进到 `/opt/services`，但 `/root` 下仍有历史服务目录和 compose 文件。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
@@ -43,7 +43,7 @@
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
-| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警。 |
+| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证。 |
 | Grafana 基础 Dashboard | 完成 | 存在 `losangeles-host-overview.json` 和 `losangeles-services-backups.json`。 |
 | Loki / Promtail 基础采集 | 完成 | Promtail 配置采集 `/var/log/nginx/*.log`、`/var/log/backup/*.log`、`/var/log/syslog`；Loki `/ready` 返回 200。 |
 
@@ -67,16 +67,13 @@
 
 ### P1
 
-1. 接入 Alertmanager 外部通知。  
-   当前 `/opt/ops/observability/alertmanager/alertmanager.yml` 只有 `receiver: local-only`，告警不会主动通知外部渠道。
-
-2. 接入异地对象存储备份。  
+1. 接入异地对象存储备份。  
    当前仅发现标准文档要求对象存储，未发现已落地的 R2/COS/OSS/S3/rclone 备份脚本或 cron。
 
-3. 做一次备份恢复演练并留痕。  
+2. 做一次备份恢复演练并留痕。  
    当前只有恢复演练标准和通用 runbook，未发现 LosAngeles 的实际恢复演练记录。
 
-4. 安排系统更新和重启维护窗口。  
+3. 安排系统更新和重启维护窗口。  
    当前 `/var/run/reboot-required` 存在，`apt list --upgradable` 统计有 19 个可更新包。
 
 ### P2
@@ -125,8 +122,8 @@
 
 1. 由用户修改 `as` 密码；继续使用 `sudo -v` 临时授权，不再保存明文密码文件。
 2. 安排系统更新与重启维护窗口。
-3. 接入 Alertmanager 外部通知，让监控形成闭环。
-4. 做一次备份恢复演练并记录 RTO/RPO。
-5. 接入异地对象存储备份。
-6. 清点 `/root` 历史服务目录，确认迁移/归档计划。
-7. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
+3. 做一次备份恢复演练并记录 RTO/RPO。
+4. 接入异地对象存储备份。
+5. 清点 `/root` 历史服务目录，确认迁移/归档计划。
+6. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
+7. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。

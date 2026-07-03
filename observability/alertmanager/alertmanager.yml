@@ -1,8 +1,14 @@
 global:
   resolve_timeout: 5m
+  smtp_smarthost: smtp.qq.com:587
+  smtp_from: 2695266624@qq.com
+  smtp_auth_username: 2695266624@qq.com
+  smtp_auth_identity: 2695266624@qq.com
+  smtp_auth_password_file: /etc/alertmanager/smtp_password
+  smtp_require_tls: true
 
 route:
-  receiver: local-only
+  receiver: email-ops
   group_by:
     - alertname
     - instance
@@ -11,4 +17,9 @@ route:
   repeat_interval: 4h
 
 receivers:
-  - name: local-only
+  - name: email-ops
+    email_configs:
+      - to: 3177348309@qq.com
+        send_resolved: true
+        headers:
+          Subject: '[LosAngeles][{{ .Status }}] {{ .CommonLabels.alertname }}'
