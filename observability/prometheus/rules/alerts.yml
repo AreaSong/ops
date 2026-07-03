@@ -144,3 +144,77 @@ groups:
           severity: warning
         annotations:
           summary: "Redis rejected connections detected: {{ $labels.instance }}"
+
+  - name: security_log_alerts
+    rules:
+      - alert: SecurityMetricsStale
+        expr: absent(security_metrics_last_success_timestamp) or time() - security_metrics_last_success_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Security textfile metrics are stale"
+
+      - alert: UfwDisabled
+        expr: ufw_enabled == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "UFW is not active"
+
+      - alert: UfwStatusCheckFailed
+        expr: ufw_status_check_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "UFW status check failed"
+
+      - alert: Fail2banSshdCheckFailed
+        expr: fail2ban_check_success{jail="sshd"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fail2ban sshd status check failed"
+
+      - alert: SshFailedLoginsHigh
+        expr: ssh_failed_login_last_24h > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSH failed logins are high over the last 24 hours"
+
+      - alert: SshInvalidUsersHigh
+        expr: ssh_invalid_user_last_24h > 2000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSH invalid user probes are high over the last 24 hours"
+
+      - alert: Fail2banSshdCurrentlyBanning
+        expr: fail2ban_currently_banned{jail="sshd"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fail2ban sshd currently has banned addresses"
+
+      - alert: NginxHttp5xxHigh
+        expr: nginx_http_requests_last_5m{status_class="5xx"} > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nginx 5xx responses are high"
+
+      - alert: NginxHttp4xxHigh
+        expr: nginx_http_requests_last_5m{status_class="4xx"} > 200
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nginx 4xx responses are high"

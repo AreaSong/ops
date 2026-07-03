@@ -41,11 +41,13 @@ Scripts:
 
 - `observability/scripts/write-backup-metrics.sh`
 - `observability/scripts/write-docker-metrics.sh`
+- `observability/scripts/write-security-metrics.sh`
 
 Cron:
 
 - Docker container metrics every 5 minutes
 - Backup freshness metrics daily after backup jobs
+- Security log and firewall metrics every minute
 
 ## Operations
 
