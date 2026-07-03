@@ -8,7 +8,7 @@ Only Grafana is exposed through Nginx and Cloudflare:
 
 - `https://monitor.areasong.top/` -> Nginx 443 -> `127.0.0.1:3000`
 
-Prometheus, Alertmanager, Loki, Node Exporter, and Blackbox Exporter are not exposed publicly.
+Prometheus, Alertmanager, Loki, Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are not exposed publicly.
 
 ## Local ports
 
@@ -17,17 +17,19 @@ Prometheus, Alertmanager, Loki, Node Exporter, and Blackbox Exporter are not exp
 - Alertmanager: `127.0.0.1:9093`
 - Loki: `127.0.0.1:3100`
 
-Node Exporter and Blackbox Exporter are reachable only inside the Docker network.
+Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reachable only inside Docker networks.
 
 ## Components
 
 - Prometheus for metrics and alert rules
 - Grafana for dashboards
-- Alertmanager with local-only receiver
+- Alertmanager with QQ SMTP email receiver
 - Loki for logs
 - Promtail for `/var/log/nginx/*.log`, `/var/log/backup/*.log`, and `/var/log/syslog`
 - Node Exporter with textfile collector
 - Blackbox Exporter for HTTPS and TLS checks
+- Postgres Exporter for sub2api and account-vault PostgreSQL metrics
+- Redis Exporter for sub2api Redis metrics
 
 ## Textfile metrics
 
@@ -69,3 +71,14 @@ curl http://127.0.0.1:3000/api/health
 curl http://127.0.0.1:9093/-/ready
 curl http://127.0.0.1:3100/ready
 ```
+
+
+## Datastore exporter secrets
+
+Root-only env files live outside Git:
+
+- `/etc/observability/postgres-exporter-sub2api.env`
+- `/etc/observability/postgres-exporter-account-vault.env`
+- `/etc/observability/redis-exporter-sub2api.env`
+
+The exporter containers join both the observability network and the relevant service network. They do not publish ports to the host or public internet.

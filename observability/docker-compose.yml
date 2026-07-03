@@ -109,6 +109,43 @@ services:
     networks:
       - monitoring
 
+
+  postgres-exporter-sub2api:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter-sub2api
+    restart: unless-stopped
+    env_file:
+      - /etc/observability/postgres-exporter-sub2api.env
+    networks:
+      - monitoring
+      - sub2api
+
+  postgres-exporter-account-vault:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter-account-vault
+    restart: unless-stopped
+    env_file:
+      - /etc/observability/postgres-exporter-account-vault.env
+    networks:
+      - monitoring
+      - account-vault
+
+  redis-exporter-sub2api:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: redis-exporter-sub2api
+    restart: unless-stopped
+    env_file:
+      - /etc/observability/redis-exporter-sub2api.env
+    networks:
+      - monitoring
+      - sub2api
+
 networks:
   monitoring:
     driver: bridge
+  sub2api:
+    external: true
+    name: sub2api_sub2api-network
+  account-vault:
+    external: true
+    name: account-vault_default
