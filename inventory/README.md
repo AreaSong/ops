@@ -8,6 +8,7 @@
 | services.yaml | YAML | 服务与端口（机器可读） |
 | servers.md | Markdown | 主机清单（人类可读摘要） |
 | ports.md | Markdown | 端口分配表（人类可读摘要） |
+| cloudflare-areasong-top.md | Markdown | Cloudflare DNS/代理状态、证书策略和控制台待确认项 |
 
 ## 维护规则
 
