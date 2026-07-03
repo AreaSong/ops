@@ -1,43 +1,39 @@
+name: observability
+
 services:
   prometheus:
     image: prom/prometheus:v2.53.0
     container_name: prometheus
     restart: unless-stopped
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=30d"
-      - "--web.enable-lifecycle"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/rules/:/etc/prometheus/rules/:ro
-      - /data/prometheus:/prometheus
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - /opt/ops/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/ops/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - /var/lib/observability/prometheus:/prometheus
     networks:
       - monitoring
+    depends_on:
+      - alertmanager
+      - node-exporter
+      - blackbox-exporter
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     restart: unless-stopped
-    volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      - /data/alertmanager:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
     ports:
-      - "9093:9093"
-    networks:
-      - monitoring
-
-  loki:
-    image: grafana/loki:3.1.0
-    container_name: loki
-    restart: unless-stopped
-    command: -config.file=/etc/loki/loki.yml
+      - "127.0.0.1:9093:9093"
     volumes:
-      - ./loki/loki.yml:/etc/loki/loki.yml:ro
-      - /data/loki:/loki
-    ports:
-      - "3100:3100"
+      - /opt/ops/observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /var/lib/observability/alertmanager:/alertmanager
     networks:
       - monitoring
 
@@ -45,20 +41,71 @@ services:
     image: grafana/grafana:11.1.0
     container_name: grafana
     restart: unless-stopped
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - ./grafana/provisioning/:/etc/grafana/provisioning/:ro
-      - /data/grafana:/var/lib/grafana
+    env_file:
+      - /etc/observability/grafana.env
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /opt/ops/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /var/lib/observability/grafana:/var/lib/grafana
     networks:
       - monitoring
     depends_on:
       - prometheus
       - loki
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: loki
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/loki.yml
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - /opt/ops/observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - /var/lib/observability/loki:/loki
+    networks:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: promtail
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - /opt/ops/observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - monitoring
+    depends_on:
+      - loki
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+    volumes:
+      - /:/host:ro,rslave
+      - /var/lib/node_exporter/textfile_collector:/var/lib/node_exporter/textfile_collector:ro
+    networks:
+      - monitoring
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+    volumes:
+      - /opt/ops/observability/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - monitoring
 
 networks:
   monitoring:

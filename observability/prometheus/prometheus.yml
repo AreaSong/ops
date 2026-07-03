@@ -1,6 +1,9 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    env: prod
+    host: LosAngeles
 
 alerting:
   alertmanagers:
@@ -15,31 +18,34 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets:
-          - localhost:9090
+          - prometheus:9090
+        labels:
+          instance: LosAngeles
 
-  # 从 inventory/servers.yaml 同步更新 targets
   - job_name: node
     static_configs:
       - targets:
-          - prod-web-01:9100
-          - prod-monitor-01:9100
+          - node-exporter:9100
         labels:
-          env: prod
+          instance: LosAngeles
 
-  # HTTP 服务存活探测（按需添加）
-  - job_name: blackbox
+  - job_name: blackbox_https
     metrics_path: /probe
     params:
-      module: [http_2xx]
+      module:
+        - http_2xx_tls
     static_configs:
       - targets:
-          - https://example.com
+          - https://monitor.areasong.top/
+          - https://log.areasong.top/
         labels:
-          env: prod
+          instance: LosAngeles
     relabel_configs:
-      - source_labels: [__address__]
+      - source_labels:
+          - __address__
         target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
+      - source_labels:
+          - __param_target
+        target_label: target
       - target_label: __address__
         replacement: blackbox-exporter:9115

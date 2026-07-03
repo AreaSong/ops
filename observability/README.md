@@ -1,55 +1,71 @@
-# 可观测栈部署指南
+# Observability
 
-## 架构
+LosAngeles single-host observability stack.
 
-单机部署 Prometheus + Grafana + Loki + Alertmanager，承载在 `prod-monitor-01`。
+## Public access
 
-```
-各服务器                          prod-monitor-01
-┌─────────────┐                  ┌──────────────────────────────┐
-│ node_exporter│ ── :9100 ────→ │ Prometheus (:9090)           │
-│ promtail     │ ── logs ────→  │ Loki (:3100)                 │
-└─────────────┘                  │ Grafana (:3000)              │
-                                 │ Alertmanager (:9093)         │
-                                 └──────────────────────────────┘
-```
+Only Grafana is exposed through Nginx and Cloudflare:
 
-## 部署步骤
+- `https://monitor.areasong.top/` -> Nginx 443 -> `127.0.0.1:3000`
 
-1. 在 `prod-monitor-01` 上克隆 ops 仓库到 `/opt/ops/`
-2. 复制环境变量模板并填写：
+Prometheus, Alertmanager, Loki, Node Exporter, and Blackbox Exporter are not exposed publicly.
+
+## Local ports
+
+- Grafana: `127.0.0.1:3000`
+- Prometheus: `127.0.0.1:9090`
+- Alertmanager: `127.0.0.1:9093`
+- Loki: `127.0.0.1:3100`
+
+Node Exporter and Blackbox Exporter are reachable only inside the Docker network.
+
+## Components
+
+- Prometheus for metrics and alert rules
+- Grafana for dashboards
+- Alertmanager with local-only receiver
+- Loki for logs
+- Promtail for `/var/log/nginx/*.log`, `/var/log/backup/*.log`, and `/var/log/syslog`
+- Node Exporter with textfile collector
+- Blackbox Exporter for HTTPS and TLS checks
+
+## Textfile metrics
+
+Metrics directory:
+
+- `/var/lib/node_exporter/textfile_collector/`
+
+Scripts:
+
+- `observability/scripts/write-backup-metrics.sh`
+- `observability/scripts/write-docker-metrics.sh`
+
+Cron:
+
+- Docker container metrics every 5 minutes
+- Backup freshness metrics daily after backup jobs
+
+## Operations
+
+Start/update:
 
 ```bash
-cp observability/.env.example observability/.env
-# 编辑 .env，设置 GRAFANA_ADMIN_PASSWORD
+cd /opt/ops/observability
+docker compose up -d
 ```
 
-3. 启动栈：
+Stop:
 
 ```bash
-cd /opt/compose/observability
-docker compose -f /opt/ops/observability/docker-compose.yml up -d
+cd /opt/ops/observability
+docker compose down
 ```
 
-4. 访问 Grafana：`http://<monitor-ip>:3000`（默认 admin / .env 中设置的密码）
+Health checks:
 
-5. 在各服务器部署 promtail（见 `promtail/` 目录）
-
-## 端口
-
-| 服务 | 端口 | 访问范围 |
-|------|------|----------|
-| Grafana | 3000 | 内网 / VPN |
-| Prometheus | 9090 | 内网 |
-| Loki | 3100 | 内网 |
-| Alertmanager | 9093 | 内网 |
-
-## 告警通知
-
-编辑 `alertmanager/alertmanager.yml`，配置 webhook 通知渠道（钉钉/企微/Slack）。
-
-## 维护
-
-- Prometheus 数据保留 30 天（`--storage.tsdb.retention.time=30d`）
-- Loki 数据保留 14 天
-- 定期备份 Grafana Dashboard 配置（`/data/grafana/`）
+```bash
+curl http://127.0.0.1:9090/-/ready
+curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:9093/-/ready
+curl http://127.0.0.1:3100/ready
+```

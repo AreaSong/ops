@@ -2,31 +2,28 @@ groups:
   - name: node_alerts
     rules:
       - alert: HostDown
-        expr: up == 0
+        expr: up{job="node"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "主机 {{ $labels.instance }} 不可达"
-          description: "主机 {{ $labels.instance }} 已宕机超过 2 分钟"
+          summary: "Host down: {{ $labels.instance }}"
 
       - alert: DiskUsageHigh
-        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 85
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) * 100 > 80
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "磁盘使用率 > 85%: {{ $labels.instance }}"
-          description: "{{ $labels.mountpoint }} 使用率 {{ $value | printf \"%.1f\" }}%"
+          summary: "Disk usage high on {{ $labels.instance }} {{ $labels.mountpoint }}"
 
       - alert: DiskUsageCritical
-        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 95
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) * 100 > 90
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "磁盘使用率 > 95%: {{ $labels.instance }}"
-          description: "{{ $labels.mountpoint }} 使用率 {{ $value | printf \"%.1f\" }}%，需立即处理"
+          summary: "Disk usage critical on {{ $labels.instance }} {{ $labels.mountpoint }}"
 
       - alert: MemoryUsageHigh
         expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
@@ -34,40 +31,58 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "内存使用率 > 90%: {{ $labels.instance }}"
+          summary: "Memory usage high on {{ $labels.instance }}"
 
       - alert: CpuUsageHigh
         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
         for: 15m
         labels:
-          severity: info
-        annotations:
-          summary: "CPU 使用率 > 90%: {{ $labels.instance }}"
-
-  - name: ssl_alerts
-    rules:
-      - alert: SslCertExpiringSoon
-        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
-        for: 1h
-        labels:
           severity: warning
         annotations:
-          summary: "SSL 证书 30 天内过期: {{ $labels.instance }}"
+          summary: "CPU usage high on {{ $labels.instance }}"
 
-      - alert: SslCertExpiringCritical
-        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 7
-        for: 1h
-        labels:
-          severity: critical
-        annotations:
-          summary: "SSL 证书 7 天内过期: {{ $labels.instance }}"
-
-  - name: service_alerts
+  - name: blackbox_alerts
     rules:
-      - alert: ServiceDown
-        expr: probe_success == 0
+      - alert: HttpProbeFailed
+        expr: probe_success{job="blackbox_https"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "服务不可达: {{ $labels.instance }}"
+          summary: "HTTPS probe failed: {{ $labels.target }}"
+
+      - alert: SslCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_https"} - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate expires within 30 days: {{ $labels.target }}"
+
+      - alert: SslCertExpiringCritical
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox_https"} - time() < 86400 * 7
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS certificate expires within 7 days: {{ $labels.target }}"
+
+  - name: backup_alerts
+    rules:
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp > 30 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup stale: {{ $labels.job }}"
+
+  - name: docker_alerts
+    rules:
+      - alert: DockerContainerDown
+        expr: docker_container_running == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Docker container down: {{ $labels.name }}"
