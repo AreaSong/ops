@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 09:45 BST
+更新时间：2026-07-03 12:10 BST
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 系统：Ubuntu 24.04  
@@ -17,8 +17,8 @@
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
-- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过。
-- 服务目录规范化已部分推进到 `/opt/services`，但 `/root` 下仍有历史服务目录和 compose 文件。
+- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
+- 服务目录规范化已部分推进到 `/opt/services`；审计发现 `sub2api` compose 已在 `/opt/services/sub2api`，但数据 bind mount 仍在 `/root/sub2api-deploy`，需要维护窗口迁移。
 - Cloudflare DNS/WAF/橙云灰云等控制台级台账未发现完整记录。
 - Postgres / Redis exporter、SSH/Fail2ban/UFW/Nginx 安全日志告警、业务级健康检查仍未完成。
 
@@ -45,6 +45,7 @@
 | 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
+| R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
@@ -57,7 +58,7 @@
 | 项目 | 当前状态 | 说明 |
 | --- | --- | --- |
 | Git 使用模型 | 部分完成 | 仓库由 root 拥有，`sudo git` 可正常查看且干净；`as` 直接运行 git 会触发 Git safe.directory 保护。后续可决定是保持 root 管理，还是配置受限的 safe.directory / 权限模型。 |
-| 服务目录规范化 | 部分完成 | 已存在 `/opt/services/account-vault`、`/opt/services/resume-jadeai`、`/opt/services/sub2api`；但仍发现 `/root/sub2api-deploy`、`/root/JadeAI`、`/root/sorryiosSearch`。需要逐服务确认哪些仍在用、哪些可归档。 |
+| 服务目录规范化 | 部分完成 | 已存在 `/opt/services/account-vault`、`/opt/services/resume-jadeai`、`/opt/services/sub2api`；已完成 `/root` 历史服务目录非破坏性审计，发现 `sub2api` 数据 bind mount 仍在 `/root/sub2api-deploy`；`JadeAI`、`sorryiosSearch` 暂未发现明确运行时引用；记录见 `runbooks/losangeles-root-service-directory-audit-20260703.md`。 |
 | 证书策略统一 | 部分完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt。当前可用，但策略尚未统一成台账。 |
 | Docker / 服务健康检查 | 部分完成 | Docker running 指标和部分容器 health 存在；业务 HTTP health、数据库连接、Redis ping、错误率指标仍未系统化。 |
 | Grafana Dashboard | 基础完成 | 主机、HTTPS、TLS、Docker、Backup 已覆盖；Nginx 4xx/5xx、Postgres、Redis、应用错误率等深度面板未完成。 |
@@ -71,8 +72,7 @@
 
 ### P1
 
-1. Cloudflare R2 生命周期保留策略。
-   当前未记录 bucket 生命周期策略；建议设置按天/周/月分层保留，避免长期无限增长，同时保留足够恢复窗口。
+当前无 P1 未完成事项。
 
 ### P2
 
@@ -80,7 +80,7 @@
    当前 UFW 的 `22/tcp` 仍为 Anywhere。如果有固定出口 IP，应改为仅允许固定来源。
 
 2. 服务目录从 `/root` 清理/迁移到 `/opt/services`。  
-   需要确认 `/root` 下历史目录是否仍承载运行服务，再逐服务迁移或归档。
+   已完成非破坏性审计；下一步应先迁移 `sub2api` 的 `/root/sub2api-deploy` 数据 bind mount，再归档 `JadeAI`、`sorryiosSearch` 等未发现运行时引用的历史目录。
 
 3. Postgres / Redis exporter。  
    当前未发现 `postgres_exporter` 或 `redis_exporter` 容器，也未发现对应 Prometheus job。
@@ -119,8 +119,8 @@
 
 ## 6. 推荐下一步
 
-1. 配置 Cloudflare R2 生命周期保留策略。
-2. 清点 `/root` 历史服务目录，确认迁移/归档计划。
+1. 制定并执行 `sub2api` 数据目录从 `/root/sub2api-deploy` 迁移到规范路径的维护方案。
+2. 归档 `/root/JadeAI`、`/root/sorryiosSearch` 等未发现运行时引用的历史目录。
 3. 补齐 Cloudflare、证书策略、云厂商/owner 台账。
 4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
 5. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
