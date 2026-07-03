@@ -14,7 +14,7 @@
 
 - `/root/JadeAI`：未发现 Docker runtime、进程 cwd/exe/fd、Nginx、systemd、cron 运行时引用。
 - `/root/sorryiosSearch`：未发现 Docker runtime mount 或进程 cwd/exe/fd 引用，但仍被 `/opt/services/account-vault/compose.yml` 作为 build context 和 env_file 引用。
-- 因此 `/root/JadeAI` 可列入删除候选；`/root/sorryiosSearch` 暂不能删除，需先迁移 `account-vault` 的 build context 和 env_file。
+- `/root/JadeAI` 可列入删除候选；`/root/sorryiosSearch` 已在后续步骤中完成 `account-vault` build context 和 env_file 迁移，稳定验证后也可列入删除候选。
 
 ## 2. 归档信息
 
@@ -67,3 +67,12 @@ env_file:
 7. 稳定后再决定是否删除 `/root/sorryiosSearch`。
 
 `/root/JadeAI` 若确认只是历史源码目录，可以在下一轮归档确认后删除。
+
+## 6. 后续处理更新
+
+2026-07-03 17:01 BST 已完成 `account-vault` 规范化迁移：
+
+- build context 已从 `/root/sorryiosSearch` 改为 `/opt/services/account-vault/app`。
+- env_file 已从 `/root/sorryiosSearch/.env` 改为 `/etc/account-vault/account-vault.env`。
+- `account-vault-web-1` 已重建并通过本机与域名入口验证。
+- 记录见 `runbooks/losangeles-account-vault-source-migration-20260703.md`。

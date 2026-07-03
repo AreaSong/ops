@@ -7,7 +7,7 @@ OUT="$BACKUP_ROOT/configs-$TS.tar.gz"
 mkdir -p "$BACKUP_ROOT" /var/log/backup
 
 items=()
-for p in /etc/x-ui /etc/nginx /opt/ops /opt/services; do
+for p in /etc/x-ui /etc/nginx /etc/account-vault /opt/ops /opt/services; do
   [ -e "$p" ] && items+=("$p")
 done
 for p in /var/lib/sub2api/docker-compose.yml /var/lib/sub2api/compose.yml /var/lib/sub2api/.env /var/lib/sub2api/*.env; do
