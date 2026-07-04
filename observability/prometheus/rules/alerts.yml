@@ -301,3 +301,60 @@ groups:
           description: "High 4xx volume is often scanners or invalid paths. Check Nginx logs for source and request patterns."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 4[0-9][0-9] \""
+
+  - name: business_log_alerts
+    rules:
+      - alert: BusinessLogMetricsStale
+        expr: absent(business_log_metrics_last_success_timestamp) or time() - business_log_metrics_last_success_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business log textfile metrics are stale"
+          description: "The Nginx business log metrics script has not produced fresh textfile metrics."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"}"
+
+      - alert: BusinessHttp5xxHigh
+        expr: business_http_5xx_last_5m > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business HTTP 5xx responses are high: {{ $labels.service }}"
+          description: "The service has more than 5 HTTP 5xx responses in the latest 5-minute Nginx business log window."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"host=\\\".*\\\"\" |~ \" 5[0-9][0-9] \""
+
+      - alert: BusinessHttp4xxHigh
+        expr: business_http_4xx_last_5m > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business HTTP 4xx responses are high: {{ $labels.service }}"
+          description: "The service has more than 80 HTTP 4xx responses in the latest 5-minute Nginx business log window."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \" 4[0-9][0-9] \""
+
+      - alert: BusinessSlowRequestsHigh
+        expr: business_http_slow_requests_last_5m{threshold="2s"} > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business HTTP slow requests are high: {{ $labels.service }}"
+          description: "The service has more than 10 requests with Nginx request_time >= 2s in the latest 5-minute window."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"request_time=[2-9][0-9]*\\.|\""
+
+      - alert: BusinessLogParseErrorsHigh
+        expr: business_log_parse_errors_last_5m > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business log parse errors are high"
+          description: "The business log metrics parser is seeing unexpected enhanced Nginx access log lines."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
+
