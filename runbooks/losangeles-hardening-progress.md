@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 20:00 BST
+更新时间：2026-07-04 20:08 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
-- Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途负责人已补齐。
+- Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站。
 - Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。
 
 ## 2. 已核实完成
@@ -48,8 +48,9 @@
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
-| Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30 天提醒策略、`www.areasong.top` / Tunnel `hWin` 用途负责人和保留状态。 |
+| Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
 | Cloudflare Origin Certificate 本地监控 | 完成 | 已新增 `write-cloudflare-origin-cert-metrics.sh`、`cloudflare-origin-cert.prom`、`ops-cloudflare-origin-cert-metrics` cron、`cloudflare_origin_cert_alerts`、Alertmanager 长周期提醒路由和 `LosAngeles Certificates and Cloudflare` Dashboard；覆盖证书文件读取失败、指标过期、180/90/30/7 天分级过期提醒。 |
+| `www.areasong.top` / `hWin` 旧入口下线 | 完成 | 用户已在 Cloudflare 控制台删除旧 Access Application 和 Tunnel/Public Hostname；公网不再跳转 `areasong.cloudflareaccess.com`，当前返回 Cloudflare HTTP 530；LosAngeles 本机未发现 `cloudflared` 进程或服务，`www` 预留给后续门户网站。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
@@ -73,7 +74,7 @@
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
 | Docker / 服务健康检查 | 部分深化 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、第一批业务关键路径 Blackbox 探针、Postgres / Redis exporter、基于 Nginx 增强访问日志的业务服务级 4xx/5xx 与慢请求指标已存在；登录后任务指标和关键接口分位延迟仍可继续深化。 |
 | Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康、业务关键路径探针、业务服务级真实请求 4xx/5xx 与慢请求已覆盖；登录后业务任务和关键接口分位延迟视图仍可继续深化。 |
-| Cloudflare 配置台账 | 治理元数据基础完成，仍可深化 | 控制台只读核对已完成；Cloudflare Origin Certificate 创建人、用途、180/90/30 天提醒策略、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途、负责人和保留状态已补齐；仍可继续补实际提醒落地渠道和 Tunnel 后端应用细节。 |
+| Cloudflare 配置台账 | 治理元数据基础完成，仍可深化 | 控制台只读核对已完成；Cloudflare Origin Certificate 创建人、用途、180/90/30/7 天提醒策略和轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线，后续需补门户网站接入方案。 |
 
 ## 4. 未完成事项
 
@@ -94,7 +95,7 @@
    第一批公开、只读关键路径 Blackbox 探针已完成；基于增强 Nginx 访问日志的业务服务级错误率和慢请求基础监控已完成；后续应继续补登录后任务指标、关键接口分位延迟和更细的数据库连接健康。
 
 3. Cloudflare 治理元数据深化。
-   Origin Certificate 创建人/用途/轮换负责人、180/90/30 天提醒策略，以及 `www.areasong.top` / Tunnel `hWin` 的用途、负责人和保留状态已补齐；后续可补实际提醒落地渠道和 Tunnel 后端应用细节。
+   Origin Certificate 创建人/用途/轮换负责人、180/90/30/7 天提醒策略已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线并预留门户网站；后续可补门户网站接入方案。
 
 ### P3
 
@@ -121,6 +122,6 @@
 
 1. 继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
-3. 补齐 Cloudflare Tunnel `hWin` 后端应用细节，必要时再增加日历或任务系统类的证书治理提醒。
+3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
 4. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。
 5. 后续可在新机器或临时云主机上做一次跨机器恢复演练。

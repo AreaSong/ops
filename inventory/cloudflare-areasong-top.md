@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-04 20:00 BST
+更新时间：2026-07-04 20:08 BST
 
 ## 范围
 
@@ -28,13 +28,13 @@
 | `monitor.areasong.top` | Grafana | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/` 302 到 `/login` | `127.0.0.1:3000` |
 | `cpa.areasong.top` | sub2api | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/health` 200 | `127.0.0.1:8080` |
 | `log.areasong.top` | x-ui / xray 入口 | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/` 200 | `127.0.0.1:46585`、`127.0.0.1:10000`、`127.0.0.1:2096` |
-| `www.areasong.top` | Cloudflare Access 保护的 Tunnel 应用入口 | Cloudflare Tunnel，目标 `hWin`，已代理 | `server: cloudflare`；未登录访问 302 到 `areasong.cloudflareaccess.com` 登录页 | Cloudflare Tunnel `hWin` |
+| `www.areasong.top` | 门户网站预留域名；旧 Cloudflare Access / Tunnel 入口已下线 | Cloudflare 边缘仍返回 A/AAAA；门户源站未接入 | `server: cloudflare`；当前返回 HTTP 530，不再跳转 `areasong.cloudflareaccess.com` | 暂无；待门户网站接入 |
 
 说明：
 
 - Cloudflare 代理 / DNS-only、TTL、Tunnel 记录基于 Cloudflare 控制台核对；公开 DNS 和 HTTP 响应头用于交叉验证。
 - `log.areasong.top` 的 x-ui 管理面板隐藏路径不进入台账；Nginx 配置核查时已脱敏。
-- `www.areasong.top` 当前作为 Cloudflare Access 保护的 Tunnel 应用入口保留；负责人为 `as`。
+- `www.areasong.top` 的旧 Cloudflare Access Application 与 Tunnel/Public Hostname 已由用户在 Cloudflare 控制台删除；当前不再作为旧入口使用，预留给后续门户网站。
 
 ## 源站证书策略
 
@@ -55,7 +55,7 @@
 | `resume.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `sorryiossearch.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `monitor.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
-| `www.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书；Cloudflare Access 保护入口 |
+| `www.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书；旧 Access/Tunnel 入口已下线，预留门户网站 |
 | `cpa.areasong.top` | Let's Encrypt `YE1` | `cpa.areasong.top` | 源站直连证书 |
 | `log.areasong.top` | Let's Encrypt `YE2` | `log.areasong.top` | 源站直连证书 |
 
@@ -72,7 +72,7 @@
 | 对象 | 用途 | 创建人 | 负责人 | 提醒 / 处置 |
 | --- | --- | --- | --- | --- |
 | Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；Prometheus 已落地 180/90/30/7 天分级提醒，30 天内安排轮换，7 天内按紧急处理 |
-| Cloudflare Tunnel `hWin` / `www.areasong.top` | Cloudflare Access 保护的 Tunnel 应用入口 | `as` | `as` | 当前保留；若未来下线，需要先确认 Access 应用、Tunnel connector 和 DNS 记录依赖 |
+| Cloudflare Tunnel `hWin` / `www.areasong.top` | 旧 Cloudflare Access / Tunnel 应用入口 | `as` | `as` | 2026-07-04 已由用户删除 Access Application 与 Tunnel/Public Hostname；LosAngeles 本机未发现 `cloudflared` 进程或 systemd 服务；`www` 预留门户网站 |
 
 ## Cloudflare 控制台核对
 
@@ -80,7 +80,7 @@
 
 | 类别 | 当前状态 | 说明 |
 | --- | --- | --- |
-| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor` 已代理；`cpa`、`log` 为 DNS-only；`www` 为 Cloudflare Tunnel `hWin` 且当前保留。 |
+| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor` 已代理；`cpa`、`log` 为 DNS-only；`www` 的旧 Access/Tunnel 入口已下线，当前仍由 Cloudflare 边缘响应并预留给门户网站。 |
 | SSL/TLS 模式 | Full (strict) | Cloudflare 会校验源站证书；与代理域名使用 Cloudflare Origin Certificate 的策略匹配。 |
 | Universal SSL | 有效 | `*.areasong.top`、`areasong.top` 通用证书有效期至 2026-09-19；备份证书已签发。 |
 | Always Use HTTPS | 已开启 | HTTP 请求由 Cloudflare 侧重定向到 HTTPS。 |
@@ -108,11 +108,30 @@
 ## 仍需补充项
 
 - Cloudflare Origin Certificate 的自动化提醒已落地到 Prometheus / Alertmanager / Grafana；如需更强治理，可再补日历或任务系统提醒。
-- `www.areasong.top` / Cloudflare Tunnel `hWin` 的后端应用细节仍需在 Cloudflare Zero Trust / Tunnel 控制台中补充。
+- `www.areasong.top` 的门户网站接入方案仍需确认，包括源站位置、Cloudflare 代理状态、Nginx server block、证书策略、WAF/缓存规则和上线回滚方案。
 - 若未来启用 HSTS、Bot Fight Mode、速率限制、WAF 自定义规则或缓存规则，需要先评估对 `log`、`cpa`、`monitor` 等入口的影响。
+
+## `www.areasong.top` 下线记录
+
+2026-07-04 用户确认已在 Cloudflare 控制台删除 `www.areasong.top` 对应的旧 Access Application 和 Tunnel/Public Hostname。
+
+核查结果：
+
+- LosAngeles 本机未发现 `cloudflared` 进程或 systemd 服务。
+- `/opt/ops` 中仅存在台账记录，未发现本机业务依赖。
+- 公网访问 `https://www.areasong.top/` 不再跳转 `areasong.cloudflareaccess.com`。
+- 当前公网表现为 Cloudflare HTTP 530，说明旧入口已不可用，门户网站尚未接入。
+
+后续门户网站接入前，应先确认：
+
+- 门户部署位置：LosAngeles Nginx 静态站、独立应用容器、Vercel/Cloudflare Pages 或其他平台。
+- DNS 策略：继续 Cloudflare 代理，或临时 DNS-only 到源站。
+- 证书策略：Cloudflare 代理入口使用 Origin Certificate；DNS-only 直连入口使用公开可信证书。
+- Nginx / 应用回滚：上线前保留默认站点和回滚配置。
 
 ## 当前建议
 
 1. Cloudflare 代理域名继续使用 Cloudflare Origin Certificate；DNS-only 直连域名继续使用 Let's Encrypt。
 2. 若未来将 `cpa.areasong.top` 或 `log.areasong.top` 改为 Cloudflare 代理，需要同步更新本台账、Nginx 证书策略和 Prometheus target。
-3. 继续保持 HSTS、Bot Fight Mode、热链接保护和自定义缓存规则关闭，除非后续有明确业务需求和回滚方案。
+3. `www.areasong.top` 后续接入门户网站时，先完成部署方案、DNS/证书策略、Nginx 配置和回滚方案，再切换生产入口。
+4. 继续保持 HSTS、Bot Fight Mode、热链接保护和自定义缓存规则关闭，除非后续有明确业务需求和回滚方案。
