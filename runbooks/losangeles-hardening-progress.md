@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-03 18:55 BST
+更新时间：2026-07-04 04:24 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -19,7 +19,7 @@
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`JadeAI`、`sorryiosSearch` 已完成加强审计和归档；`account-vault` 已完成 build context 与 env_file 迁移，不再依赖 `/root/sorryiosSearch` compose 路径。
-- Cloudflare / 证书策略台账已新增；服务器侧与公网可观测项已记录，WAF、TTL、SSL/TLS 模式等控制台项仍待确认。
+- Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录。
 - Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api。
 
 ## 2. 已核实完成
@@ -46,7 +46,7 @@
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
-| Cloudflare / 证书策略台账 | 基础完成 | 已新增 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、域名代理状态、源站证书、公网证书表现和控制台待确认项。 |
+| Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
@@ -67,7 +67,7 @@
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
 | Docker / 服务健康检查 | 部分完成 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、Postgres / Redis exporter 已存在；业务错误率和关键接口延迟仍未系统化。 |
 | Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康已覆盖；应用错误率和关键接口视图仍未完成。 |
-| Cloudflare 配置台账 | 部分完成 | 已记录源站侧、公开 DNS、代理状态推断和证书策略；WAF、TTL、SSL/TLS 模式、规则集仍需登录 Cloudflare 控制台确认。 |
+| Cloudflare 配置台账 | 基础完成，仍可深化 | 控制台只读核对已完成；仍需补 Cloudflare Origin Certificate 创建人、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。 |
 
 ## 4. 未完成事项
 
@@ -90,8 +90,8 @@
 3. 应用级监控深化。
    后续应补业务错误率、关键接口延迟、登录/任务等核心业务指标和更细的数据库连接健康。
 
-4. Cloudflare 控制台配置确认。
-   补全 DNS TTL、SSL/TLS 模式、WAF/安全规则、缓存/重定向规则、Origin Certificate 控制台记录。
+4. Cloudflare 治理元数据补充。
+   已完成控制台基础配置核对；后续需补 Cloudflare Origin Certificate 创建人、用途、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。
 
 5. Git 操作权限模型。
    决定 `/opt/ops` 后续是 root-only 管理，还是给 `as` 配置明确的 safe.directory / 写权限流程。
@@ -111,7 +111,7 @@
 
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
-- 未登录 Cloudflare 控制台，因此 DNS TTL、WAF、SSL/TLS 模式、缓存/重定向规则只能标记为待控制台确认；橙云/灰云状态基于公开 DNS 和 HTTP 响应头推断。
+- Cloudflare 控制台基础配置已由用户侧只读核对；未修改 Cloudflare 配置，未核查更细粒度的历史事件、审计日志和 Origin Certificate 控制台创建记录。
 - 未测试跨机器恢复；当前 R2 拉回恢复演练是在当前主机上完成。
 - 未执行完整应用级接管验证；当前恢复演练验证到数据导入、RDB 校验和文件解包层面。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
@@ -119,7 +119,7 @@
 ## 6. 推荐下一步
 
 1. 确认后删除 `/root/JadeAI`，并在 `account-vault` 迁移稳定后删除 `/root/sorryiosSearch`。
-2. 登录 Cloudflare 控制台补齐 WAF、SSL/TLS 模式、DNS TTL、缓存/重定向规则。
+2. 补齐 Cloudflare Origin Certificate 轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途。
 3. 深化关键接口延迟、业务错误率和核心业务指标告警。
 4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
 5. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。

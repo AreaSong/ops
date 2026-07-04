@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-03 18:55 BST
+更新时间：2026-07-04 04:24 BST
 
 ## 范围
 
@@ -9,7 +9,7 @@
 - 源站公网 IP：`23.185.200.12`
 - 源站入口：Nginx `80/443`
 
-本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头和源站 SNI 握手结果整理。未登录 Cloudflare 控制台，因此 WAF、安全规则、精确 DNS TTL、SSL/TLS 模式等控制台项标记为待确认。
+本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头、源站 SNI 握手结果和 Cloudflare 控制台只读核对结果整理。控制台核对期间未修改 Cloudflare、DNS、Nginx 或服务配置。
 
 ## Zone 与权威 DNS
 
@@ -28,12 +28,13 @@
 | `monitor.areasong.top` | Grafana | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/` 302 到 `/login` | `127.0.0.1:3000` |
 | `cpa.areasong.top` | sub2api | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/health` 200 | `127.0.0.1:8080` |
 | `log.areasong.top` | x-ui / xray 入口 | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/` 200 | `127.0.0.1:46585`、`127.0.0.1:10000`、`127.0.0.1:2096` |
+| `www.areasong.top` | 待确认 | Cloudflare Tunnel，目标 `hWin`，已代理 | 控制台核对 | Cloudflare Tunnel |
 
 说明：
 
-- “Cloudflare 代理 / DNS-only”是根据公开 DNS 结果和 HTTP 响应头推断。
-- Cloudflare 控制台中的橙云/灰云状态、TTL、备注、规则命中情况仍需控制台确认。
+- Cloudflare 代理 / DNS-only、TTL、Tunnel 记录基于 Cloudflare 控制台核对；公开 DNS 和 HTTP 响应头用于交叉验证。
 - `log.areasong.top` 的 x-ui 管理面板隐藏路径不进入台账；Nginx 配置核查时已脱敏。
+- `www.areasong.top` 的 Tunnel 用途尚未在服务器侧台账中展开，后续需补充用途和负责人。
 
 ## 源站证书策略
 
@@ -65,21 +66,45 @@
 | Let's Encrypt / acme.sh | root crontab 存在每日 acme.sh cron：`13 23 * * *` |
 | 监控 | Blackbox 已监控 HTTPS 可用性和证书临期；应用健康 Dashboard 已覆盖 `resume`、`sorryiossearch`、`cpa` |
 
-## 控制台待确认项
+## Cloudflare 控制台核对
 
-这些项目无法仅从源站和公网响应完整确认，需要 Cloudflare 控制台或 Cloudflare API：
+2026-07-04 通过 Cloudflare 控制台只读核对以下配置：
 
-- DNS 记录完整清单、TTL、备注、是否橙云。
-- SSL/TLS 模式是否为 Full (strict)。
-- Always Use HTTPS、Automatic HTTPS Rewrites、Minimum TLS Version。
-- WAF 自定义规则、托管规则、安全级别、Bot Fight Mode。
-- Rate Limiting / DDoS / 防火墙事件。
-- Cache Rules / Page Rules / Transform Rules。
-- Origin Rules / Redirect Rules。
-- Cloudflare Origin Certificate 的控制台记录、创建时间、过期提醒和轮换负责人。
+| 类别 | 当前状态 | 说明 |
+| --- | --- | --- |
+| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor` 已代理；`cpa`、`log` 为 DNS-only；`www` 为 Cloudflare Tunnel `hWin`。 |
+| SSL/TLS 模式 | Full (strict) | Cloudflare 会校验源站证书；与代理域名使用 Cloudflare Origin Certificate 的策略匹配。 |
+| Universal SSL | 有效 | `*.areasong.top`、`areasong.top` 通用证书有效期至 2026-09-19；备份证书已签发。 |
+| Always Use HTTPS | 已开启 | HTTP 请求由 Cloudflare 侧重定向到 HTTPS。 |
+| Automatic HTTPS Rewrites | 已开启 | 用于修正可安全替换的混合内容链接。 |
+| Minimum TLS Version | TLS 1.3 | 兼容性最严格；目前与已代理入口使用场景匹配。 |
+| TLS 1.3 | 已开启 | 低于 TLS 1.3 的客户端无法访问已代理 HTTPS 入口。 |
+| HSTS | 未开启 | 暂不启用，避免 includeSubDomains 等策略误伤多业务子域。 |
+| WAF 自定义规则 | 未创建 | Free 计划当前 `0/5`。 |
+| 速率限制规则 | 未创建 | Free 计划当前 `0/1`。 |
+| Cloudflare 托管规则集 | 始终启用 | 控制台显示托管规则集启用。 |
+| DDoS 防护 | 活动 | 网络层、SSL/TLS、HTTP DDoS 基础保护启用；未创建 DDoS 替代规则。 |
+| 安全级别 | 自动化 / 始终受保护 | `I'm under attack` 模式禁用。 |
+| AI 爬虫控制 | 已在所有页面阻止 | 控制台显示 AI crawler 阻止配置。 |
+| Bot Fight Mode | 关闭 | JS 检测开启；未启用 Bot Fight，避免误伤业务流量。 |
+| 浏览器完整性检查 | 已开启 | Cloudflare 侧基础请求检查已启用。 |
+| 泄露凭据检测 | 未开启 | 可选功能，当前不启用。 |
+| 热链接保护 | 未开启 | 当前无图片盗链专项需求。 |
+| Page Rules | 未创建 | `0/3`。 |
+| Redirect Rules | 未创建 | 无已创建重定向规则。 |
+| Cache Rules | 未创建 | 无缓存规则和缓存响应规则。 |
+| Origin Rules | 未创建 | 未配置回源地址、端口或 Host header 改写。 |
+| Transform Rules | 未创建 | 未配置 URL、请求头或响应头转换。 |
+| Workers 路由 | 未创建 | 未绑定 `areasong.top` 或子域 Workers 路由。 |
+
+## 仍需补充项
+
+- Cloudflare Origin Certificate 的控制台创建人、用途说明、过期提醒和轮换负责人。
+- `www.areasong.top` / Cloudflare Tunnel `hWin` 的用途、负责人和是否仍需保留。
+- 若未来启用 HSTS、Bot Fight Mode、速率限制、WAF 自定义规则或缓存规则，需要先评估对 `log`、`cpa`、`monitor` 等入口的影响。
 
 ## 当前建议
 
 1. Cloudflare 代理域名继续使用 Cloudflare Origin Certificate；DNS-only 直连域名继续使用 Let's Encrypt。
 2. 若未来将 `cpa.areasong.top` 或 `log.areasong.top` 改为 Cloudflare 代理，需要同步更新本台账、Nginx 证书策略和 Prometheus target。
-3. 在 Cloudflare 控制台补齐 WAF、DNS TTL、SSL/TLS 模式后，把本文件中的“待确认项”更新为已确认配置。
+3. 继续保持 HSTS、Bot Fight Mode、热链接保护和自定义缓存规则关闭，除非后续有明确业务需求和回滚方案。
