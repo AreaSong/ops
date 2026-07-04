@@ -84,6 +84,50 @@ route:
 
     - receiver: email-ops
       matchers:
+        - alertname="CloudflareOriginCertExpiring180Days"
+      group_by:
+        - alertname
+        - severity
+        - cert
+      group_wait: 1m
+      group_interval: 24h
+      repeat_interval: 720h
+
+    - receiver: email-ops
+      matchers:
+        - alertname="CloudflareOriginCertExpiring90Days"
+      group_by:
+        - alertname
+        - severity
+        - cert
+      group_wait: 1m
+      group_interval: 12h
+      repeat_interval: 336h
+
+    - receiver: email-ops
+      matchers:
+        - alertname="CloudflareOriginCertExpiring30Days"
+      group_by:
+        - alertname
+        - severity
+        - cert
+      group_wait: 1m
+      group_interval: 6h
+      repeat_interval: 72h
+
+    - receiver: email-ops
+      matchers:
+        - alertname=~"CloudflareOriginCertExpiringCritical|CloudflareOriginCertCheckFailed|CloudflareOriginCertMetricsStale"
+      group_by:
+        - alertname
+        - severity
+        - cert
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 6h
+
+    - receiver: email-ops
+      matchers:
         - alertname=~"SecurityMetricsStale|Ufw.*|Fail2ban.*|Ssh.*|Nginx.*"
       group_by:
         - alertname

@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-04 08:14 BST
+更新时间：2026-07-04 20:00 BST
 
 ## 范围
 
@@ -65,13 +65,13 @@
 | --- | --- |
 | Cloudflare Origin Certificate | 控制台创建人和轮换负责人均为 `as`；用途为 `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的 Cloudflare 代理源站证书；长期有效至 2041-06-27；过期前 180/90/30 天提醒 |
 | Let's Encrypt / acme.sh | root crontab 存在每日 acme.sh cron：`13 23 * * *` |
-| 监控 | Blackbox 已监控 HTTPS 可用性和证书临期；应用健康 Dashboard 已覆盖 `resume`、`sorryiossearch`、`cpa` |
+| 监控 | Blackbox 已监控公网 HTTPS 可用性和公网证书临期；本机 Cloudflare Origin Certificate 文件已接入 textfile metrics、Prometheus 告警、Alertmanager 邮件提醒和 Grafana `LosAngeles Certificates and Cloudflare` Dashboard |
 
 ## 治理元数据
 
 | 对象 | 用途 | 创建人 | 负责人 | 提醒 / 处置 |
 | --- | --- | --- | --- | --- |
-| Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；过期前 180/90/30 天提醒并评估轮换 |
+| Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；Prometheus 已落地 180/90/30/7 天分级提醒，30 天内安排轮换，7 天内按紧急处理 |
 | Cloudflare Tunnel `hWin` / `www.areasong.top` | Cloudflare Access 保护的 Tunnel 应用入口 | `as` | `as` | 当前保留；若未来下线，需要先确认 Access 应用、Tunnel connector 和 DNS 记录依赖 |
 
 ## Cloudflare 控制台核对
@@ -107,7 +107,7 @@
 
 ## 仍需补充项
 
-- Cloudflare Origin Certificate 的实际提醒落地渠道仍需确认，例如日历、任务系统或后续自动化监控。
+- Cloudflare Origin Certificate 的自动化提醒已落地到 Prometheus / Alertmanager / Grafana；如需更强治理，可再补日历或任务系统提醒。
 - `www.areasong.top` / Cloudflare Tunnel `hWin` 的后端应用细节仍需在 Cloudflare Zero Trust / Tunnel 控制台中补充。
 - 若未来启用 HSTS、Bot Fight Mode、速率限制、WAF 自定义规则或缓存规则，需要先评估对 `log`、`cpa`、`monitor` 等入口的影响。
 

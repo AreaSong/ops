@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+17 * * * * root /opt/ops/observability/scripts/write-cloudflare-origin-cert-metrics.sh >>/var/log/observability/cloudflare-origin-cert-metrics.log 2>&1
