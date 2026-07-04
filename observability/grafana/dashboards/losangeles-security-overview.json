@@ -272,6 +272,37 @@
         "sortOrder": "Descending",
         "wrapLogMessage": true
       }
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Fail2ban enriched IP intelligence",
+      "description": "Shows Fail2ban Ban and Unban events enriched with country, ASN, BGP prefix and network organization.",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json | line_format \"{{.event_ts}} {{.action}} jail={{.jail}} ip={{.ip}} country={{.country}} asn={{.asn}} prefix={{.bgp_prefix}} org={{.as_name}}\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
     }
   ]
 }

@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/5 * * * * root /usr/bin/python3 /opt/ops/observability/scripts/write-fail2ban-enriched-log.py >/dev/null 2>&1

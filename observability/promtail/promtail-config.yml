@@ -44,3 +44,12 @@ scrape_configs:
           job: fail2ban
           host: LosAngeles
           __path__: /var/log/fail2ban.log
+
+  - job_name: fail2ban_enriched
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: fail2ban_enriched
+          host: LosAngeles
+          __path__: /var/log/security/fail2ban-enriched.log
