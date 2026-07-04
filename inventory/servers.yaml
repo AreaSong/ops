@@ -37,10 +37,11 @@ servers:
     notes: "可观测栈承载机器"
 
   - hostname: LosAngeles
-    cloud: unknown
-    region: unknown
+    cloud: crystalclear-solutions-llc
+    region: us-ca-los-angeles
     public_ip: "23.185.200.12"
     private_ip: ""
+    owner: as
     os: ubuntu-24.04
     roles:
       - web
@@ -57,7 +58,15 @@ servers:
       - account-vault-web
       - account-vault-postgres
     data_disk: false
-    notes: "主机名不符合规范；服务已主要规范到 /opt/services；旧 /root/JadeAI 与 /root/sorryiosSearch 已归档并删除；UFW active: allow 22/80/443, default deny incoming；SSH 已禁用 root/password，仅 as key 登录；Fail2ban sshd jail enabled: maxretry 5, findtime 10m, bantime 1h；本机备份 enabled: /opt/ops/scripts/backup, /var/backups/ops, daily cron, 7d retention；监控 enabled: Prometheus/Grafana/Alertmanager/Loki/Promtail/Node Exporter/Blackbox, local ports only, Grafana via https://monitor.areasong.top/；需确认云厂商、region、私网 IP、业务 owner。"
+    provider_evidence:
+      public_ip_rdap_org: "CrystalClear Solutions LLC"
+      public_ip_rdap_netname: "CRYSTAL"
+      public_ip_rdap_cidr: "23.185.200.0/24"
+      public_ip_asn_org: "AS8796 FASTNET DATA INC"
+      geo: "Los Angeles, California, US"
+      virtualization: "KVM/QEMU"
+      cloud_init: "nocloud"
+    notes: "主机名不符合规范；ens3 直接使用公网 23.185.200.12/24，未发现主机级 RFC1918 私网 IP；Docker bridge 使用 172.17/18/19/20/21 网段；服务已主要规范到 /opt/services；旧 /root/JadeAI 与 /root/sorryiosSearch 已归档并删除；UFW active: allow 22/80/443, default deny incoming；SSH 已禁用 root/password，仅 as key 登录；Fail2ban sshd jail enabled: maxretry 5, findtime 10m, bantime 1h；本机备份 enabled: /opt/ops/scripts/backup, /var/backups/ops, daily cron, 7d retention；R2 offsite backup enabled；监控 enabled: Prometheus/Grafana/Alertmanager/Loki/Promtail/Node Exporter/Blackbox, local ports only, Grafana via https://monitor.areasong.top/。"
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:

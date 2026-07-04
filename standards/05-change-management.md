@@ -51,6 +51,26 @@
 - git commit，message 格式：`[change] 描述变更内容`
 - 重大变更（L2/L3）填写变更记录
 
+
+## `/opt/ops` root-only 变更流程
+
+LosAngeles 的 `/opt/ops` 保持 `root:root` 管理，备份脚本、凭证引用、监控配置和运维台账不放宽给普通用户写入。
+
+推荐执行方式：
+
+1. 用户在共享终端中临时输入 `sudo` 密码授权。
+2. 变更通过 `sudo git -C /opt/ops ...`、`sudo install ...` 或经审核的临时脚本执行。
+3. 临时脚本放在 `/tmp`，执行后删除。
+4. 完成后执行 `sudo -k` 清理 sudo 时间戳。
+5. 不把 `/opt/ops` 加入普通用户全局 `safe.directory`，也不修改仓库属主来绕过 Git ownership 检查。
+
+变更完成门禁：
+
+- 配置类变更先跑对应检查，例如 `nginx -t`、`promtool check rules`、`amtool check-config`、JSON/YAML 解析。
+- 服务类变更必须验证健康端点或 systemd/docker 状态。
+- 文档和台账变更至少执行格式/关键字检查，并查看 `git diff --stat`。
+- 所有变更提交到 `git@github.com:AreaSong/ops.git`。
+
 ## 回滚预案模板
 
 ```markdown
@@ -89,4 +109,5 @@
 
 修订记录：
 
+- 2026-07-04 补充 LosAngeles `/opt/ops` root-only 变更流程
 - 2026-07-02 初版

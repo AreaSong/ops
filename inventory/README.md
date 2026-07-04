@@ -24,14 +24,16 @@
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | hostname | 是 | 主机名，遵循命名规范 |
-| cloud | 是 | aliyun / tencent |
-| region | 是 | 云区域 |
+| cloud | 是 | 云厂商或可核验网络归属；未知时使用 `unknown` 并在 notes/provider_evidence 写明证据 |
+| region | 是 | 云区域或可核验地理区域；未知时使用 `unknown` |
 | public_ip | 否 | 公网 IP，无则留空 |
-| private_ip | 是 | 内网 IP |
+| private_ip | 否 | 主机级内网 IP；无 RFC1918 私网地址时留空并在 notes 说明 |
+| owner | 是 | 运维/业务负责人 |
 | os | 是 | 操作系统 |
 | roles | 是 | 角色列表 |
 | services | 否 | 运行的服务列表 |
 | data_disk | 否 | 是否有独立数据盘 |
+| provider_evidence | 否 | provider/region 判断依据，例如 RDAP、ASN、metadata、虚拟化信息 |
 | notes | 否 | 备注 |
 
 ### services.yaml

@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 20:08 BST
+更新时间：2026-07-04 20:22 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
-- Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站。
+- Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
 - Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。
 
 ## 2. 已核实完成
@@ -28,7 +28,7 @@
 | 项目 | 状态 | 核查证据 |
 | --- | --- | --- |
 | 主机基础信息 | 完成 | hostname 为 `LosAngeles`；系统为 Ubuntu 24.04；`ens3` 地址为 `23.185.200.12/24`。 |
-| inventory 台账 | 完成但仍有 unknown 字段 | `/opt/ops/inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 均已有 LosAngeles 记录。 |
+| inventory 台账 | 完成 | `/opt/ops/inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 均已有 LosAngeles 记录；provider/region/owner 已按可核验证据补齐，主机级私网 IP 明确为无。 |
 | `/opt/ops` 仓库 | 完成 | remote 为 `git@github.com:AreaSong/ops.git`；前序加固、备份、监控提交已存在，当前提交状态以 `git log -1 --oneline` 和 `git status --short` 为准。 |
 | 系统更新与重启维护 | 完成 | 2026-07-03 已执行 `apt-get dist-upgrade` 并重启；升级日志为 `/var/log/ops/maintenance-20260703-apt-upgrade.log`；重启后内核为 `6.8.0-134-generic`，核心入口、监控、Docker、R2 dry-run 均通过。 |
 | 非 root sudo 用户 | 完成 | `as` 属于 `sudo` 组，当前 sudo 缓存可用。 |
@@ -69,7 +69,7 @@
 
 | 项目 | 当前状态 | 说明 |
 | --- | --- | --- |
-| Git 使用模型 | 完成 | `/opt/ops` 保持 `root:root` 管理；需要变更时由用户在共享终端 `sudo -v` 授权，统一使用 `sudo git -C /opt/ops ...` 操作，完成后 `sudo -k`；不为 `as` 配置全局 `safe.directory`，也不放宽 root-only 备份脚本目录权限。 |
+| Git 使用模型 | 完成 | `/opt/ops` 保持 `root:root` 管理；需要变更时由用户在共享终端临时 sudo 授权，统一使用 `sudo git -C /opt/ops ...` 操作，完成后 `sudo -k`；不为 `as` 配置全局 `safe.directory`，也不放宽 root-only 备份脚本目录权限；流程已写入 `standards/05-change-management.md`。 |
 | 服务目录规范化 | 完成主要清理 | `sub2api` 已完成迁移和旧目录清理；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 已归档到本机备份并同步 R2，2026-07-04 确认无运行时依赖后删除。 |
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
 | Docker / 服务健康检查 | 部分深化 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、第一批业务关键路径 Blackbox 探针、Postgres / Redis exporter、基于 Nginx 增强访问日志的业务服务级 4xx/5xx 与慢请求指标已存在；登录后任务指标和关键接口分位延迟仍可继续深化。 |
@@ -105,8 +105,6 @@
 2. 独立数据盘。
    当前只有系统盘 `/dev/sda1`，无独立 `/data` 数据盘。
 
-3. 云厂商 / region / private IP / owner 补齐。
-   inventory 中 LosAngeles 仍有 provider、region、private_ip、owner 等 unknown 或空字段。
 
 ## 5. 本次未验证项
 
@@ -123,5 +121,4 @@
 1. 继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
-4. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。
-5. 后续可在新机器或临时云主机上做一次跨机器恢复演练。
+4. 后续可在新机器或临时云主机上做一次跨机器恢复演练。
