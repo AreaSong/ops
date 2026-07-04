@@ -44,14 +44,14 @@
 
 原始检查结果留存在服务器临时目录：
 
-- \
-- \
-- \
-- \
+- `/tmp/losangeles-09-c0-audit-stable-20260704T211948Z/container-baseline.tsv`
+- `/tmp/losangeles-09-c0-audit-stable-20260704T211948Z/image-baseline.tsv`
+- `/tmp/losangeles-09-c0-audit-stable-20260704T211948Z/docker_ps.txt`
+- `/tmp/losangeles-09-c0-audit-stable-20260704T211948Z/docker_disk.txt`
 
 ### 2.2 Redis
 
-已对容器名包含 Redis 且容器内存在 \ 的 Redis 本体容器做只读检查：
+已对容器名包含 Redis 且容器内存在 `redis-cli` 的 Redis 本体容器做只读检查：
 
 - PING 可用性
 - requirepass 是否存在信号
@@ -63,12 +63,19 @@
 说明：
 
 - 本审计不打印 Redis 密码值。
-- Redis exporter 这类没有 \ 的容器会被跳过。
+- Redis exporter 这类没有 `redis-cli` 的容器会被跳过。
 - 如果 Redis 已启用认证，部分 CONFIG 查询可能返回 NOAUTH，这是预期信号。
+
+关键观察：
+
+- `sub2api-redis` 可执行 `PING`。
+- `sub2api-redis` 当前存在 `maxmemory=0`，说明未设置 Redis 内存上限。
+- `sub2api-redis` 当前存在 `appendonly=no`，说明未启用 AOF。
+- `sub2api-redis` 当前 `protected-mode=no`，但容器端口未直接暴露公网，风险取决于 Docker 网络和访问边界。
 
 ### 2.3 Postgres
 
-已对容器名包含 Postgres 且容器内存在 \ 的 Postgres 本体容器做只读检查：
+已对容器名包含 Postgres 且容器内存在 `psql` 的 Postgres 本体容器做只读检查：
 
 - 角色权限位：superuser、createdb、createrole、replication、bypassrls、login、connection limit
 - 数据库大小
@@ -76,13 +83,25 @@
 说明：
 
 - 本审计不打印数据库密码、连接串或环境变量值。
-- Postgres exporter 这类没有 \ 的容器会被跳过。
+- Postgres exporter 这类没有 `psql` 的容器会被跳过。
+
+关键观察：
+
+- `sub2api-postgres` 可用业务初始化用户完成只读查询。
+- `account-vault-postgres-1` 可用业务初始化用户完成只读查询。
+- 当前业务初始化用户具备 superuser / createdb / createrole / replication / bypassrls 等高权限信号，后续应拆分为应用运行用户与管理用户。
 
 ### 2.4 Compose 文件
 
 已扫描 compose 文件位置，结果留存在：
 
-- \
+- `/tmp/losangeles-09-c0-audit-stable-20260704T211948Z/compose-files.txt`
+
+当前发现：
+
+- `/opt/services/account-vault/compose.yml`
+- `/opt/services/resume-jadeai/compose.yml`
+- `/opt/services/sub2api/compose.yml`
 
 ## 3. 初步风险判断
 
@@ -106,7 +125,18 @@
 
 ### P1：Redis 持久化与内存边界需要收敛
 
-审计显示 Redis 存在 \ 或 \ 信号时，说明还没有明确内存上限或 AOF 持久化策略。是否开启 AOF、设置多大内存上限，需要结合业务是否允许丢缓存和当前数据量决定。
+审计显示 Redis 存在 `maxmemory=0` 和 `appendonly=no` 信号，说明还没有明确内存上限或 AOF 持久化策略。是否开启 AOF、设置多大内存上限，需要结合业务是否允许丢缓存和当前数据量决定。
+
+### P1：Postgres 运行用户权限需要拆分
+
+审计显示当前业务初始化用户具备高权限。生产规范上建议：
+
+- 保留一个 root/admin 类数据库管理角色。
+- 新建应用运行角色，只授予指定数据库/schema/table/sequence 的必要权限。
+- 应用连接串切换到低权限角色。
+- 验证业务读写、迁移、备份、监控均正常。
+
+该项涉及数据库权限与业务连接串，必须单独维护窗口处理。
 
 ### P2：镜像 digest pin 尚未完成
 
@@ -135,7 +165,7 @@
 建议顺序：
 
 1. Redis：确认是否已有密码、maxmemory、AOF/快照策略。
-2. Postgres：审计超权角色，确认业务用户是否最小权限。
+2. Postgres：拆分超权业务用户，确认应用是否可使用低权限角色运行。
 3. 容器资源：先为最容易失控的服务设置内存上限。
 4. 旧容器日志：按 compose 逐个重建，使日志轮转真正落到现有容器。
 
