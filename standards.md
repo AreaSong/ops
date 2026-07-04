@@ -16,6 +16,7 @@
 | 备份与恢复 | [06-backup-dr.md](standards/06-backup-dr.md) |
 | 补丁更新 | [07-patching.md](standards/07-patching.md) |
 | 监控告警 | [08-observability.md](standards/08-observability.md) |
+| 全生命周期总纲（自包含大全） | [09-server-ops-handbook.md](standards/09-server-ops-handbook.md) |
 
 ---
 

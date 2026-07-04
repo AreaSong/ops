@@ -15,6 +15,7 @@
 | 06 | backup-dr.md | 备份与恢复演练 |
 | 07 | patching.md | 补丁与漏洞管理 |
 | 08 | observability.md | 监控、告警、日志 |
+| 09 | server-ops-handbook.md | 服务器全生命周期运维大全（单文件自包含总纲，31 章 + 4 附录） |
 
 ## 仓库禁止入库的内容
 
