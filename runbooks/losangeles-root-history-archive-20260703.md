@@ -8,13 +8,12 @@
 
 已对 `/root/JadeAI` 和 `/root/sorryiosSearch` 完成加强审计与归档。
 
-本次没有删除原目录，也没有重启生产服务。
+本次归档时没有删除原目录，也没有重启生产服务。2026-07-04 后续确认无运行时依赖后，已删除旧 `/root/JadeAI` 和 `/root/sorryiosSearch`。
 
 结果：
 
-- `/root/JadeAI`：未发现 Docker runtime、进程 cwd/exe/fd、Nginx、systemd、cron 运行时引用。
-- `/root/sorryiosSearch`：未发现 Docker runtime mount 或进程 cwd/exe/fd 引用，但仍被 `/opt/services/account-vault/compose.yml` 作为 build context 和 env_file 引用。
-- `/root/JadeAI` 可列入删除候选；`/root/sorryiosSearch` 已在后续步骤中完成 `account-vault` build context 和 env_file 迁移，稳定验证后也可列入删除候选。
+- `/root/JadeAI`：未发现 Docker runtime、进程 cwd/exe/fd、Nginx、systemd、cron 运行时引用；已于 2026-07-04 删除。
+- `/root/sorryiosSearch`：归档时未发现 Docker runtime mount 或进程 cwd/exe/fd 引用；后续已完成 `account-vault` build context 和 env_file 迁移，并于 2026-07-04 删除。
 
 ## 2. 归档信息
 
@@ -40,9 +39,9 @@
 - 数据库内容
 - Redis key/value
 
-## 4. 关键发现
+## 4. 归档时关键发现
 
-`/opt/services/account-vault/compose.yml` 当前仍包含：
+2026-07-03 归档时，`/opt/services/account-vault/compose.yml` 仍包含：
 
 ```yaml
 build: /root/sorryiosSearch
@@ -50,9 +49,9 @@ env_file:
   - /root/sorryiosSearch/.env
 ```
 
-这意味着当前运行中的容器可以继续运行，但将来如果执行 `docker compose up --build`、重建 web 容器或恢复服务，仍依赖 `/root/sorryiosSearch`。
+这意味着当时运行中的容器可以继续运行，但将来如果执行 `docker compose up --build`、重建 web 容器或恢复服务，仍依赖 `/root/sorryiosSearch`。
 
-## 5. 推荐下一步
+## 5. 当时推荐下一步
 
 先规范化 `account-vault`：
 
@@ -76,3 +75,11 @@ env_file:
 - env_file 已从 `/root/sorryiosSearch/.env` 改为 `/etc/account-vault/account-vault.env`。
 - `account-vault-web-1` 已重建并通过本机与域名入口验证。
 - 记录见 `runbooks/losangeles-account-vault-source-migration-20260703.md`。
+
+2026-07-04 04:59 BST 已完成旧目录删除：
+
+- 删除前再次确认归档包存在，且包含 `JadeAI` 与 `sorryiosSearch`。
+- 删除前确认当前进程和 Docker 容器未引用 `/root/JadeAI` 或 `/root/sorryiosSearch`。
+- 已删除 `/root/JadeAI` 和 `/root/sorryiosSearch`。
+- 删除后确认两个路径均不存在。
+- 当前运行服务仍指向 `/opt/services/resume-jadeai`、`/opt/services/account-vault`、`/opt/services/sub2api` 等规范路径。

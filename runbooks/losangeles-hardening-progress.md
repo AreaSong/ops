@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 04:24 BST
+更新时间：2026-07-04 04:59 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -18,7 +18,7 @@
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
-- 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`JadeAI`、`sorryiosSearch` 已完成加强审计和归档；`account-vault` 已完成 build context 与 env_file 迁移，不再依赖 `/root/sorryiosSearch` compose 路径。
+- 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录。
 - Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api。
 
@@ -63,7 +63,7 @@
 | 项目 | 当前状态 | 说明 |
 | --- | --- | --- |
 | Git 使用模型 | 部分完成 | 仓库由 root 拥有，`sudo git` 可正常查看且干净；`as` 直接运行 git 会触发 Git safe.directory 保护。后续可决定是保持 root 管理，还是配置受限的 safe.directory / 权限模型。 |
-| 服务目录规范化 | 部分完成 | `sub2api` 已完成迁移和旧目录清理；`JadeAI`、`sorryiosSearch` 已归档到本机备份并同步 R2；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 仍待删除确认。 |
+| 服务目录规范化 | 完成主要清理 | `sub2api` 已完成迁移和旧目录清理；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 已归档到本机备份并同步 R2，2026-07-04 确认无运行时依赖后删除。 |
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
 | Docker / 服务健康检查 | 部分完成 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、Postgres / Redis exporter 已存在；业务错误率和关键接口延迟仍未系统化。 |
 | Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康已覆盖；应用错误率和关键接口视图仍未完成。 |
@@ -84,16 +84,13 @@
 1. SSH 来源 IP 限制。
    当前 UFW 的 `22/tcp` 仍为 Anywhere。如果有固定出口 IP，应改为仅允许固定来源。
 
-2. 服务目录从 `/root` 清理/迁移到规范路径。
-   `sub2api` 数据目录已迁移到 `/var/lib/sub2api`，旧 `/root/sub2api-deploy` 已归档并删除。`JadeAI`、`sorryiosSearch` 已归档到 `/var/backups/ops/manual/root-history-archive-20260703-165244/root-history-dirs-20260703-165244.tar.gz`。`account-vault` 已消除对 `/root/sorryiosSearch` 的 compose 依赖，后续可在确认后删除旧目录。
-
-3. 应用级监控深化。
+2. 应用级监控深化。
    后续应补业务错误率、关键接口延迟、登录/任务等核心业务指标和更细的数据库连接健康。
 
-4. Cloudflare 治理元数据补充。
+3. Cloudflare 治理元数据补充。
    已完成控制台基础配置核对；后续需补 Cloudflare Origin Certificate 创建人、用途、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。
 
-5. Git 操作权限模型。
+4. Git 操作权限模型。
    决定 `/opt/ops` 后续是 root-only 管理，还是给 `as` 配置明确的 safe.directory / 写权限流程。
 
 ### P3
@@ -118,8 +115,8 @@
 
 ## 6. 推荐下一步
 
-1. 确认后删除 `/root/JadeAI`，并在 `account-vault` 迁移稳定后删除 `/root/sorryiosSearch`。
-2. 补齐 Cloudflare Origin Certificate 轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途。
-3. 深化关键接口延迟、业务错误率和核心业务指标告警。
-4. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
-5. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
+1. 补齐 Cloudflare Origin Certificate 轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途。
+2. 深化关键接口延迟、业务错误率和核心业务指标告警。
+3. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+4. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
+5. 处理 Git 操作权限模型，决定继续 root-only 还是为 `as` 配置明确流程。

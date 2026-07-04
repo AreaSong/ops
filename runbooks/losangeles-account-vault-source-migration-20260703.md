@@ -14,7 +14,7 @@
 - build context：`/opt/services/account-vault/app`
 - env_file：`/etc/account-vault/account-vault.env`
 - project `.env`：`/opt/services/account-vault/.env`，指向 `/etc/account-vault/account-vault.env`，用于 Docker Compose 插值
-- 旧目录 `/root/sorryiosSearch` 尚未删除，仅保留为短期回滚来源
+- 旧目录 `/root/sorryiosSearch` 已于 2026-07-04 确认无运行时依赖后删除；回滚需先从归档包恢复
 
 ## 2. 执行内容
 
@@ -51,7 +51,7 @@
 如需回滚：
 
 1. 将 `/var/backups/ops/manual/account-vault-migration-20260703-170150/compose.yml.before` 复制回 `/opt/services/account-vault/compose.yml`。
-2. 确认 `/root/sorryiosSearch` 和 `/root/sorryiosSearch/.env` 仍存在。
+2. 从 `/var/backups/ops/manual/root-history-archive-20260703-165244/root-history-dirs-20260703-165244.tar.gz` 恢复 `/root/sorryiosSearch`，并确认 `/root/sorryiosSearch/.env` 存在。
 3. 执行：
 
 ```bash
@@ -65,6 +65,5 @@ sudo docker compose -f compose.yml up -d --force-recreate web
 
 ## 5. 后续建议
 
-- 观察 account-vault 至少一个备份周期。
-- 确认无异常后，`/root/sorryiosSearch` 可按旧目录清理流程归档后删除。
-- `/root/JadeAI` 已归档且未发现运行时引用，可单独删除。
+- 旧 `/root/sorryiosSearch` 已删除；如需回滚，先按上文从归档包恢复。
+- `/root/JadeAI` 已归档且未发现运行时引用，并已于 2026-07-04 删除。
