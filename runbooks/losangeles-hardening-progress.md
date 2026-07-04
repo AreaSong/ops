@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 20:28 BST
+更新时间：2026-07-04 20:55 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -9,9 +9,11 @@
 
 ## 1. 核查结论
 
-原进度报告的核心结论大体成立：LosAngeles 已完成第一轮生产加固、本机备份、基础可观测能力建设、Nginx 统一入口和 Grafana 基础入口。
+原进度报告的核心结论大体成立：LosAngeles 已完成本轮生产加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线；当前状态快照见 。
 
 本次核查后需要修正和补充的重点如下：
+
+- 当前状态快照已完成：`runbooks/losangeles-current-status.md` 记录完成项、入口、Dashboard、备份恢复位置、风险接受项、未来增强项和当前不要做的操作。
 
 - `/opt/as_password` 明文密码文件已删除；用户已确认修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
@@ -30,6 +32,7 @@
 | 主机基础信息 | 完成 | hostname 为 `LosAngeles`；系统为 Ubuntu 24.04；`ens3` 地址为 `23.185.200.12/24`。 |
 | inventory 台账 | 完成 | `/opt/ops/inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 均已有 LosAngeles 记录；provider/region/owner 已按可核验证据补齐，主机级私网 IP 明确为无。 |
 | `/opt/ops` 仓库 | 完成 | remote 为 `git@github.com:AreaSong/ops.git`；前序加固、备份、监控提交已存在，当前提交状态以 `git log -1 --oneline` 和 `git status --short` 为准。 |
+| 当前状态快照 | 完成 | 已新增 `runbooks/losangeles-current-status.md`，作为本轮任务收尾锚点，记录完成项、关键入口、监控面板、备份恢复、风险接受项和未来增强项。 |
 | 系统更新与重启维护 | 完成 | 2026-07-03 已执行 `apt-get dist-upgrade` 并重启；升级日志为 `/var/log/ops/maintenance-20260703-apt-upgrade.log`；重启后内核为 `6.8.0-134-generic`，核心入口、监控、Docker、R2 dry-run 均通过。 |
 | 非 root sudo 用户 | 完成 | `as` 属于 `sudo` 组，当前 sudo 缓存可用。 |
 | SSH 加固 | 完成 | `sshd -T` 显示 `permitrootlogin no`、`passwordauthentication no`、`pubkeyauthentication yes`、`kbdinteractiveauthentication no`。 |
@@ -77,7 +80,9 @@
 | Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康、业务关键路径探针、业务服务级真实请求 4xx/5xx 与慢请求已覆盖；登录后业务任务和关键接口分位延迟视图仍可继续深化。 |
 | Cloudflare 配置台账 | 治理元数据基础完成，仍可深化 | 控制台只读核对已完成；Cloudflare Origin Certificate 创建人、用途、180/90/30/7 天提醒策略和轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线，后续需补门户网站接入方案。 |
 
-## 4. 未完成事项
+## 4. 未完成事项与未来增强项
+
+本轮主线已完成；以下项目为未来增强项或需要外部条件的工作。
 
 ### P0
 
@@ -117,9 +122,9 @@
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容；本次验证仅输出 Fail2ban 日志中的封禁 IP 及其公开网络归属信息。
 - 业务关键路径探针仅覆盖公开、只读、无副作用端点；未访问登录后的订单、导出、任务等敏感业务路径。
 
-## 6. 推荐下一步
+## 6. 后续增强项
 
-1. 继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
+1. 有测试账号或应用配合后，继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
 4. 后续可按 `runbooks/losangeles-cross-machine-restore-drill.md` 在新机器或临时云主机上执行一次跨机器实机恢复演练。
