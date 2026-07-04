@@ -254,6 +254,9 @@ groups:
           severity: warning
         annotations:
           summary: "SSH failed logins are high over the last 24 hours"
+          description: "Check whether the increase is normal internet scanning or targeted login attempts."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
+          loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
       - alert: SshInvalidUsersHigh
         expr: ssh_invalid_user_last_24h > 2000
@@ -262,14 +265,20 @@ groups:
           severity: warning
         annotations:
           summary: "SSH invalid user probes are high over the last 24 hours"
+          description: "Usually caused by automated SSH scanning. Check the security dashboard for source IP patterns."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
+          loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
       - alert: Fail2banSshdCurrentlyBanning
         expr: fail2ban_currently_banned{jail="sshd"} > 0
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
           summary: "Fail2ban sshd currently has banned addresses"
+          description: "Fail2ban is actively blocking SSH sources. Check the enriched Fail2ban panel for IP, country, ASN, BGP prefix and network organization."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
+          loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
       - alert: NginxHttp5xxHigh
         expr: nginx_http_requests_last_5m{status_class="5xx"} > 20
@@ -278,6 +287,9 @@ groups:
           severity: warning
         annotations:
           summary: "Nginx 5xx responses are high"
+          description: "Check Nginx errors and upstream application health before deciding whether this is external traffic or service failure."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 5[0-9][0-9] \""
 
       - alert: NginxHttp4xxHigh
         expr: nginx_http_requests_last_5m{status_class="4xx"} > 200
@@ -286,3 +298,6 @@ groups:
           severity: warning
         annotations:
           summary: "Nginx 4xx responses are high"
+          description: "High 4xx volume is often scanners or invalid paths. Check Nginx logs for source and request patterns."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 4[0-9][0-9] \""

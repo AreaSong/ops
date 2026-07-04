@@ -72,6 +72,18 @@ route:
 
     - receiver: email-ops
       matchers:
+        - alertname="Fail2banSshdCurrentlyBanning"
+      group_by:
+        - alertname
+        - severity
+        - instance
+        - jail
+      group_wait: 2m
+      group_interval: 30m
+      repeat_interval: 12h
+
+    - receiver: email-ops
+      matchers:
         - alertname=~"SecurityMetricsStale|Ufw.*|Fail2ban.*|Ssh.*|Nginx.*"
       group_by:
         - alertname

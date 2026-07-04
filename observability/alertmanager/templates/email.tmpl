@@ -14,9 +14,27 @@
       {{ with .CommonLabels.check }}<strong>Check:</strong> {{ . }}<br>{{ end }}
       {{ with .CommonLabels.instance }}<strong>Instance:</strong> {{ . }}<br>{{ end }}
       {{ with .CommonLabels.target }}<strong>Target:</strong> {{ . }}<br>{{ end }}
+      {{ with .CommonLabels.jail }}<strong>Jail:</strong> {{ . }}<br>{{ end }}
       <strong>Firing:</strong> {{ len .Alerts.Firing }} /
       <strong>Resolved:</strong> {{ len .Alerts.Resolved }}
     </p>
+
+    <div style="margin: 0 0 18px; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc;">
+      <strong>Recommended checks</strong>
+      <ul style="margin: 8px 0 0 18px; padding: 0;">
+        {{ with .CommonAnnotations.grafana_url }}
+        <li>Grafana detail: <a href="{{ . }}">{{ . }}</a></li>
+        {{ end }}
+        {{ with .CommonAnnotations.loki_query }}
+        <li>Loki query: <code>{{ . }}</code></li>
+        {{ end }}
+        <li>Security dashboard: <a href="https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now">LosAngeles Security Overview</a></li>
+        <li>App dashboard: <a href="https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now">LosAngeles App and Business Health</a></li>
+        <li>Backup dashboard: <a href="https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-and-backups?orgId=1&from=now-24h&to=now">LosAngeles Services and Backups</a></li>
+        <li>Datastore dashboard: <a href="https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now">LosAngeles Datastores</a></li>
+        <li>Host dashboard: <a href="https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now">LosAngeles Host Overview</a></li>
+      </ul>
+    </div>
 
     <table cellpadding="6" cellspacing="0" border="1" style="border-collapse: collapse; border-color: #d8dee9; font-size: 13px;">
       <thead>
@@ -28,8 +46,13 @@
           <th align="left">Check</th>
           <th align="left">Instance</th>
           <th align="left">Target</th>
+          <th align="left">Jail</th>
+          <th align="left">Job</th>
+          <th align="left">Name</th>
+          <th align="left">Class</th>
           <th align="left">Summary</th>
           <th align="left">Started</th>
+          <th align="left">Ended</th>
         </tr>
       </thead>
       <tbody>
@@ -42,8 +65,13 @@
           <td>{{ .Labels.check }}</td>
           <td>{{ .Labels.instance }}</td>
           <td>{{ .Labels.target }}</td>
+          <td>{{ with .Labels.jail }}{{ . }}{{ end }}</td>
+          <td>{{ with .Labels.job }}{{ . }}{{ end }}</td>
+          <td>{{ with .Labels.name }}{{ . }}{{ end }}</td>
+          <td>{{ with .Labels.status_class }}{{ . }}{{ end }}</td>
           <td>{{ .Annotations.summary }}</td>
           <td>{{ .StartsAt }}</td>
+          <td>{{ if eq .Status "resolved" }}{{ .EndsAt }}{{ end }}</td>
         </tr>
         {{ end }}
       </tbody>
