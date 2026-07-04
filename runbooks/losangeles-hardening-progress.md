@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 05:18 BST
+更新时间：2026-07-04 05:50 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON。
 
 ## 2. 已核实完成
 
@@ -54,6 +54,7 @@
 | Postgres / Redis exporter | 完成 | 已新增 sub2api PostgreSQL、account-vault PostgreSQL、sub2api Redis exporter；Prometheus 新增 `postgres`、`redis` jobs；Grafana 新增 `LosAngeles Datastores`。 |
 | 安全日志指标与告警 | 完成 | 已新增 `write-security-metrics.sh`、`security.prom`、`security_log_alerts` 和 `LosAngeles Security Overview`，覆盖 SSH 失败/无效用户/成功登录、Fail2ban sshd、UFW 状态、Nginx 4xx/5xx。 |
 | 应用级 HTTP 健康检查 | 完成 | 已新增 `blackbox_app_https`，覆盖 `resume.areasong.top/`、`sorryiossearch.areasong.top/health`、`cpa.areasong.top/health`；新增 `app_health_alerts` 和 `LosAngeles App Health`。 |
+| 业务关键路径 Blackbox 探针 | 第一批完成 | 已新增公开、只读、无副作用探针：`resume-jadeai` 简历首页、`account-vault` 登录页和认证状态 API、`sub2api` 登录页和健康 JSON；新增 `business_probe_alerts`，并扩展 `LosAngeles App and Business Health`。 |
 | JadeAI fingerprint 事件处置 | 完成 | 数据未丢失，根因为浏览器 fingerprint 匿名身份错位；已归属修正并记录 `runbooks/losangeles-jadeai-fingerprint-incident-20260703.md`。 |
 | Grafana 基础 Dashboard | 完成 | 存在 `losangeles-host-overview.json` 和 `losangeles-services-backups.json`。 |
 | Loki / Promtail 基础采集 | 完成 | Promtail 配置采集 `/var/log/nginx/*.log`、`/var/log/backup/*.log`、`/var/log/syslog`；Loki `/ready` 返回 200。 |
@@ -65,8 +66,8 @@
 | Git 使用模型 | 完成 | `/opt/ops` 保持 `root:root` 管理；需要变更时由用户在共享终端 `sudo -v` 授权，统一使用 `sudo git -C /opt/ops ...` 操作，完成后 `sudo -k`；不为 `as` 配置全局 `safe.directory`，也不放宽 root-only 备份脚本目录权限。 |
 | 服务目录规范化 | 完成主要清理 | `sub2api` 已完成迁移和旧目录清理；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 已归档到本机备份并同步 R2，2026-07-04 确认无运行时依赖后删除。 |
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
-| Docker / 服务健康检查 | 部分完成 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、Postgres / Redis exporter 已存在；业务错误率和关键接口延迟仍未系统化。 |
-| Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康已覆盖；应用错误率和关键接口视图仍未完成。 |
+| Docker / 服务健康检查 | 部分深化 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、第一批业务关键路径 Blackbox 探针、Postgres / Redis exporter 已存在；应用原生业务错误率仍未系统化。 |
+| Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康和业务关键路径探针已覆盖；应用原生业务错误率视图仍未完成。 |
 | Cloudflare 配置台账 | 基础完成，仍可深化 | 控制台只读核对已完成；仍需补 Cloudflare Origin Certificate 创建人、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。 |
 
 ## 4. 未完成事项
@@ -85,7 +86,7 @@
    当前 UFW 的 `22/tcp` 仍为 Anywhere。如果有固定出口 IP，应改为仅允许固定来源。
 
 2. 应用级监控深化。
-   后续应补业务错误率、关键接口延迟、登录/任务等核心业务指标和更细的数据库连接健康。
+   第一批公开、只读关键路径 Blackbox 探针已完成；后续应继续补应用原生业务错误率、登录后任务指标、关键接口分位延迟和更细的数据库连接健康。
 
 3. Cloudflare 治理元数据补充。
    已完成控制台基础配置核对；后续需补 Cloudflare Origin Certificate 创建人、用途、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。
@@ -109,11 +110,12 @@
 - 未测试跨机器恢复；当前 R2 拉回恢复演练是在当前主机上完成。
 - 未执行完整应用级接管验证；当前恢复演练验证到数据导入、RDB 校验和文件解包层面。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
+- 业务关键路径探针仅覆盖公开、只读、无副作用端点；未访问登录后的订单、导出、任务等敏感业务路径。
 
 ## 6. 推荐下一步
 
 1. 补齐 Cloudflare Origin Certificate 轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途。
-2. 深化关键接口延迟、业务错误率和核心业务指标告警。
+2. 继续补应用原生业务错误率、登录后任务指标和关键接口分位延迟。
 3. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
 4. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
 5. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。

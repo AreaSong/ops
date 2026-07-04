@@ -31,6 +31,10 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Blackbox app probes for resume-jadeai, account-vault, and sub2api public health checks
 - Postgres Exporter for sub2api and account-vault PostgreSQL metrics
 - Redis Exporter for sub2api Redis metrics
+- Business blackbox probes for public, read-only key paths:
+  - `resume-jadeai` public resume homepage
+  - `account-vault` login page and auth status API
+  - `sub2api` login page and health JSON
 
 ## Textfile metrics
 
@@ -80,6 +84,13 @@ After changing `prometheus.yml`, recreate Prometheus so the single-file bind mou
 ```bash
 cd /opt/ops/observability
 docker compose up -d --force-recreate --no-deps prometheus
+```
+
+After changing `blackbox.yml`, recreate Blackbox Exporter for the same reason:
+
+```bash
+cd /opt/ops/observability
+docker compose up -d --force-recreate --no-deps blackbox-exporter
 ```
 
 

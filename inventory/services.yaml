@@ -146,6 +146,7 @@ services:
     monitoring:
       - docker_container_running
       - blackbox_app_https
+      - blackbox_business_https
 
   - name: account-vault-web
     host: LosAngeles
@@ -162,6 +163,7 @@ services:
     monitoring:
       - docker_container_running
       - blackbox_app_https
+      - blackbox_business_https
 
   - name: account-vault-postgres
     host: LosAngeles
@@ -192,6 +194,7 @@ services:
     monitoring:
       - docker_container_running
       - blackbox_app_https
+      - blackbox_business_https
 
   - name: sub2api-postgres
     host: LosAngeles

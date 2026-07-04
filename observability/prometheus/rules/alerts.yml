@@ -101,6 +101,40 @@ groups:
         annotations:
           summary: "Application TLS certificate expires within 30 days: {{ $labels.target }}"
 
+  - name: business_probe_alerts
+    rules:
+      - alert: BusinessHttpProbeFailed
+        expr: probe_success{scope="business"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Business probe failed: {{ $labels.service }} {{ $labels.check }} {{ $labels.target }}"
+
+      - alert: BusinessBlackboxTargetDown
+        expr: up{scope="business"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Business blackbox scrape target down: {{ $labels.service }} {{ $labels.check }}"
+
+      - alert: BusinessHttpProbeSlow
+        expr: probe_duration_seconds{scope="business"} > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business probe is slow: {{ $labels.service }} {{ $labels.check }}"
+
+      - alert: BusinessTlsCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{scope="business"} - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business endpoint TLS certificate expires within 30 days: {{ $labels.target }}"
+
   - name: backup_alerts
     rules:
       - alert: BackupStale

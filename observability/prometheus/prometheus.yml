@@ -84,6 +84,94 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  - job_name: blackbox_business_resume_https
+    metrics_path: /probe
+    params:
+      module:
+        - http_resume_jadeai_home_tls
+    static_configs:
+      - targets:
+          - https://resume.areasong.top/zh
+        labels:
+          instance: resume-jadeai
+          service: resume-jadeai
+          check: resume-home
+          journey: public-home
+          scope: business
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox_business_account_vault_https
+    metrics_path: /probe
+    params:
+      module:
+        - http_account_vault_business_tls
+    static_configs:
+      - targets:
+          - https://sorryiossearch.areasong.top/login
+        labels:
+          instance: account-vault-web
+          service: account-vault
+          check: login-page
+          journey: login
+          scope: business
+      - targets:
+          - https://sorryiossearch.areasong.top/api/auth/status
+        labels:
+          instance: account-vault-web
+          service: account-vault
+          check: auth-status-api
+          journey: login
+          scope: business
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox_business_sub2api_https
+    metrics_path: /probe
+    params:
+      module:
+        - http_sub2api_business_tls
+    static_configs:
+      - targets:
+          - https://cpa.areasong.top/login
+        labels:
+          instance: sub2api
+          service: sub2api
+          check: login-page
+          journey: login
+          scope: business
+      - targets:
+          - https://cpa.areasong.top/health
+        labels:
+          instance: sub2api
+          service: sub2api
+          check: health-json
+          journey: health
+          scope: business
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   - job_name: postgres
     static_configs:
       - targets:

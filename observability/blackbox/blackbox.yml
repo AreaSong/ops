@@ -10,3 +10,45 @@ modules:
         - HTTP/2.0
       fail_if_ssl: false
       fail_if_not_ssl: true
+
+  http_resume_jadeai_home_tls:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_http_versions:
+        - HTTP/1.1
+        - HTTP/2.0
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      fail_if_body_not_matches_regexp:
+        - '_next/static|__NEXT_DATA__|<html'
+
+  http_account_vault_business_tls:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_http_versions:
+        - HTTP/1.1
+        - HTTP/2.0
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      fail_if_body_not_matches_regexp:
+        - '<!doctype html>|"registered":'
+
+  http_sub2api_business_tls:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      valid_http_versions:
+        - HTTP/1.1
+        - HTTP/2.0
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      fail_if_body_not_matches_regexp:
+        - '<!doctype html>|"status":"ok"'

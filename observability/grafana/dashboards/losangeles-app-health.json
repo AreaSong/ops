@@ -1,14 +1,15 @@
 {
   "uid": "losangeles-app-health",
-  "title": "LosAngeles App Health",
+  "title": "LosAngeles App and Business Health",
   "tags": [
     "LosAngeles",
     "app",
+    "business",
     "blackbox"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -18,7 +19,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "App probe success",
+      "title": "App and business probe success",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -27,7 +28,7 @@
       },
       "targets": [
         {
-          "expr": "probe_success{job=\"blackbox_app_https\"}",
+          "expr": "probe_success{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
           "legendFormat": "{{service}} {{check}}",
           "refId": "A"
         }
@@ -78,8 +79,8 @@
       },
       "targets": [
         {
-          "expr": "probe_http_status_code{job=\"blackbox_app_https\"}",
-          "legendFormat": "{{service}}",
+          "expr": "probe_http_status_code{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "legendFormat": "{{service}} {{check}}",
           "refId": "A"
         }
       ],
@@ -107,7 +108,7 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "App probe duration",
+      "title": "App and business probe duration",
       "gridPos": {
         "x": 0,
         "y": 6,
@@ -116,8 +117,8 @@
       },
       "targets": [
         {
-          "expr": "probe_duration_seconds{job=\"blackbox_app_https\"}",
-          "legendFormat": "{{service}}",
+          "expr": "probe_duration_seconds{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "legendFormat": "{{service}} {{check}}",
           "refId": "A"
         }
       ],
@@ -146,8 +147,8 @@
       },
       "targets": [
         {
-          "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox_app_https\"} - time()) / 86400",
-          "legendFormat": "{{service}}",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=~\"blackbox_app_https|blackbox_business_.*_https\"} - time()) / 86400",
+          "legendFormat": "{{service}} {{check}}",
           "refId": "A"
         }
       ],
@@ -176,8 +177,8 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"blackbox_app_https\"}",
-          "legendFormat": "{{service}}",
+          "expr": "up{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "legendFormat": "{{service}} {{check}}",
           "refId": "A"
         }
       ],
