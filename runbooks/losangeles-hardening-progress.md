@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 20:22 BST
+更新时间：2026-07-04 20:28 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -47,6 +47,7 @@
 | 应用级恢复演练 | 完成 | 2026-07-04 完成非破坏性演练；JadeAI 临时容器读取恢复数据返回 307；account-vault 临时 Postgres 恢复后 web `/health` 返回 200；sub2api 临时 Postgres、Redis、数据目录恢复后 `/health` 返回 200；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
+| 跨机器恢复演练预案 | 完成，实机演练待做 | 已新增 ，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前未开新机器执行实机演练。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
 | Cloudflare Origin Certificate 本地监控 | 完成 | 已新增 `write-cloudflare-origin-cert-metrics.sh`、`cloudflare-origin-cert.prom`、`ops-cloudflare-origin-cert-metrics` cron、`cloudflare_origin_cert_alerts`、Alertmanager 长周期提醒路由和 `LosAngeles Certificates and Cloudflare` Dashboard；覆盖证书文件读取失败、指标过期、180/90/30/7 天分级过期提醒。 |
@@ -111,8 +112,8 @@
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - Cloudflare 控制台基础配置已由用户侧只读核对；未修改 Cloudflare 配置，未核查更细粒度的历史事件、审计日志和 Origin Certificate 控制台创建记录。
-- 未测试跨机器恢复；当前 R2 拉回恢复演练是在当前主机上完成。
-- 未执行跨机器完整应用级接管验证；本次应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。
+- 跨机器恢复演练预案已完成，但未开临时机器执行实机恢复；当前 R2 拉回恢复演练是在当前主机上完成。
+- 未执行跨机器完整应用级接管验证；当前应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容；本次验证仅输出 Fail2ban 日志中的封禁 IP 及其公开网络归属信息。
 - 业务关键路径探针仅覆盖公开、只读、无副作用端点；未访问登录后的订单、导出、任务等敏感业务路径。
 
@@ -121,4 +122,4 @@
 1. 继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
-4. 后续可在新机器或临时云主机上做一次跨机器恢复演练。
+4. 后续可按  在新机器或临时云主机上执行一次跨机器实机恢复演练。

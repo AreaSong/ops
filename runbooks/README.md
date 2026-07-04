@@ -10,6 +10,7 @@
 | RB-02 | 磁盘空间不足 | [disk-full.md](disk-full.md) |
 | RB-03 | MySQL 慢查询 | [mysql-slow-query.md](mysql-slow-query.md) |
 | RB-04 | 机器失联 | [host-unreachable.md](host-unreachable.md) |
+| RB-05 | LosAngeles 跨机器恢复演练 | [losangeles-cross-machine-restore-drill.md](losangeles-cross-machine-restore-drill.md) |
 
 ## 通用排障原则
 
