@@ -191,3 +191,15 @@ Grafana Dashboard：
 本轮 LosAngeles 服务器加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线完成。
 
 后续工作均按增强项、业务新需求或维护窗口另行启动。
+
+## 12. standards/09 严格验收口径
+
+已新增 `runbooks/losangeles-standards-09-audit.md`，按 `standards/09-server-ops-handbook.md` 附录 A 对 LosAngeles 做逐项验收。
+
+严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
+
+- 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
+- 维护窗口优化：主机时区 UTC、Docker 日志上限、SSH X11Forwarding、Redis maxmemory、镜像固定 tag/digest、fstab UUID。
+- 云侧待确认：云账号 MFA、账单/到期/欠费告警、安全组、云审计、实例计费类型。
+
+后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。

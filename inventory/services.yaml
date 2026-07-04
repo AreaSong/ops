@@ -227,8 +227,8 @@ global_ports:
   - port: 22
     protocol: tcp
     service: ssh
-    expose: "restricted"
-    notes: "密钥登录，限制来源 IP"
+    expose: "0.0.0.0/0"
+    notes: "当前未限制来源 IP；密钥登录，root/password disabled，Fail2ban sshd jail；有固定出口 IP 后再收紧。"
   - port: 9100
     protocol: tcp
     service: node_exporter

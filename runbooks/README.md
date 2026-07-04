@@ -12,6 +12,7 @@
 | RB-04 | 机器失联 | [host-unreachable.md](host-unreachable.md) |
 | RB-05 | LosAngeles 跨机器恢复演练 | [losangeles-cross-machine-restore-drill.md](losangeles-cross-machine-restore-drill.md) |
 | RB-06 | LosAngeles 当前运维状态快照 | [losangeles-current-status.md](losangeles-current-status.md) |
+| RB-07 | LosAngeles standards/09 验收矩阵 | [losangeles-standards-09-audit.md](losangeles-standards-09-audit.md) |
 
 ## 通用排障原则
 
