@@ -80,3 +80,22 @@ cd /opt/ops && git pull --ff-only
 ```
 
 凭证放 `/opt/ops/secrets.env`（不入库）。
+
+### 生产服务器 Git 操作模型
+
+生产服务器上的 `/opt/ops` 保持 `root:root` 管理，包含备份脚本等 root-only 运维内容。普通用户不直接配置 `safe.directory`，也不放宽 `scripts/backup` 等敏感目录权限。
+
+需要变更时，由运维人员在共享终端执行一次 `sudo -v` 授权，然后统一使用 `sudo git -C /opt/ops ...` 完成查看、提交和推送。变更完成后执行 `sudo -k` 清理 sudo 缓存。
+
+常用命令：
+
+```bash
+sudo -v
+sudo git -C /opt/ops status --short
+sudo git -C /opt/ops diff --check
+sudo git -C /opt/ops add <paths>
+sudo git -C /opt/ops commit -m '[scope] 描述'
+sudo env GIT_SSH_COMMAND='ssh -i /root/.ssh/id_ed25519_ops_github -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
+  git -C /opt/ops push origin main
+sudo -k
+```

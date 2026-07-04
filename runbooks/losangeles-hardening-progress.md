@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 04:59 BST
+更新时间：2026-07-04 05:18 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -62,7 +62,7 @@
 
 | 项目 | 当前状态 | 说明 |
 | --- | --- | --- |
-| Git 使用模型 | 部分完成 | 仓库由 root 拥有，`sudo git` 可正常查看且干净；`as` 直接运行 git 会触发 Git safe.directory 保护。后续可决定是保持 root 管理，还是配置受限的 safe.directory / 权限模型。 |
+| Git 使用模型 | 完成 | `/opt/ops` 保持 `root:root` 管理；需要变更时由用户在共享终端 `sudo -v` 授权，统一使用 `sudo git -C /opt/ops ...` 操作，完成后 `sudo -k`；不为 `as` 配置全局 `safe.directory`，也不放宽 root-only 备份脚本目录权限。 |
 | 服务目录规范化 | 完成主要清理 | `sub2api` 已完成迁移和旧目录清理；`account-vault` 已迁移 build context 到 `/opt/services/account-vault/app`，env_file 到 `/etc/account-vault/account-vault.env`；旧 `/root/JadeAI` 和 `/root/sorryiosSearch` 已归档到本机备份并同步 R2，2026-07-04 确认无运行时依赖后删除。 |
 | 证书策略统一 | 基础完成 | `monitor/resume/sorryiossearch` 使用 Cloudflare Origin Certificate；`log/cpa` 使用 Let's Encrypt；策略已记录在 `inventory/cloudflare-areasong-top.md`。 |
 | Docker / 服务健康检查 | 部分完成 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、Postgres / Redis exporter 已存在；业务错误率和关键接口延迟仍未系统化。 |
@@ -90,9 +90,6 @@
 3. Cloudflare 治理元数据补充。
    已完成控制台基础配置核对；后续需补 Cloudflare Origin Certificate 创建人、用途、过期提醒、轮换负责人，以及 `www.areasong.top` / Tunnel `hWin` 的用途和负责人。
 
-4. Git 操作权限模型。
-   决定 `/opt/ops` 后续是 root-only 管理，还是给 `as` 配置明确的 safe.directory / 写权限流程。
-
 ### P3
 
 1. 主机名规范化。
@@ -119,4 +116,4 @@
 2. 深化关键接口延迟、业务错误率和核心业务指标告警。
 3. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
 4. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
-5. 处理 Git 操作权限模型，决定继续 root-only 还是为 `as` 配置明确流程。
+5. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。
