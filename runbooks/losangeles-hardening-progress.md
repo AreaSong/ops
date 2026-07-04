@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 08:14 BST
+更新时间：2026-07-04 13:58 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -17,6 +17,7 @@
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
+- 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途负责人已补齐。
@@ -43,6 +44,7 @@
 | 本机备份 | 完成 | root crontab 已配置 Postgres、Redis、configs、volumes 定时备份；`/var/backups/ops` 有 2026-07-03 最新产物。 |
 | 备份完整性抽检 | 完成 | 最新 `.sql.gz` 通过 `gzip -t`；最新 `.tar.gz` 通过 `tar -tzf`。 |
 | 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
+| 应用级恢复演练 | 完成 | 2026-07-04 完成非破坏性演练；JadeAI 临时容器读取恢复数据返回 307；account-vault 临时 Postgres 恢复后 web `/health` 返回 200；sub2api 临时 Postgres、Redis、数据目录恢复后 `/health` 返回 200；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
@@ -108,14 +110,14 @@
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - Cloudflare 控制台基础配置已由用户侧只读核对；未修改 Cloudflare 配置，未核查更细粒度的历史事件、审计日志和 Origin Certificate 控制台创建记录。
 - 未测试跨机器恢复；当前 R2 拉回恢复演练是在当前主机上完成。
-- 未执行完整应用级接管验证；当前恢复演练验证到数据导入、RDB 校验和文件解包层面。
+- 未执行跨机器完整应用级接管验证；本次应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容。
 - 业务关键路径探针仅覆盖公开、只读、无副作用端点；未访问登录后的订单、导出、任务等敏感业务路径。
 
 ## 6. 推荐下一步
 
 1. 继续补应用原生业务错误率、登录后任务指标和关键接口分位延迟。
-2. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
-3. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
-4. 补齐 Cloudflare Origin Certificate 提醒落地渠道和 Tunnel `hWin` 后端应用细节。
-5. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。
+2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
+3. 补齐 Cloudflare Origin Certificate 提醒落地渠道和 Tunnel `hWin` 后端应用细节。
+4. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。
+5. 后续可在新机器或临时云主机上做一次跨机器恢复演练。
