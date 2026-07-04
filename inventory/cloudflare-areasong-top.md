@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-04 04:24 BST
+更新时间：2026-07-04 08:14 BST
 
 ## 范围
 
@@ -28,13 +28,13 @@
 | `monitor.areasong.top` | Grafana | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/` 302 到 `/login` | `127.0.0.1:3000` |
 | `cpa.areasong.top` | sub2api | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/health` 200 | `127.0.0.1:8080` |
 | `log.areasong.top` | x-ui / xray 入口 | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/` 200 | `127.0.0.1:46585`、`127.0.0.1:10000`、`127.0.0.1:2096` |
-| `www.areasong.top` | 待确认 | Cloudflare Tunnel，目标 `hWin`，已代理 | 控制台核对 | Cloudflare Tunnel |
+| `www.areasong.top` | Cloudflare Access 保护的 Tunnel 应用入口 | Cloudflare Tunnel，目标 `hWin`，已代理 | `server: cloudflare`；未登录访问 302 到 `areasong.cloudflareaccess.com` 登录页 | Cloudflare Tunnel `hWin` |
 
 说明：
 
 - Cloudflare 代理 / DNS-only、TTL、Tunnel 记录基于 Cloudflare 控制台核对；公开 DNS 和 HTTP 响应头用于交叉验证。
 - `log.areasong.top` 的 x-ui 管理面板隐藏路径不进入台账；Nginx 配置核查时已脱敏。
-- `www.areasong.top` 的 Tunnel 用途尚未在服务器侧台账中展开，后续需补充用途和负责人。
+- `www.areasong.top` 当前作为 Cloudflare Access 保护的 Tunnel 应用入口保留；负责人为 `as`。
 
 ## 源站证书策略
 
@@ -55,6 +55,7 @@
 | `resume.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `sorryiossearch.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `monitor.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
+| `www.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书；Cloudflare Access 保护入口 |
 | `cpa.areasong.top` | Let's Encrypt `YE1` | `cpa.areasong.top` | 源站直连证书 |
 | `log.areasong.top` | Let's Encrypt `YE2` | `log.areasong.top` | 源站直连证书 |
 
@@ -62,9 +63,16 @@
 
 | 项目 | 当前状态 |
 | --- | --- |
-| Cloudflare Origin Certificate | 长期有效至 2041-06-27；仍需记录控制台创建人、用途和轮换计划 |
+| Cloudflare Origin Certificate | 控制台创建人和轮换负责人均为 `as`；用途为 `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的 Cloudflare 代理源站证书；长期有效至 2041-06-27；过期前 180/90/30 天提醒 |
 | Let's Encrypt / acme.sh | root crontab 存在每日 acme.sh cron：`13 23 * * *` |
 | 监控 | Blackbox 已监控 HTTPS 可用性和证书临期；应用健康 Dashboard 已覆盖 `resume`、`sorryiossearch`、`cpa` |
+
+## 治理元数据
+
+| 对象 | 用途 | 创建人 | 负责人 | 提醒 / 处置 |
+| --- | --- | --- | --- | --- |
+| Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；过期前 180/90/30 天提醒并评估轮换 |
+| Cloudflare Tunnel `hWin` / `www.areasong.top` | Cloudflare Access 保护的 Tunnel 应用入口 | `as` | `as` | 当前保留；若未来下线，需要先确认 Access 应用、Tunnel connector 和 DNS 记录依赖 |
 
 ## Cloudflare 控制台核对
 
@@ -72,7 +80,7 @@
 
 | 类别 | 当前状态 | 说明 |
 | --- | --- | --- |
-| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor` 已代理；`cpa`、`log` 为 DNS-only；`www` 为 Cloudflare Tunnel `hWin`。 |
+| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor` 已代理；`cpa`、`log` 为 DNS-only；`www` 为 Cloudflare Tunnel `hWin` 且当前保留。 |
 | SSL/TLS 模式 | Full (strict) | Cloudflare 会校验源站证书；与代理域名使用 Cloudflare Origin Certificate 的策略匹配。 |
 | Universal SSL | 有效 | `*.areasong.top`、`areasong.top` 通用证书有效期至 2026-09-19；备份证书已签发。 |
 | Always Use HTTPS | 已开启 | HTTP 请求由 Cloudflare 侧重定向到 HTTPS。 |
@@ -99,8 +107,8 @@
 
 ## 仍需补充项
 
-- Cloudflare Origin Certificate 的控制台创建人、用途说明、过期提醒和轮换负责人。
-- `www.areasong.top` / Cloudflare Tunnel `hWin` 的用途、负责人和是否仍需保留。
+- Cloudflare Origin Certificate 的实际提醒落地渠道仍需确认，例如日历、任务系统或后续自动化监控。
+- `www.areasong.top` / Cloudflare Tunnel `hWin` 的后端应用细节仍需在 Cloudflare Zero Trust / Tunnel 控制台中补充。
 - 若未来启用 HSTS、Bot Fight Mode、速率限制、WAF 自定义规则或缓存规则，需要先评估对 `log`、`cpa`、`monitor` 等入口的影响。
 
 ## 当前建议
