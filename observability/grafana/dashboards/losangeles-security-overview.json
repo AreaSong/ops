@@ -241,6 +241,37 @@
           "placement": "bottom"
         }
       }
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Recent Fail2ban Ban / Unban events",
+      "description": "Shows raw Fail2ban sshd Ban and Unban log lines, including source IP addresses.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{job=\"fail2ban\", host=\"LosAngeles\"} |~ \" (Ban|Unban) \"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
     }
   ]
 }

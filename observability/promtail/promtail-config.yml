@@ -35,3 +35,12 @@ scrape_configs:
           job: syslog
           host: LosAngeles
           __path__: /var/log/syslog
+
+  - job_name: fail2ban
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: fail2ban
+          host: LosAngeles
+          __path__: /var/log/fail2ban.log
