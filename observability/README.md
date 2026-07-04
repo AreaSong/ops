@@ -23,7 +23,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 
 - Prometheus for metrics and alert rules
 - Grafana for dashboards
-- Alertmanager with QQ SMTP email receiver
+- Alertmanager with QQ SMTP email receiver, grouped routes, and custom email templates
 - Loki for logs
 - Promtail for `/var/log/nginx/*.log`, `/var/log/backup/*.log`, and `/var/log/syslog`
 - Node Exporter with textfile collector
@@ -91,6 +91,13 @@ After changing `blackbox.yml`, recreate Blackbox Exporter for the same reason:
 ```bash
 cd /opt/ops/observability
 docker compose up -d --force-recreate --no-deps blackbox-exporter
+```
+
+After changing Alertmanager config or templates, validate and recreate Alertmanager:
+
+```bash
+cd /opt/ops/observability
+docker compose up -d --force-recreate --no-deps alertmanager
 ```
 
 

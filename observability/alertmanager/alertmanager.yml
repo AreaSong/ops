@@ -7,14 +7,107 @@ global:
   smtp_auth_password_file: /etc/alertmanager/smtp_password
   smtp_require_tls: true
 
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
 route:
   receiver: email-ops
   group_by:
     - alertname
+    - severity
     - instance
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    - receiver: email-ops
+      matchers:
+        - scope="business"
+      group_by:
+        - alertname
+        - severity
+        - service
+        - check
+        - target
+      group_wait: 15s
+      group_interval: 5m
+      repeat_interval: 2h
+
+    - receiver: email-ops
+      matchers:
+        - alertname=~"App.*|HttpProbeFailed|SslCert.*"
+      group_by:
+        - alertname
+        - severity
+        - service
+        - check
+        - target
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 3h
+
+    - receiver: email-ops
+      matchers:
+        - alertname=~"Backup.*|R2Backup.*"
+      group_by:
+        - alertname
+        - severity
+        - job
+      group_wait: 30s
+      group_interval: 10m
+      repeat_interval: 2h
+
+    - receiver: email-ops
+      matchers:
+        - alertname=~"Postgres.*|Redis.*"
+      group_by:
+        - alertname
+        - severity
+        - service
+        - instance
+        - datname
+      group_wait: 30s
+      group_interval: 10m
+      repeat_interval: 3h
+
+    - receiver: email-ops
+      matchers:
+        - alertname=~"SecurityMetricsStale|Ufw.*|Fail2ban.*|Ssh.*|Nginx.*"
+      group_by:
+        - alertname
+        - severity
+        - instance
+        - jail
+        - status_class
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 6h
+
+    - receiver: email-ops
+      matchers:
+        - severity="critical"
+      group_by:
+        - alertname
+        - severity
+        - service
+        - instance
+        - target
+      group_wait: 15s
+      group_interval: 5m
+      repeat_interval: 2h
+
+    - receiver: email-ops
+      matchers:
+        - severity="warning"
+      group_by:
+        - alertname
+        - severity
+        - service
+        - instance
+        - target
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 6h
 
 receivers:
   - name: email-ops
@@ -22,4 +115,5 @@ receivers:
       - to: 3177348309@qq.com
         send_resolved: true
         headers:
-          Subject: '[LosAngeles][{{ .Status }}] {{ .CommonLabels.alertname }}'
+          Subject: '{{ template "email.ops.subject" . }}'
+        html: '{{ template "email.ops.html" . }}'

@@ -1,0 +1,61 @@
+{{ define "email.ops.subject" -}}
+[LosAngeles][{{ .Status | toUpper }}][{{ with .CommonLabels.severity }}{{ . | toUpper }}{{ else }}UNKNOWN{{ end }}]{{ with .CommonLabels.service }} {{ . }}{{ end }}{{ with .CommonLabels.check }}/{{ . }}{{ end }} {{ .CommonLabels.alertname }} firing={{ len .Alerts.Firing }} resolved={{ len .Alerts.Resolved }}
+{{- end }}
+
+{{ define "email.ops.html" -}}
+<!doctype html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
+    <h2 style="margin: 0 0 12px;">LosAngeles alert {{ .Status | toUpper }}</h2>
+    <p style="margin: 0 0 16px;">
+      <strong>Severity:</strong> {{ with .CommonLabels.severity }}{{ . }}{{ else }}unknown{{ end }}<br>
+      <strong>Alert:</strong> {{ .CommonLabels.alertname }}<br>
+      {{ with .CommonLabels.service }}<strong>Service:</strong> {{ . }}<br>{{ end }}
+      {{ with .CommonLabels.check }}<strong>Check:</strong> {{ . }}<br>{{ end }}
+      {{ with .CommonLabels.instance }}<strong>Instance:</strong> {{ . }}<br>{{ end }}
+      {{ with .CommonLabels.target }}<strong>Target:</strong> {{ . }}<br>{{ end }}
+      <strong>Firing:</strong> {{ len .Alerts.Firing }} /
+      <strong>Resolved:</strong> {{ len .Alerts.Resolved }}
+    </p>
+
+    <table cellpadding="6" cellspacing="0" border="1" style="border-collapse: collapse; border-color: #d8dee9; font-size: 13px;">
+      <thead>
+        <tr style="background: #eef2f7;">
+          <th align="left">Status</th>
+          <th align="left">Alert</th>
+          <th align="left">Severity</th>
+          <th align="left">Service</th>
+          <th align="left">Check</th>
+          <th align="left">Instance</th>
+          <th align="left">Target</th>
+          <th align="left">Summary</th>
+          <th align="left">Started</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Alerts }}
+        <tr>
+          <td>{{ .Status }}</td>
+          <td>{{ .Labels.alertname }}</td>
+          <td>{{ .Labels.severity }}</td>
+          <td>{{ .Labels.service }}</td>
+          <td>{{ .Labels.check }}</td>
+          <td>{{ .Labels.instance }}</td>
+          <td>{{ .Labels.target }}</td>
+          <td>{{ .Annotations.summary }}</td>
+          <td>{{ .StartsAt }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+
+    {{ with .CommonAnnotations.description }}
+    <p><strong>Description:</strong> {{ . }}</p>
+    {{ end }}
+
+    {{ with .CommonAnnotations.runbook_url }}
+    <p><strong>Runbook:</strong> <a href="{{ . }}">{{ . }}</a></p>
+    {{ end }}
+  </body>
+</html>
+{{- end }}

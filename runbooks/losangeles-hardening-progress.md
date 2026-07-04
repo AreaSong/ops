@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 05:50 BST
+更新时间：2026-07-04 06:20 BST
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；Alertmanager 邮件模板和分级路由已优化。
 
 ## 2. 已核实完成
 
@@ -50,7 +50,7 @@
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
 | 监控栈 | 完成 | Prometheus、Grafana、Alertmanager、Loki、Promtail、Node Exporter、Blackbox Exporter 容器均 running。 |
 | Prometheus targets | 完成 | `blackbox_https` 的 `monitor.areasong.top`、`log.areasong.top`，以及 `node`、`prometheus` targets 均为 up。 |
-| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、R2BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证。 |
+| Prometheus 基础告警规则 | 完成 | 已加载 BackupStale、R2BackupStale、HttpProbeFailed、SslCertExpiring、DockerContainerDown、HostDown、Disk/Memory/CPU 告警；Alertmanager 已通过 QQ 邮箱通知验证，并已补充模板化邮件与按业务/入口/备份/数据库/安全/严重级别分组的路由。 |
 | Postgres / Redis exporter | 完成 | 已新增 sub2api PostgreSQL、account-vault PostgreSQL、sub2api Redis exporter；Prometheus 新增 `postgres`、`redis` jobs；Grafana 新增 `LosAngeles Datastores`。 |
 | 安全日志指标与告警 | 完成 | 已新增 `write-security-metrics.sh`、`security.prom`、`security_log_alerts` 和 `LosAngeles Security Overview`，覆盖 SSH 失败/无效用户/成功登录、Fail2ban sshd、UFW 状态、Nginx 4xx/5xx。 |
 | 应用级 HTTP 健康检查 | 完成 | 已新增 `blackbox_app_https`，覆盖 `resume.areasong.top/`、`sorryiossearch.areasong.top/health`、`cpa.areasong.top/health`；新增 `app_health_alerts` 和 `LosAngeles App Health`。 |
@@ -116,6 +116,6 @@
 
 1. 补齐 Cloudflare Origin Certificate 轮换负责人和 `www.areasong.top` / Tunnel `hWin` 用途。
 2. 继续补应用原生业务错误率、登录后任务指标和关键接口分位延迟。
-3. 优化 Alertmanager 告警模板、分级路由和通知抑制策略。
+3. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 4. 做一次应用级恢复演练，验证恢复数据可被业务容器启动读取。
 5. 复核 `/opt/ops` root-only Git 操作流程是否需要固化到更多标准文档。

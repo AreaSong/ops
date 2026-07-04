@@ -33,6 +33,7 @@ services:
       - "127.0.0.1:9093:9093"
     volumes:
       - /opt/ops/observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /opt/ops/observability/alertmanager/templates:/etc/alertmanager/templates:ro
       - /etc/observability/alertmanager-smtp-password:/etc/alertmanager/smtp_password:ro
       - /var/lib/observability/alertmanager:/alertmanager
     networks:
