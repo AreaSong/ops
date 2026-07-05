@@ -16,19 +16,19 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 - 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
 - 待优化：系统时区不是 UTC、Docker 全局日志上限未配置、部分镜像使用 `latest`、SSH X11Forwarding 未关闭、`services.yaml` SSH 限源描述与实际不一致、`/opt/services/account-vault/app/docker-compose.yml` 存在旧 compose 文件。
-- 云侧待确认：云账号 MFA、账单/到期/欠费告警、安全组、云审计、云安全中心等需要登录云厂商控制台确认。
+- 云侧已核对 / 能力限制：云账号 MFA 已开启，当前无 API Key；账单/到期按用户要求暂缓；厂商无安全组/云防火墙、快照、云审计/安全通知能力，已记录为风险接受和补偿控制。
 
 ## 2. 附录 A P0 验收矩阵
 
 | # | P0 项 | 当前结论 | 证据 / 说明 | 后续动作 |
 |---|---|---|---|---|
-| 1 | 主备跨可用区；到期计费入台账有告警；抢占式无状态服务 | 风险接受 / 云侧待确认 | 当前是单机部署；`servers.yaml` 已补 provider/region/owner；未验证云侧到期/欠费告警；未发现抢占式证据 | 后续有第二台机器或 HA 需求时做多 AZ；云控制台补账单/到期告警截图或记录 |
+| 1 | 主备跨可用区；到期计费入台账有告警；抢占式无状态服务 | 风险接受 / 账单暂缓 | 当前是单机部署；`servers.yaml` 已补 provider/region/owner/control_plane；账单/到期治理按用户要求暂缓；未发现抢占式证据 | 后续有第二台机器或 HA 需求时做多 AZ；账单/到期告警后续单独处理 |
 | 2 | 时区 UTC + 时间同步；非 EOL 系统；数据/日志/应用三分离 | 部分达标 | Ubuntu 24.04.4 LTS，NTP active/synchronized；当前时区为 `Europe/London`，不是 UTC；应用在 `/opt/services`，日志在 `/var/log`，但无独立数据盘 | 建议把主机时区改为 UTC；数据盘作为后续增强 |
 | 3 | 系统盘数据盘分离；fstab UUID+nofail；磁盘监控含 inode | 部分达标 / 风险接受 | 当前只有 `/dev/sda1` 系统盘；`fstab` 使用 LABEL 而非 UUID；磁盘容量和 inode 已在 node_exporter/Grafana 覆盖 | 数据量增长后规划独立 `/data`；`fstab` 可低风险改为 UUID，但需维护窗口验证 `mount -a` |
 | 4 | 无 `curl|bash`；第三方源有 GPG 验证 | 基本达标 | 在 `/opt/services`、`/opt/ops` 未扫到明显 `curl|bash`；Docker apt keyring 存在 | 后续补一次 apt sources 详细审计 |
-| 5 | 命名三处一致；台账字段完整；到期/欠费双告警 | 部分达标 | 主机名 `LosAngeles` 与台账一致，但不符合规范化命名；台账字段已补 owner/provider/region；云侧告警未验证 | 主机名规范化等维护窗口；云侧账单/到期告警需确认 |
-| 6 | 环境 VPC 隔离；公网入口收敛；IPv6 明确管控 | 部分达标 | 公网监听实际为 22/80/443；IPv6 仅 link-local；无主机级私网 IP；VPC/安全组需云侧确认 | 云侧安全组/VPC 需要补台账 |
-| 7 | SSH 禁密码禁 root 直登；一人一账号；云主账号 MFA；最小权限 AK | 部分达标 | `sshd -T`: `permitrootlogin no`、`passwordauthentication no`；`as` key 登录；云主账号 MFA 和 AK 权限未核查 | 关闭 SSH X11Forwarding；云侧账号治理需确认 |
+| 5 | 命名三处一致；台账字段完整；到期/欠费双告警 | 部分达标 / 账单暂缓 | 主机名 `LosAngeles` 与台账一致，但不符合规范化命名；台账字段已补 owner/provider/region/control_plane；账单/到期治理按用户要求暂缓 | 主机名规范化等维护窗口；账单/到期告警后续单独处理 |
+| 6 | 环境 VPC 隔离；公网入口收敛；IPv6 明确管控 | 部分达标 / 厂商能力限制 | 公网监听实际为 22/80/443；IPv6 仅 link-local；无主机级私网 IP；用户确认厂商无安全组/云防火墙/网络规则能力 | 以 UFW、Fail2ban、端口收敛和监控告警补偿；有固定出口 IP 后收敛 SSH 来源 |
+| 7 | SSH 禁密码禁 root 直登；一人一账号；云主账号 MFA；最小权限 AK | 基本达标 | `sshd -T`: `permitrootlogin no`、`passwordauthentication no`；`as` key 登录；云主账号 MFA 已开启；账号邮箱/手机号可用；主账号未共用；当前无 API Key | 后续如新增 API Key，必须记录用途、最小权限和轮换周期 |
 | 8 | 双层防火墙默认拒绝；无 0.0.0.0/0 全放行；数据组件不暴露公网；Docker 端口陷阱已处理 | 基本达标 | UFW active，默认 deny incoming，仅 22/80/443；数据组件和 exporter 仅本机或 Docker 网络；SSH 22 仍 Anywhere | 有固定出口 IP 后限制 SSH；`services.yaml` 修正 SSH 限源描述 |
 | 9 | 域名/证书自动续期+独立过期监控；ICP 备案一致；Nginx 先 `-t` 再 reload | 基本达标 / 不适用 | `nginx -t` 通过；证书监控已接入；Cloudflare 与证书台账已记录；ICP 对当前非大陆源站按不适用处理 | 保持证书监控；门户上线时补备案判断 |
 | 10 | SELinux/AppArmor 不被关闭 | 达标 | AppArmor module loaded；Docker 进程在 `docker-default` enforce；auditd 未启用但不等于 AppArmor 关闭 | auditd 可作为 P1 增强 |
@@ -57,7 +57,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. 修正 `inventory/services.yaml` 中 SSH 全局端口描述：从 `restricted/限制来源 IP` 改为“当前 Anywhere，密钥登录 + Fail2ban；固定出口 IP 后再限制”。
 2. 新增本验收矩阵到 `runbooks/losangeles-standards-09-audit.md`，并在 `runbooks/README.md` 建索引。
-3. 补充 `losangeles-current-status.md`：说明 `standards/09` 严格验收下仍有“风险接受/云侧待确认/维护窗口优化项”。
+3. 补充 `losangeles-current-status.md`：说明 `standards/09` 严格验收下仍有“风险接受/云侧能力限制/账单暂缓/维护窗口优化项”。
 4. 将 `/etc/observability/alertmanager-smtp-password` 权限从 `640 root:nogroup` 收紧到 `600 root:root`。
 5. 清理或改名 `/opt/services/account-vault/app/docker-compose.yml`，避免误操作；建议先改名为 `docker-compose.legacy.yml` 并记录。
 
@@ -70,13 +70,13 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 5. 镜像固定版本或 digest：`sub2api`、`resume-jadeai` 需要确认上游是否有稳定 tag；直接 pin digest 会降低自动更新便利性。
 6. `fstab` 从 LABEL 改 UUID：风险低但属于启动链路，需维护窗口和 `mount -a` 验证。
 
-### 云侧待确认
+### 云侧已核对与限制
 
-1. 云主账号 MFA、日常子账号、AccessKey 最小权限。
-2. 安全组是否只放行 22/80/443，且无 0.0.0.0/0 全端口。
-3. 账单、余额、到期、实例维护事件通知。
-4. 云审计日志和高危操作告警。
-5. 这台实例是否为非抢占式/非竞价实例。
+1. 云主账号 MFA 已开启；账号邮箱/手机号可用；主账号未共用。
+2. 当前无 API Key。
+3. 云厂商无安全组/云防火墙/网络规则能力，已记录为厂商限制。
+4. 云厂商无快照、审计与安全通知能力，已记录为厂商限制。
+5. 账单、余额、到期、实例维护事件通知按用户要求暂缓。
 
 ## 4. 推荐执行顺序
 
@@ -84,4 +84,4 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 2. 同批做权限收紧和旧 compose 改名这类低风险项。
 3. 再做 SSH X11Forwarding 和系统时区 UTC。
 4. Docker 日志上限、Redis maxmemory、fstab UUID、镜像 pin 放到维护窗口。
-5. 云侧治理由用户在控制台核对后补台账。
+5. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。

@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-04 20:55 BST
+更新时间：2026-07-05 10:51 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -23,6 +23,7 @@
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
+- 云厂商控制台 D2 已完成用户侧人工核对：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key；该厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已作为厂商能力限制记录；账单/到期治理按用户要求暂缓。
 - Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。
 
 ## 2. 已核实完成
@@ -53,6 +54,7 @@
 | 跨机器恢复演练预案 | 完成，实机演练待做 | 已新增 `runbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前未开新机器执行实机演练。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
+| 云厂商控制台治理 | 完成核对，部分风险接受 | 用户已在 `https://server.zgocloud.cc/` 人工核对：实例名 `LosAngeles`；MFA 已开启；邮箱/手机号可用；主账号未共用；无 API Key。厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已记录为能力限制并以 UFW、Fail2ban、备份/R2、Loki/Grafana/Alertmanager 补偿；账单/到期治理按用户要求暂缓。 |
 | Cloudflare Origin Certificate 本地监控 | 完成 | 已新增 `write-cloudflare-origin-cert-metrics.sh`、`cloudflare-origin-cert.prom`、`ops-cloudflare-origin-cert-metrics` cron、`cloudflare_origin_cert_alerts`、Alertmanager 长周期提醒路由和 `LosAngeles Certificates and Cloudflare` Dashboard；覆盖证书文件读取失败、指标过期、180/90/30/7 天分级过期提醒。 |
 | `www.areasong.top` / `hWin` 旧入口下线 | 完成 | 用户已在 Cloudflare 控制台删除旧 Access Application 和 Tunnel/Public Hostname；公网不再跳转 `areasong.cloudflareaccess.com`，当前返回 Cloudflare HTTP 530；LosAngeles 本机未发现 `cloudflared` 进程或服务，`www` 预留给后续门户网站。 |
 | 备份与 Docker textfile metrics | 完成 | `/var/lib/node_exporter/textfile_collector/backup.prom`、`docker.prom`、`r2-backup.prom` 存在并持续更新。 |
@@ -79,6 +81,7 @@
 | Docker / 服务健康检查 | 部分深化 | Docker running 指标、部分容器 health、应用 HTTP 黑盒探测、第一批业务关键路径 Blackbox 探针、Postgres / Redis exporter、基于 Nginx 增强访问日志的业务服务级 4xx/5xx 与慢请求指标已存在；登录后任务指标和关键接口分位延迟仍可继续深化。 |
 | Grafana Dashboard | 部分深化 | 主机、HTTPS、TLS、Docker、Backup、Postgres、Redis、安全日志、Nginx 4xx/5xx、应用 HTTP 健康、业务关键路径探针、业务服务级真实请求 4xx/5xx 与慢请求已覆盖；登录后业务任务和关键接口分位延迟视图仍可继续深化。 |
 | Cloudflare 配置台账 | 治理元数据基础完成，仍可深化 | 控制台只读核对已完成；Cloudflare Origin Certificate 创建人、用途、180/90/30/7 天提醒策略和轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线，后续需补门户网站接入方案。 |
+| 云厂商账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理；后续应单独补自动续费、到期提醒、余额/扣费失败提醒。 |
 
 ## 4. 未完成事项与未来增强项
 
@@ -97,10 +100,13 @@
 1. SSH 来源 IP 限制。
    当前 UFW 的 `22/tcp` 仍为 Anywhere。如果有固定出口 IP，应改为仅允许固定来源。
 
-2. 应用级监控深化。
+2. 云厂商账单 / 到期治理。
+   本轮按用户要求暂缓；后续建议单独确认自动续费、到期提醒、余额/扣费失败通知。
+
+3. 应用级监控深化。
    第一批公开、只读关键路径 Blackbox 探针已完成；基于增强 Nginx 访问日志的业务服务级错误率和慢请求基础监控已完成；后续应继续补登录后任务指标、关键接口分位延迟和更细的数据库连接健康。
 
-3. Cloudflare 治理元数据深化。
+4. Cloudflare 治理元数据深化。
    Origin Certificate 创建人/用途/轮换负责人、180/90/30/7 天提醒策略已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线并预留门户网站；后续可补门户网站接入方案。
 
 ### P3
@@ -117,6 +123,7 @@
 - 未实际执行 root/as 错误登录测试；SSH 结论基于 `sshd -T` 有效配置。
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - Cloudflare 控制台基础配置已由用户侧只读核对；未修改 Cloudflare 配置，未核查更细粒度的历史事件、审计日志和 Origin Certificate 控制台创建记录。
+- 云厂商控制台 D2 结论来自用户人工核对反馈；未登录或修改云厂商控制台。账单/到期治理按用户要求暂缓。
 - 跨机器恢复演练预案已完成，但未开临时机器执行实机恢复；当前 R2 拉回恢复演练是在当前主机上完成。
 - 未执行跨机器完整应用级接管验证；当前应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容；本次验证仅输出 Fail2ban 日志中的封禁 IP 及其公开网络归属信息。
@@ -124,10 +131,11 @@
 
 ## 6. 后续增强项
 
-1. 有测试账号或应用配合后，继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
-2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
-3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
-4. 后续可按 `runbooks/losangeles-cross-machine-restore-drill.md` 在新机器或临时云主机上执行一次跨机器实机恢复演练。
+1. 单独补云厂商账单、到期、欠费提醒。
+2. 有测试账号或应用配合后，继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
+3. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
+4. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
+5. 后续可按 `runbooks/losangeles-cross-machine-restore-drill.md` 在新机器或临时云主机上执行一次跨机器实机恢复演练。
 
 ## 2026-07-05 C4 容器日志上限显式化
 
@@ -235,13 +243,15 @@
 
 ## 2026-07-05 D2 云侧控制面治理
 
-状态：清单已建立，控制台确认待执行。
+状态：控制台人工确认已完成；账号安全完成；厂商能力限制和账单暂缓项已记录。
 
 已完成：
 
 - 复核现有 Cloudflare / 证书 / R2 台账，确认 Cloudflare 基础治理已有留痕。
 - 基于 LosAngeles inventory 当前 provider/region/owner 记录，新增云厂商控制台治理清单。
-- 将 MFA、账单告警、安全组、快照、云审计、安全通知、API Key 最小权限列为需要用户控制台确认的项目。
+- 记录用户人工核对结果：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key。
+- 记录厂商能力限制：无安全组/云防火墙/网络规则、无快照、无审计与安全通知；补偿控制为 UFW、Fail2ban、端口收敛、备份/R2、Loki/Grafana/Alertmanager。
+- 账单/到期治理按用户要求暂缓。
 
 留痕：
 
