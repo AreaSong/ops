@@ -214,3 +214,21 @@
 - `services/account-vault/compose.yml`
 - `services/resume-jadeai/compose.yml`
 - `runbooks/losangeles-standards-09-g1-service-compose-controlled-copies-20260705.md`
+
+## 2026-07-05 R1 备份恢复演练
+
+状态：完成。
+
+已完成：
+
+- 最新 Postgres dump 已恢复到临时 Postgres 容器验证。
+- Redis、configs、业务 volume 备份包已完成 tar 可读性验证。
+- 演练后生产入口与监控 ready 快速检查通过。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-r1-backup-restore-drill-20260705.md`
+
+后续：
+
+- 可继续补 Redis 临时容器启动恢复、volume 临时应用回放、完整 RTO/RPO 计时。
