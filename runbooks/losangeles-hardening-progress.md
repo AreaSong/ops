@@ -292,3 +292,19 @@
 后续：
 
 - `sub2api` 数据库权限治理需要应用侧配合拆分 migration 与 runtime；未确认前作为风险接受项。
+
+## 2026-07-06 B3 fstab UUID 收敛
+
+状态：完成；启动链路重启级验证待下次维护窗口或自然重启后补记。
+
+已完成：
+
+- `/`、`/boot`、`/boot/efi` 三个静态挂载项已从 `LABEL=` 切换为 `UUID=`。
+- `findmnt --verify --verbose` 通过，结果为 `0 parse errors, 0 errors`。
+- `mount -a` 通过。
+- 已执行 `systemctl daemon-reload`。
+- 回滚备份位于 `/root/ops-change-backups/standards09-fstab-uuid-20260705160144`。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`

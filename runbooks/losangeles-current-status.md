@@ -211,7 +211,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口 / 应用配合优化：Redis maxmemory / 认证策略、fstab UUID、sub2api migration/runtime 拆分；journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成。
+- 维护窗口 / 应用配合优化：Redis maxmemory / 认证策略、sub2api migration/runtime 拆分；journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
@@ -238,6 +238,21 @@ Grafana Dashboard：
 ## 2026-07-05 C2e Postgres 角色权限只读复核
 
 状态：完成。
+
+## 2026-07-06 B3 fstab UUID 收敛
+
+状态：完成；启动链路重启级验证待下次维护窗口或自然重启后补记。
+
+已完成：
+
+- `/`、`/boot`、`/boot/efi` 三个静态挂载项已从 `LABEL=` 切换为 `UUID=`。
+- `findmnt --verify --verbose` 通过，结果为 `0 parse errors, 0 errors`。
+- `mount -a` 通过。
+- 已执行 `systemctl daemon-reload`。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`
 
 已完成 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`：
 

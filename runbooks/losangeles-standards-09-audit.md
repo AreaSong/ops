@@ -15,7 +15,8 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 - 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
-- 待优化：Redis maxmemory / 认证策略、fstab UUID、sub2api migration/runtime 拆分、SSH 来源 IP 限制等待固定出口 IP；journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成。
+- 待优化：Redis maxmemory / 认证策略、sub2api migration/runtime 拆分、SSH 来源 IP 限制等待固定出口 IP。
+- 已完成补齐项：journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
 - 云侧已核对 / 能力限制：云账号 MFA 已开启，当前无 API Key；账单/到期按用户要求暂缓；厂商无安全组/云防火墙、快照、云审计/安全通知能力，已记录为风险接受和补偿控制。
 
 ## 2. 附录 A P0 验收矩阵
@@ -24,7 +25,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 |---|---|---|---|---|
 | 1 | 主备跨可用区；到期计费入台账有告警；抢占式无状态服务 | 风险接受 / 账单暂缓 | 当前是单机部署；`servers.yaml` 已补 provider/region/owner/control_plane；账单/到期治理按用户要求暂缓；未发现抢占式证据 | 后续有第二台机器或 HA 需求时做多 AZ；账单/到期告警后续单独处理 |
 | 2 | 时区 UTC + 时间同步；非 EOL 系统；数据/日志/应用三分离 | 基本达标 / 数据盘风险接受 | Ubuntu 24.04.4 LTS，NTP active/synchronized；当前时区已为 UTC；应用在 `/opt/services`，日志在 `/var/log`，但无独立数据盘 | 数据盘作为后续增强 |
-| 3 | 系统盘数据盘分离；fstab UUID+nofail；磁盘监控含 inode | 部分达标 / 风险接受 | 当前只有 `/dev/sda1` 系统盘；`fstab` 使用 LABEL 而非 UUID；磁盘容量和 inode 已在 node_exporter/Grafana 覆盖 | 数据量增长后规划独立 `/data`；`fstab` 可低风险改为 UUID，但需维护窗口验证 `mount -a` |
+| 3 | 系统盘数据盘分离；fstab UUID+nofail；磁盘监控含 inode | 部分达标 / 数据盘风险接受 | 当前只有 `/dev/sda1` 系统盘；`/`、`/boot`、`/boot/efi` 已在 B3 切换为 UUID；`findmnt --verify` 与 `mount -a` 已通过；磁盘容量和 inode 已在 node_exporter/Grafana 覆盖 | 数据量增长后规划独立 `/data`；下次维护窗口或自然重启后补一次启动链路复核 |
 | 4 | 无 `curl|bash`；第三方源有 GPG 验证 | 基本达标 | 在 `/opt/services`、`/opt/ops` 未扫到明显 `curl|bash`；Docker apt keyring 存在 | 后续补一次 apt sources 详细审计 |
 | 5 | 命名三处一致；台账字段完整；到期/欠费双告警 | 部分达标 / 账单暂缓 | 主机名 `LosAngeles` 与台账一致，但不符合规范化命名；台账字段已补 owner/provider/region/control_plane；账单/到期治理按用户要求暂缓 | 主机名规范化等维护窗口；账单/到期告警后续单独处理 |
 | 6 | 环境 VPC 隔离；公网入口收敛；IPv6 明确管控 | 部分达标 / 厂商能力限制 | 公网监听实际为 22/80/443；IPv6 仅 link-local；无主机级私网 IP；用户确认厂商无安全组/云防火墙/网络规则能力 | 以 UFW、Fail2ban、端口收敛和监控告警补偿；有固定出口 IP 后收敛 SSH 来源 |
@@ -65,8 +66,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 ### 需要维护窗口或明确确认的项
 
 1. Redis `maxmemory`、认证和淘汰策略：需要根据当前内存和业务语义决定，修改后需重启 Redis 容器并同步 sub2api/exporter。
-2. `fstab` 从 LABEL 改 UUID：风险低但属于启动链路，需维护窗口和 `mount -a` 验证。
-3. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
+2. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
 
 ### 云侧已核对与限制
 
@@ -80,5 +80,5 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. 先提交本矩阵和文档口径修正。
 2. 同批做权限收紧和旧 compose 改名这类低风险项。
-3. 批次 A、B1、B2 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis、fstab、业务容器内存限制、sub2api migration/runtime 拆分。
+3. 批次 A、B1、B2、B3 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis、业务容器内存限制、sub2api migration/runtime 拆分。
 4. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。

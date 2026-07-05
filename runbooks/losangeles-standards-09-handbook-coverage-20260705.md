@@ -31,7 +31,7 @@
 | 2 | 生命周期总览 | 部分达标 | 已处于日常运行阶段；有 runbook、台账、备份、监控 | 退役、迁移、故障复盘、例行日历仍需真实执行记录 |
 | 3 | 硬件与实例层 | 部分验证 | KVM 云主机、provider/region/owner 已入台账；D2 已完成控制台人工核对 | 账单/到期治理按用户要求暂缓；厂商无快照能力；无 HA |
 | 4 | 操作系统基线 | 基本达标 | Ubuntu 24.04、UTC/NTP 同步、unattended-upgrades、无 reboot-required；B1 已完成 journald 持久化/容量上限与 `99-ops-baseline.conf` | core dump 上限、auditd/HIDS 可作为后续增强 |
-| 5 | 存储与文件系统 | 部分达标 | 磁盘和 inode 健康；备份存在；D2 已确认厂商当前无快照能力 | 无独立数据盘；`fstab` 用 LABEL 非 UUID；以本机备份、R2 和恢复演练补偿无云快照 |
+| 5 | 存储与文件系统 | 部分达标 | 磁盘和 inode 健康；备份存在；D2 已确认厂商当前无快照能力；B3 已完成 `fstab` UUID 收敛并通过 `mount -a` | 无独立数据盘；以本机备份、R2 和恢复演练补偿无云快照；下次重启后补启动链路复核 |
 | 6 | 软件源与依赖 | 基本达标 | Ubuntu/Docker 源独立，Docker GPG keyring 存在 | 关键组件版本锁定、季度源审计、运行时版本台账需补 |
 | 7 | 资产与标识 | 部分达标 | `servers.yaml` 补齐 provider/region/owner；服务和端口台账存在；控制台实例名为 `LosAngeles` | 主机名不规范；到期/计费/欠费告警按用户要求暂缓；云标签后续可补 |
 | 8 | 网络架构 | 部分达标 | 公网端口收敛；主机级无私网 IP；IPv6 仅 link-local；D2 已确认厂商无安全组/云防火墙/网络规则能力 | 以 UFW、Fail2ban、端口收敛和监控告警补偿；拓扑图可后续补 |
@@ -126,7 +126,6 @@
 
 ### B. 需要维护窗口的主机收敛
 
-- fstab UUID。
 - 业务容器内存限制。
 - auditd/HIDS 或不可篡改审计归档。
 

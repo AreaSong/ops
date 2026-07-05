@@ -150,25 +150,29 @@
 
 - 持续保持 UTC，不再作为待办项。
 
-### 3.2 `/etc/fstab` 使用 LABEL，不是 UUID
+### 3.2 `/etc/fstab` 已切换为 UUID
 
-当前：
+初查时：
 
 - `/` 使用 `LABEL=cloudimg-rootfs`
 - `/boot` 使用 `LABEL=BOOT`
 - `/boot/efi` 使用 `LABEL=UEFI`
 
-标准：
+后续状态：
 
-- fstab 建议 UUID，云盘建议 `nofail`。
+- 已通过 `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md` 将 `/`、`/boot`、`/boot/efi` 切换为 UUID。
+- `findmnt --verify --verbose` 通过，结果为 `0 parse errors, 0 errors`。
+- `mount -a` 通过。
+- 已执行 `systemctl daemon-reload`。
 
 判断：
 
-- 云镜像常见写法，当前可用；严格标准下偏离。
+- 初查缺口已关闭；当前运行态验证通过。
+- 重启级启动链路验证尚未执行，建议下次维护窗口或自然重启后补记。
 
 建议：
 
-- 放到维护窗口，改前备份 `/etc/fstab`，改后执行 `mount -a` 验证。
+- 后续如新增独立数据盘，再为数据盘使用 UUID 与 `nofail` 策略。
 
 ### 3.3 无独立数据盘
 
@@ -515,11 +519,11 @@
 
 ### 批次 B：低到中风险，需要短维护窗口
 
-状态：B1/B2 已完成；剩余启动链路项需单独维护窗口。
+状态：B1/B2/B3 已完成；剩余项主要是服务策略和应用配合。
 
 1. journald 上限、logrotate 26 周保留、`99-ops-baseline.conf` 已在 B1 完成。
 2. Docker daemon `log-opts` 与 `live-restore` 已在 B2 完成。
-3. `fstab` 从 LABEL 改 UUID，并验证 `mount -a`，仍需单独维护窗口。
+3. `fstab` 从 LABEL 改 UUID 已在 B3 完成；重启级验证待下次维护窗口或自然重启后补记。
 
 ### 批次 C：会影响容器，需要维护窗口
 
@@ -540,13 +544,13 @@
 - 不建议现在限制 SSH 来源 IP，除非先确认固定出口 IP 和逃生通道。
 - 不建议无明确变更目的再次重启 Docker，因为会短暂影响所有容器。
 - 不建议直接给 Redis 加密码，必须同步 sub2api 和 exporter 配置。
-- 不建议直接改 fstab 后不验证启动链路。
+- 不建议再次无目的修改 fstab；B3 已完成运行态验证，重启级验证留到下次维护窗口或自然重启后补记。
 - 不建议把所有容器一次性改非 root 或加统一内存限制，应逐服务验证。
 
 ## 7. 检查阶段完成判定
 
 本次已经完成服务器内可见范围的全量只读检查。
 
-云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成。仍未完成的是 Redis 策略、`fstab` UUID、业务容器内存限制、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
+云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成。仍未完成的是 Redis 策略、业务容器内存限制、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
 
-批次 A、B1、B2 已完成。下一步应从剩余 B/C 项中挑选需要维护窗口或业务配合的项目，不做一刀切运行配置变更。
+批次 A、B1、B2、B3 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。
