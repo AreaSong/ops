@@ -232,3 +232,17 @@
 后续：
 
 - 可继续补 Redis 临时容器启动恢复、volume 临时应用回放、完整 RTO/RPO 计时。
+
+## 2026-07-05 D2 云侧控制面治理
+
+状态：清单已建立，控制台确认待执行。
+
+已完成：
+
+- 复核现有 Cloudflare / 证书 / R2 台账，确认 Cloudflare 基础治理已有留痕。
+- 基于 LosAngeles inventory 当前 provider/region/owner 记录，新增云厂商控制台治理清单。
+- 将 MFA、账单告警、安全组、快照、云审计、安全通知、API Key 最小权限列为需要用户控制台确认的项目。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`
