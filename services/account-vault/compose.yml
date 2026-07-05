@@ -1,0 +1,65 @@
+name: account-vault
+
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+x-security-options: &security-options
+  - no-new-privileges:true
+
+services:
+  web:
+    build: /opt/services/account-vault/app
+    restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 512m
+    cpus: "0.50"
+    pids_limit: 256
+    logging: *json-log-options
+    security_opt: *security-options
+    ports:
+      - "127.0.0.1:8392:3001"
+    env_file:
+      - /etc/account-vault/account-vault.env
+    environment:
+      - DATABASE_URL=postgresql://${DATABASE_APP_USER:-account_user}:${DATABASE_APP_PASSWORD}@postgres:5432/accountvault?schema=public
+      - NODE_ENV=production
+      - RP_ID=${RP_ID}
+      - RP_NAME=${RP_NAME:-账号记录管理}
+      - ORIGIN=${ORIGIN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine@sha256:cd17e2ac98240fce1541ad2a803b34009b4eea5aec8a832363cdc7eca62e722e
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.75"
+    pids_limit: 512
+    logging: *json-log-options
+    security_opt: *security-options
+    environment:
+      - POSTGRES_USER=account_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=accountvault
+    ports:
+      - "127.0.0.1:25432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U account_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    external: true
+    name: sorryiossearch_pgdata

@@ -196,3 +196,21 @@
 后续：
 
 - `promtail`、`node-exporter`、Prometheus、Grafana、Loki 与业务容器需逐服务继续评估，不建议批量一刀切。
+
+## 2026-07-05 G1 业务 Compose 受控副本
+
+状态：完成。
+
+已完成：
+
+- 将 `/opt/services/sub2api/compose.yml`、`/opt/services/account-vault/compose.yml`、`/opt/services/resume-jadeai/compose.yml` 同步到 `/opt/ops/services/`。
+- 创建 `services/README.md` 说明运行配置与 Git 受控副本关系。
+- 已确认未提交 `.env` 或明文密钥。
+
+留痕：
+
+- `services/README.md`
+- `services/sub2api/compose.yml`
+- `services/account-vault/compose.yml`
+- `services/resume-jadeai/compose.yml`
+- `runbooks/losangeles-standards-09-g1-service-compose-controlled-copies-20260705.md`

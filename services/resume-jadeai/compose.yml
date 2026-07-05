@@ -1,0 +1,36 @@
+name: resume-jadeai
+
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+x-security-options: &security-options
+  - no-new-privileges:true
+
+services:
+  app:
+    image: twwch/jadeai@sha256:7c714e104d6110aaafa135a6936af3735398c83c479549b467d22fc9c0ab5917
+    restart: unless-stopped
+    mem_limit: 1024m
+    memswap_limit: 1280m
+    cpus: "1.00"
+    pids_limit: 768
+    logging: *json-log-options
+    security_opt: *security-options
+    ports:
+      - "127.0.0.1:2082:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - CHROME_PATH=/usr/bin/chromium-browser
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - data:/app/data
+
+volumes:
+  data:
+    external: true
+    name: jadeai-data
