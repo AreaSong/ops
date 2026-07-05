@@ -360,19 +360,21 @@
 当前：
 
 - Redis 仅 Docker 网络内，不暴露公网。
-- `maxmemory=0`
+- C1 复核确认 `requirepass` 已设置。
+- C1 复核确认 `maxmemory=512MiB`。
 - `maxmemory-policy=noeviction`
-- ACL 显示：`user default on nopass ... +@all`
+- AOF 已启用。
+- 默认 ACL 仍允许 `+@all`。
 
 判断：
 
 - 外部暴露风险低。
-- 但严格 Redis P0 要求下不达标：应有密码、maxmemory、禁用高危命令或至少明确风险接受。
+- Redis 密码、maxmemory、持久化和内网隔离已完成。
+- 严格 Redis P0 下剩余缺口是高危命令 / ACL 策略：是否限制 `FLUSHALL`、`FLUSHDB`、`CONFIG`、`SHUTDOWN` 等命令仍需决策。
 
 建议：
 
-- 维护窗口处理，因为改 Redis 认证会影响 sub2api 和 exporter。
-- 同时配置 `maxmemory` 与策略，避免 OOM。
+- 如需限制高危命令，应单独开维护窗口，先验证 `sub2api`、healthcheck 和 redis exporter 兼容性。
 
 ### 3.14 Postgres 角色权限复核结果
 
@@ -529,7 +531,7 @@
 ### 批次 C：会影响容器，需要维护窗口
 
 1. 为业务容器逐步加内存限制。
-2. Redis 增加密码、maxmemory、禁用高危命令或明确风险接受。
+2. Redis 高危命令 / ACL 策略：禁用或明确风险接受。
 3. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
 
 ### 批次 D：云侧治理
@@ -544,7 +546,7 @@
 
 - 不建议现在限制 SSH 来源 IP，除非先确认固定出口 IP 和逃生通道。
 - 不建议无明确变更目的再次重启 Docker，因为会短暂影响所有容器。
-- 不建议直接给 Redis 加密码，必须同步 sub2api 和 exporter 配置。
+- 不建议直接修改 Redis ACL / 高危命令策略，必须先验证 sub2api、healthcheck 和 exporter 兼容性。
 - 不建议再次无目的修改 fstab；B3 已完成运行态验证，重启级验证留到下次维护窗口或自然重启后补记。
 - 不建议把所有容器一次性改非 root；资源限制已落地，后续如需调整应按单服务验证。
 
@@ -552,6 +554,6 @@
 
 本次已经完成服务器内可见范围的全量只读检查。
 
-云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C3a/C3b/C3c 容器资源限制已完成。仍未完成的是 Redis 策略、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
+云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C1 Redis 密码/maxmemory/持久化/内网隔离复核已完成，C3a/C3b/C3c 容器资源限制已完成。仍未完成的是 Redis 高危命令 / ACL 策略、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
 
-批次 A、B1、B2、B3、C3a、C3b、C3c 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。
+批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。

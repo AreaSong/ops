@@ -322,3 +322,23 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
+
+## 2026-07-06 C1 Redis 策略只读复核
+
+状态：密码、maxmemory、持久化、内网隔离完成；高危命令 / ACL 策略待决策。
+
+已完成：
+
+- Redis 未发布公网端口，宿主机无公网 `6379` 监听。
+- Redis `requirepass` 已设置，密码内容未打印。
+- Redis `maxmemory=512MiB`，`maxmemory-policy=noeviction`。
+- Redis `appendonly=yes`。
+- `sub2api` 和 `redis-exporter-sub2api` 均已配置 Redis 认证。
+
+后续：
+
+- 是否限制 `FLUSHALL`、`FLUSHDB`、`CONFIG`、`SHUTDOWN` 等高危命令，需要单独维护窗口和应用兼容性验证。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1-redis-policy-readonly-audit-20260706.md`
