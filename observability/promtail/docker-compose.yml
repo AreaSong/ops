@@ -1,12 +1,19 @@
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   promtail:
     image: grafana/promtail:3.1.0
     container_name: promtail
     restart: unless-stopped
+    logging: *json-log-options
     volumes:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/log:/var/log:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     environment:
-      - HOSTNAME=${HOSTNAME}
+      - HOSTNAME=${HOSTNAME:-LosAngeles}

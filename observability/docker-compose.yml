@@ -1,5 +1,11 @@
 name: observability
 
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -9,6 +15,7 @@ services:
     memswap_limit: 768m
     cpus: "0.75"
     pids_limit: 256
+    logging: *json-log-options
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=30d

@@ -128,3 +128,17 @@
 2. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 3. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
 4. 后续可按 `runbooks/losangeles-cross-machine-restore-drill.md` 在新机器或临时云主机上执行一次跨机器实机恢复演练。
+
+## 2026-07-05 C4 容器日志上限显式化
+
+状态：完成。
+
+已完成：
+
+- 业务容器与监控容器 compose 显式配置 `json-file` 日志轮转。
+- 当前运行容器已滚动重建或复核，运行时均为 `max-size=50m`、`max-file=5`。
+- 业务入口、监控 ready、Prometheus targets、运行时 LogConfig 均已验证。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md`
