@@ -142,3 +142,21 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md`
+
+## 2026-07-05 C5 镜像 digest 固定
+
+状态：完成。
+
+已完成：
+
+- 当前生产 compose 已去除 `latest` 镜像引用。
+- 业务依赖镜像与监控栈镜像已固定到当前运行 digest。
+- 本次未拉取新镜像、未升级版本、未重启业务容器。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c5-image-digest-pinning-20260705.md`
+
+后续：
+
+- 将 `/opt/services/*/compose.yml` 纳入受控配置仍建议作为后续治理项。
