@@ -41,6 +41,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -62,6 +63,7 @@ services:
     memswap_limit: 512m
     cpus: "0.50"
     pids_limit: 256
+    logging: *json-log-options
     env_file:
       - /etc/observability/grafana.env
     ports:
@@ -84,6 +86,7 @@ services:
     memswap_limit: 768m
     cpus: "0.75"
     pids_limit: 256
+    logging: *json-log-options
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
@@ -102,6 +105,7 @@ services:
     memswap_limit: 256m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     command:
       - -config.file=/etc/promtail/promtail-config.yml
     volumes:
@@ -121,6 +125,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     command:
       - --path.rootfs=/host
       - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
@@ -138,6 +143,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
@@ -154,6 +160,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     env_file:
       - /etc/observability/postgres-exporter-sub2api.env
     networks:
@@ -168,6 +175,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     env_file:
       - /etc/observability/postgres-exporter-account-vault.env
     networks:
@@ -182,6 +190,7 @@ services:
     memswap_limit: 192m
     cpus: "0.25"
     pids_limit: 128
+    logging: *json-log-options
     env_file:
       - /etc/observability/redis-exporter-sub2api.env
     networks:
