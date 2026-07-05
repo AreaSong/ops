@@ -5,6 +5,10 @@ services:
     image: prom/prometheus:v2.53.0
     container_name: prometheus
     restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=30d
@@ -26,6 +30,10 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -43,6 +51,10 @@ services:
     image: grafana/grafana:11.1.0
     container_name: grafana
     restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 512m
+    cpus: "0.50"
+    pids_limit: 256
     env_file:
       - /etc/observability/grafana.env
     ports:
@@ -61,6 +73,10 @@ services:
     image: grafana/loki:3.1.0
     container_name: loki
     restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
@@ -75,6 +91,10 @@ services:
     image: grafana/promtail:3.1.0
     container_name: promtail
     restart: unless-stopped
+    mem_limit: 192m
+    memswap_limit: 256m
+    cpus: "0.25"
+    pids_limit: 128
     command:
       - -config.file=/etc/promtail/promtail-config.yml
     volumes:
@@ -90,6 +110,10 @@ services:
     image: prom/node-exporter:v1.8.2
     container_name: node-exporter
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     command:
       - --path.rootfs=/host
       - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
@@ -103,6 +127,10 @@ services:
     image: prom/blackbox-exporter:v0.25.0
     container_name: blackbox-exporter
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
@@ -115,6 +143,10 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres-exporter-sub2api
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     env_file:
       - /etc/observability/postgres-exporter-sub2api.env
     networks:
@@ -125,6 +157,10 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres-exporter-account-vault
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     env_file:
       - /etc/observability/postgres-exporter-account-vault.env
     networks:
@@ -135,6 +171,10 @@ services:
     image: oliver006/redis_exporter:v1.62.0
     container_name: redis-exporter-sub2api
     restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    cpus: "0.25"
+    pids_limit: 128
     env_file:
       - /etc/observability/redis-exporter-sub2api.env
     networks:
