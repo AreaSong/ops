@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-05 16:57 UTC
+更新时间：2026-07-05 17:20 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -24,7 +24,7 @@
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
 - 云厂商控制台 D2 已完成用户侧人工核对：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key；该厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已作为厂商能力限制记录；账单/到期治理按用户要求暂缓。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。审计时另发现 `postgres-exporter-sub2api` 对 PostgreSQL 18 存在 `checkpoints_timed` 查询日志噪声，需后续单独治理。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。`postgres-exporter-sub2api` 对 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复。
 
 ## 2. 已核实完成
 
@@ -106,10 +106,7 @@
 3. 应用级监控深化。
    第一批公开、只读关键路径 Blackbox 探针已完成；基于增强 Nginx 访问日志的业务服务级错误率和慢请求基础监控已完成；后续应继续补登录后任务指标、关键接口分位延迟和更细的数据库连接健康。
 
-4. Postgres exporter 兼容性日志噪声。
-   `postgres-exporter-sub2api` 在 PostgreSQL 18 上持续出现 `checkpoints_timed` 字段查询错误。当前不影响本次 sub2api 权限结论，但应单独核对 exporter 版本、collector 配置或升级路径。
-
-5. Cloudflare 治理元数据深化。
+4. Cloudflare 治理元数据深化。
    Origin Certificate 创建人/用途/轮换负责人、180/90/30/7 天提醒策略已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线并预留门户网站；后续可补门户网站接入方案。
 
 ### P3
@@ -318,7 +315,30 @@
 - 先确认 `sub2api` 是否支持独立 migration 命令或关闭启动自动 migration。
 - 确认前不要再次直接强切 `DATABASE_USER=sub2api_app`。
 - 如考虑授予 schema `CREATE`，必须在维护窗口内明确接受运行用户 DDL 风险，并准备回滚。
-- 旁支处理：单独治理 `postgres-exporter-sub2api` 与 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声。
+- 旁支处理：`postgres-exporter-sub2api` 与 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复。
+
+## 2026-07-06 C7 Postgres exporter PostgreSQL 18 兼容性修复
+
+状态：完成。
+
+已完成：
+
+- 将两个 Postgres exporter 从 `v0.15.0` 升级到 `v0.19.1` 并固定 digest。
+- 对 PostgreSQL 18.3 的 `postgres-exporter-sub2api` 设置 `--no-collector.stat_bgwriter` 和 `--collector.stat_checkpointer`。
+- PostgreSQL 15.18 的 `postgres-exporter-account-vault` 保留默认 collector。
+- 只重建两个 exporter 监控辅助容器，未重启业务容器或数据库。
+
+验证：
+
+- `docker compose config` 通过。
+- 两个 Postgres exporter 均 running。
+- `up{job="postgres"}` 两个实例均为 `1`。
+- `pg_exporter_last_scrape_error{job="postgres"}` 两个实例均为 `0`。
+- 新日志不再出现 `checkpoints_timed`、`stat_bgwriter` 或 `collector failed` 错误。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`
 
 ## 2026-07-06 B3 fstab UUID 收敛
 

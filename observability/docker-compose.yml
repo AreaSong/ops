@@ -168,7 +168,7 @@ services:
 
 
   postgres-exporter-sub2api:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f
     container_name: postgres-exporter-sub2api
     restart: unless-stopped
     mem_limit: 128m
@@ -178,6 +178,9 @@ services:
     logging: *json-log-options
     security_opt: *security-options
     cap_drop: *cap-drop-all
+    command:
+      - --no-collector.stat_bgwriter
+      - --collector.stat_checkpointer
     env_file:
       - /etc/observability/postgres-exporter-sub2api.env
     networks:
@@ -185,7 +188,7 @@ services:
       - sub2api
 
   postgres-exporter-account-vault:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f
     container_name: postgres-exporter-account-vault
     restart: unless-stopped
     mem_limit: 128m

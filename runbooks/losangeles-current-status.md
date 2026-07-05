@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-05 16:57 UTC
+更新时间：2026-07-05 17:20 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -312,8 +312,30 @@ Grafana Dashboard：
 - 先确认应用是否支持独立 migration 命令或关闭启动自动 migration。
 - 确认前不要再次直接强切 `DATABASE_USER=sub2api_app`。
 - 不建议为 `sub2api_app` 直接授予 broad `public` schema `CREATE`，除非在维护窗口内明确接受运行用户 DDL 风险。
-- 旁支发现：`postgres-exporter-sub2api` 持续出现 `checkpoints_timed` 字段查询错误，后续应单独处理 PostgreSQL 18 / exporter 兼容性日志噪声。
+- 旁支发现：`postgres-exporter-sub2api` 持续出现 `checkpoints_timed` 字段查询错误；已在 C7 修复 PostgreSQL 18 / exporter collector 兼容性。
 
 留痕：
 
 - `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
+
+## 2026-07-06 C7 Postgres exporter PostgreSQL 18 兼容性修复
+
+状态：完成。
+
+已完成：
+
+- 将两个 Postgres exporter 升级到 `v0.19.1` 并固定 digest。
+- 对 `postgres-exporter-sub2api` 禁用旧 `stat_bgwriter` collector，启用 PostgreSQL 18 对应的 `stat_checkpointer` collector。
+- `account-vault` 仍连接 PostgreSQL 15.18，保留默认 collector。
+- 仅重建两个 exporter 监控辅助容器，未重启业务容器或数据库。
+
+验证：
+
+- 两个 Postgres exporter 均 running。
+- `up{job="postgres"}` 两个实例均为 `1`。
+- `pg_exporter_last_scrape_error{job="postgres"}` 两个实例均为 `0`。
+- 新日志不再出现 `checkpoints_timed` / `stat_bgwriter` 错误。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`

@@ -43,7 +43,7 @@
 | 14 | 安全事件响应 | 文档框架达标 | `standards/09` 有流程；postmortem 模板存在 | 入侵响应桌面演练、云安全告警渠道、取证命令块待落地 |
 | 15 | 服务部署规范 | 部分达标 | 服务主要在 `/opt/services`；restart 策略；健康检查和监控 | 部分容器无 healthcheck；非 root、内存上限、systemd 加固未全覆盖；旧 compose 需清理 |
 | 16 | 容器与编排 | 基本达标 | Compose 路线明确；端口绑定明确；B2 已完成 Docker daemon 日志默认值和 `live-restore`；生产镜像已固定 digest；C3a/C3b/C3c 已确认运行容器均有内存/CPU 边界 | 无镜像扫描；后续新增服务需保持资源限制显式化 |
-| 17 | 数据库与中间件 | 部分达标 | DB/Redis 不公网暴露；备份/exporter 已接入；Postgres 角色权限已只读复核；Redis 密码、maxmemory、AOF 已复核；C2f 已定位 `sub2api` 低权限切换失败点 | Redis 高危命令 / ACL 策略待决策；`sub2api` 运行用户仍为 superuser，需应用侧支持独立 migration 或关闭启动 migration 后再切 runtime 低权限；无 PITR/WAL 归档 |
+| 17 | 数据库与中间件 | 部分达标 | DB/Redis 不公网暴露；备份/exporter 已接入；C7 已修复 PostgreSQL 18 exporter collector 兼容性；Postgres 角色权限已只读复核；Redis 密码、maxmemory、AOF 已复核；C2f 已定位 `sub2api` 低权限切换失败点 | Redis 高危命令 / ACL 策略待决策；`sub2api` 运行用户仍为 superuser，需应用侧支持独立 migration 或关闭启动 migration 后再切 runtime 低权限；无 PITR/WAL 归档 |
 | 18 | 配置管理与 IaC | 部分达标 | `/opt/ops` Git 化；变更提交存在 | Ansible/Terraform 未落地；漂移检测未例行 |
 | 19 | CI/CD 与制品 | 未系统落地 | 业务当前主要手工/Compose 管理 | 制品 tag、部署凭证、制品保留、回滚链路需要后续建设 |
 | 20 | 变更管理与发布 | 基本有框架 | `standards/05`、runbook、提交记录存在 | 还没有正式变更单系统、封网日历、重大变更评审记录 |

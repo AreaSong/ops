@@ -559,6 +559,6 @@
 
 本次已经完成服务器内可见范围的全量只读检查。
 
-云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C1 Redis 密码/maxmemory/持久化/内网隔离复核已完成，C2f sub2api migration/runtime 失败点定位已完成，C3a/C3b/C3c 容器资源限制已完成。仍未完成的是 Redis 高危命令 / ACL 策略、sub2api migration/runtime 拆分实施，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
+云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C1 Redis 密码/maxmemory/持久化/内网隔离复核已完成，C2f sub2api migration/runtime 失败点定位已完成，C3a/C3b/C3c 容器资源限制已完成，C7 Postgres exporter PostgreSQL 18 兼容性修复已完成。仍未完成的是 Redis 高危命令 / ACL 策略、sub2api migration/runtime 拆分实施，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
 
-批次 A、B1、B2、B3、C1、C2f、C3a、C3b、C3c 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。
+批次 A、B1、B2、B3、C1、C2f、C3a、C3b、C3c、C7 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。

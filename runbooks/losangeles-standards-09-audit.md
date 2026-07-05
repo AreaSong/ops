@@ -1,6 +1,6 @@
 # LosAngeles standards/09 验收矩阵
 
-更新时间：2026-07-05 16:57 UTC
+更新时间：2026-07-05 17:20 UTC
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 依据：`standards/09-server-ops-handbook.md` 附录 A P0 汇总  
@@ -16,7 +16,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 - 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
 - 待优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分实施、SSH 来源 IP 限制等待固定出口 IP。sub2api 直接切低权限失败原因已在 C2f 定位。
-- 已完成补齐项：journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
+- 已完成补齐项：journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成，Postgres exporter 对 PostgreSQL 18 的 collector 兼容性已在 C7 修复。
 - 云侧已核对 / 能力限制：云账号 MFA 已开启，当前无 API Key；账单/到期按用户要求暂缓；厂商无安全组/云防火墙、快照、云审计/安全通知能力，已记录为风险接受和补偿控制。
 
 ## 2. 附录 A P0 验收矩阵
@@ -37,7 +37,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 | 12 | 入侵处置流程：隔离保现场、默认重装、凭证全轮换 | 文档达标 | `standards/09`、runbook 模板已覆盖；未做桌面演练 | 年度或季度做一次桌面演练 |
 | 13 | 服务位置可预测；开机自启；健康检查接入监控 | 基本达标 | 运行服务主要在 `/opt/services` 和 `/opt/ops/observability`；systemd/Docker restart 均配置；Prometheus targets 全 up；旧 account-vault compose 已改名为 legacy | 持续保持受控副本和运行配置一致 |
 | 14 | 编排路线明确；容器日志上限；固定 tag；端口显式绑定 | 基本达标 | Docker Compose 路线明确；端口显式绑定；容器日志轮转已显式配置并验证；第三方镜像已固定 digest | 后续镜像升级继续记录版本/digest |
-| 15 | 数据组件内网监听+专属账号；MySQL binlog+慢日志；Redis maxmemory+密码；应用账号无 DDL | 部分达标 | Postgres/Redis 未暴露公网；Postgres/Redis exporter 已接入；Redis `requirepass`、`maxmemory=512MiB`、AOF 已复核；`account-vault` 已使用低权限数据库用户；`sub2api` 当前仍使用 superuser；C2f 确认低权限切换失败点为启动时 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` | Redis 高危命令 / ACL 策略需单独决策；`sub2api` 需应用侧支持独立 migration 或关闭启动自动 migration 后再切 runtime 低权限 |
+| 15 | 数据组件内网监听+专属账号；MySQL binlog+慢日志；Redis maxmemory+密码；应用账号无 DDL | 部分达标 | Postgres/Redis 未暴露公网；Postgres/Redis exporter 已接入；C7 已修复 PostgreSQL 18 exporter collector 兼容性；Redis `requirepass`、`maxmemory=512MiB`、AOF 已复核；`account-vault` 已使用低权限数据库用户；`sub2api` 当前仍使用 superuser；C2f 确认低权限切换失败点为启动时 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` | Redis 高危命令 / ACL 策略需单独决策；`sub2api` 需应用侧支持独立 migration 或关闭启动自动 migration 后再切 runtime 低权限 |
 | 16 | 配置入 Git 有变更记录；TF 远程 state + plan 审阅 | 达标 / 不适用 | `/opt/ops` Git 化；当前未使用 Terraform | 继续保持变更后提交 |
 | 17 | 制品可追溯；CI 凭证专用最小权限 | 部分达标 | Compose 和镜像 digest 已记录；未见 CI 部署链路 | 后续业务 CI/CD 时补制品策略 |
 | 18 | 变更有单五要素；回滚就绪；一次一变更 | 基本达标 | runbook 和当前流程已记录；高风险变更仍需单独确认 | 保持执行纪律 |
