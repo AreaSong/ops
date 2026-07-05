@@ -160,3 +160,21 @@
 后续：
 
 - 将 `/opt/services/*/compose.yml` 纳入受控配置仍建议作为后续治理项。
+
+## 2026-07-05 C6a 容器 no-new-privileges
+
+状态：完成。
+
+已完成：
+
+- 当前业务容器与监控容器已启用 `no-new-privileges:true`。
+- 已滚动重建并验证运行时 `SecurityOpt` 生效。
+- 业务入口、监控 ready、Prometheus targets 均已验证。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c6a-no-new-privileges-20260705.md`
+
+后续：
+
+- C6b 逐服务评估 `cap_drop`、`read_only`、非 root 用户，不建议批量一刀切。

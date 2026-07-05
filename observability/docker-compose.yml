@@ -6,6 +6,9 @@ x-json-log-options: &json-log-options
     max-size: "50m"
     max-file: "5"
 
+x-security-options: &security-options
+  - no-new-privileges:true
+
 services:
   prometheus:
     image: prom/prometheus:v2.53.0@sha256:075b1ba2c4ebb04bc3a6ab86c06ec8d8099f8fda1c96ef6d104d9bb1def1d8bc
@@ -16,6 +19,7 @@ services:
     cpus: "0.75"
     pids_limit: 256
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=30d
@@ -42,6 +46,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -64,6 +69,7 @@ services:
     cpus: "0.50"
     pids_limit: 256
     logging: *json-log-options
+    security_opt: *security-options
     env_file:
       - /etc/observability/grafana.env
     ports:
@@ -87,6 +93,7 @@ services:
     cpus: "0.75"
     pids_limit: 256
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
@@ -106,6 +113,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - -config.file=/etc/promtail/promtail-config.yml
     volumes:
@@ -126,6 +134,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - --path.rootfs=/host
       - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
@@ -144,6 +153,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
@@ -161,6 +171,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     env_file:
       - /etc/observability/postgres-exporter-sub2api.env
     networks:
@@ -176,6 +187,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     env_file:
       - /etc/observability/postgres-exporter-account-vault.env
     networks:
@@ -191,6 +203,7 @@ services:
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
+    security_opt: *security-options
     env_file:
       - /etc/observability/redis-exporter-sub2api.env
     networks:
