@@ -42,7 +42,7 @@
 | 13 | 凭证与密钥 | 基本达标 | secret 文件 root-only；`.gitignore` 覆盖敏感模式；SMTP 密码文件已收紧到 `600 root:root` | gitleaks、凭证台账、轮换记录、RAM role 评估可继续增强 |
 | 14 | 安全事件响应 | 文档框架达标 | `standards/09` 有流程；postmortem 模板存在 | 入侵响应桌面演练、云安全告警渠道、取证命令块待落地 |
 | 15 | 服务部署规范 | 部分达标 | 服务主要在 `/opt/services`；restart 策略；健康检查和监控 | 部分容器无 healthcheck；非 root、内存上限、systemd 加固未全覆盖；旧 compose 需清理 |
-| 16 | 容器与编排 | 部分达标 | Compose 路线明确；端口绑定明确；B2 已完成 Docker daemon 日志默认值和 `live-restore`；生产镜像已固定 digest | 业务容器无内存限制；无镜像扫描 |
+| 16 | 容器与编排 | 基本达标 | Compose 路线明确；端口绑定明确；B2 已完成 Docker daemon 日志默认值和 `live-restore`；生产镜像已固定 digest；C3a/C3b/C3c 已确认运行容器均有内存/CPU 边界 | 无镜像扫描；后续新增服务需保持资源限制显式化 |
 | 17 | 数据库与中间件 | 部分达标 | DB/Redis 不公网暴露；备份/exporter 已接入；Postgres 角色权限已只读复核 | Redis 无密码/maxmemory/高危命令限制；`sub2api` 运行用户仍为 superuser，需应用侧拆分 migration/runtime；无 PITR/WAL 归档 |
 | 18 | 配置管理与 IaC | 部分达标 | `/opt/ops` Git 化；变更提交存在 | Ansible/Terraform 未落地；漂移检测未例行 |
 | 19 | CI/CD 与制品 | 未系统落地 | 业务当前主要手工/Compose 管理 | 制品 tag、部署凭证、制品保留、回滚链路需要后续建设 |
@@ -126,7 +126,6 @@
 
 ### B. 需要维护窗口的主机收敛
 
-- 业务容器内存限制。
 - auditd/HIDS 或不可篡改审计归档。
 
 ### C. 需要应用配合的服务收敛

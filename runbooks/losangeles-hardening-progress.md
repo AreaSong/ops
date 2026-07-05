@@ -308,3 +308,17 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`
+
+## 2026-07-06 C3c 容器资源限制运行态复核
+
+状态：完成。
+
+已完成：
+
+- 只读复核当前 16 个运行容器的内存、swap、CPU 限制和 compose 来源。
+- 确认无 `Memory=0` 的运行容器。
+- 确认业务容器、数据库/Redis 容器和监控栈容器均已有明确资源边界。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`

@@ -254,6 +254,20 @@ Grafana Dashboard：
 
 - `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`
 
+## 2026-07-06 C3c 容器资源限制运行态复核
+
+状态：完成。
+
+已完成：
+
+- 只读复核当前 16 个运行容器的 `HostConfig.Memory`、CPU、swap 和 compose 来源。
+- 确认当前无 `Memory=0` 的运行容器。
+- 确认 C3a 业务容器资源限制和 C3b 监控栈资源限制在运行态均已生效。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
+
 已完成 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`：
 
 - `account-vault` 已确认使用低权限 `account_vault_app`。

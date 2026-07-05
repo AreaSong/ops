@@ -80,5 +80,5 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. 先提交本矩阵和文档口径修正。
 2. 同批做权限收紧和旧 compose 改名这类低风险项。
-3. 批次 A、B1、B2、B3 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis、业务容器内存限制、sub2api migration/runtime 拆分。
+3. 批次 A、B1、B2、B3、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis 策略、sub2api migration/runtime 拆分。
 4. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。
