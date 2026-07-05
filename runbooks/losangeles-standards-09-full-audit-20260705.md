@@ -357,20 +357,29 @@
 - 维护窗口处理，因为改 Redis 认证会影响 sub2api 和 exporter。
 - 同时配置 `maxmemory` 与策略，避免 OOM。
 
-### 3.14 Postgres 角色权限未成功只读核验
+### 3.14 Postgres 角色权限复核结果
 
-当前：
+初查时：
 
 - 通过容器内 `postgres` 系统用户查询失败。
 - 未打印任何数据库密码，也未进入业务数据。
 
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md` 完成只读复核。
+- `account-vault` 已使用低权限 `account_vault_app`，该角色无 superuser / createdb / createrole / replication / bypassrls。
+- `sub2api_app` 低权限角色已存在，且具备现有业务表 DML 权限。
+- `sub2api` 业务容器当前仍使用 superuser `sub2api`。结合 C2b 记录，直接切换到 `sub2api_app` 会因启动 migration / DDL 权限需求失败。
+
 判断：
 
-- 不是确认不达标，而是“未验证”。
+- `account-vault` 达标。
+- `sub2api` 为明确风险接受项，治理需要应用侧配合拆分 migration 与 runtime。
 
 建议：
 
-- 后续用受控方式读取角色权限，不打印密码，只输出角色是否 superuser/createdb/createrole。
+- 不再直接强切 `sub2api` 到低权限用户。
+- 先确认应用是否支持关闭启动 migration，或将 migration 改为独立维护命令：migration 阶段用管理用户，runtime 阶段用低权限用户。
 
 ### 3.15 初查：Nginx 安全头未完整核验，后续已补齐
 
@@ -499,7 +508,7 @@
 2. 为业务容器逐步加内存限制。
 3. Redis 增加密码、maxmemory、禁用高危命令或明确风险接受。
 4. 第三方镜像 pin tag/digest。
-5. Postgres 角色权限只读核验并按需收敛。
+5. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
 
 ### 批次 D：云侧治理
 

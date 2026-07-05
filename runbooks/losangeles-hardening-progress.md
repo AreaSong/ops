@@ -273,3 +273,22 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`
+
+## 2026-07-05 C2e Postgres 角色权限只读复核
+
+状态：完成。
+
+已完成：
+
+- 只读复核 `account-vault-postgres-1` 与 `sub2api-postgres` 角色权限位、数据库 owner、schema owner、app 角色授权摘要。
+- 确认 `account-vault` 运行时使用低权限 `account_vault_app`。
+- 确认 `sub2api_app` 低权限角色存在，且具备 74 张业务表 DML 权限，但当前业务容器仍使用 superuser `sub2api`。
+- 结合 C2b 失败记录，确认 `sub2api` 不能直接强切到纯 DML 用户，原因是启动 migration / DDL 权限需求。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`
+
+后续：
+
+- `sub2api` 数据库权限治理需要应用侧配合拆分 migration 与 runtime；未确认前作为风险接受项。
