@@ -178,3 +178,21 @@
 后续：
 
 - C6b 逐服务评估 `cap_drop`、`read_only`、非 root 用户，不建议批量一刀切。
+
+## 2026-07-05 C6b 监控辅助容器 cap_drop
+
+状态：完成。
+
+已完成：
+
+- `alertmanager`、`blackbox-exporter`、Postgres Exporter、Redis Exporter 已启用 `cap_drop: [ALL]`。
+- 已滚动重建并验证运行时 `CapDrop=ALL`。
+- Alertmanager ready 与 Prometheus targets 均已验证。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c6b-cap-drop-monitoring-helpers-20260705.md`
+
+后续：
+
+- `promtail`、`node-exporter`、Prometheus、Grafana、Loki 与业务容器需逐服务继续评估，不建议批量一刀切。

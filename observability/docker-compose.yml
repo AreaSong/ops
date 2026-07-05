@@ -9,6 +9,9 @@ x-json-log-options: &json-log-options
 x-security-options: &security-options
   - no-new-privileges:true
 
+x-cap-drop-all: &cap-drop-all
+  - ALL
+
 services:
   prometheus:
     image: prom/prometheus:v2.53.0@sha256:075b1ba2c4ebb04bc3a6ab86c06ec8d8099f8fda1c96ef6d104d9bb1def1d8bc
@@ -47,6 +50,7 @@ services:
     pids_limit: 128
     logging: *json-log-options
     security_opt: *security-options
+    cap_drop: *cap-drop-all
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -154,6 +158,7 @@ services:
     pids_limit: 128
     logging: *json-log-options
     security_opt: *security-options
+    cap_drop: *cap-drop-all
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
@@ -172,6 +177,7 @@ services:
     pids_limit: 128
     logging: *json-log-options
     security_opt: *security-options
+    cap_drop: *cap-drop-all
     env_file:
       - /etc/observability/postgres-exporter-sub2api.env
     networks:
@@ -188,6 +194,7 @@ services:
     pids_limit: 128
     logging: *json-log-options
     security_opt: *security-options
+    cap_drop: *cap-drop-all
     env_file:
       - /etc/observability/postgres-exporter-account-vault.env
     networks:
@@ -204,6 +211,7 @@ services:
     pids_limit: 128
     logging: *json-log-options
     security_opt: *security-options
+    cap_drop: *cap-drop-all
     env_file:
       - /etc/observability/redis-exporter-sub2api.env
     networks:
