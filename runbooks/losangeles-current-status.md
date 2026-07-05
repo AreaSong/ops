@@ -115,6 +115,7 @@ Grafana Dashboard：
 - 本机备份与 R2 备份新鲜度
 - HTTPS 探测与公网证书临期
 - Cloudflare Origin Certificate 本地证书临期
+- Nginx 源站安全响应头与 `server_tokens off`
 - Postgres / Redis 基础指标
 - SSH / Fail2ban / UFW / Nginx 安全日志指标
 - Fail2ban 封禁明细与 IP 归属增强
@@ -209,7 +210,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口优化：主机时区 UTC、Docker 日志上限、SSH X11Forwarding、Redis maxmemory、镜像固定 tag/digest、fstab UUID。
+- 维护窗口优化：Redis maxmemory / 认证策略、fstab UUID、journald/logrotate 留存、sysctl 基线、Postgres 角色权限复核。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
@@ -221,3 +222,14 @@ Grafana Dashboard：
 已更新 `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`，将 Cloudflare 已完成项、服务器侧已确认事实、云厂商控制台确认结果、厂商能力限制和补偿控制分开管理。
 
 已确认：控制台实例名为 `LosAngeles`；云主账号 MFA 已开启；绑定邮箱和手机号可用；主账号未共用；当前无 API Key。云厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力。账单/到期治理按用户要求暂缓。
+
+## 2026-07-05 A1 Nginx 安全响应头
+
+状态：完成。
+
+已完成 `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`：
+
+- 全局启用 `server_tokens off`。
+- 5 个 HTTPS 入口完成源站安全响应头基线核对与补齐。
+- 本次未加全局 CSP，避免误伤应用资源；CSP 后续按应用单独治理。
+- `nginx -t` 通过，Nginx reload 成功，公网入口快速检查通过。

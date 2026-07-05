@@ -129,10 +129,14 @@
 
 ### 3.1 主机时区不是 UTC
 
-当前：
+初查时：
 
 - Time zone: `Europe/London`
 - NTP synchronized: yes
+
+后续状态：
+
+- 2026-07-05 复核时区已为 `UTC`，NTP synchronized。
 
 标准：
 
@@ -140,11 +144,11 @@
 
 判断：
 
-- 不是安全事故，但属于标准化偏离。
+- 初查偏离已完成收敛。
 
 建议：
 
-- 低风险维护变更：`timedatectl set-timezone UTC`。
+- 持续保持 UTC，不再作为待办项。
 
 ### 3.2 `/etc/fstab` 使用 LABEL，不是 UUID
 
@@ -183,10 +187,15 @@
 
 ### 3.4 Docker daemon 缺少全局日志上限
 
-当前：
+初查时：
 
 - `/etc/docker/daemon.json` 不存在。
 - 容器 `logType=json-file`，`logConfig={}`。
+
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md` 完成业务与监控容器 Compose 显式日志轮转。
+- 当前运行容器已验证为 `max-size=50m`、`max-file=5`。
 
 风险：
 
@@ -194,16 +203,20 @@
 
 建议：
 
-- 维护窗口配置 Docker `log-opts`，例如 `max-size=50m`、`max-file=5`。
-- 需要重启 Docker，会短暂影响所有容器。
+- 当前按 Compose 显式配置收敛；后续若要做 daemon 全局默认值，需另设维护窗口。
 
-### 3.5 部分容器镜像使用 `latest`
+### 3.5 初查：部分容器镜像使用 `latest`，后续已固定 digest
 
-当前运行中：
+初查时运行中：
 
 - `weishaw/sub2api:latest`
 - `twwch/jadeai:latest`
 - 本地 build 镜像 `account-vault-web:latest`
+
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-c5-image-digest-pinning-20260705.md` 固定当前生产镜像 digest。
+- 当前生产 compose 已去除第三方镜像 `latest` 引用。
 
 风险：
 
@@ -211,8 +224,7 @@
 
 建议：
 
-- 对第三方镜像 pin 到 digest 或稳定 tag。
-- 对本地 build 镜像建立明确版本/tag 策略。
+- 后续升级镜像时继续走 digest / 明确版本记录。
 
 ### 3.6 多数容器没有内存限制
 
@@ -246,17 +258,21 @@
 
 ### 3.8 SSH X11Forwarding 仍开启
 
-当前：
+初查时：
 
 - `x11forwarding yes`
 
+后续状态：
+
+- 2026-07-05 复核 `sshd -T` 显示 `x11forwarding no`。
+
 判断：
 
-- 生产服务器一般不需要 X11 转发。
+- 已完成收敛。
 
 建议：
 
-- 低风险收敛：新增 hardening conf 设置 `X11Forwarding no`，`sshd -t` 后 reload，并保留当前会话验证新连接。
+- 持续保持 `X11Forwarding no`。
 
 ### 3.9 SSH 来源 IP 未限制
 
@@ -356,45 +372,62 @@
 
 - 后续用受控方式读取角色权限，不打印密码，只输出角色是否 superuser/createdb/createrole。
 
-### 3.15 Nginx 安全头未完整核验/可能不足
+### 3.15 初查：Nginx 安全头未完整核验，后续已补齐
 
-当前：
+初查时：
 
 - 审计只抓到 server/listen/cert/proxy header 等行。
 - 未发现明显统一安全头基线输出。
 
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md` 完成源站安全响应头核对与补齐。
+- 全局启用 `server_tokens off`。
+- `resume`、`sorryiossearch`、`log` 已补齐 HSTS / nosniff / frame / referrer。
+- `cpa` 已补 HSTS，保留应用侧 CSP / nosniff / frame / referrer。
+- `monitor` 已补 HSTS / referrer，保留 Grafana nosniff / frame。
+
 判断：
 
-- 需要对 Nginx 站点逐项确认 `HSTS/nosniff/frame/referrer/server_tokens`。
+- 已完成。
 
 建议：
 
-- 先只读 `curl -I` 检查公网响应头，再决定是否补。
+- 后续 CSP 继续按应用单独治理，不做全局 CSP。
 
 ### 3.16 `/opt/services/account-vault/app/docker-compose.yml` 是旧 compose
 
-当前：
+初查时：
 
 - 当前实际 compose 是 `/opt/services/account-vault/compose.yml`。
 - 旧文件 `/opt/services/account-vault/app/docker-compose.yml` 仍存在。
 
+后续状态：
+
+- 2026-07-05 复核旧文件已改名为 `/opt/services/account-vault/app/docker-compose.legacy.yml`。
+- 运行容器 compose label 指向 `/opt/services/account-vault/compose.yml`。
+
 风险：
 
-- 后续人员可能误在 app 子目录执行旧 compose。
+- 已降低误操作风险。
 
 建议：
 
-- 改名为 `docker-compose.legacy.yml` 或迁入归档目录，并写说明。
+- 保持 legacy 命名；后续如彻底不需要，再归档删除。
 
 ### 3.17 SMTP 密码文件权限可再收紧
 
-当前：
+初查时：
 
 - `/etc/observability/alertmanager-smtp-password mode=640 owner=root:nogroup`
 
+后续状态：
+
+- 2026-07-05 复核已为 `600 root:root`。
+
 建议：
 
-- 收紧为 `600 root:root`。
+- 已完成。
 
 ### 3.18 sysctl 基线不是 `/etc/sysctl.d/99-ops-baseline.conf`
 
@@ -445,11 +478,13 @@
 
 ### 批次 A：低风险，不重启业务
 
-1. 收紧 SMTP 密码文件权限到 `600 root:root`。
-2. 旧 account-vault compose 改名为 legacy，避免误操作。
-3. 主机时区改 UTC。
-4. 关闭 SSH X11Forwarding，`sshd -t` 后 reload 并验证新连接。
-5. 补充 Nginx 响应头只读检查结果到报告。
+状态：已完成或已复核完成。
+
+1. SMTP 密码文件权限已为 `600 root:root`。
+2. 旧 account-vault compose 已改名为 legacy，运行容器未引用旧文件。
+3. 主机时区已为 UTC。
+4. SSH X11Forwarding 已为 `no`。
+5. Nginx 响应头已完成源站核对与补齐。
 
 ### 批次 B：低到中风险，需要短维护窗口
 
@@ -488,4 +523,4 @@
 
 云侧控制台确认已在 D2 完成并入台账。仍未完成的是“需要业务凭据/数据库密码配合的深层权限核验”和用户本轮暂缓的账单/到期治理，这些不能从主机内无凭据地可靠完成，已在本报告列为后续项。
 
-下一步应先由用户确认是否按批次 A 开始低风险优化；在此之前不做运行配置变更。
+批次 A 已完成。下一步应从批次 B/C 中挑选需要维护窗口或业务配合的项目，不做一刀切运行配置变更。

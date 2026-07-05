@@ -256,3 +256,20 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`
+
+## 2026-07-05 A1 Nginx 安全响应头
+
+状态：完成。
+
+已完成：
+
+- 全局启用 `server_tokens off`，源站不再暴露 Nginx 版本号。
+- 新增 Nginx HSTS 与基础安全头 snippets。
+- 对 `resume.areasong.top`、`sorryiossearch.areasong.top`、`log.areasong.top` 补齐 HSTS / nosniff / frame / referrer。
+- 对 `cpa.areasong.top` 补 HSTS，保留应用侧现有 CSP / nosniff / frame / referrer。
+- 对 `monitor.areasong.top` 补 HSTS / referrer，保留 Grafana 现有 nosniff / frame。
+- `nginx -t` 通过，Nginx reload 成功，5 个 HTTPS 入口源站 header 与公网状态已验证。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`
