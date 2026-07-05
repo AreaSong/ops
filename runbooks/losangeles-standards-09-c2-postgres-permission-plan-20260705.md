@@ -7,13 +7,21 @@
 
 ## 1. 审计结论摘要
 
-- sub2api-postgres: login_roles=none
-- sub2api-postgres: high_privilege_login_roles=none
-- sub2api-postgres: audit_file=/tmp/losangeles-09-c2-postgres-audit-20260705T040201Z/sub2api-postgres-audit.txt
-- account-vault-postgres-1: login_roles=none
-- account-vault-postgres-1: high_privilege_login_roles=none
-- account-vault-postgres-1: audit_file=/tmp/losangeles-09-c2-postgres-audit-20260705T040201Z/account-vault-postgres-1-audit.txt
-- app_env_audit=/tmp/losangeles-09-c2-postgres-audit-20260705T040201Z/app-env-audit.txt
+- sub2api-postgres: db_user=sub2api
+- sub2api-postgres: db_name=sub2api
+- sub2api-postgres: login_roles=sub2api
+- sub2api-postgres: high_privilege_login_roles=sub2api
+- sub2api-postgres: table_count=74
+- sub2api-postgres: sequence_count=60
+- sub2api-postgres: audit_file=/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/sub2api-postgres-audit.txt
+- account-vault-postgres-1: db_user=account_user
+- account-vault-postgres-1: db_name=accountvault
+- account-vault-postgres-1: login_roles=account_user
+- account-vault-postgres-1: high_privilege_login_roles=account_user
+- account-vault-postgres-1: table_count=6
+- account-vault-postgres-1: sequence_count=0
+- account-vault-postgres-1: audit_file=/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/account-vault-postgres-1-audit.txt
+- app_env_audit=/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/app-env-audit.txt
 
 ## 2. 已检查内容
 
@@ -29,9 +37,9 @@
 
 原始检查结果留存在服务器临时目录：
 
-- `/tmp/losangeles-09-c2-postgres-audit-<timestamp>/sub2api-postgres-audit.txt`
-- `/tmp/losangeles-09-c2-postgres-audit-<timestamp>/account-vault-postgres-1-audit.txt`
-- `/tmp/losangeles-09-c2-postgres-audit-<timestamp>/app-env-audit.txt`
+- `/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/sub2api-postgres-audit.txt`
+- `/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/account-vault-postgres-1-audit.txt`
+- `/tmp/losangeles-09-c2-postgres-audit-fix-20260705T040606Z/app-env-audit.txt`
 
 ## 3. 当前判断
 
@@ -46,7 +54,7 @@
 
 ### 3.2 不能直接降权现有用户
 
-不建议直接把当前 `POSTGRES_USER` 降权，原因：
+不建议直接把当前初始化用户降权，原因：
 
 - 容器初始化、备份、恢复、迁移脚本可能依赖当前高权限用户。
 - 应用可能在启动时执行自动迁移或初始化逻辑。
