@@ -15,7 +15,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 - 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
-- 待优化：Redis maxmemory / 认证策略、fstab UUID、journald/logrotate 留存、sysctl 基线、sub2api migration/runtime 拆分、SSH 来源 IP 限制等待固定出口 IP。
+- 待优化：Redis maxmemory / 认证策略、fstab UUID、sub2api migration/runtime 拆分、SSH 来源 IP 限制等待固定出口 IP；journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成。
 - 云侧已核对 / 能力限制：云账号 MFA 已开启，当前无 API Key；账单/到期按用户要求暂缓；厂商无安全组/云防火墙、快照、云审计/安全通知能力，已记录为风险接受和补偿控制。
 
 ## 2. 附录 A P0 验收矩阵
@@ -41,7 +41,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 | 17 | 制品可追溯；CI 凭证专用最小权限 | 部分达标 | Compose 和镜像 digest 已记录；未见 CI 部署链路 | 后续业务 CI/CD 时补制品策略 |
 | 18 | 变更有单五要素；回滚就绪；一次一变更 | 基本达标 | runbook 和当前流程已记录；高风险变更仍需单独确认 | 保持执行纪律 |
 | 19 | 备份任务失败有告警；脚本入 Git | 达标 | 备份脚本在 `/opt/ops/scripts/backup`；本机/R2 指标和告警已接入 | 持续观察告警噪声 |
-| 20 | 三处日志上限；审计日志留存 >=180 天 | 部分达标 | logrotate/system timers 存在；容器日志轮转已按 compose 显式配置；Loki/Promtail 已接入基础日志；登录/审计类本地留存仍可增强 | 后续补 journald/logrotate 长期留存或 R2 归档 |
+| 20 | 三处日志上限；审计日志留存 >=180 天 | 基本达标 | journald 已持久化并限制 `SystemMaxUse=1G`；rsyslog/fail2ban/ufw 已调到 26 周保留；Docker daemon 与 compose 均有日志轮转上限；Loki/Promtail 已接入基础日志 | 若后续需要不可篡改审计或跨机长期归档，可补 R2/对象锁类归档 |
 | 21 | 全机 node_exporter+基础告警集；探活+证书监控；告警可达值班人 | 达标 | Prometheus targets 全 up；Alertmanager QQ 邮箱已接入；无 firing alerts | 后续按噪声调优 |
 | 22 | 每次 OOM 有归因 | 未触发 / 待流程化 | 当前未见本次 OOM 事件核查；标准属于事件发生后的纪律 | OOM 发生时按 runbook 复盘 |
 | 23 | 核心服务无单点或有明确决策记录；主从有监控 | 风险接受 | 当前是单机生产；恢复和异地备份已补齐，但 HA 未做 | 后续有预算/业务要求时做 HA |
@@ -66,8 +66,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. Redis `maxmemory`、认证和淘汰策略：需要根据当前内存和业务语义决定，修改后需重启 Redis 容器并同步 sub2api/exporter。
 2. `fstab` 从 LABEL 改 UUID：风险低但属于启动链路，需维护窗口和 `mount -a` 验证。
-3. journald/logrotate 长期留存和 sysctl 基线整理。
-4. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
+3. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
 
 ### 云侧已核对与限制
 
@@ -81,5 +80,5 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. 先提交本矩阵和文档口径修正。
 2. 同批做权限收紧和旧 compose 改名这类低风险项。
-3. 批次 A 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis、fstab、日志留存、sysctl、sub2api migration/runtime 拆分。
+3. 批次 A、B1、B2 已完成；Postgres 角色权限只读复核已完成。后续进入需要维护窗口或业务配合的 Redis、fstab、业务容器内存限制、sub2api migration/runtime 拆分。
 4. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。

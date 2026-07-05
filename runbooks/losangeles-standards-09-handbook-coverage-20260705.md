@@ -17,7 +17,7 @@
 当前结论：
 
 - 主机内技术项：已完成较完整检查。
-- 云侧/Cloudflare 控制台项：部分已由台账记录，仍有账号、计费、安全组、审计、快照、标签待确认。
+- 云侧/Cloudflare 控制台项：D2 已完成人工核对；云主账号 MFA、无 API Key、无安全组/云防火墙/网络规则、无快照、无云审计/安全通知均已记录；账单/到期按用户要求暂缓，云标签和组织节律后续治理。
 - 组织流程项：多数已有文档框架，但值班、离职回收、故障演练、月度/季度例行节律尚未形成真实执行记录。
 - 架构增强项：HA、多 AZ、独立数据盘、CI/CD、IaC、APM、漏洞扫描、对象锁/PITR 等尚未完整落地。
 
@@ -29,26 +29,26 @@
 |---|---|---|---|---|
 | 1 | 文档定位与 AI 协作 | 基本达标 | `standards/09` 已有 1.4；`/opt/ops` root-only 流程已记录 | 后续继续按“先检查、再确认、再变更”执行 |
 | 2 | 生命周期总览 | 部分达标 | 已处于日常运行阶段；有 runbook、台账、备份、监控 | 退役、迁移、故障复盘、例行日历仍需真实执行记录 |
-| 3 | 硬件与实例层 | 部分验证 | KVM 云主机、provider/region/owner 已入台账 | 云计费、抢占式、到期告警、维护事件、云标签、快照策略待控制台确认；无 HA |
-| 4 | 操作系统基线 | 部分达标 | Ubuntu 24.04、NTP 同步、unattended-upgrades、无 reboot-required | 时区非 UTC；无统一 `99-ops-baseline.conf`；journald/core dump 上限未标准化 |
-| 5 | 存储与文件系统 | 部分达标 | 磁盘和 inode 健康；备份存在 | 无独立数据盘；`fstab` 用 LABEL 非 UUID；云快照策略待确认 |
+| 3 | 硬件与实例层 | 部分验证 | KVM 云主机、provider/region/owner 已入台账；D2 已完成控制台人工核对 | 账单/到期治理按用户要求暂缓；厂商无快照能力；无 HA |
+| 4 | 操作系统基线 | 基本达标 | Ubuntu 24.04、UTC/NTP 同步、unattended-upgrades、无 reboot-required；B1 已完成 journald 持久化/容量上限与 `99-ops-baseline.conf` | core dump 上限、auditd/HIDS 可作为后续增强 |
+| 5 | 存储与文件系统 | 部分达标 | 磁盘和 inode 健康；备份存在；D2 已确认厂商当前无快照能力 | 无独立数据盘；`fstab` 用 LABEL 非 UUID；以本机备份、R2 和恢复演练补偿无云快照 |
 | 6 | 软件源与依赖 | 基本达标 | Ubuntu/Docker 源独立，Docker GPG keyring 存在 | 关键组件版本锁定、季度源审计、运行时版本台账需补 |
-| 7 | 资产与标识 | 部分达标 | `servers.yaml` 补齐 provider/region/owner；服务和端口台账存在 | 主机名不规范；到期/计费/欠费告警和云标签待确认 |
-| 8 | 网络架构 | 部分达标 | 公网端口收敛；主机级无私网 IP；IPv6 仅 link-local | VPC/安全组/拓扑图/内网 DNS/NAT/EIP 清理需云侧确认 |
-| 9 | 账号与访问 | 部分达标 | SSH 禁 root/password；`as` sudo；authorized_keys 指纹已查 | AllowGroups 未配置；X11Forwarding 开启；云账号 MFA/AK/auditd/逃生通道待确认 |
+| 7 | 资产与标识 | 部分达标 | `servers.yaml` 补齐 provider/region/owner；服务和端口台账存在；控制台实例名为 `LosAngeles` | 主机名不规范；到期/计费/欠费告警按用户要求暂缓；云标签后续可补 |
+| 8 | 网络架构 | 部分达标 | 公网端口收敛；主机级无私网 IP；IPv6 仅 link-local；D2 已确认厂商无安全组/云防火墙/网络规则能力 | 以 UFW、Fail2ban、端口收敛和监控告警补偿；拓扑图可后续补 |
+| 9 | 账号与访问 | 基本达标 | SSH 禁 root/password；`as` sudo；authorized_keys 指纹已查；X11Forwarding 已关闭；云账号 MFA 已开启且当前无 API Key | AllowGroups、auditd、逃生通道可作为后续增强 |
 | 10 | 网络暴露面 | 基本达标 | UFW active；仅 22/80/443；DB/cache/exporter 不公网暴露 | SSH 来源未限制，因无固定出口 IP 风险接受；月度端口审计需例行化 |
-| 11 | 入口层安全 | 部分达标 | Nginx `-t` 通过；TLS 1.2/1.3；Cloudflare/证书台账存在 | 安全头、回源鉴权、真实 IP 链、WAF/Rate Limit、源站隐藏需继续核查/配置 |
+| 11 | 入口层安全 | 基本达标 | Nginx `-t` 通过；TLS 1.2/1.3；Cloudflare/证书台账存在；A1 已完成源站安全响应头基线 | 回源鉴权、真实 IP 链、WAF/Rate Limit、源站隐藏仍可继续增强 |
 | 12 | 深度加固 | 部分达标 | AppArmor loaded；Docker 默认 profile enforce | auditd 未安装；HIDS/AIDE/lynis/OpenSCAP 未落地 |
-| 13 | 凭证与密钥 | 部分达标 | secret 文件 root-only；`.gitignore` 覆盖敏感模式 | SMTP 文件可再收紧；gitleaks、凭证台账、轮换记录、RAM role 评估未完整 |
+| 13 | 凭证与密钥 | 基本达标 | secret 文件 root-only；`.gitignore` 覆盖敏感模式；SMTP 密码文件已收紧到 `600 root:root` | gitleaks、凭证台账、轮换记录、RAM role 评估可继续增强 |
 | 14 | 安全事件响应 | 文档框架达标 | `standards/09` 有流程；postmortem 模板存在 | 入侵响应桌面演练、云安全告警渠道、取证命令块待落地 |
 | 15 | 服务部署规范 | 部分达标 | 服务主要在 `/opt/services`；restart 策略；健康检查和监控 | 部分容器无 healthcheck；非 root、内存上限、systemd 加固未全覆盖；旧 compose 需清理 |
-| 16 | 容器与编排 | 部分达标 | Compose 路线明确；端口绑定明确 | Docker daemon 无日志上限；部分镜像 `latest`；容器无内存限制；无镜像扫描 |
-| 17 | 数据库与中间件 | 部分达标 | DB/Redis 不公网暴露；备份/exporter 已接入 | Redis 无密码/maxmemory/高危命令限制；Postgres 角色权限未完成验证；无 PITR/WAL 归档 |
+| 16 | 容器与编排 | 部分达标 | Compose 路线明确；端口绑定明确；B2 已完成 Docker daemon 日志默认值和 `live-restore`；生产镜像已固定 digest | 业务容器无内存限制；无镜像扫描 |
+| 17 | 数据库与中间件 | 部分达标 | DB/Redis 不公网暴露；备份/exporter 已接入；Postgres 角色权限已只读复核 | Redis 无密码/maxmemory/高危命令限制；`sub2api` 运行用户仍为 superuser，需应用侧拆分 migration/runtime；无 PITR/WAL 归档 |
 | 18 | 配置管理与 IaC | 部分达标 | `/opt/ops` Git 化；变更提交存在 | Ansible/Terraform 未落地；漂移检测未例行 |
 | 19 | CI/CD 与制品 | 未系统落地 | 业务当前主要手工/Compose 管理 | 制品 tag、部署凭证、制品保留、回滚链路需要后续建设 |
 | 20 | 变更管理与发布 | 基本有框架 | `standards/05`、runbook、提交记录存在 | 还没有正式变更单系统、封网日历、重大变更评审记录 |
 | 21 | 定时任务治理 | 部分达标 | root crontab 有备份/指标任务并有日志重定向 | 新任务未统一 systemd timer；缺 flock；定时任务台账与季度核对未例行 |
-| 22 | 日志管理 | 部分达标 | logrotate 存在；Loki/Promtail 已接入 | Docker 日志无上限；journald 未限额；审计类日志本地留存不足 180 天 |
+| 22 | 日志管理 | 基本达标 | B1 已完成 journald 上限、rsyslog/fail2ban/ufw 26 周保留；B2/C4 已完成 Docker daemon 与容器日志轮转；Loki/Promtail 已接入 | 不可篡改审计、跨机长期归档可继续增强 |
 | 23 | 监控与告警 | 基本达标 | Targets 全 up；无 firing alerts；邮件告警已接入；Dashboard 完整 | 电话级通知、月度告警回顾、异地外部探测仍可增强 |
 | 24 | 链路追踪与 APM | 未落地 / 暂不急 | 当前业务规模较小 | 请求 ID、OpenTelemetry、APM 采样策略后续按业务复杂度建设 |
 | 25 | 性能调优与容量规划 | 部分达标 | 磁盘/内存/CPU 监控；BBR 已存在 | nofile 全局基线、OOMScoreAdjust、容量 review、压测基线未系统化 |
@@ -80,20 +80,14 @@
 
 ## 5. 真正还没检查完的内容
 
-这部分不是我遗漏命令，而是必须依赖控制台或业务决策：
+这部分不是我遗漏命令，而是必须依赖控制台或业务决策；其中 D2 已完成一轮人工核对：
 
 ### 云厂商控制台
 
-- 云主账号 MFA。
-- 主账号是否日常使用。
-- 是否存在主账号 AK。
-- 安全组实际规则。
-- 实例是否抢占式/竞价。
-- 账单、余额、到期、欠费告警。
-- 实例维护事件通知。
-- 云审计日志。
-- 云快照策略。
-- 云标签。
+- 已确认：云主账号 MFA 已开启，账号邮箱/手机号可用，主账号未共用，当前无 API Key。
+- 已确认厂商能力限制：无安全组/云防火墙/网络规则、无快照、无云审计与安全通知能力。
+- 已暂缓：账单、余额、到期、欠费、实例维护事件通知。
+- 后续可补：实例是否抢占式/竞价、云标签。
 
 ### Cloudflare 控制台
 
@@ -132,23 +126,20 @@
 
 ### B. 需要维护窗口的主机收敛
 
-- Docker daemon 日志上限。
-- journald 上限。
-- 审计类日志 180 天留存策略。
 - fstab UUID。
-- 统一 sysctl baseline。
+- 业务容器内存限制。
+- auditd/HIDS 或不可篡改审计归档。
 
 ### C. 需要应用配合的服务收敛
 
 - Redis 密码/maxmemory/高危命令。
-- Postgres 角色权限核验。
-- 容器内存限制。
-- 镜像 tag/digest 固定。
+- sub2api migration/runtime 拆分后再切换低权限运行用户。
+- 登录后任务指标、关键接口分位延迟等应用指标。
 - CI/CD 制品与回滚链路。
 
 ### D. 云侧与组织治理
 
-- 云账号、安全组、计费、审计、快照、标签。
+- 账单/到期暂缓项、云标签和成本治理节律。
 - Cloudflare MFA、续费、WAF/Rate Limit。
 - 值班、离职回收、故障演练、月度/季度/年度运维日历。
 
@@ -158,8 +149,8 @@
 
 - `standards/09` 的主机内技术项已经完成全量只读检查。
 - `standards/09` 的 31 章和 4 附录已经完成整本文档级覆盖检查。
-- 尚未完成的是控制台核验、组织流程落地、业务决策项和后续优化执行。
+- 云侧控制台核验已完成；尚未完成的是组织流程落地、业务决策项和剩余维护窗口优化执行。
 
 下一步不应直接说“全部达标”，而应说：
 
-> standards/09 已完成整本文档覆盖检查；LosAngeles 已达生产基础可用，企业级严格标准仍有云侧、流程、架构和维护窗口优化项待推进。
+> standards/09 已完成整本文档覆盖检查；LosAngeles 已达生产基础可用，企业级严格标准仍有流程、架构、账单暂缓项和剩余维护窗口优化项待推进。

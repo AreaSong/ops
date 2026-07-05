@@ -185,7 +185,7 @@
 
 - 后续数据增长或预算允许时规划独立 `/data`。
 
-### 3.4 Docker daemon 缺少全局日志上限
+### 3.4 Docker daemon 日志基线已补齐
 
 初查时：
 
@@ -194,16 +194,17 @@
 
 后续状态：
 
+- 已通过 `runbooks/losangeles-standards-09-batch-b2-20260705.md` 配置 `/etc/docker/daemon.json`：`live-restore=true`、`log-driver=json-file`、`max-size=50m`、`max-file=5`。
 - 已通过 `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md` 完成业务与监控容器 Compose 显式日志轮转。
 - 当前运行容器已验证为 `max-size=50m`、`max-file=5`。
 
-风险：
+判断：
 
-- 容器 stdout/stderr 日志理论上可无限增长，占满磁盘。
+- 初查风险已收敛，Docker daemon 默认日志策略与现有容器显式日志轮转均已落地。
 
 建议：
 
-- 当前按 Compose 显式配置收敛；后续若要做 daemon 全局默认值，需另设维护窗口。
+- 后续新增 compose 时继续显式写入 `logging` 策略，避免依赖隐式默认值。
 
 ### 3.5 初查：部分容器镜像使用 `latest`，后续已固定 digest
 
@@ -307,36 +308,47 @@
 
 - P1 增强项：安装 auditd，至少审计 root execve 和关键文件。
 
-### 3.11 journald 未显式设置 SystemMaxUse
+### 3.11 journald 持久化与容量上限已配置
 
-当前：
+初查时：
 
 - 未发现 `SystemMaxUse`。
 - journal 当前占用约 1.4G。
 
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/systemd/journald.conf.d/90-ops-limits.conf`。
+- 当前配置为 `Storage=persistent`、`SystemMaxUse=1G`、`RuntimeMaxUse=256M`。
+- 已重启 `systemd-journald` 生效。
+
 判断：
 
-- 不是事故，但严格日志上限标准下不完整。
+- 初查缺口已关闭，journald 具备持久化和容量上限。
 
 建议：
 
-- 配置 journald 上限，例如 `SystemMaxUse=1G` 或按磁盘比例决策。
+- 后续按磁盘容量和告警噪声观察是否需要微调上限。
 
-### 3.12 登录/审计类日志留存不足 180 天
+### 3.12 登录/审计类日志留存已延长
 
-当前：
+初查时：
 
 - `rsyslog` 默认 `rotate 4 weekly`。
 - `fail2ban` 默认 `rotate 4 weekly`。
 - `auth.log` 这类登录日志按当前配置约 4 周。
 
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 将 `/etc/logrotate.d/rsyslog`、`/etc/logrotate.d/fail2ban`、`/etc/logrotate.d/ufw` 调整为 26 周保留。
+- `logrotate -d /etc/logrotate.conf` 已通过。
+
 判断：
 
-- 不满足 `standards/09` 对审计类日志 180 天留存的严格要求。
+- 本机登录、安全和 UFW 类日志已达到约半年保留，满足当前单机场景的基础审计追溯要求。
 
 建议：
 
-- 增加本地留存或通过 Loki/R2 做长期归档。
+- 如后续要求不可篡改或跨机长期审计，可再接 R2/对象锁类归档。
 
 ### 3.13 Redis 内部实例未设置密码和 maxmemory
 
@@ -438,20 +450,26 @@
 
 - 已完成。
 
-### 3.18 sysctl 基线不是 `/etc/sysctl.d/99-ops-baseline.conf`
+### 3.18 sysctl 基线已整理到 `/etc/sysctl.d/99-ops-baseline.conf`
 
-当前：
+初查时：
 
 - 存在 Ubuntu 默认 sysctl、`99-bbr-x-ui.conf`、cloud image IPv6 配置。
 - 未见统一的 `/etc/sysctl.d/99-ops-baseline.conf`。
 
+后续状态：
+
+- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/sysctl.d/99-ops-baseline.conf`。
+- 基线覆盖 TCP syncookies、rp_filter、Docker 需要的 ip_forward、BBR/fq、kptr_restrict、ptrace_scope、unprivileged_bpf 等。
+- 已执行 `sysctl --system`。
+
 判断：
 
-- 当前并非缺少所有安全 sysctl，但标准化集中管理不足。
+- 初查缺口已关闭，基础内核参数已有 ops 可追踪基线。
 
 建议：
 
-- 后续整理为 ops baseline 文件，避免散落。
+- 后续只在明确业务影响后再增加更激进的内核参数。
 
 ## 4. 云侧确认结果与能力限制
 
@@ -497,18 +515,17 @@
 
 ### 批次 B：低到中风险，需要短维护窗口
 
-1. 配置 journald 上限。
-2. 调整 logrotate，使 auth/fail2ban/ufw/nginx 关键日志满足更长留存或明确转存 Loki/R2。
-3. 建立 `/etc/sysctl.d/99-ops-baseline.conf`，整理当前散落项。
-4. `fstab` 从 LABEL 改 UUID，并验证 `mount -a`。
+状态：B1/B2 已完成；剩余启动链路项需单独维护窗口。
+
+1. journald 上限、logrotate 26 周保留、`99-ops-baseline.conf` 已在 B1 完成。
+2. Docker daemon `log-opts` 与 `live-restore` 已在 B2 完成。
+3. `fstab` 从 LABEL 改 UUID，并验证 `mount -a`，仍需单独维护窗口。
 
 ### 批次 C：会影响容器，需要维护窗口
 
-1. Docker daemon 配置 `log-opts`，重启 Docker。
-2. 为业务容器逐步加内存限制。
-3. Redis 增加密码、maxmemory、禁用高危命令或明确风险接受。
-4. 第三方镜像 pin tag/digest。
-5. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
+1. 为业务容器逐步加内存限制。
+2. Redis 增加密码、maxmemory、禁用高危命令或明确风险接受。
+3. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
 
 ### 批次 D：云侧治理
 
@@ -521,7 +538,7 @@
 ## 6. 当前不建议马上做
 
 - 不建议现在限制 SSH 来源 IP，除非先确认固定出口 IP 和逃生通道。
-- 不建议立即重启 Docker，因为会短暂影响所有容器。
+- 不建议无明确变更目的再次重启 Docker，因为会短暂影响所有容器。
 - 不建议直接给 Redis 加密码，必须同步 sub2api 和 exporter 配置。
 - 不建议直接改 fstab 后不验证启动链路。
 - 不建议把所有容器一次性改非 root 或加统一内存限制，应逐服务验证。
@@ -530,6 +547,6 @@
 
 本次已经完成服务器内可见范围的全量只读检查。
 
-云侧控制台确认已在 D2 完成并入台账。仍未完成的是“需要业务凭据/数据库密码配合的深层权限核验”和用户本轮暂缓的账单/到期治理，这些不能从主机内无凭据地可靠完成，已在本报告列为后续项。
+云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成。仍未完成的是 Redis 策略、`fstab` UUID、业务容器内存限制、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
 
-批次 A 已完成。下一步应从批次 B/C 中挑选需要维护窗口或业务配合的项目，不做一刀切运行配置变更。
+批次 A、B1、B2 已完成。下一步应从剩余 B/C 项中挑选需要维护窗口或业务配合的项目，不做一刀切运行配置变更。

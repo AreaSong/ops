@@ -211,7 +211,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口优化：Redis maxmemory / 认证策略、fstab UUID、journald/logrotate 留存、sysctl 基线、sub2api migration/runtime 拆分。
+- 维护窗口 / 应用配合优化：Redis maxmemory / 认证策略、fstab UUID、sub2api migration/runtime 拆分；journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
