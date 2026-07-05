@@ -386,19 +386,23 @@
 后续状态：
 
 - 已通过 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md` 完成只读复核。
+- 已通过 `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md` 完成 `sub2api` migration/runtime 失败点只读定位。
 - `account-vault` 已使用低权限 `account_vault_app`，该角色无 superuser / createdb / createrole / replication / bypassrls。
 - `sub2api_app` 低权限角色已存在，且具备现有业务表 DML 权限。
-- `sub2api` 业务容器当前仍使用 superuser `sub2api`。结合 C2b 记录，直接切换到 `sub2api_app` 会因启动 migration / DDL 权限需求失败。
+- `sub2api` 业务容器当前仍使用 superuser `sub2api`。
+- C2f 确认 `sub2api_app` 对 `public` schema 有 `USAGE` 但没有 `CREATE`；`schema_migrations` 表已存在且 `sub2api_app` 有 DML 权限。
+- C2b 直接切换失败的精确 SQL 是应用启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations`，低权限用户因缺少 schema `CREATE` 被拒绝。
 
 判断：
 
 - `account-vault` 达标。
-- `sub2api` 为明确风险接受项，治理需要应用侧配合拆分 migration 与 runtime。
+- `sub2api` 为明确风险接受项，治理需要应用侧配合拆分 migration 与 runtime；当前不是继续盲查，而是等待应用能力确认或维护窗口方案设计。
 
 建议：
 
 - 不再直接强切 `sub2api` 到低权限用户。
 - 先确认应用是否支持关闭启动 migration，或将 migration 改为独立维护命令：migration 阶段用管理用户，runtime 阶段用低权限用户。
+- 不建议为 `sub2api_app` 直接授予 broad `public` schema `CREATE`，除非在维护窗口内明确接受运行用户 DDL 风险并准备回滚。
 
 ### 3.15 初查：Nginx 安全头未完整核验，后续已补齐
 
@@ -532,7 +536,7 @@
 
 1. 为业务容器逐步加内存限制。
 2. Redis 高危命令 / ACL 策略：禁用或明确风险接受。
-3. sub2api migration/runtime 拆分后再尝试低权限运行用户切换。
+3. sub2api migration/runtime 拆分实施：C2f 已定位失败点，后续需确认应用是否支持独立 migration 或关闭启动自动 migration。
 
 ### 批次 D：云侧治理
 
@@ -547,6 +551,7 @@
 - 不建议现在限制 SSH 来源 IP，除非先确认固定出口 IP 和逃生通道。
 - 不建议无明确变更目的再次重启 Docker，因为会短暂影响所有容器。
 - 不建议直接修改 Redis ACL / 高危命令策略，必须先验证 sub2api、healthcheck 和 exporter 兼容性。
+- 不建议为 `sub2api_app` 直接授予 `public` schema `CREATE` 或再次强切运行用户；应先完成应用 migration 能力确认。
 - 不建议再次无目的修改 fstab；B3 已完成运行态验证，重启级验证留到下次维护窗口或自然重启后补记。
 - 不建议把所有容器一次性改非 root；资源限制已落地，后续如需调整应按单服务验证。
 
@@ -554,6 +559,6 @@
 
 本次已经完成服务器内可见范围的全量只读检查。
 
-云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C1 Redis 密码/maxmemory/持久化/内网隔离复核已完成，C3a/C3b/C3c 容器资源限制已完成。仍未完成的是 Redis 高危命令 / ACL 策略、sub2api migration/runtime 拆分，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
+云侧控制台确认已在 D2 完成并入台账。B1/B2 日志、Docker daemon 与 sysctl 基线收敛已完成，B3 `fstab` UUID 收敛已完成，C1 Redis 密码/maxmemory/持久化/内网隔离复核已完成，C2f sub2api migration/runtime 失败点定位已完成，C3a/C3b/C3c 容器资源限制已完成。仍未完成的是 Redis 高危命令 / ACL 策略、sub2api migration/runtime 拆分实施，以及用户本轮暂缓的账单/到期治理，这些已在本报告列为后续项。
 
-批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。
+批次 A、B1、B2、B3、C1、C2f、C3a、C3b、C3c 已完成。下一步应从剩余 C 项或业务配合项中挑选，不做一刀切运行配置变更。

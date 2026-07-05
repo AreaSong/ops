@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-05 10:51 UTC
+更新时间：2026-07-05 16:57 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -171,7 +171,7 @@ Grafana Dashboard：
 | 账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理 |
 | 登录后业务指标 | 暂未做 | 需要测试账号或应用侧指标配合 |
 | p95 / p99 分位延迟 | 暂未做 | 当前有 Nginx request_time 最大值和慢请求数量；分位需要更细日志管道或应用 metrics |
-| sub2api 数据库运行用户 | 风险接受 | 当前仍使用 superuser `sub2api`；低权限 `sub2api_app` 已存在但直接切换因启动 migration / DDL 失败 |
+| sub2api 数据库运行用户 | 风险接受 | 当前仍使用 superuser `sub2api`；C2f 已确认直接切换失败原因是启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` 权限 |
 | 门户网站 | 暂未接入 | `www.areasong.top` 已预留，用户暂不急 |
 | 主机名规范化 | 暂不改 | `LosAngeles` 可用，改名有运维影响 |
 | 独立数据盘 | 暂无 | 当前数据量可接受；后续增长后再规划 |
@@ -211,7 +211,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分；Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
+- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分实施；sub2api 失败原因已在 C2f 只读分析中定位，Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
@@ -294,3 +294,26 @@ Grafana Dashboard：
 - `sub2api_app` 低权限角色已存在，且具备当前业务表 DML 权限。
 - `sub2api` 业务容器当前仍使用 superuser `sub2api`，原因是前序 C2b 低权限切换尝试因启动 migration / DDL 权限需求失败。
 - 后续需应用侧配合拆分 migration 与 runtime，不能直接再次强切。
+
+## 2026-07-06 C2f sub2api migration/runtime 只读分析
+
+状态：只读分析完成；运行态不变；风险接受继续有效。
+
+已完成：
+
+- 确认 `sub2api` 容器当前仍为 `DATABASE_USER=sub2api`，容器健康。
+- 确认 `sub2api_app` 具备业务表 DML 和 sequence 权限，但没有 `public` schema `CREATE`。
+- 确认 `public.schema_migrations` 已存在，owner 为 `sub2api`。
+- 结合 C2b 失败日志，定位直接切换失败的精确 SQL：应用启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations`，低权限用户因缺少 schema `CREATE` 被拒绝。
+- 本次未修改数据库权限、compose、容器或业务数据。
+
+后续：
+
+- 先确认应用是否支持独立 migration 命令或关闭启动自动 migration。
+- 确认前不要再次直接强切 `DATABASE_USER=sub2api_app`。
+- 不建议为 `sub2api_app` 直接授予 broad `public` schema `CREATE`，除非在维护窗口内明确接受运行用户 DDL 风险。
+- 旁支发现：`postgres-exporter-sub2api` 持续出现 `checkpoints_timed` 字段查询错误，后续应单独处理 PostgreSQL 18 / exporter 兼容性日志噪声。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
