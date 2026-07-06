@@ -23,6 +23,7 @@
 | RB-15 | LosAngeles standards/09 C1e Redis ACL 备份覆盖 | [losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md](losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md) |
 | RB-16 | LosAngeles standards/09 C1f R2 异地备份复核 | [losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md](losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md) |
 | RB-17 | LosAngeles standards/09 C1g R2 隔离恢复演练 | [losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md](losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md) |
+| RB-18 | LosAngeles standards/09 C1h Postgres 隔离恢复演练 | [losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md](losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md) |
 
 ## 通用排障原则
 

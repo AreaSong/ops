@@ -16,6 +16,7 @@
 
 - 本机备份恢复演练已通过。
 - R2 拉回恢复演练已通过；2026-07-06 已完成本机隔离 R2 拉回恢复演练，详见 `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`。
+- R2 Postgres 隔离恢复演练已通过；2026-07-06 已从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump 并导入 `--network none` 临时 Postgres，详见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。
 - 应用级恢复演练已通过。
 - 跨机器实机恢复尚未执行。
 
@@ -225,6 +226,18 @@ sudo find "$RESTORE_ROOT/extract" -name dump.rdb -type f -print
 
 ## 9. Postgres 恢复验证
 
+官方 Postgres 镜像首次初始化时会先启动临时 server，再关闭并正式启动。恢复前不要只依赖 `pg_isready`，应等待初始化完成后再做查询验证：
+
+```bash
+wait_for_postgres_final() {
+  c="$1"
+  until docker logs "$c" 2>&1 | grep -q 'PostgreSQL init process complete; ready for start up.' \
+    && docker exec "$c" psql -qAt -U postgres -d postgres -c 'select 1' | grep -qx '1'; do
+    sleep 2
+  done
+}
+```
+
 account-vault：
 
 ```bash
@@ -236,10 +249,7 @@ docker run -d --rm \
   -e POSTGRES_PASSWORD=restore \
   postgres:15-alpine
 
-until docker exec restore-account-vault-cross pg_isready -U postgres >/dev/null 2>&1; do
-  sleep 2
-done
-sleep 5
+wait_for_postgres_final restore-account-vault-cross
 
 sudo gzip -dc "$ACCOUNT_SQL" | docker exec -i restore-account-vault-cross \
   psql -U postgres -v ON_ERROR_STOP=1
@@ -256,10 +266,7 @@ docker run -d --rm \
   -e POSTGRES_PASSWORD=restore \
   postgres:18-alpine
 
-until docker exec restore-sub2api-cross pg_isready -U postgres >/dev/null 2>&1; do
-  sleep 2
-done
-sleep 5
+wait_for_postgres_final restore-sub2api-cross
 
 sudo gzip -dc "$SUB2API_SQL" | docker exec -i restore-sub2api-cross \
   psql -U postgres -v ON_ERROR_STOP=1
@@ -443,11 +450,11 @@ curl -k --resolve log.areasong.top:443:${NEW_IP} https://log.areasong.top/
 
 | 检查项 | 状态 |
 | --- | --- |
-| R2 对象可拉回 | 待演练 |
-| `rclone check --size-only --one-way` 通过 | 待演练 |
-| account-vault Postgres 恢复成功 | 待演练 |
-| sub2api Postgres 恢复成功 | 待演练 |
-| Redis RDB 校验成功 | 待演练 |
+| R2 对象可拉回 | 本机隔离已通过；跨机器待演练 |
+| `rclone check --size-only --one-way` 通过 | 本机已通过；跨机器待演练 |
+| account-vault Postgres 恢复成功 | 本机隔离已通过；跨机器待演练 |
+| sub2api Postgres 恢复成功 | 本机隔离已通过；跨机器待演练 |
+| Redis RDB 校验成功 | 本机隔离已通过；跨机器待演练 |
 | configs 解包成功 | 待演练 |
 | JadeAI volume 解包成功 | 待演练 |
 | sub2api volume 解包成功 | 待演练 |

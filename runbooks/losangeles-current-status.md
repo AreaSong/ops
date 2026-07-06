@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-06 01:10 UTC
+更新时间：2026-07-06 03:35 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -17,7 +17,7 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 - P1 未完成项：无
 - 生产安全基线：完成
 - 备份与异地备份：完成
-- 本机恢复、R2 拉回恢复、应用级恢复：完成
+- 本机恢复、R2 拉回恢复、R2 Postgres 隔离恢复、应用级恢复：完成
 - 跨机器恢复：预案完成，实机演练待临时机器
 - 监控、告警、Dashboard：完成
 - Cloudflare / 证书治理：完成
@@ -73,6 +73,8 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 - 本机备份恢复演练：`runbooks/losangeles-backup-restore-drill-20260703.md`
 - R2 拉回恢复演练：`runbooks/losangeles-r2-restore-drill-20260703.md`
 - 应用级恢复演练：`runbooks/losangeles-app-restore-drill-20260704.md`
+- R2 隔离恢复演练：`runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+- R2 Postgres 隔离恢复演练：`runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
 - 跨机器恢复预案：`runbooks/losangeles-cross-machine-restore-drill.md`
 
 仍未做：
@@ -385,6 +387,23 @@ Grafana Dashboard：
 - 临时容器和临时恢复目录已清理。
 
 结论：R2 上的备份不仅可见，也可以拉回并完成隔离恢复验证；Redis 数据和 ACL 策略可一起恢复。
+
+## 2026-07-06 C1h Postgres 隔离恢复演练
+
+状态：完成。
+
+已完成 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`：
+
+- 从 R2 拉回 `sub2api-postgres` 和 `account-vault-postgres-1` 的选定 `.sql.gz` 恢复点。
+- 两个 Postgres dump 均通过 `gzip -t`。
+- 使用生产同款 Postgres 镜像启动 `--network none` 临时容器。
+- 等待官方 Postgres 镜像完成初始化并进入最终可查询状态后导入 SQL。
+- `sub2api-postgres` 恢复验证通过：`roles=19`、`databases=2`、`connectable_databases=2`、`total_relations=560`。
+- `account-vault-postgres-1` 恢复验证通过：`roles=15`、`databases=2`、`connectable_databases=2`、`total_relations=422`。
+- 发现并修正演练脚本中的 Postgres 官方镜像初始化竞态：不能只用 `pg_isready` 判断 ready，需要等待初始化完成后再执行 `select 1`。
+- 临时容器和临时恢复目录已清理；生产 `sub2api-postgres`、`account-vault-postgres-1`、`sub2api` 均为 `running healthy`。
+
+结论：R2 上的 Postgres dump 不仅完整，也可以在隔离临时 Postgres 中真实导入并完成元数据级验证。
 
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 

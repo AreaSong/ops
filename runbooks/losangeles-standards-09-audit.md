@@ -1,6 +1,6 @@
 # LosAngeles standards/09 验收矩阵
 
-更新时间：2026-07-06 02:15 UTC
+更新时间：2026-07-06 03:35 UTC
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 依据：`standards/09-server-ops-handbook.md` 附录 A P0 汇总  
@@ -9,7 +9,7 @@
 
 ## 1. 结论
 
-LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。
+LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、R2 Postgres 隔离恢复、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。
 
 但如果严格按 `standards/09` 的企业级全生命周期标准验收，当前不是“所有 P0 字面项 100% 满分”，而是：
 
@@ -46,7 +46,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 | 21 | 全机 node_exporter+基础告警集；探活+证书监控；告警可达值班人 | 达标 | Prometheus targets 全 up；Alertmanager QQ 邮箱已接入；无 firing alerts | 后续按噪声调优 |
 | 22 | 每次 OOM 有归因 | 未触发 / 待流程化 | 当前未见本次 OOM 事件核查；标准属于事件发生后的纪律 | OOM 发生时按 runbook 复盘 |
 | 23 | 核心服务无单点或有明确决策记录；主从有监控 | 风险接受 | 当前是单机生产；恢复和异地备份已补齐，但 HA 未做 | 后续有预算/业务要求时做 HA |
-| 24 | 关键数据有备份方案+异云副本；恢复演练做过；备份告警在线 | 达标 | 本机备份、R2 备份、本机/R2/应用级恢复演练均已完成 | 跨机器实机恢复待临时机器 |
+| 24 | 关键数据有备份方案+异云副本；恢复演练做过；备份告警在线 | 达标 | 本机备份、R2 备份、本机/R2/应用级恢复演练均已完成；C1h 已从 R2 拉回两个 Postgres dump 并导入无网络临时 Postgres 容器验证 | 跨机器实机恢复待临时机器 |
 | 25 | 自动安全更新开启；紧急 CVE 流程明确 | 基本达标 | unattended-upgrades active/enabled；`20auto-upgrades` 开启；CVE 流程在标准中 | 月度补丁日持续执行 |
 | 26 | 止血优先共识；P0/P1 故障 48h 复盘 | 文档达标 | `standards/09` 和 postmortem 模板已存在 | 真实故障后执行复盘 |
 | 27 | 生产测试隔离；批量操作灰度；割接方案含回切点 | 部分达标 | 当前单机/少量服务；跨机器恢复预案已含回滚；生产/测试环境云侧隔离未核查 | 后续多环境时补 VPC/账号隔离 |
@@ -159,3 +159,13 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 留痕：
 
 - `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+
+## 12. 2026-07-06 C1h Postgres 隔离恢复演练
+
+状态：完成。
+
+结论：已从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` 的选定 Postgres dump，并导入同版本 `--network none` 临时 Postgres 容器。`sub2api-postgres` 验证结果为 `roles=19`、`databases=2`、`connectable_databases=2`、`total_relations=560`；`account-vault-postgres-1` 验证结果为 `roles=15`、`databases=2`、`connectable_databases=2`、`total_relations=422`。演练发现并规避官方 Postgres 镜像初始化阶段 `pg_isready` 过早通过的竞态；生产容器演练后均为 `running healthy`。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`

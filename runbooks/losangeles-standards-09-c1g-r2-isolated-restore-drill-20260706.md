@@ -110,6 +110,6 @@ Redis 隔离恢复：
 
 ## 6. 后续项
 
-- 下一步可做 Postgres 临时容器恢复演练，验证 `.sql.gz` 可恢复到隔离数据库。
+- 后续更新：2026-07-06 已完成 Postgres 临时容器恢复演练，验证 `.sql.gz` 可恢复到隔离数据库；记录见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。
 - 后续跨机器实机恢复仍需要单独临时机器和维护窗口。
 - 如果希望恢复演练覆盖同一天完整恢复点，需要等待下一轮 03:30 volumes 备份完成后再执行一次。

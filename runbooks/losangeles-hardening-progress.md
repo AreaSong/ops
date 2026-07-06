@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-06 01:10 UTC
+更新时间：2026-07-06 03:35 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -20,7 +20,7 @@
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
 - 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
 - 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。
-- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
+- Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；2026-07-06 已补做 R2 Postgres 隔离恢复演练，确认 `sub2api-postgres` 与 `account-vault-postgres-1` dump 可导入无网络临时 Postgres；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
 - 云厂商控制台 D2 已完成用户侧人工核对：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key；该厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已作为厂商能力限制记录；账单/到期治理按用户要求暂缓。
@@ -51,6 +51,7 @@
 | 应用级恢复演练 | 完成 | 2026-07-04 完成非破坏性演练；JadeAI 临时容器读取恢复数据返回 307；account-vault 临时 Postgres 恢复后 web `/health` 返回 200；sub2api 临时 Postgres、Redis、数据目录恢复后 `/health` 返回 200；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
+| R2 Postgres 隔离恢复演练 | 完成 | 2026-07-06 完成非破坏性演练；从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump，导入 `--network none` 临时 Postgres 容器并完成元数据级验证；记录见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。 |
 | 跨机器恢复演练预案 | 完成，实机演练待做 | 已新增 `runbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前未开新机器执行实机演练。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
@@ -527,3 +528,21 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+
+## 2026-07-06 C1h Postgres 隔离恢复演练
+
+状态：完成。
+
+已完成：
+
+- 从 R2 拉回 `postgres/sub2api-postgres-20260706-021001.sql.gz` 和 `postgres/account-vault-postgres-1-20260706-021001.sql.gz` 到 root-only 临时目录。
+- 两个 `.sql.gz` 均通过 `gzip -t`。
+- 使用生产同款 Postgres 镜像启动临时 `--network none` 容器。
+- `sub2api-postgres` dump 导入成功，元数据计数为 `roles=19`、`databases=2`、`connectable_databases=2`、`total_relations=560`。
+- `account-vault-postgres-1` dump 导入成功，元数据计数为 `roles=15`、`databases=2`、`connectable_databases=2`、`total_relations=422`。
+- 演练发现官方 Postgres 镜像初始化存在临时 server 到最终 server 的切换窗口；脚本已改为等待初始化完成后再 `select 1`，避免 `pg_isready` 过早通过。
+- 演练后临时容器和临时目录已清理，生产 `sub2api-postgres`、`account-vault-postgres-1`、`sub2api` 均为 `running healthy`。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
