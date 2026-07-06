@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-06 03:35 UTC
+更新时间：2026-07-06 04:05 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -9,11 +9,12 @@
 
 ## 1. 核查结论
 
-原进度报告的核心结论大体成立：LosAngeles 已完成本轮生产加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线；当前状态快照见 。
+原进度报告的核心结论大体成立：LosAngeles 已完成本轮生产加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线。按当前单机生产模型，本轮已收尾；当前状态快照见 `runbooks/losangeles-current-status.md`，日常维护清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
 
 本次核查后需要修正和补充的重点如下：
 
 - 当前状态快照已完成：`runbooks/losangeles-current-status.md` 记录完成项、入口、Dashboard、备份恢复位置、风险接受项、未来增强项和当前不要做的操作。
+- 单机生产收尾已完成：`runbooks/losangeles-single-host-production-closure-20260706.md` 记录当前能力边界、风险接受项、日常运维节奏、变更纪律和未来项目触发条件。
 
 - `/opt/as_password` 明文密码文件已删除；用户已确认修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
@@ -52,7 +53,8 @@
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
 | R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
 | R2 Postgres 隔离恢复演练 | 完成 | 2026-07-06 完成非破坏性演练；从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump，导入 `--network none` 临时 Postgres 容器并完成元数据级验证；记录见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。 |
-| 跨机器恢复演练预案 | 完成，实机演练待做 | 已新增 `runbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前未开新机器执行实机演练。 |
+| 单机生产收尾 | 完成 | 已新增 `runbooks/losangeles-single-host-production-closure-20260706.md`，明确当前单机生产模型已完成，跨机器实机恢复属于未来有第二台主机后的升级项。 |
+| 跨机器恢复演练预案 | 完成，未来增强 | 已新增 `runbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前只有一台主机，未执行跨机器实机演练，作为未来增强项。 |
 | R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
 | 云厂商控制台治理 | 完成核对，部分风险接受 | 用户已在 `https://server.zgocloud.cc/` 人工核对：实例名 `LosAngeles`；MFA 已开启；邮箱/手机号可用；主账号未共用；无 API Key。厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已记录为能力限制并以 UFW、Fail2ban、备份/R2、Loki/Grafana/Alertmanager 补偿；账单/到期治理按用户要求暂缓。 |
@@ -84,7 +86,7 @@
 | Cloudflare 配置台账 | 治理元数据基础完成，仍可深化 | 控制台只读核对已完成；Cloudflare Origin Certificate 创建人、用途、180/90/30/7 天提醒策略和轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已下线，后续需补门户网站接入方案。 |
 | 云厂商账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理；后续应单独补自动续费、到期提醒、余额/扣费失败提醒。 |
 
-## 4. 未完成事项与未来增强项
+## 4. 未来增强项与外部条件项
 
 本轮主线已完成；以下项目为未来增强项或需要外部条件的工作。
 
@@ -125,8 +127,8 @@
 - 未执行 `git fetch` 或远端网络同步写入；Git 同步结论基于本地 `origin/main` 与 HEAD 一致。
 - Cloudflare 控制台基础配置已由用户侧只读核对；未修改 Cloudflare 配置，未核查更细粒度的历史事件、审计日志和 Origin Certificate 控制台创建记录。
 - 云厂商控制台 D2 结论来自用户人工核对反馈；未登录或修改云厂商控制台。账单/到期治理按用户要求暂缓。
-- 跨机器恢复演练预案已完成，但未开临时机器执行实机恢复；当前 R2 拉回恢复演练是在当前主机上完成。
-- 未执行跨机器完整应用级接管验证；当前应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。
+- 跨机器恢复演练预案已完成，但当前只有一台主机，未开临时机器执行实机恢复；该项不作为单机生产模型的完成门槛。
+- 未执行跨机器完整应用级接管验证；当前应用级恢复演练已在当前主机的隔离临时 Docker 网络内验证业务容器可读取恢复数据。未来有第二台主机或临时机器时再执行跨机器接管演练。
 - 未读取或打印任何 `.env`、私钥、Grafana 密码文件或 `/opt/as_password` 内容；本次验证仅输出 Fail2ban 日志中的封禁 IP 及其公开网络归属信息。
 - 业务关键路径探针仅覆盖公开、只读、无副作用端点；未访问登录后的订单、导出、任务等敏感业务路径。
 
@@ -136,7 +138,7 @@
 2. 有测试账号或应用配合后，继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 3. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 4. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
-5. 后续可按 `runbooks/losangeles-cross-machine-restore-drill.md` 在新机器或临时云主机上执行一次跨机器实机恢复演练。
+5. 当前进入日常维护阶段，按 `runbooks/losangeles-single-host-production-closure-20260706.md` 执行每日/每周/每月检查；后续有新机器或临时云主机时，再按 `runbooks/losangeles-cross-machine-restore-drill.md` 执行跨机器实机恢复演练。
 
 ## 2026-07-05 C4 容器日志上限显式化
 

@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-06 03:35 UTC
+更新时间：2026-07-06 04:05 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -9,16 +9,17 @@
 
 ## 1. 本轮结论
 
-LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、告警和 Cloudflare 治理主线已完成。
+LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、告警和 Cloudflare 治理主线已完成。按当前“一台主机的生产服务器”模型，单机生产运维闭环已完成，可以进入日常维护阶段。
 
 当前状态：
 
 - P0 未完成项：无
 - P1 未完成项：无
 - 生产安全基线：完成
+- 单机生产收尾：完成，见 `runbooks/losangeles-single-host-production-closure-20260706.md`
 - 备份与异地备份：完成
 - 本机恢复、R2 拉回恢复、R2 Postgres 隔离恢复、应用级恢复：完成
-- 跨机器恢复：预案完成，实机演练待临时机器
+- 跨机器恢复：预案完成；当前只有一台主机，实机演练属于未来有第二台主机后的升级项
 - 监控、告警、Dashboard：完成
 - Cloudflare / 证书治理：完成
 - 云厂商控制台治理：已核对，账号安全完成；部分能力为厂商不提供，已记录风险接受
@@ -77,9 +78,9 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 - R2 Postgres 隔离恢复演练：`runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
 - 跨机器恢复预案：`runbooks/losangeles-cross-machine-restore-drill.md`
 
-仍未做：
+未来增强：
 
-- 跨机器实机恢复演练。需要临时新机器或维护窗口。
+- 跨机器实机恢复演练。当前只有一台主机，不作为单机模型完成门槛；后续有临时新机器或第二台主机时再执行。
 
 ## 5. 监控与告警
 
@@ -171,6 +172,7 @@ Grafana Dashboard：
 | 云厂商快照 | 当前无 | 以本机备份、R2 异地备份、本机/R2/应用级恢复演练补偿 |
 | 云厂商审计 / 安全通知 | 厂商不支持 | 以主机日志、Loki、Grafana、Alertmanager 和 Cloudflare 侧能力补偿 |
 | 账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理 |
+| 单机无 HA | 风险接受 | 当前只有一台主机；已用 R2 异地备份、恢复预案和本机隔离恢复演练补偿；有第二台主机或更高 SLA 后再做 HA/跨机器接管 |
 | 登录后业务指标 | 暂未做 | 需要测试账号或应用侧指标配合 |
 | Redis 高危命令 / ACL | 阶段 1 已实施并持久化 | C1c 已精确禁用 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`MONITOR`、`KEYS`、`CONFIG SET/REWRITE` 等高风险命令；C1d 已通过 `/data/users.acl` 持久化；分用户 ACL 仍需应用侧 Redis username 支持 |
 | p95 / p99 分位延迟 | 暂未做 | 当前有 Nginx request_time 最大值和慢请求数量；分位需要更细日志管道或应用 metrics |
@@ -178,7 +180,7 @@ Grafana Dashboard：
 | 门户网站 | 暂未接入 | `www.areasong.top` 已预留，用户暂不急 |
 | 主机名规范化 | 暂不改 | `LosAngeles` 可用，改名有运维影响 |
 | 独立数据盘 | 暂无 | 当前数据量可接受；后续增长后再规划 |
-| 跨机器实机恢复 | 暂未执行 | 预案已完成，需要临时机器 |
+| 跨机器实机恢复 | 未来增强 | 预案已完成；当前只有一台主机，不作为本轮未完成项 |
 
 ## 9. 后续增强项
 
@@ -188,7 +190,7 @@ Grafana Dashboard：
 2. 有固定出口 IP 后，限制 SSH 来源。
 3. 有测试账号或应用配合后，补登录后业务指标和关键接口分位延迟。
 4. 准备门户网站时，接入 `www.areasong.top`。
-5. 有临时机器时，按跨机器恢复 Runbook 做一次实机演练。
+5. 有临时机器或第二台主机时，按跨机器恢复 Runbook 做一次实机演练。
 6. 业务数据增长后，规划独立数据盘和数据迁移。
 7. 有维护窗口时，再评估主机名规范化。
 
@@ -205,7 +207,7 @@ Grafana Dashboard：
 
 本轮 LosAngeles 服务器加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线完成。
 
-后续工作均按增强项、业务新需求或维护窗口另行启动。
+按单机生产模型，本轮可以收尾；日常维护清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。后续工作均按增强项、业务新需求、外部条件或维护窗口另行启动。
 
 ## 12. standards/09 严格验收口径
 

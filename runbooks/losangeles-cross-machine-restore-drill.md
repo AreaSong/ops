@@ -1,6 +1,6 @@
 # LosAngeles 跨机器恢复演练预案
 
-状态：预案完成，实机演练待维护窗口  
+状态：预案完成；当前单机生产模型已收尾，实机演练待未来临时机器或第二台主机
 适用服务器：LosAngeles  
 备份来源：Cloudflare R2 `losangeles-ops-backups` / `losangeles/`  
 目标：在一台全新临时机器上，从 R2 备份恢复 LosAngeles 的配置、数据库、Redis、业务数据目录，并完成隔离验证或接管验证。
@@ -10,7 +10,9 @@
 本 Runbook 用于两类场景：
 
 - 灾难恢复：LosAngeles 不可用，需要在新机器上恢复核心服务。
-- 定期演练：开一台临时机器，验证 R2 备份能跨机器恢复。
+- 定期演练：未来开一台临时机器，验证 R2 备份能跨机器恢复。
+
+当前 LosAngeles 只有一台主机，因此本 Runbook 是未来升级预案，不作为当前单机生产模型的完成门槛。单机收尾状态见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
 
 当前状态：
 
@@ -18,7 +20,7 @@
 - R2 拉回恢复演练已通过；2026-07-06 已完成本机隔离 R2 拉回恢复演练，详见 `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`。
 - R2 Postgres 隔离恢复演练已通过；2026-07-06 已从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump 并导入 `--network none` 临时 Postgres，详见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。
 - 应用级恢复演练已通过。
-- 跨机器实机恢复尚未执行。
+- 跨机器实机恢复尚未执行；当前记录为未来增强项。
 
 安全边界：
 
@@ -455,16 +457,16 @@ curl -k --resolve log.areasong.top:443:${NEW_IP} https://log.areasong.top/
 | account-vault Postgres 恢复成功 | 本机隔离已通过；跨机器待演练 |
 | sub2api Postgres 恢复成功 | 本机隔离已通过；跨机器待演练 |
 | Redis RDB 校验成功 | 本机隔离已通过；跨机器待演练 |
-| configs 解包成功 | 待演练 |
-| JadeAI volume 解包成功 | 待演练 |
-| sub2api volume 解包成功 | 待演练 |
-| resume-jadeai 隔离启动验证 | 待演练 |
-| account-vault 隔离启动验证 | 待演练 |
-| sub2api 隔离启动验证 | 待演练 |
-| Nginx `--resolve` 验证 | 待演练 |
-| Prometheus / Grafana / Alertmanager 启动 | 待演练 |
-| DNS 切换方案确认 | 待演练 |
-| 回滚方案确认 | 待演练 |
+| configs 解包成功 | 跨机器待演练 |
+| JadeAI volume 解包成功 | 跨机器待演练 |
+| sub2api volume 解包成功 | 跨机器待演练 |
+| resume-jadeai 隔离启动验证 | 跨机器待演练 |
+| account-vault 隔离启动验证 | 跨机器待演练 |
+| sub2api 隔离启动验证 | 跨机器待演练 |
+| Nginx `--resolve` 验证 | 跨机器待演练 |
+| Prometheus / Grafana / Alertmanager 启动 | 跨机器待演练 |
+| DNS 切换方案确认 | 跨机器待演练 |
+| 回滚方案确认 | 跨机器待演练 |
 
 ## 16. 演练记录模板
 

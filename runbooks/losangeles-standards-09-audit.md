@@ -1,6 +1,6 @@
 # LosAngeles standards/09 验收矩阵
 
-更新时间：2026-07-06 03:35 UTC
+更新时间：2026-07-06 04:05 UTC
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 依据：`standards/09-server-ops-handbook.md` 附录 A P0 汇总  
@@ -9,11 +9,11 @@
 
 ## 1. 结论
 
-LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、R2 Postgres 隔离恢复、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。
+LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、R2 Postgres 隔离恢复、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。单机生产收尾清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
 
 但如果严格按 `standards/09` 的企业级全生命周期标准验收，当前不是“所有 P0 字面项 100% 满分”，而是：
 
-- 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
+- 已达标：单机安全、备份、恢复、监控、告警、台账、变更留痕主线。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
 - 待优化：Redis 分用户 ACL、sub2api migration/runtime 拆分实施、SSH 来源 IP 限制等待固定出口 IP。Redis 高危命令阶段 1 已在 C1c 运行态实施，并在 C1d 完成 `aclfile` 持久化；sub2api 直接切低权限失败原因已在 C2f 定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关。
 - 已完成补齐项：journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成，Postgres exporter 对 PostgreSQL 18 的 collector 兼容性已在 C7 修复。
@@ -23,7 +23,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 | # | P0 项 | 当前结论 | 证据 / 说明 | 后续动作 |
 |---|---|---|---|---|
-| 1 | 主备跨可用区；到期计费入台账有告警；抢占式无状态服务 | 风险接受 / 账单暂缓 | 当前是单机部署；`servers.yaml` 已补 provider/region/owner/control_plane；账单/到期治理按用户要求暂缓；未发现抢占式证据 | 后续有第二台机器或 HA 需求时做多 AZ；账单/到期告警后续单独处理 |
+| 1 | 主备跨可用区；到期计费入台账有告警；抢占式无状态服务 | 单机模型风险接受 / 账单暂缓 | 当前是单机部署；`servers.yaml` 已补 provider/region/owner/control_plane；账单/到期治理按用户要求暂缓；未发现抢占式证据；单机收尾文档已明确边界 | 后续有第二台机器或 HA 需求时做多 AZ；账单/到期告警后续单独处理 |
 | 2 | 时区 UTC + 时间同步；非 EOL 系统；数据/日志/应用三分离 | 基本达标 / 数据盘风险接受 | Ubuntu 24.04.4 LTS，NTP active/synchronized；当前时区已为 UTC；应用在 `/opt/services`，日志在 `/var/log`，但无独立数据盘 | 数据盘作为后续增强 |
 | 3 | 系统盘数据盘分离；fstab UUID+nofail；磁盘监控含 inode | 部分达标 / 数据盘风险接受 | 当前只有 `/dev/sda1` 系统盘；`/`、`/boot`、`/boot/efi` 已在 B3 切换为 UUID；`findmnt --verify` 与 `mount -a` 已通过；磁盘容量和 inode 已在 node_exporter/Grafana 覆盖 | 数据量增长后规划独立 `/data`；下次维护窗口或自然重启后补一次启动链路复核 |
 | 4 | 无 `curl|bash`；第三方源有 GPG 验证 | 基本达标 | 在 `/opt/services`、`/opt/ops` 未扫到明显 `curl|bash`；Docker apt keyring 存在 | 后续补一次 apt sources 详细审计 |
@@ -45,8 +45,8 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 | 20 | 三处日志上限；审计日志留存 >=180 天 | 基本达标 | journald 已持久化并限制 `SystemMaxUse=1G`；rsyslog/fail2ban/ufw 已调到 26 周保留；Docker daemon 与 compose 均有日志轮转上限；Loki/Promtail 已接入基础日志 | 若后续需要不可篡改审计或跨机长期归档，可补 R2/对象锁类归档 |
 | 21 | 全机 node_exporter+基础告警集；探活+证书监控；告警可达值班人 | 达标 | Prometheus targets 全 up；Alertmanager QQ 邮箱已接入；无 firing alerts | 后续按噪声调优 |
 | 22 | 每次 OOM 有归因 | 未触发 / 待流程化 | 当前未见本次 OOM 事件核查；标准属于事件发生后的纪律 | OOM 发生时按 runbook 复盘 |
-| 23 | 核心服务无单点或有明确决策记录；主从有监控 | 风险接受 | 当前是单机生产；恢复和异地备份已补齐，但 HA 未做 | 后续有预算/业务要求时做 HA |
-| 24 | 关键数据有备份方案+异云副本；恢复演练做过；备份告警在线 | 达标 | 本机备份、R2 备份、本机/R2/应用级恢复演练均已完成；C1h 已从 R2 拉回两个 Postgres dump 并导入无网络临时 Postgres 容器验证 | 跨机器实机恢复待临时机器 |
+| 23 | 核心服务无单点或有明确决策记录；主从有监控 | 单机模型风险接受 | 当前是单机生产；恢复和异地备份已补齐，HA 不作为当前一台主机模型的完成门槛；收尾文档已记录边界 | 后续有第二台机器、预算或业务 SLA 要求时做 HA |
+| 24 | 关键数据有备份方案+异云副本；恢复演练做过；备份告警在线 | 达标 | 本机备份、R2 备份、本机/R2/应用级恢复演练均已完成；C1h 已从 R2 拉回两个 Postgres dump 并导入无网络临时 Postgres 容器验证 | 跨机器实机恢复作为未来有临时机器后的增强项 |
 | 25 | 自动安全更新开启；紧急 CVE 流程明确 | 基本达标 | unattended-upgrades active/enabled；`20auto-upgrades` 开启；CVE 流程在标准中 | 月度补丁日持续执行 |
 | 26 | 止血优先共识；P0/P1 故障 48h 复盘 | 文档达标 | `standards/09` 和 postmortem 模板已存在 | 真实故障后执行复盘 |
 | 27 | 生产测试隔离；批量操作灰度；割接方案含回切点 | 部分达标 | 当前单机/少量服务；跨机器恢复预案已含回滚；生产/测试环境云侧隔离未核查 | 后续多环境时补 VPC/账号隔离 |
@@ -76,12 +76,13 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 4. 云厂商无快照、审计与安全通知能力，已记录为厂商限制。
 5. 账单、余额、到期、实例维护事件通知按用户要求暂缓。
 
-## 4. 推荐执行顺序
+## 4. 后续执行口径
 
-1. 先提交本矩阵和文档口径修正。
-2. 同批做权限收紧和旧 compose 改名这类低风险项。
-3. 批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核、C2f sub2api migration/runtime 失败点定位和 C2g migration 能力分析已完成。后续进入需要维护窗口或业务配合的 Redis 分用户治理、sub2api 应用侧 migration/runtime 拆分能力改造。
-4. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。
+1. 当前单机生产模型已收尾，后续按 `runbooks/losangeles-single-host-production-closure-20260706.md` 做日常维护。
+2. 批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核、C2f sub2api migration/runtime 失败点定位和 C2g migration 能力分析已完成。
+3. Redis 分用户治理、sub2api 应用侧 migration/runtime 拆分属于维护窗口或应用侧能力配合项。
+4. 跨机器实机恢复、高可用、多机部署属于未来有第二台主机或明确 SLA 需求后的升级项。
+5. 云侧 D2 已由用户在控制台核对并补台账；账单/到期治理按用户要求后续单独处理。
 
 ## 5. 2026-07-06 C2g sub2api migration 能力分析
 
