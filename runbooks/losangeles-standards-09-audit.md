@@ -1,6 +1,6 @@
 # LosAngeles standards/09 验收矩阵
 
-更新时间：2026-07-06 01:10 UTC
+更新时间：2026-07-06 01:50 UTC
 服务器：LosAngeles  
 公网 IP：23.185.200.12  
 依据：`standards/09-server-ops-handbook.md` 附录 A P0 汇总  
@@ -15,7 +15,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 - 已达标：大部分单机安全、备份、恢复、监控、告警、台账、变更留痕项。
 - 风险接受：SSH 来源 IP 未限制、单机无 HA、无独立数据盘、主机名暂不规范化。
-- 待优化：Redis 高危命令 / ACL 收紧待维护窗口实施、sub2api migration/runtime 拆分实施、SSH 来源 IP 限制等待固定出口 IP。sub2api 直接切低权限失败原因已在 C2f 定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关。
+- 待优化：Redis ACL 持久化 `aclfile` / 分用户 ACL、sub2api migration/runtime 拆分实施、SSH 来源 IP 限制等待固定出口 IP。Redis 高危命令阶段 1 已在 C1c 运行态实施；sub2api 直接切低权限失败原因已在 C2f 定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关。
 - 已完成补齐项：journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成，Postgres exporter 对 PostgreSQL 18 的 collector 兼容性已在 C7 修复。
 - 云侧已核对 / 能力限制：云账号 MFA 已开启，当前无 API Key；账单/到期按用户要求暂缓；厂商无安全组/云防火墙、快照、云审计/安全通知能力，已记录为风险接受和补偿控制。
 
@@ -37,7 +37,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 | 12 | 入侵处置流程：隔离保现场、默认重装、凭证全轮换 | 文档达标 | `standards/09`、runbook 模板已覆盖；未做桌面演练 | 年度或季度做一次桌面演练 |
 | 13 | 服务位置可预测；开机自启；健康检查接入监控 | 基本达标 | 运行服务主要在 `/opt/services` 和 `/opt/ops/observability`；systemd/Docker restart 均配置；Prometheus targets 全 up；旧 account-vault compose 已改名为 legacy | 持续保持受控副本和运行配置一致 |
 | 14 | 编排路线明确；容器日志上限；固定 tag；端口显式绑定 | 基本达标 | Docker Compose 路线明确；端口显式绑定；容器日志轮转已显式配置并验证；第三方镜像已固定 digest | 后续镜像升级继续记录版本/digest |
-| 15 | 数据组件内网监听+专属账号；MySQL binlog+慢日志；Redis maxmemory+密码；应用账号无 DDL | 部分达标 | Postgres/Redis 未暴露公网；Postgres/Redis exporter 已接入；C7 已修复 PostgreSQL 18 exporter collector 兼容性；Redis `requirepass`、`maxmemory=512MiB`、AOF 已复核；`account-vault` 已使用低权限数据库用户；`sub2api` 当前仍使用 superuser；C2f 确认低权限切换失败点为启动时 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE`；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关 | Redis ACL / 高危命令兼容性已在 C1b 分析完成，收紧实施待维护窗口确认；`sub2api` 需应用侧新增或确认独立 migration 与关闭启动自动 migration 能力后，再切 runtime 低权限 |
+| 15 | 数据组件内网监听+专属账号；MySQL binlog+慢日志；Redis maxmemory+密码；应用账号无 DDL | 部分达标 | Postgres/Redis 未暴露公网；Postgres/Redis exporter 已接入；C7 已修复 PostgreSQL 18 exporter collector 兼容性；Redis `requirepass`、`maxmemory=512MiB`、AOF 已复核，C1c 已完成 Redis 高危命令阶段 1 运行态收紧；`account-vault` 已使用低权限数据库用户；`sub2api` 当前仍使用 superuser；C2f 确认低权限切换失败点为启动时 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE`；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关 | Redis ACL 阶段 1 已在 C1c 实施；后续需补 `aclfile` 持久化和分用户 ACL；`sub2api` 需应用侧新增或确认独立 migration 与关闭启动自动 migration 能力后，再切 runtime 低权限 |
 | 16 | 配置入 Git 有变更记录；TF 远程 state + plan 审阅 | 达标 / 不适用 | `/opt/ops` Git 化；当前未使用 Terraform | 继续保持变更后提交 |
 | 17 | 制品可追溯；CI 凭证专用最小权限 | 部分达标 | Compose 和镜像 digest 已记录；未见 CI 部署链路 | 后续业务 CI/CD 时补制品策略 |
 | 18 | 变更有单五要素；回滚就绪；一次一变更 | 基本达标 | runbook 和当前流程已记录；高风险变更仍需单独确认 | 保持执行纪律 |
@@ -65,7 +65,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 ### 需要维护窗口或明确确认的项
 
-1. Redis 高危命令 / ACL 策略：C1b 已完成兼容性分析。不能直接 `-@dangerous`；第一阶段建议维护窗口内精确禁用 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`CONFIG SET/REWRITE` 等破坏性命令，并保留 `INFO`、`CONFIG GET`、`EVAL`、`SCAN`、`PUB/SUB`。
+1. Redis ACL 持久化 / 分用户策略：C1c 已完成阶段 1 运行态收紧，不能直接 `-@dangerous` 的结论仍成立。后续需在维护窗口配置受控 `aclfile`，并在 `sub2api` 支持 Redis username 后拆分业务、exporter、admin 用户。
 2. sub2api migration/runtime 拆分实施：C2f 已定位失败点；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关。后续需应用侧新增或确认该能力后，再尝试 runtime 低权限用户切换。
 
 ### 云侧已核对与限制
@@ -80,7 +80,7 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 
 1. 先提交本矩阵和文档口径修正。
 2. 同批做权限收紧和旧 compose 改名这类低风险项。
-3. 批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核、C2f sub2api migration/runtime 失败点定位和 C2g migration 能力分析已完成。后续进入需要维护窗口或业务配合的 Redis 高危命令 / ACL 收紧实施、sub2api 应用侧 migration/runtime 拆分能力改造。
+3. 批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核、C2f sub2api migration/runtime 失败点定位和 C2g migration 能力分析已完成。后续进入需要维护窗口或业务配合的 Redis ACL 持久化 / 分用户治理、sub2api 应用侧 migration/runtime 拆分能力改造。
 4. 云侧 D2 已由用户在控制台核对并补台账；后续单独处理账单/到期治理。
 
 ## 5. 2026-07-06 C2g sub2api migration 能力分析
@@ -102,3 +102,16 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 留痕：
 
 - `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
+
+
+## 7. 2026-07-06 C1c Redis ACL 阶段 1 实施
+
+状态：完成；运行态生效；持久化 `aclfile` 待后续维护窗口。
+
+结论：已精确禁用 Redis `default` 用户上的破坏性 / 高风险管理命令，包括 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`MONITOR`、`KEYS`、`CLIENT KILL/PAUSE`、`CONFIG SET/REWRITE`、`REPLICAOF/SLAVEOF`、`MODULE LOAD/LOADEX/UNLOAD`。保留 `INFO`、`CONFIG GET`、`CLIENT LIST`、`BGSAVE`、`SAVE`、`BGREWRITEAOF`、`SCAN`、`EVAL`、`SCRIPT LOAD` 和 `ACL SETUSER`。
+
+同时修复 Redis 本机备份脚本，改为等待 `BGSAVE` 完成后打包稳定 `dump.rdb` 快照，避免在线打包 AOF 时失败。验证 ACL dry-run、Redis 备份、容器健康、HTTP health 和近期日志均通过。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`

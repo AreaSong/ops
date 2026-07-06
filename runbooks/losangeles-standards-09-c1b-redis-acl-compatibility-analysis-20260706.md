@@ -90,22 +90,19 @@
 -shutdown
 -debug
 -monitor
+-keys
 -client|kill
 -client|pause
 -config|set
 -config|rewrite
--save
--bgsave
--bgrewriteaof
 -replicaof
 -slaveof
 -module|load
 -module|loadex
 -module|unload
--acl|setuser
--acl|deluser
--acl|load
 ```
+
+实施校正：C1c 实操预检确认当前 Redis 本机备份依赖 `BGSAVE`，因此阶段 1 不禁用 `SAVE`、`BGSAVE`、`BGREWRITEAOF`；同时保留 `ACL SETUSER` 作为快速回滚通道。
 
 说明：
 
@@ -176,4 +173,4 @@
 
 状态：C1b Redis ACL / 高危命令兼容性分析完成；运行态不变；ACL 收紧待维护窗口明确确认后实施。
 
-下一步：如继续推进 Redis 收紧，建议先做阶段 1 的精确命令禁用，并保留 `INFO`、`CONFIG GET`、`EVAL`、`SCAN`、`PUB/SUB`。如果目标是更严格的分用户 ACL，则需要先补应用侧 Redis username 支持。
+下一步：C1c 已完成阶段 1 运行态精确命令禁用，并保留 `INFO`、`CONFIG GET`、`EVAL`、`SCAN`、`PUB/SUB`、`BGSAVE` 与 `ACL SETUSER`。后续如需重启后持久生效，需要新增受控 `aclfile`；如果目标是更严格的分用户 ACL，则需要先补应用侧 Redis username 支持。

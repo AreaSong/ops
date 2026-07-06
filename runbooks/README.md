@@ -18,6 +18,7 @@
 | RB-10 | LosAngeles standards/09 批次 A 低风险收敛记录 | [losangeles-standards-09-batch-a-20260705.md](losangeles-standards-09-batch-a-20260705.md) |
 | RB-11 | LosAngeles standards/09 C2g sub2api migration 能力分析 | [losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md](losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md) |
 | RB-12 | LosAngeles standards/09 C1b Redis ACL 兼容性分析 | [losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md](losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md) |
+| RB-13 | LosAngeles standards/09 C1c Redis ACL 阶段 1 实施 | [losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md](losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md) |
 
 ## 通用排障原则
 
