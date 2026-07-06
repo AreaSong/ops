@@ -109,8 +109,10 @@ write_success_metric() {
   }
 
   echo "syncing $BACKUP_ROOT to $remote_path"
+  # Cloudflare R2 can return 501 for post-upload HEAD checks with this rclone build.
   rclone --config /dev/null copy "$BACKUP_ROOT" "$remote_path" \
     --s3-no-check-bucket \
+    --s3-no-head \
     --fast-list \
     --transfers "${R2_TRANSFERS:-4}" \
     --checkers "${R2_CHECKERS:-8}" \

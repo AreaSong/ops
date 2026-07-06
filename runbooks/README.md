@@ -21,6 +21,7 @@
 | RB-13 | LosAngeles standards/09 C1c Redis ACL 阶段 1 实施 | [losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md](losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md) |
 | RB-14 | LosAngeles standards/09 C1d Redis ACL 持久化实施 | [losangeles-standards-09-c1d-redis-acl-persistence-20260706.md](losangeles-standards-09-c1d-redis-acl-persistence-20260706.md) |
 | RB-15 | LosAngeles standards/09 C1e Redis ACL 备份覆盖 | [losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md](losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md) |
+| RB-16 | LosAngeles standards/09 C1f R2 异地备份复核 | [losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md](losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md) |
 
 ## 通用排障原则
 

@@ -353,6 +353,21 @@ Grafana Dashboard：
 
 结论：Redis 数据和 ACL 持久化文件现在可通过同一 Redis 备份包一起恢复。
 
+## 2026-07-06 C1f R2 异地备份复核
+
+状态：完成。
+
+已完成 `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`：
+
+- 已执行 R2 同步，并验证最新 Redis 备份对象 `redis/redis-20260706-023215.tar.gz` 存在于 R2。
+- 验证远端对象大小为 `136204` 字节，未下载或展开备份内容。
+- 发现 `rclone v1.60.1-DEV` 对 Cloudflare R2 上传后 HEAD 校验会产生 501 误报；已在 `sync-r2.sh` 中增加 `--s3-no-head`。
+- 修正后清洁同步通过，日志未出现 `NotImplemented`、`status code: 501` 或 `ERROR`。
+- 本轮诊断探针对象已从 R2 `diagnostics/` 清理。
+- R2 同步成功指标 `r2_backup_last_success_timestamp` 已刷新。
+
+结论：本机备份到 R2 的异地同步链路已验证可用；最新包含 `users.acl` 的 Redis 备份已在 R2 可见。
+
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 
 状态：只读分析完成；运行态不变；风险接受继续有效。

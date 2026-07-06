@@ -489,3 +489,21 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
+
+
+## 2026-07-06 C1f R2 异地备份复核
+
+状态：完成。
+
+已完成：
+
+- 执行 R2 同步，确认最新 Redis 备份 `redis/redis-20260706-023215.tar.gz` 已在 R2。
+- 验证远端对象大小和时间，不下载、不展开备份内容。
+- 修复 `sync-r2.sh` 与 Cloudflare R2 的 rclone 兼容问题，增加 `--s3-no-head`，避免上传后 HEAD 501 误报。
+- 清洁同步验证通过，日志无 `NotImplemented`、`status code: 501` 或 `ERROR`。
+- 清理本轮诊断探针对象。
+- R2 同步指标已刷新，Redis / sub2api 运行状态正常。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`

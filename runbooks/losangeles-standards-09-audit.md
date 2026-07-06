@@ -137,3 +137,14 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 留痕：
 
 - `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
+
+
+## 10. 2026-07-06 C1f R2 异地备份复核
+
+状态：完成。
+
+结论：R2 异地备份链路已复核。最新 Redis 备份 `redis/redis-20260706-023215.tar.gz` 已在 R2 `losangeles/` 前缀下可见，远端对象大小为 `136204` 字节，未下载或展开备份内容。已修复 rclone/R2 上传后 HEAD 501 误报，`sync-r2.sh` 增加 `--s3-no-head`；修正后清洁同步日志无 `NotImplemented`、`status code: 501` 或 `ERROR`，R2 同步指标已刷新。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
