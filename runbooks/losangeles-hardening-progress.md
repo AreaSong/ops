@@ -507,3 +507,23 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
+
+
+## 2026-07-06 C1g R2 隔离恢复演练
+
+状态：完成。
+
+已完成：
+
+- 从 R2 拉回 Redis、Postgres、configs、volumes 选定恢复点到 root-only 临时目录。
+- 验证 Postgres `.sql.gz` 完整性。
+- 验证 Redis / configs / volumes `.tar.gz` 完整性。
+- 验证 Redis 备份包含 `redis_data/dump.rdb` 和 `redis_data/users.acl`。
+- 使用临时 `--network none` Redis 容器加载备份数据和 ACL 文件。
+- 验证临时 Redis `PING`、`DBSIZE=188`、`aclfile=/data/users.acl`。
+- 验证临时 Redis `FLUSHALL` 被 ACL 拒绝。
+- 演练后临时容器和临时目录已清理，生产 `sub2api-redis` / `sub2api` 仍为 `running healthy`。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`

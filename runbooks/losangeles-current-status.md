@@ -368,6 +368,24 @@ Grafana Dashboard：
 
 结论：本机备份到 R2 的异地同步链路已验证可用；最新包含 `users.acl` 的 Redis 备份已在 R2 可见。
 
+## 2026-07-06 C1g R2 隔离恢复演练
+
+状态：完成。
+
+已完成 `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`：
+
+- 先执行 R2 同步，确认最新本机备份进入 R2。
+- 从 R2 拉回选定恢复点到 root-only 临时隔离目录。
+- 验证 Postgres gzip 备份完整性。
+- 验证 Redis、configs、volumes tar 包完整性。
+- 验证 Redis 备份包含 `dump.rdb` 和 `users.acl`，metadata 为 `aclfile_included=yes`。
+- 使用临时 `--network none` Redis 容器加载 `dump.rdb + users.acl`。
+- 临时 Redis 认证 `PING` 成功，`DBSIZE=188`，`CONFIG GET aclfile` 返回 `/data/users.acl`。
+- 临时 Redis `FLUSHALL` 被 ACL 拒绝，确认高危命令限制随 `users.acl` 恢复。
+- 临时容器和临时恢复目录已清理。
+
+结论：R2 上的备份不仅可见，也可以拉回并完成隔离恢复验证；Redis 数据和 ACL 策略可一起恢复。
+
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 
 状态：只读分析完成；运行态不变；风险接受继续有效。

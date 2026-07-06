@@ -148,3 +148,14 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 留痕：
 
 - `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
+
+
+## 11. 2026-07-06 C1g R2 隔离恢复演练
+
+状态：完成。
+
+结论：已从 R2 拉回选定恢复点并在临时隔离环境完成恢复验证。Postgres gzip、Redis tar、configs tar、volumes tar 均通过完整性检查；临时 Redis 容器以 `--network none` 加载 `dump.rdb + users.acl` 成功，认证 `PING` 正常，`DBSIZE=188`，`aclfile=/data/users.acl`，`FLUSHALL` 被 ACL 拒绝。演练未覆盖生产数据，未下载后展开敏感内容到 Git，临时容器和临时目录已清理。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
