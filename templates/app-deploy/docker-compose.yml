@@ -1,0 +1,47 @@
+name: __APP_NAME__
+
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-security-options: &security-options
+  - no-new-privileges:true
+
+services:
+  app:
+    # Default mode: build from /opt/services/__APP_NAME__/app.
+    # If the project already publishes an image, replace build/image accordingly.
+    build:
+      context: ./app
+    image: __APP_NAME__:local
+    container_name: __APP_NAME__
+    restart: unless-stopped
+    env_file:
+      - /etc/__APP_NAME__/__APP_NAME__.env
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=__APP_PORT__
+    ports:
+      - "127.0.0.1:__HOST_PORT__:__APP_PORT__"
+    logging: *json-log-options
+    security_opt: *security-options
+    pids_limit: 512
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.50"
+    healthcheck:
+      # If the image has neither wget nor curl, replace this with an app-specific check.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:__APP_PORT____HEALTH_PATH__ >/dev/null 2>&1 || curl -fsS http://127.0.0.1:__APP_PORT____HEALTH_PATH__ >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Uncomment only if the app needs persistent local data.
+    # volumes:
+    #   - /var/lib/__APP_NAME__/data:/app/data
+
+networks:
+  default:
+    name: __APP_NAME__-network
