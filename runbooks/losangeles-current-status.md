@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-05 17:20 UTC
+更新时间：2026-07-05 17:55 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -171,7 +171,7 @@ Grafana Dashboard：
 | 账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理 |
 | 登录后业务指标 | 暂未做 | 需要测试账号或应用侧指标配合 |
 | p95 / p99 分位延迟 | 暂未做 | 当前有 Nginx request_time 最大值和慢请求数量；分位需要更细日志管道或应用 metrics |
-| sub2api 数据库运行用户 | 风险接受 | 当前仍使用 superuser `sub2api`；C2f 已确认直接切换失败原因是启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` 权限 |
+| sub2api 数据库运行用户 | 风险接受 / 应用侧待配合 | 当前仍使用 superuser `sub2api`；C2f 已确认直接切换失败原因是启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` 权限；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关 |
 | 门户网站 | 暂未接入 | `www.areasong.top` 已预留，用户暂不急 |
 | 主机名规范化 | 暂不改 | `LosAngeles` 可用，改名有运维影响 |
 | 独立数据盘 | 暂无 | 当前数据量可接受；后续增长后再规划 |
@@ -211,7 +211,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分实施；sub2api 失败原因已在 C2f 只读分析中定位，Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
+- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分实施；sub2api 失败原因已在 C2f 只读分析中定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关；Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
@@ -317,6 +317,20 @@ Grafana Dashboard：
 留痕：
 
 - `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
+
+## 2026-07-06 C2g sub2api migration 能力分析
+
+状态：完成；运行态不变；低权限 runtime 切换继续等待应用侧能力。
+
+已完成 `runbooks/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`：
+
+- 只读核对上游源码 `b650bdd68d25bad3e502b2e34efe775555da2eba` 和当前生产镜像受控副本。
+- 确认当前 CLI 仅有 `--setup`、`--version`，未发现 migration-only 命令。
+- 确认启动链路会在 `InitEnt()` 中硬执行 `applyMigrationsFS()`。
+- 确认未发现关闭启动自动 migration 的环境变量、配置项或命令行参数。
+- 本次未修改运行配置、数据库权限、容器或业务数据。
+
+结论：`sub2api` runtime 低权限切换不是简单权限补漏；需要应用侧支持独立 migration 和关闭启动自动 migration 后再进入维护窗口实施。确认前继续作为风险接受项。
 
 ## 2026-07-06 C7 Postgres exporter PostgreSQL 18 兼容性修复
 

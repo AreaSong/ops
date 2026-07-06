@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-05 17:20 UTC
+更新时间：2026-07-05 17:55 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -24,7 +24,7 @@
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
 - 云厂商控制台 D2 已完成用户侧人工核对：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key；该厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已作为厂商能力限制记录；账单/到期治理按用户要求暂缓。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。`postgres-exporter-sub2api` 对 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。`postgres-exporter-sub2api` 对 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复；C2g 已确认当前 `sub2api` 上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关。
 
 ## 2. 已核实完成
 
@@ -316,6 +316,30 @@
 - 确认前不要再次直接强切 `DATABASE_USER=sub2api_app`。
 - 如考虑授予 schema `CREATE`，必须在维护窗口内明确接受运行用户 DDL 风险，并准备回滚。
 - 旁支处理：`postgres-exporter-sub2api` 与 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复。
+
+## 2026-07-06 C2g sub2api migration 能力分析
+
+状态：完成；运行态不变；低权限 runtime 切换继续等待应用侧能力。
+
+已完成：
+
+- 只读核对 `sub2api` 上游源码 `b650bdd68d25bad3e502b2e34efe775555da2eba`。
+- 确认 `backend/cmd/server/main.go` 仅提供 `--setup` 与 `--version`，未发现独立 migration-only 命令。
+- 确认 `Dockerfile` / `deploy/docker-entrypoint.sh` 默认只启动 `/app/sub2api`，未提供 migration 分支。
+- 确认正常启动链路为 `runMainServer -> initializeApplication -> repository.ProvideEnt -> InitEnt -> applyMigrationsFS`。
+- 确认 `applyMigrationsFS` 每次启动都会执行 `CREATE TABLE IF NOT EXISTS schema_migrations`。
+- 确认当前未发现关闭启动自动 migration 的配置项、环境变量或命令行参数。
+- 本次未修改数据库权限、compose、容器或业务数据。
+
+判断：
+
+- 不能直接再次强切 `DATABASE_USER=sub2api_app`。
+- 不建议长期授予 `sub2api_app` broad `public` schema `CREATE`。
+- 如要达成 runtime 无 DDL，应优先在应用侧新增 `--migrate-only` 与关闭启动 migration 的能力，再安排维护窗口切换。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`
 
 ## 2026-07-06 C7 Postgres exporter PostgreSQL 18 兼容性修复
 
