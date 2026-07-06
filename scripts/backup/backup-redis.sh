@@ -6,6 +6,7 @@ TS="$(date +%Y%m%d-%H%M%S)"
 OUT="$BACKUP_ROOT/redis-$TS.tar.gz"
 DATA_DIR="/var/lib/sub2api/redis_data"
 RDB_FILE="$DATA_DIR/dump.rdb"
+ACL_FILE="$DATA_DIR/users.acl"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -47,15 +48,26 @@ fi
 
 mkdir -p "$TMP_DIR/redis_data"
 cp -p "$RDB_FILE" "$TMP_DIR/redis_data/dump.rdb"
+
+ACL_INCLUDED="no"
+if [ -s "$ACL_FILE" ]; then
+  cp -p "$ACL_FILE" "$TMP_DIR/redis_data/users.acl"
+  chmod 0600 "$TMP_DIR/redis_data/users.acl"
+  ACL_INCLUDED="yes"
+fi
+
 cat > "$TMP_DIR/metadata.txt" <<META
 created_at=$TS
 source_container=sub2api-redis
 source_data_dir=$DATA_DIR
 format=redis-rdb-snapshot
+aclfile_included=$ACL_INCLUDED
+aclfile_note=users.acl contains Redis ACL password hashes when included; keep backup artifacts root-only
 restore_note=restore dump.rdb into Redis data dir during a controlled maintenance window
 META
 
-tar -czf "$OUT" -C "$TMP_DIR" metadata.txt redis_data/dump.rdb
+tar -czf "$OUT" -C "$TMP_DIR" metadata.txt redis_data
+chmod 0600 "$OUT"
 tar -tzf "$OUT" >/dev/null
 find "$BACKUP_ROOT" -type f -name "redis-*.tar.gz" -mtime +7 -delete
 printf "%s\n" "$OUT"

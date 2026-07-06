@@ -472,3 +472,20 @@
 留痕：
 
 - `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
+
+
+## 2026-07-06 C1e Redis ACL 备份覆盖
+
+状态：完成。
+
+已完成：
+
+- Redis 备份脚本在 `users.acl` 存在时将其随 `dump.rdb` 一起纳入 `redis-*.tar.gz`。
+- 备份 metadata 记录 `aclfile_included=yes/no`。
+- 新生成的 Redis 备份包权限固定为 `0600`。
+- 验证新备份包包含 `metadata.txt`、`redis_data/dump.rdb`、`redis_data/users.acl`。
+- 验证备份指标刷新成功，Redis / sub2api 运行状态正常。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`

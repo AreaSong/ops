@@ -339,6 +339,20 @@ Grafana Dashboard：
 
 结论：Redis ACL 阶段 1 现在不仅运行态生效，也可在 Redis 容器重启后持久生效。
 
+## 2026-07-06 C1e Redis ACL 备份覆盖
+
+状态：完成。
+
+已完成 `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`：
+
+- 确认旧 Redis 备份包只包含 `metadata.txt` 和 `redis_data/dump.rdb`，未覆盖持久化 ACL 文件。
+- 更新 `backup-redis.sh`，在 `users.acl` 存在时随 `dump.rdb` 一起打包。
+- Redis 备份 metadata 增加 `aclfile_included=yes/no`。
+- 新 Redis 备份包固定为 `0600` 权限，避免 ACL password hash 以宽权限落盘。
+- 已验证新备份包包含 `metadata.txt`、`redis_data/dump.rdb`、`redis_data/users.acl`，且未展开 ACL 内容。
+
+结论：Redis 数据和 ACL 持久化文件现在可通过同一 Redis 备份包一起恢复。
+
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 
 状态：只读分析完成；运行态不变；风险接受继续有效。

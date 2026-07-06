@@ -126,3 +126,14 @@ LosAngeles 当前已经具备可生产运行的基础盘：SSH/UFW/Fail2ban、�
 留痕：
 
 - `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
+
+
+## 9. 2026-07-06 C1e Redis ACL 备份覆盖
+
+状态：完成。
+
+结论：Redis 备份脚本已在 `users.acl` 存在时纳入该文件，备份 metadata 会记录 `aclfile_included=yes/no`，新生成的 Redis 备份包固定为 `0600`。验证确认新备份包包含 `metadata.txt`、`redis_data/dump.rdb`、`redis_data/users.acl`，未打印 ACL 内容，备份指标刷新成功，Redis / sub2api 运行正常。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
