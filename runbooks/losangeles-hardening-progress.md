@@ -24,7 +24,7 @@
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
 - 云厂商控制台 D2 已完成用户侧人工核对：控制台为 `https://server.zgocloud.cc/`，实例名为 `LosAngeles`；主账号 MFA 已开启，绑定邮箱/手机号可用，主账号未共用，当前无 API Key；该厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已作为厂商能力限制记录；账单/到期治理按用户要求暂缓。
-- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。`postgres-exporter-sub2api` 对 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复；C2g 已确认当前 `sub2api` 上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关；C1c 已完成 Redis ACL 阶段 1 运行态收紧并修复 Redis 备份稳定性。
+- Postgres / Redis exporter 已接入；SSH/Fail2ban/UFW/Nginx 安全日志指标、告警和 Grafana 面板已接入；Fail2ban Ban/Unban 明细日志已接入 Loki 并展示在 Grafana 安全面板；Fail2ban IP 归属增强日志已接入，可在 Grafana 查看封禁 IP 的国家代码、ASN、BGP 前缀和网络组织名；Alertmanager 邮件已增加 Grafana 入口、Loki 查询提示和更多诊断标签，Fail2ban 当前封禁告警已降噪；应用级 HTTP 健康检查已覆盖 resume-jadeai、account-vault、sub2api；第一批业务关键路径 Blackbox 探针已覆盖公开首页、登录页、认证状态 API 和健康 JSON；基于增强 Nginx 访问日志的业务服务级 4xx/5xx、慢请求和采集新鲜度指标已接入 Prometheus、Alertmanager 与 Grafana；Cloudflare Origin Certificate 本地文件级过期监控和 180/90/30/7 天分级提醒已接入；Alertmanager 邮件模板和分级路由已优化。`postgres-exporter-sub2api` 对 PostgreSQL 18 的 `checkpoints_timed` 查询日志噪声已在 C7 修复；C2g 已确认当前 `sub2api` 上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关；C1c 已完成 Redis ACL 阶段 1 运行态收紧并修复 Redis 备份稳定性；C1d 已完成 Redis ACL `aclfile` 持久化。
 
 ## 2. 已核实完成
 
@@ -441,7 +441,7 @@
 
 ## 2026-07-06 C1c Redis ACL 阶段 1 实施
 
-状态：完成；运行态生效；持久化 `aclfile` 待后续维护窗口。
+状态：完成；C1d 已完成持久化 `aclfile`。
 
 已完成：
 
@@ -450,8 +450,25 @@
 - 修复 Redis 备份脚本：从在线打包 AOF 目录改为等待 `BGSAVE` 完成后打包稳定 `dump.rdb` 快照，仍输出 `redis-*.tar.gz`。
 - 验证：ACL dry-run、Redis 备份、容器健康、`https://cpa.areasong.top/health`、近期日志权限错误检查均通过。
 
-注意：当前 Redis 未配置 `aclfile`，本次 ACL 为运行态变更；Redis 重启后需要按持久化方案重放。
+后续更新：C1d 已配置 `/data/users.acl`，Redis 重启后会加载持久化 ACL。
 
 留痕：
 
 - `runbooks/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`
+
+
+## 2026-07-06 C1d Redis ACL 持久化实施
+
+状态：完成。
+
+已完成：
+
+- 生成 root-only `/var/lib/sub2api/redis_data/users.acl`，保存当前 default 用户 ACL 规则和密码 hash；内容不进 Git、不打印。
+- Redis compose 启动参数增加 `--aclfile /data/users.acl`。
+- 运行副本 `/opt/services/sub2api/compose.yml` 与 Git 受控副本 `/opt/ops/services/sub2api/compose.yml` 已同步。
+- 重建 `sub2api-redis` 后 Redis 为 `running healthy`。
+- 验证 ACL deny/allow、Redis 备份、`sub2api` health、公开 `/health`、近期权限错误日志均通过。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`

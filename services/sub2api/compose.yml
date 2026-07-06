@@ -235,7 +235,7 @@ services:
       # Local directory mapping for easy migration
       - /var/lib/sub2api/redis_data:/data
     command: >
-      sh -c 'exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --maxmemory 512mb --maxmemory-policy noeviction --requirepass "$$REDISCLI_AUTH"'
+      sh -c 'exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --maxmemory 512mb --maxmemory-policy noeviction --aclfile /data/users.acl --requirepass "$$REDISCLI_AUTH"'
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)

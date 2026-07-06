@@ -112,6 +112,10 @@ sudo docker exec sub2api-redis redis-cli ACL SETUSER default +@all
 
 ## 7. 后续项
 
-- 为 Redis 增加受控 `aclfile`，使 ACL 收紧在容器重启后仍持久生效；该项需要单独评估和维护窗口。
+- Redis 受控 `aclfile` 已在 C1d 完成，ACL 收紧在容器重启后可持久生效。
 - 等 `sub2api` 支持 Redis username 后，再拆分 `sub2api_app`、`redis_exporter`、`redis_admin` 等专用 ACL 用户。
 - 补充 Redis RDB 快照恢复步骤到后续恢复演练或恢复 runbook。
+
+## 8. C1d 后续更新
+
+2026-07-06 已完成 Redis ACL 持久化，记录见 `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`。
