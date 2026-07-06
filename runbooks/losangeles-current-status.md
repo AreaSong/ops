@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-05 17:55 UTC
+更新时间：2026-07-06 01:10 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -170,6 +170,7 @@ Grafana Dashboard：
 | 云厂商审计 / 安全通知 | 厂商不支持 | 以主机日志、Loki、Grafana、Alertmanager 和 Cloudflare 侧能力补偿 |
 | 账单 / 到期治理 | 暂缓 | 用户本轮明确先不处理 |
 | 登录后业务指标 | 暂未做 | 需要测试账号或应用侧指标配合 |
+| Redis 高危命令 / ACL | 方案完成，待维护窗口实施 | C1b 已确认不能 `-@dangerous` 一刀切；建议第一阶段精确禁用破坏性命令，分用户 ACL 需应用侧 Redis username 支持 |
 | p95 / p99 分位延迟 | 暂未做 | 当前有 Nginx request_time 最大值和慢请求数量；分位需要更细日志管道或应用 metrics |
 | sub2api 数据库运行用户 | 风险接受 / 应用侧待配合 | 当前仍使用 superuser `sub2api`；C2f 已确认直接切换失败原因是启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` 权限；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关 |
 | 门户网站 | 暂未接入 | `www.areasong.top` 已预留，用户暂不急 |
@@ -211,7 +212,7 @@ Grafana Dashboard：
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
 - 风险接受：单机无 HA、SSH 来源 IP 暂不限制、无独立数据盘、主机名暂不规范化。
-- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 策略决策、sub2api migration/runtime 拆分实施；sub2api 失败原因已在 C2f 只读分析中定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关；Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
+- 维护窗口 / 应用配合优化：Redis 高危命令 / ACL 收紧实施、sub2api migration/runtime 拆分实施；sub2api 失败原因已在 C2f 只读分析中定位，C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关；Redis 密码、maxmemory、AOF 和内网隔离已在 C1 复核完成，Redis ACL / 高危命令兼容性已在 C1b 分析完成，journald/logrotate/sysctl 与 Docker daemon 日志基线已在 B1/B2 完成，`fstab` UUID 已在 B3 完成。
 - 云侧能力限制 / 暂缓：云厂商无安全组/云防火墙、快照、云审计/安全通知；账单/到期治理用户本轮暂缓。
 
 后续优化以该矩阵为准，按低风险文档修正、低风险系统收敛、维护窗口变更、云侧治理四类分批推进。
@@ -294,6 +295,20 @@ Grafana Dashboard：
 - `sub2api_app` 低权限角色已存在，且具备当前业务表 DML 权限。
 - `sub2api` 业务容器当前仍使用 superuser `sub2api`，原因是前序 C2b 低权限切换尝试因启动 migration / DDL 权限需求失败。
 - 后续需应用侧配合拆分 migration 与 runtime，不能直接再次强切。
+
+## 2026-07-06 C1b Redis ACL / 高危命令兼容性分析
+
+状态：分析完成；运行态不变；ACL 收紧待维护窗口确认后实施。
+
+已完成 `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`：
+
+- 确认不能直接 `-@dangerous`，因为会误伤 `INFO`、`CONFIG GET`、`SLOWLOG`、`LATENCY` 等监控/诊断命令。
+- 确认 `sub2api` 未发现直接使用 `FLUSHALL`、`FLUSHDB`、`CONFIG`、`SHUTDOWN`、`KEYS`。
+- 确认 `sub2api` 依赖 Lua、`SCAN`、`PUB/SUB`、hash/set/zset、pipeline 等能力。
+- 确认当前 `sub2api` Redis 配置未发现 username 字段，短期先不做分用户 ACL。
+- 本次未修改 Redis ACL、配置或容器状态。
+
+结论：第一阶段建议维护窗口内精确禁用破坏性命令；更严格的分用户 ACL 需要应用侧 Redis username 支持。
 
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 

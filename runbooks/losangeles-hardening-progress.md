@@ -1,6 +1,6 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-05 17:55 UTC
+更新时间：2026-07-06 01:10 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -292,6 +292,30 @@
 后续：
 
 - `sub2api` 数据库权限治理需要应用侧配合拆分 migration 与 runtime；未确认前作为风险接受项。
+
+## 2026-07-06 C1b Redis ACL / 高危命令兼容性分析
+
+状态：分析完成；运行态不变；ACL 收紧待维护窗口确认后实施。
+
+已完成：
+
+- 只读核对当前 Redis ACL：默认用户仍为 `+@all`，key/channel 范围为全量；未记录密码或密码 hash。
+- 只读核对 Redis 8 `@dangerous` 类别，确认它包含 `INFO`、`CONFIG GET`、`SLOWLOG GET`、`LATENCY`、`CLIENT LIST` 等监控/诊断命令，不能直接 `-@dangerous`。
+- 基于 `sub2api` 上游源码确认未发现直接调用 `FLUSHALL`、`FLUSHDB`、`CONFIG GET/SET`、`SHUTDOWN`、`KEYS`。
+- 确认 `sub2api` 依赖 `EVAL/EVALSHA`、`SCRIPT LOAD`、`SCAN`、`PUB/SUB`、hash/set/zset、pipeline 等能力，不能粗暴禁用。
+- 核对 `redis_exporter v1.62.0`，确认默认会尝试 `CONFIG GET`、`INFO`、`CLIENT SETNAME`；如要禁 `CONFIG GET`，需先调整 exporter 配置并接受配置类指标减少。
+- 确认当前 `sub2api` Redis 配置未发现 username 字段，短期不适合做分用户 ACL。
+- 本次未修改 Redis ACL、compose、exporter 配置或容器状态。
+
+判断：
+
+- 第一阶段建议精确禁用 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`MONITOR`、`CONFIG SET/REWRITE`、`SAVE/BGSAVE/BGREWRITEAOF`、`REPLICAOF/SLAVEOF`、module load/unload 和 ACL 写命令。
+- 不建议第一阶段禁用 `INFO`、`CONFIG GET`、`EVAL`、`SCAN`、`PUB/SUB`。
+- 分用户 ACL 需要应用侧 Redis username 支持后再做。
+
+留痕：
+
+- `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
 
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 
