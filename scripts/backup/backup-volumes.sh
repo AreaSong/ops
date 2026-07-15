@@ -6,6 +6,46 @@ TS="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_ROOT" /var/log/backup
 made=0
 
+backup_docker_volume() {
+  local volume_name="$1"
+  local output_prefix="$2"
+  local mp out
+
+  if ! docker volume inspect "$volume_name" >/dev/null 2>&1; then
+    echo "skip missing volume: $volume_name" >&2
+    return
+  fi
+
+  mp="$(docker volume inspect -f '{{.Mountpoint}}' "$volume_name")"
+  if [ ! -d "$mp" ]; then
+    echo "skip missing volume mountpoint: $volume_name" >&2
+    return
+  fi
+
+  out="$BACKUP_ROOT/${output_prefix}-$TS.tar.gz"
+  tar -czf "$out" -C "$mp" .
+  tar -tzf "$out" >/dev/null
+  echo "$out"
+  made=$((made + 1))
+}
+
+backup_directory() {
+  local source_dir="$1"
+  local output_prefix="$2"
+  local out
+
+  if [ ! -d "$source_dir" ]; then
+    echo "skip missing directory: $source_dir" >&2
+    return
+  fi
+
+  out="$BACKUP_ROOT/${output_prefix}-$TS.tar.gz"
+  tar -czf "$out" -C "$source_dir" .
+  tar -tzf "$out" >/dev/null
+  echo "$out"
+  made=$((made + 1))
+}
+
 if [ -d /var/lib/sub2api/data ]; then
   out="$BACKUP_ROOT/sub2api-data-$TS.tar.gz"
   tar --exclude="data/logs" \
@@ -16,16 +56,9 @@ if [ -d /var/lib/sub2api/data ]; then
   made=$((made + 1))
 fi
 
-if docker volume inspect jadeai-data >/dev/null 2>&1; then
-  mp="$(docker volume inspect -f '{{.Mountpoint}}' jadeai-data)"
-  if [ -d "$mp" ]; then
-    out="$BACKUP_ROOT/jadeai-data-$TS.tar.gz"
-    tar -czf "$out" -C "$mp" .
-    tar -tzf "$out" >/dev/null
-    echo "$out"
-    made=$((made + 1))
-  fi
-fi
+backup_docker_volume jadeai-data jadeai-data
+backup_docker_volume areaforge_areaforge-uploads areaforge-uploads
+backup_directory /opt/areaforge/ops-state areaforge-ops-state
 
 if [ "$made" -eq 0 ]; then
   echo "no non-database volumes backed up" >&2

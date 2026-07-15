@@ -33,14 +33,22 @@ SERVICE_BY_HOST = {
     "resume.areasong.top": "resume-jadeai",
     "sorryiossearch.areasong.top": "account-vault",
     "cpa.areasong.top": "sub2api",
+    "forge.areasong.top": "areaforge",
 }
 
-SERVICES = ["resume-jadeai", "account-vault", "sub2api"]
+SERVICES = ["resume-jadeai", "account-vault", "sub2api", "areaforge"]
 STATUS_CLASSES = ["1xx", "2xx", "3xx", "4xx", "5xx"]
+
+# Streaming responses measure session duration, not request latency.
+SLOW_REQUEST_EXCLUDED_PATHS = {
+    ("sub2api", "/v1/responses"),
+}
+
+TIMESTAMP_RE = re.compile(r'\[(?P<ts>[^\]]+)\]')
 
 LINE_RE = re.compile(
     r'\[(?P<ts>[^\]]+)\]\s+'
-    r'"(?P<method>[A-Z]+)\s+(?P<path>[^ ]+)\s+HTTP/[^"]+"\s+'
+    r'"(?P<request>[^"]*)"\s+'
     r'(?P<status>\d{3})\s+\d+\s+'
     r'"[^"]*"\s+"[^"]*"\s+'
     r'host="(?P<host>[^"]*)"\s+'
@@ -94,14 +102,18 @@ parse_errors = 0
 observed_lines = 0
 
 for line in iter_log_lines(LOGS):
+    timestamp_match = TIMESTAMP_RE.search(line)
+    if timestamp_match is None:
+        continue
+
+    ts = parse_nginx_timestamp(timestamp_match.group("ts"))
+    if ts is None or NOW - ts > WINDOW_5M or ts - NOW > 60:
+        continue
+
     match = LINE_RE.search(line)
     if not match:
         if "host=" in line or "request_time=" in line:
             parse_errors += 1
-        continue
-
-    ts = parse_nginx_timestamp(match.group("ts"))
-    if ts is None or NOW - ts > WINDOW_5M or ts - NOW > 60:
         continue
 
     observed_lines += 1
@@ -118,7 +130,10 @@ for line in iter_log_lines(LOGS):
 
     requests[(service, status_class)] += 1
     request_time = parse_float(match.group("request_time"))
-    if request_time is not None:
+    request_parts = match.group("request").split()
+    path = request_parts[1].partition("?")[0] if len(request_parts) >= 2 else ""
+    include_in_latency = (service, path) not in SLOW_REQUEST_EXCLUDED_PATHS
+    if request_time is not None and include_in_latency:
         request_time_max[service] = max(request_time_max[service], request_time)
         if request_time >= SLOW_THRESHOLD:
             slow_requests[service] += 1

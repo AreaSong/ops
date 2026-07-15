@@ -7,9 +7,10 @@ TMP="${OUT}.tmp"
 mkdir -p "$(dirname "$OUT")"
 
 now_for_latest() {
-  local pattern="$1"
+  local directory="$1"
+  local pattern="$2"
   local latest
-  latest="$(find /var/backups/ops -type f -name "$pattern" -printf '%T@\n' 2>/dev/null | sort -n | tail -n 1 || true)"
+  latest="$(find "$directory" -maxdepth 1 -type f -name "$pattern" -printf '%T@\n' 2>/dev/null | sort -n | tail -n 1 || true)"
   if [ -z "$latest" ]; then
     echo 0
   else
@@ -20,10 +21,15 @@ now_for_latest() {
 {
   echo '# HELP backup_last_success_timestamp Unix timestamp of latest successful backup artifact.'
   echo '# TYPE backup_last_success_timestamp gauge'
-  printf 'backup_last_success_timestamp{job="postgres"} %s\n' "$(now_for_latest '*.sql.gz')"
-  printf 'backup_last_success_timestamp{job="redis"} %s\n' "$(now_for_latest 'redis-*.tar.gz')"
-  printf 'backup_last_success_timestamp{job="configs"} %s\n' "$(now_for_latest 'configs-*.tar.gz')"
-  printf 'backup_last_success_timestamp{job="volumes"} %s\n' "$(now_for_latest '*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="postgres-sub2api"} %s\n' "$(now_for_latest /var/backups/ops/postgres 'sub2api-postgres-*.sql.gz')"
+  printf 'backup_last_success_timestamp{backup="postgres-account-vault"} %s\n' "$(now_for_latest /var/backups/ops/postgres 'account-vault-postgres-1-*.sql.gz')"
+  printf 'backup_last_success_timestamp{backup="postgres-areaforge"} %s\n' "$(now_for_latest /var/backups/ops/postgres 'areaforge-postgres-*.sql.gz')"
+  printf 'backup_last_success_timestamp{backup="redis"} %s\n' "$(now_for_latest /var/backups/ops/redis 'redis-*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="configs"} %s\n' "$(now_for_latest /var/backups/ops/configs 'configs-*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="volume-sub2api-data"} %s\n' "$(now_for_latest /var/backups/ops/volumes 'sub2api-data-*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="volume-jadeai-data"} %s\n' "$(now_for_latest /var/backups/ops/volumes 'jadeai-data-*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="volume-areaforge-uploads"} %s\n' "$(now_for_latest /var/backups/ops/volumes 'areaforge-uploads-*.tar.gz')"
+  printf 'backup_last_success_timestamp{backup="volume-areaforge-ops-state"} %s\n' "$(now_for_latest /var/backups/ops/volumes 'areaforge-ops-state-*.tar.gz')"
 } > "$TMP"
 
 mv "$TMP" "$OUT"

@@ -137,13 +137,21 @@ groups:
 
   - name: backup_alerts
     rules:
+      - alert: BackupMetricsMissing
+        expr: absent(backup_last_success_timestamp)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup freshness metrics are missing"
+
       - alert: BackupStale
         expr: time() - backup_last_success_timestamp > 30 * 3600
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Backup stale: {{ $labels.job }}"
+          summary: "Backup stale: {{ $labels.backup }}"
 
       - alert: R2BackupStale
         expr: absent(r2_backup_last_success_timestamp) or time() - r2_backup_last_success_timestamp > 36 * 3600
@@ -344,9 +352,9 @@ groups:
           severity: warning
         annotations:
           summary: "Business HTTP slow requests are high: {{ $labels.service }}"
-          description: "The service has more than 10 requests with Nginx request_time >= 2s in the latest 5-minute window."
+          description: "The service has more than 10 non-streaming requests with Nginx request_time >= 2s in the latest 5-minute window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
-          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"request_time=[2-9][0-9]*\\.|\""
+          loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"request_time=([2-9]|[1-9][0-9]+)\\.\" != \"/v1/responses\""
 
       - alert: BusinessLogParseErrorsHigh
         expr: business_log_parse_errors_last_5m > 20
@@ -369,6 +377,7 @@ groups:
           summary: "Cloudflare Origin certificate metrics are stale"
           description: "The local Cloudflare Origin certificate metrics script has not produced fresh textfile metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
+
 
       - alert: CloudflareOriginCertCheckFailed
         expr: cloudflare_origin_cert_check_success == 0
@@ -419,4 +428,3 @@ groups:
           summary: "Cloudflare Origin certificate expires within 7 days: {{ $labels.cert }}"
           description: "Rotate the Origin Certificate immediately to avoid Cloudflare Full strict origin TLS failure."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
-

@@ -13,6 +13,9 @@ done
 for p in /var/lib/sub2api/docker-compose.yml /var/lib/sub2api/compose.yml /var/lib/sub2api/.env /var/lib/sub2api/*.env; do
   [ -e "$p" ] && items+=("$p")
 done
+for p in /opt/areaforge/docker-compose.prod.yml /opt/areaforge/.env.production; do
+  [ -e "$p" ] && items+=("$p")
+done
 
 if [ "${#items[@]}" -eq 0 ]; then
   echo "no config items found" >&2

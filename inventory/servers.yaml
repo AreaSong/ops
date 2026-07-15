@@ -52,6 +52,8 @@ servers:
       - x-ui
       - xray
       - resume-jadeai
+      - areaforge-web
+      - areaforge-postgres
       - sub2api
       - sub2api-postgres
       - sub2api-redis

@@ -90,6 +90,7 @@ services:
         notes: "公网 HTTPS，反代多个域名；log.areasong.top 已新增 /sub/ 订阅反代到本机 2096"
     dependencies:
       - resume-jadeai
+      - areaforge-web
       - sub2api
       - account-vault-web
       - x-ui
@@ -177,6 +178,39 @@ services:
     dependencies: []
     backup: true
     monitoring: []
+
+  - name: areaforge-web
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /opt/areaforge
+    ports:
+      - port: 3020
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "映射到容器 3000，Nginx 反代"
+    dependencies:
+      - areaforge-postgres
+    backup: true
+    backup_script: scripts/backup/backup-volumes.sh
+    monitoring:
+      - docker_container_running
+      - blackbox_app_https
+      - business_log_metrics
+
+  - name: areaforge-postgres
+    host: LosAngeles
+    deploy_type: docker-compose
+    compose_path: /opt/areaforge
+    ports:
+      - port: 5432
+        protocol: tcp
+        expose: "docker-network"
+        notes: "仅容器网络暴露"
+    dependencies: []
+    backup: true
+    backup_script: scripts/backup/backup-postgres.sh
+    monitoring:
+      - docker_container_running
 
   - name: sub2api
     host: LosAngeles

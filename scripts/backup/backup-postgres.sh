@@ -4,7 +4,7 @@ set -euo pipefail
 BACKUP_ROOT="/var/backups/ops/postgres"
 TS="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_ROOT" /var/log/backup
-containers=(sub2api-postgres account-vault-postgres-1)
+containers=(sub2api-postgres account-vault-postgres-1 areaforge-postgres)
 made=0
 
 for c in "${containers[@]}"; do

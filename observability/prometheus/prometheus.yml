@@ -74,6 +74,12 @@ scrape_configs:
           instance: sub2api
           service: sub2api
           check: health
+      - targets:
+          - https://forge.areasong.top/
+        labels:
+          instance: areaforge-web
+          service: areaforge
+          check: login-redirect
     relabel_configs:
       - source_labels:
           - __address__
