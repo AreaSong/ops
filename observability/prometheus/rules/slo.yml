@@ -1,0 +1,97 @@
+groups:
+  - name: synthetic_slo_recording
+    interval: 1m
+    rules:
+      - record: service:synthetic_journey_success:ratio
+        expr: min by (service, journey) (probe_success{scope="business"})
+        labels:
+          slo: synthetic_availability
+          objective: "0.999"
+
+      - record: service:synthetic_burn_rate:ratio_5m
+        expr: (1 - avg_over_time(service:synthetic_journey_success:ratio[5m])) / 0.001
+
+      - record: service:synthetic_burn_rate:ratio_30m
+        expr: (1 - avg_over_time(service:synthetic_journey_success:ratio[30m])) / 0.001
+
+      - record: service:synthetic_burn_rate:ratio_1h
+        expr: (1 - avg_over_time(service:synthetic_journey_success:ratio[1h])) / 0.001
+
+      - record: service:synthetic_burn_rate:ratio_6h
+        expr: (1 - avg_over_time(service:synthetic_journey_success:ratio[6h])) / 0.001
+
+  - name: synthetic_slo_long_window_recording
+    interval: 1h
+    rules:
+      - record: service:synthetic_availability:ratio_30d
+        expr: avg_over_time(service:synthetic_journey_success:ratio[30d])
+
+      - record: service:synthetic_slo_coverage:ratio_30d
+        expr: clamp_max(count_over_time(service:synthetic_journey_success:ratio[30d]) / 43200, 1)
+
+      - record: service:synthetic_error_budget_remaining:ratio_30d
+        expr: clamp(1 - ((1 - service:synthetic_availability:ratio_30d) / 0.001), 0, 1)
+
+  - name: synthetic_slo_alerts
+    interval: 1m
+    rules:
+      - alert: SyntheticSloFastBurnCritical
+        expr: >-
+          service:synthetic_burn_rate:ratio_5m > 14.4
+          and on (service, journey, slo, objective)
+          service:synthetic_burn_rate:ratio_1h > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          scope: business
+          window: fast
+        annotations:
+          summary: "Synthetic SLO fast burn: {{ $labels.service }} / {{ $labels.journey }}"
+          description: "The 99.9% availability error budget is burning above 14.4x in both the 5-minute and 1-hour windows."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
+
+      - alert: SyntheticSloSlowBurnWarning
+        expr: >-
+          service:synthetic_burn_rate:ratio_30m > 6
+          and on (service, journey, slo, objective)
+          service:synthetic_burn_rate:ratio_6h > 6
+        for: 15m
+        labels:
+          severity: warning
+          scope: business
+          window: slow
+        annotations:
+          summary: "Synthetic SLO sustained burn: {{ $labels.service }} / {{ $labels.journey }}"
+          description: "The 99.9% availability error budget is burning above 6x in both the 30-minute and 6-hour windows."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-24h&to=now"
+
+      - alert: SyntheticSloBudgetLow
+        expr: >-
+          service:synthetic_error_budget_remaining:ratio_30d > 0
+          and service:synthetic_error_budget_remaining:ratio_30d < 0.25
+          and on (service, journey, slo, objective)
+          service:synthetic_slo_coverage:ratio_30d >= 0.95
+        for: 30m
+        labels:
+          severity: warning
+          scope: business
+          window: 30d
+        annotations:
+          summary: "Synthetic SLO error budget below 25%: {{ $labels.service }} / {{ $labels.journey }}"
+          description: "At least 95% of the 30-day observation window is present and less than one quarter of the error budget remains."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now"
+
+      - alert: SyntheticSloBudgetExhausted
+        expr: >-
+          service:synthetic_error_budget_remaining:ratio_30d == 0
+          and on (service, journey, slo, objective)
+          service:synthetic_slo_coverage:ratio_30d >= 0.95
+        for: 15m
+        labels:
+          severity: critical
+          scope: business
+          window: 30d
+        annotations:
+          summary: "Synthetic SLO error budget exhausted: {{ $labels.service }} / {{ $labels.journey }}"
+          description: "At least 95% of the 30-day observation window is present and the 99.9% availability error budget is exhausted."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now"

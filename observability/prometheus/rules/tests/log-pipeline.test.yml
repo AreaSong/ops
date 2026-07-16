@@ -1,0 +1,45 @@
+rule_files:
+  - ../log-pipeline.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: future audit probe timestamp is rejected
+    interval: 1m
+    input_series:
+      - series: audit_log_pipeline_last_event_timestamp_seconds
+        values: '3600+0x20'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AuditLogPipelineStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "The auditd-to-Loki pipeline is stale"
+              description: "No recent fixed audit pipeline probe is visible in Loki. Check auditd, file permissions, Promtail positions, and Loki ingestion."
+
+  - name: continuously fresh audit probe timestamp remains healthy
+    interval: 1m
+    input_series:
+      - series: audit_log_pipeline_last_event_timestamp_seconds
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AuditLogPipelineStale
+        exp_alerts: []
+
+  - name: failed end to end probe raises an alert
+    interval: 1m
+    input_series:
+      - series: audit_log_pipeline_check_success
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: AuditLogPipelineCheckFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "auditd events are not reaching Loki"
+              description: "The fixed non-sensitive audit probe could not be emitted, queried, or observed within five minutes."

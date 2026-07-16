@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+METRIC_SCRIPT="$SCRIPT_DIR/../write-docker-metrics.sh"
+WORK_DIR="$(mktemp -d)"
+
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+mkdir -p "$WORK_DIR/bin"
+cat >"$WORK_DIR/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${FAKE_DOCKER_MODE:-success}" = failure ]; then
+  exit 1
+fi
+
+case "${1:-}" in
+  ps)
+    printf 'sub2api\n'
+    ;;
+  inspect)
+    if [ "${FAKE_DOCKER_MODE:-success}" = empty-inspect ]; then
+      printf '[]\n'
+      exit 0
+    fi
+    cat <<'JSON'
+[{"RestartCount":3,"State":{"Running":true,"OOMKilled":false,"Health":{"Status":"healthy"}},"HostConfig":{"Memory":536870912,"NanoCpus":1000000000,"PidsLimit":512}}]
+JSON
+    ;;
+  stats)
+    if [ "${FAKE_DOCKER_MODE:-success}" = bad-stats ]; then
+      printf '%s\n' '{"CPUPerc":"50.00%","MemUsage":"invalid / 512MiB","Name":"sub2api","PIDs":"128"}'
+      exit 0
+    fi
+    printf '%s\n' '{"CPUPerc":"50.00%","MemUsage":"256MiB / 512MiB","Name":"sub2api","PIDs":"128"}'
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+EOF
+chmod 0755 "$WORK_DIR/bin/docker"
+
+success_out="$WORK_DIR/success.prom"
+DOCKER_METRIC_OUT="$success_out" DOCKER_EXPECTED_CONTAINERS="sub2api,missing-service" \
+  PATH="$WORK_DIR/bin:$PATH" "$METRIC_SCRIPT"
+grep -Fq 'docker_metrics_check_success 1' "$success_out"
+grep -Fq 'docker_container_running{name="sub2api"} 1' "$success_out"
+grep -Fq 'docker_container_running{name="missing-service"} 0' "$success_out"
+grep -Fq 'docker_container_restart_count{name="sub2api"} 3' "$success_out"
+grep -Fq 'docker_container_memory_usage_ratio{name="sub2api"} 0.5' "$success_out"
+grep -Fq 'docker_container_cpu_limit_usage_ratio{name="sub2api"} 0.5' "$success_out"
+grep -Fq 'docker_container_pids_usage_ratio{name="sub2api"} 0.25' "$success_out"
+grep -Fq 'docker_container_health_status{name="sub2api",status="healthy"} 1' "$success_out"
+
+failure_out="$WORK_DIR/failure.prom"
+FAKE_DOCKER_MODE=failure DOCKER_METRIC_OUT="$failure_out" \
+  DOCKER_EXPECTED_CONTAINERS="sub2api" PATH="$WORK_DIR/bin:$PATH" "$METRIC_SCRIPT"
+grep -Fq 'docker_metrics_check_success 0' "$failure_out"
+if grep -Fq 'docker_container_running{name="sub2api"}' "$failure_out"; then exit 1; fi
+
+empty_out="$WORK_DIR/empty-inspect.prom"
+FAKE_DOCKER_MODE=empty-inspect DOCKER_METRIC_OUT="$empty_out" \
+  DOCKER_EXPECTED_CONTAINERS="sub2api" PATH="$WORK_DIR/bin:$PATH" "$METRIC_SCRIPT"
+grep -Fq 'docker_metrics_check_success 0' "$empty_out"
+if grep -Fq 'docker_container_running{name="sub2api"}' "$empty_out"; then exit 1; fi
+
+bad_stats_out="$WORK_DIR/bad-stats.prom"
+FAKE_DOCKER_MODE=bad-stats DOCKER_METRIC_OUT="$bad_stats_out" \
+  DOCKER_EXPECTED_CONTAINERS="sub2api" PATH="$WORK_DIR/bin:$PATH" "$METRIC_SCRIPT"
+grep -Fq 'docker_metrics_check_success 0' "$bad_stats_out"
+grep -Fq 'docker_container_running{name="sub2api"} 1' "$bad_stats_out"
+if grep -Fq 'docker_container_memory_usage_ratio{name="sub2api"}' "$bad_stats_out"; then exit 1; fi
+
+echo "docker metrics: PASS"

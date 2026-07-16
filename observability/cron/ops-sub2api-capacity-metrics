@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+* * * * * root /opt/ops/observability/scripts/write-sub2api-capacity-metrics.sh >>/var/log/observability/sub2api-capacity-metrics.log 2>&1

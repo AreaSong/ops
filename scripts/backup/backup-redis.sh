@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+umask 077
+
 BACKUP_ROOT="/var/backups/ops/redis"
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="$BACKUP_ROOT/redis-$TS.tar.gz"
@@ -10,7 +12,8 @@ ACL_FILE="$DATA_DIR/users.acl"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-mkdir -p "$BACKUP_ROOT" /var/log/backup
+install -d -m 0700 "$BACKUP_ROOT"
+install -d -m 0750 /var/log/backup
 
 if ! docker ps --format "{{.Names}}" | grep -Fxq sub2api-redis; then
   echo "redis container not running: sub2api-redis" >&2

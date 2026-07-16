@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+umask 077
+
 BACKUP_ROOT="/var/backups/ops/volumes"
 TS="$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$BACKUP_ROOT" /var/log/backup
+install -d -m 0700 "$BACKUP_ROOT"
+install -d -m 0750 /var/log/backup
 made=0
 
 backup_docker_volume() {
@@ -25,6 +28,7 @@ backup_docker_volume() {
   out="$BACKUP_ROOT/${output_prefix}-$TS.tar.gz"
   tar -czf "$out" -C "$mp" .
   tar -tzf "$out" >/dev/null
+  chmod 0600 "$out"
   echo "$out"
   made=$((made + 1))
 }
@@ -42,6 +46,7 @@ backup_directory() {
   out="$BACKUP_ROOT/${output_prefix}-$TS.tar.gz"
   tar -czf "$out" -C "$source_dir" .
   tar -tzf "$out" >/dev/null
+  chmod 0600 "$out"
   echo "$out"
   made=$((made + 1))
 }
@@ -52,6 +57,7 @@ if [ -d /var/lib/sub2api/data ]; then
       --exclude="data/logs/*" \
       -czf "$out" -C /var/lib/sub2api data
   tar -tzf "$out" >/dev/null
+  chmod 0600 "$out"
   echo "$out"
   made=$((made + 1))
 fi

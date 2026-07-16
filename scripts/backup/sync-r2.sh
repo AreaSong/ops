@@ -3,19 +3,24 @@ set -euo pipefail
 
 CONFIG_FILE="${R2_BACKUP_ENV:-/etc/ops/r2-backup.env}"
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERIFY_SCRIPT="$SCRIPT_DIR/verify-backup-set-r2.sh"
 LOG_DIR="/var/log/backup"
 METRIC_OUT="/var/lib/node_exporter/textfile_collector/r2-backup.prom"
 LOCK_FILE="/run/lock/ops-r2-backup.lock"
 REMOTE_NAME="r2"
 RCLONE_ARGS=()
 DRY_RUN=0
+SKIP_VERIFY=0
 
 usage() {
   cat <<'USAGE'
-Usage: sync-r2.sh [--dry-run]
+Usage: sync-r2.sh [--dry-run] [--skip-verify]
 
 Upload local backup artifacts from /var/backups/ops to Cloudflare R2.
 Secrets are read from /etc/ops/r2-backup.env and are never stored in Git.
+Successful non-dry-run uploads verify the latest manifest and every selected
+artifact by downloading them from R2 and checking SHA-256.
 USAGE
 }
 
@@ -24,6 +29,9 @@ while [ "$#" -gt 0 ]; do
     --dry-run)
       DRY_RUN=1
       RCLONE_ARGS+=(--dry-run)
+      ;;
+    --skip-verify)
+      SKIP_VERIFY=1
       ;;
     -h|--help)
       usage
@@ -49,13 +57,18 @@ if ! command -v rclone >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_VERIFY" -eq 0 ] && [ ! -x "$VERIFY_SCRIPT" ]; then
+  echo "R2 verification script is missing or not executable: $VERIFY_SCRIPT" >&2
+  exit 1
+fi
+
 if [ ! -d "$BACKUP_ROOT" ]; then
   echo "backup root not found: $BACKUP_ROOT" >&2
   exit 1
 fi
 
-# shellcheck disable=SC1090
 set -a
+# shellcheck disable=SC1090
 . "$CONFIG_FILE"
 set +a
 
@@ -73,6 +86,12 @@ for name in "${required_vars[@]}"; do
     exit 1
   fi
 done
+
+if [[ ! "$R2_ENDPOINT" =~ ^https://[^/@?#]+(:[0-9]+)?/?$ ]]; then
+  echo "R2_ENDPOINT must be an HTTPS origin without credentials, path, query, or fragment" >&2
+  exit 1
+fi
+R2_ENDPOINT="${R2_ENDPOINT%/}"
 
 case "$R2_PREFIX" in
   "") ;;
@@ -121,6 +140,13 @@ write_success_metric() {
     "${RCLONE_ARGS[@]}"
 
   if [ "$DRY_RUN" -eq 0 ]; then
+    if [ "$SKIP_VERIFY" -eq 0 ]; then
+      R2_BACKUP_ENV="$CONFIG_FILE" \
+        R2_VERIFY_ENV="${R2_VERIFY_ENV:-/etc/ops/r2-verify.env}" \
+        "$VERIFY_SCRIPT"
+    else
+      echo "WARNING: R2 content verification explicitly skipped" >&2
+    fi
     write_success_metric
   fi
   echo "R2 backup sync completed"

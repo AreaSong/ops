@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/5 * * * * root /opt/ops/observability/scripts/write-docker-metrics.sh >>/var/log/observability/docker-metrics.log 2>&1

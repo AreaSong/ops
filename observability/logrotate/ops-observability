@@ -1,0 +1,21 @@
+/var/log/observability/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root adm
+}
+
+/var/log/backup/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root adm
+}

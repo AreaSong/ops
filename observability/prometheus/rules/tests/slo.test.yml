@@ -1,0 +1,112 @@
+rule_files:
+  - ../slo.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: journey success uses the weakest check
+    interval: 1m
+    input_series:
+      - series: 'probe_success{scope="business",service="account-vault",journey="login",check="login-page"}'
+        values: '1+0x2'
+      - series: 'probe_success{scope="business",service="account-vault",journey="login",check="auth-status-api"}'
+        values: '0+0x2'
+    promql_expr_test:
+      - expr: service:synthetic_journey_success:ratio
+        eval_time: 1m
+        exp_samples:
+          - labels: 'service:synthetic_journey_success:ratio{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
+            value: 0
+
+  - name: raw journey failure drives fast burn recording
+    interval: 1m
+    input_series:
+      - series: 'probe_success{scope="business",service="sub2api",journey="login",check="login-page"}'
+        values: '1+0x4 0'
+    promql_expr_test:
+      - expr: 'service:synthetic_burn_rate:ratio_5m{service="sub2api",journey="login"}'
+        eval_time: 5m
+        exp_samples:
+          - labels: 'service:synthetic_burn_rate:ratio_5m{service="sub2api",journey="login",slo="synthetic_availability",objective="0.999"}'
+            value: 166.66666666666663
+
+  - name: multi-window burn and budget alerts
+    interval: 1m
+    input_series:
+      - series: 'service:synthetic_burn_rate:ratio_5m{service="sub2api",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '20+0x40'
+      - series: 'service:synthetic_burn_rate:ratio_1h{service="sub2api",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '20+0x40'
+      - series: 'service:synthetic_burn_rate:ratio_30m{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '8+0x40'
+      - series: 'service:synthetic_burn_rate:ratio_6h{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '8+0x40'
+      - series: 'service:synthetic_error_budget_remaining:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
+        values: '0.2+0x40'
+      - series: 'service:synthetic_slo_coverage:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
+        values: '1+0x40'
+      - series: 'service:synthetic_error_budget_remaining:ratio_30d{service="areaforge",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '0+0x40'
+      - series: 'service:synthetic_slo_coverage:ratio_30d{service="areaforge",journey="login",slo="synthetic_availability",objective="0.999"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SyntheticSloFastBurnCritical
+        exp_alerts:
+          - exp_labels:
+              service: sub2api
+              journey: login
+              slo: synthetic_availability
+              objective: "0.999"
+              severity: critical
+              scope: business
+              window: fast
+            exp_annotations:
+              summary: "Synthetic SLO fast burn: sub2api / login"
+              description: "The 99.9% availability error budget is burning above 14.4x in both the 5-minute and 1-hour windows."
+              grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
+      - eval_time: 15m
+        alertname: SyntheticSloSlowBurnWarning
+        exp_alerts:
+          - exp_labels:
+              service: account-vault
+              journey: login
+              slo: synthetic_availability
+              objective: "0.999"
+              severity: warning
+              scope: business
+              window: slow
+            exp_annotations:
+              summary: "Synthetic SLO sustained burn: account-vault / login"
+              description: "The 99.9% availability error budget is burning above 6x in both the 30-minute and 6-hour windows."
+              grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-24h&to=now"
+      - eval_time: 30m
+        alertname: SyntheticSloBudgetLow
+        exp_alerts:
+          - exp_labels:
+              service: resume-jadeai
+              journey: public-home
+              slo: synthetic_availability
+              objective: "0.999"
+              severity: warning
+              scope: business
+              window: 30d
+            exp_annotations:
+              summary: "Synthetic SLO error budget below 25%: resume-jadeai / public-home"
+              description: "At least 95% of the 30-day observation window is present and less than one quarter of the error budget remains."
+              grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now"
+      - eval_time: 15m
+        alertname: SyntheticSloBudgetExhausted
+        exp_alerts:
+          - exp_labels:
+              service: areaforge
+              journey: login
+              slo: synthetic_availability
+              objective: "0.999"
+              severity: critical
+              scope: business
+              window: 30d
+            exp_annotations:
+              summary: "Synthetic SLO error budget exhausted: areaforge / login"
+              description: "At least 95% of the 30-day observation window is present and the 99.9% availability error budget is exhausted."
+              grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now"

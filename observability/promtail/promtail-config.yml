@@ -3,7 +3,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yml
+  filename: /var/lib/promtail/positions.yml
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
@@ -26,6 +26,15 @@ scrape_configs:
           job: backup
           host: LosAngeles
           __path__: /var/log/backup/*.log
+
+  - job_name: observability
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: observability
+          host: LosAngeles
+          __path__: /var/log/observability/*.log
 
   - job_name: syslog
     static_configs:
@@ -53,3 +62,15 @@ scrape_configs:
           job: fail2ban_enriched
           host: LosAngeles
           __path__: /var/log/security/fail2ban-enriched.log
+
+  - job_name: auditd
+    pipeline_stages:
+      - drop:
+          expression: 'type=(EXECVE|PROCTITLE)'
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: auditd
+          host: LosAngeles
+          __path__: /var/log/audit/audit.log

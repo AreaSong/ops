@@ -1,0 +1,237 @@
+---
+- name: Install LosAngeles observability host jobs
+  hosts: LosAngeles
+  become: true
+  gather_facts: false
+  vars:
+    compliance_archive_enabled: false
+    collector_files:
+      - { name: write-daily-ops-audit.sh, mode: "0755" }
+      - { name: daily_ops_audit.py, mode: "0755" }
+      - { name: daily_ops_audit_common.py, mode: "0644" }
+      - { name: daily_ops_audit_collectors.py, mode: "0644" }
+      - { name: daily_ops_audit_reporting.py, mode: "0644" }
+      - { name: write-docker-metrics.sh, mode: "0755" }
+      - { name: docker_metrics.py, mode: "0755" }
+      - { name: write-security-metrics.sh, mode: "0755" }
+      - { name: write-sub2api-capacity-metrics.sh, mode: "0755" }
+    shell_collectors:
+      - /opt/ops/observability/scripts/write-daily-ops-audit.sh
+      - /opt/ops/observability/scripts/write-docker-metrics.sh
+      - /opt/ops/observability/scripts/write-security-metrics.sh
+      - /opt/ops/observability/scripts/write-sub2api-capacity-metrics.sh
+    cron_files:
+      - ops-daily-ops-audit
+      - ops-docker-metrics
+      - ops-security-metrics
+      - ops-sub2api-capacity-metrics
+    compliance_archive_files:
+      - { name: compliance_log_archive.py, mode: "0755" }
+      - { name: archive-compliance-logs.sh, mode: "0755" }
+      - { name: verify-compliance-log-archive.sh, mode: "0755" }
+    compliance_archive_shell_files:
+      - /opt/ops/scripts/backup/archive-compliance-logs.sh
+      - /opt/ops/scripts/backup/verify-compliance-log-archive.sh
+    compliance_archive_cron_files:
+      - ops-compliance-log-archive
+  tasks:
+    - name: Create observability host directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: /opt/ops/observability/scripts, group: root, mode: "0755" }
+        - { path: /var/log/observability, group: adm, mode: "0750" }
+        - { path: /var/log/backup, group: adm, mode: "0750" }
+        - { path: /var/lib/observability/promtail, group: root, mode: "0750" }
+        - { path: /var/lib/node_exporter/textfile_collector, group: root, mode: "0755" }
+        - { path: /var/backups/ops/compliance-logs, group: root, mode: "0700" }
+
+    - name: Deploy observability collector files
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/scripts/{{ item.name }}"
+        dest: "/opt/ops/observability/scripts/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: true
+      loop: "{{ collector_files }}"
+      register: collector_copy_results
+
+    - name: Validate collector shell syntax
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/bash
+          - -n
+          - "{{ item }}"
+      loop: "{{ shell_collectors }}"
+      changed_when: false
+
+    - name: Validate daily audit Python imports
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /opt/ops/observability/scripts/daily_ops_audit.py
+          - --help
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+
+    - name: Install observability cron jobs
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        dest: "/etc/cron.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      loop: "{{ cron_files }}"
+      register: cron_copy_results
+
+    - name: Install observability log rotation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/logrotate/ops-observability"
+        dest: /etc/logrotate.d/ops-observability
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      register: logrotate_copy_result
+
+    - name: Validate observability log rotation
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/logrotate
+          - --debug
+          - /etc/logrotate.d/ops-observability
+      changed_when: false
+
+    - name: Remove the compliance archive activation gate while changing its deployment
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
+        state: absent
+      when: compliance_archive_enabled | bool
+
+    - name: Disable the compliance archive cron when the feature is disabled
+      ansible.builtin.file:
+        path: "/etc/cron.d/{{ item }}"
+        state: absent
+      loop: "{{ compliance_archive_cron_files }}"
+      when: not (compliance_archive_enabled | bool)
+
+    - name: Remove the compliance archive activation gate when the feature is disabled
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
+        state: absent
+      when: not (compliance_archive_enabled | bool)
+
+    - name: Verify compliance archive credential files before enabling its cron
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/ops/compliance-archive.env
+        - /etc/ops/compliance-archive-verify.env
+      register: compliance_archive_credentials
+      when: compliance_archive_enabled | bool
+
+    - name: Require root-only compliance archive credential files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.pw_name == 'root'
+          - item.stat.mode == '0600'
+        fail_msg: "Compliance archive credential is missing or not root-only: {{ item.item }}"
+      loop: "{{ compliance_archive_credentials.results | default([]) }}"
+      when: compliance_archive_enabled | bool
+
+    - name: Deploy compliance archive files
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/backup/{{ item.name }}"
+        dest: "/opt/ops/scripts/backup/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: true
+      loop: "{{ compliance_archive_files }}"
+      register: compliance_archive_file_results
+      when: compliance_archive_enabled | bool
+
+    - name: Validate compliance archive shell syntax
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/bash
+          - -n
+          - "{{ item }}"
+      loop: "{{ compliance_archive_shell_files }}"
+      changed_when: false
+      when: compliance_archive_enabled | bool
+
+    - name: Validate compliance archive Python entry point
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /opt/ops/scripts/backup/compliance_log_archive.py
+          - --help
+      changed_when: false
+      when: compliance_archive_enabled | bool
+
+    - name: Install compliance archive cron job
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/backup/cron/{{ item }}"
+        dest: "/etc/cron.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      loop: "{{ compliance_archive_cron_files }}"
+      register: compliance_archive_cron_results
+      when: compliance_archive_enabled | bool
+
+    - name: Publish the compliance archive activation gate after successful deployment
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # HELP compliance_log_archive_configured Whether the compliance archive cron and credentials are configured.
+          # TYPE compliance_log_archive_configured gauge
+          compliance_log_archive_configured 1
+        backup: true
+      register: compliance_archive_activation_metric
+      when: compliance_archive_enabled | bool
+
+    - name: Report collector backup paths
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }} backup={{ item.backup_file | default('none (new file)') }}"
+      loop: "{{ collector_copy_results.results }}"
+
+    - name: Report cron backup paths
+      ansible.builtin.debug:
+        msg: "{{ item.item }} backup={{ item.backup_file | default('none (new file)') }}"
+      loop: "{{ cron_copy_results.results }}"
+
+    - name: Report logrotate backup path
+      ansible.builtin.debug:
+        msg: "ops-observability backup={{ logrotate_copy_result.backup_file | default('none (new file)') }}"
+
+    - name: Report compliance archive file backup paths
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }} backup={{ item.backup_file | default('none (new file)') }}"
+      loop: "{{ compliance_archive_file_results.results | default([]) }}"
+      when: compliance_archive_enabled | bool
+
+    - name: Report compliance archive cron backup paths
+      ansible.builtin.debug:
+        msg: "{{ item.item }} backup={{ item.backup_file | default('none (new file)') }}"
+      loop: "{{ compliance_archive_cron_results.results | default([]) }}"
+      when: compliance_archive_enabled | bool
+
+    - name: Report compliance archive activation metric backup path
+      ansible.builtin.debug:
+        msg: >-
+          compliance-log-archive-configured backup={{ compliance_archive_activation_metric.backup_file | default('none (new file)') }}
+      when: compliance_archive_enabled | bool

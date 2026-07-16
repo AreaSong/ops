@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=UTC
+
+0 4 * * * root /opt/ops/scripts/backup/create-backup-manifest.sh >>/var/log/backup/manifest.log 2>&1

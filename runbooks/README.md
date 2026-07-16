@@ -26,6 +26,13 @@
 | RB-18 | LosAngeles standards/09 C1h Postgres 隔离恢复演练 | [losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md](losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md) |
 | RB-19 | LosAngeles 单机生产收尾与日常运维清单 | [losangeles-single-host-production-closure-20260706.md](losangeles-single-host-production-closure-20260706.md) |
 | RB-20 | LosAngeles 标准应用部署流程 | [losangeles-standard-app-deploy.md](losangeles-standard-app-deploy.md) |
+| RB-21 | AreaForge 隔离恢复演练 | [areaforge-isolated-restore-drill.md](areaforge-isolated-restore-drill.md) |
+| RB-22 | LosAngeles 每日运维审计 | [daily-ops-audit.md](daily-ops-audit.md) |
+| RB-23 | LosAngeles 完整备份集与 R2 哈希校验 | [backup-set-integrity.md](backup-set-integrity.md) |
+| RB-24 | GitHub 外部可用性监控 | [github-external-uptime.md](github-external-uptime.md) |
+| RB-25 | LosAngeles auditd 安全审计 | [auditd-security-audit.md](auditd-security-audit.md) |
+| RB-26 | sub2api SLO 与容量症状 | [sub2api-slo-capacity.md](sub2api-slo-capacity.md) |
+| RB-27 | LosAngeles 合规日志异地归档 | [compliance-log-archive.md](compliance-log-archive.md) |
 
 ## 通用排障原则
 

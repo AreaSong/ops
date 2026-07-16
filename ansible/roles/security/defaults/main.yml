@@ -1,0 +1,14 @@
+---
+auditd_max_log_file_mb: 50
+auditd_num_logs: 14
+auditd_space_left_mb: 2048
+auditd_admin_space_left_mb: 1024
+auditd_min_free_margin_mb: 2048
+auditd_required_keys:
+  - identity
+  - sudoers
+  - sshd
+  - systemd
+  - auditconfig
+  - opsconfig
+  - rootcmd

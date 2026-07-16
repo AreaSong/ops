@@ -25,7 +25,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Grafana for dashboards
 - Alertmanager with QQ SMTP email receiver, grouped routes, and custom email templates
 - Loki for logs
-- Promtail for `/var/log/nginx/*.log`, `/var/log/backup/*.log`, and `/var/log/syslog`
+- Promtail for Nginx, backup, observability, syslog, Fail2ban, and auditd logs; positions persist under `/var/lib/observability/promtail/`
 - Node Exporter with textfile collector
 - Blackbox Exporter for HTTPS and TLS checks
 - Blackbox app probes for resume-jadeai, account-vault, and sub2api public health checks
@@ -45,14 +45,186 @@ Metrics directory:
 Scripts:
 
 - `observability/scripts/write-backup-metrics.sh`
-- `observability/scripts/write-docker-metrics.sh`
+- `observability/scripts/write-docker-metrics.sh` with running, health, restart, OOM, CPU, memory, and PID metrics
 - `observability/scripts/write-security-metrics.sh`
+- `observability/scripts/write-sub2api-capacity-metrics.sh`
+- `observability/scripts/write-daily-ops-audit.sh`
 
 Cron:
 
 - Docker container metrics every 5 minutes
 - Backup freshness metrics daily after backup jobs
 - Security log and firewall metrics every minute
+- sub2api account-pool symptom metrics every minute
+- Previous complete UTC day operations audit at `00:20 UTC`
+
+## Daily operations audit
+
+The daily audit aggregates the previous complete UTC day without persisting raw client
+addresses, query strings, credentials, cookies, or log lines. It reports:
+
+- host RX/TX bytes and resource peaks
+- per-service HTTP status classes, response bytes, unique-client count, normalized top paths, and P50/P95/P99 latency
+- SSH, sudo, Fail2ban, and UFW events
+- current systemd, Docker, firewall, active-alert, local backup, and R2 state
+
+Artifacts:
+
+- report: `/var/log/observability/daily-ops-audit-YYYY-MM-DD.md` (`0640`, retained 180 days)
+- task log: `/var/log/observability/daily-ops-audit.log` (30 rotations)
+- textfile metrics: `/var/lib/node_exporter/textfile_collector/daily-ops-audit.prom`
+
+Manual generation without email:
+
+```bash
+sudo /opt/ops/observability/scripts/write-daily-ops-audit.sh --no-email
+```
+
+Send the report through the dedicated Alertmanager receiver only after reviewing the
+local Markdown output:
+
+```bash
+sudo /opt/ops/observability/scripts/write-daily-ops-audit.sh
+```
+
+The email submission reuses Alertmanager's root-only SMTP password file. The audit
+scripts do not read or copy SMTP credentials. Same-day reruns keep a stable alert
+identity, so Alertmanager does not create parallel reports when severity changes.
+
+Deployment files:
+
+- `/etc/cron.d/ops-daily-ops-audit`
+- `/etc/logrotate.d/ops-observability`
+
+Validation:
+
+```bash
+python3 -m unittest discover -s observability/scripts/tests -v
+python3 -m py_compile observability/scripts/daily_ops_audit*.py
+bash -n observability/scripts/write-daily-ops-audit.sh
+jq empty observability/grafana/dashboards/losangeles-daily-audit.json
+```
+
+Operational response is documented in `runbooks/daily-ops-audit.md`.
+
+## Security audit
+
+The managed auditd baseline records writes to identity, sudo, SSH, systemd,
+audit, and `/opt/ops` configuration paths. It also records root commands
+started by an authenticated non-system login user. Raw auditd records remain
+on the host; Promtail drops `EXECVE` and `PROCTITLE` before forwarding to Loki
+so command arguments are not copied into the shared log store.
+
+Security textfile metrics expose auditd service state, kernel audit state,
+managed rule coverage, lost events, and backlog utilization. The security
+dashboard links these metrics with the filtered audit log stream.
+
+The local audit log rotation budget is a capacity guard, not a 180-day archive.
+Compliance with the repository's 180-day tamper-resistant retention requirement
+needs a separately approved immutable or access-isolated object-store archive.
+See `runbooks/auditd-security-audit.md` for validation, privacy rules, and rollback.
+
+Daily sensitive-log archiving is a separate pipeline from Loki. When its control-plane
+prerequisites are ready, enable the managed cron with
+`-e compliance_archive_enabled=true`; it filters the previous UTC day, uploads through
+an append-only Worker endpoint, and verifies through a separate read-only R2 token.
+Cloudflare R2 currently does not provide S3 Object Lock, so the Worker protects against
+host-side overwrite/delete but is not a substitute for a cloud-provider WORM control.
+See `runbooks/compliance-log-archive.md`.
+
+## Synthetic SLO and sub2api capacity symptoms
+
+Business Blackbox journeys feed an initial 99.9% synthetic availability SLO.
+Recording rules expose 30-day availability, observation coverage, remaining error
+budget, and 5-minute/30-minute/1-hour/6-hour burn rates. Multi-window alerts only
+use the synthetic journey signal; the current five-minute Nginx gauges are not
+treated as precise request counters.
+
+The sub2api capacity collector reads only the latest five minutes of Docker logs,
+counts the exact `no available account` symptom, emits aggregate metrics, and
+deletes its root-only temporary log copy. It never writes raw application logs to
+the textfile collector.
+
+See `runbooks/sub2api-slo-capacity.md` for objectives, warm-up behavior, and response.
+
+Managed host-job deployment:
+
+```bash
+cd /opt/ops/ansible
+ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles
+# After production approval:
+ansible-playbook observability-host-jobs.yml --limit LosAngeles
+```
+
+The playbook deploys the daily audit, Docker, security, and sub2api collector files;
+installs their four `/etc/cron.d/ops-*` jobs; installs the observability logrotate
+policy; and creates the textfile collector and persistent Promtail positions
+directories. Remote copies are backed up by Ansible before replacement.
+
+Post-deployment validation:
+
+The final assertions for `auditd_check_success` and `audit_log_pipeline_check_success` are
+expected to remain `0` until the separately approved auditd deployment has completed. Run
+the complete block again after auditd so the full observability gate is meaningful.
+
+```bash
+sudo stat -c '%a %U:%G %n' /etc/cron.d/ops-{daily-ops-audit,docker-metrics,security-metrics,sub2api-capacity-metrics}
+sudo logrotate --debug /etc/logrotate.d/ops-observability
+sudo /opt/ops/observability/scripts/write-daily-ops-audit.sh --no-email
+sudo /opt/ops/observability/scripts/write-docker-metrics.sh
+sudo /opt/ops/observability/scripts/write-security-metrics.sh
+sudo /opt/ops/observability/scripts/write-sub2api-capacity-metrics.sh
+
+prom_value() {
+  curl -fsSG http://127.0.0.1:9090/api/v1/query \
+    --data-urlencode "query=$1" |
+    jq -er '.data.result | if length == 1 then .[0].value[1] | tonumber else error("expected one series") end'
+}
+
+now="$(date +%s)"
+daily_ts="$(prom_value daily_ops_audit_last_success_timestamp)"
+docker_ts="$(prom_value docker_metrics_last_run_timestamp)"
+security_ts="$(prom_value security_metrics_last_success_timestamp)"
+sub2api_ts="$(prom_value sub2api_capacity_metrics_last_run_timestamp)"
+
+test "$((now - ${daily_ts%.*}))" -lt 100800
+test "$(prom_value daily_ops_audit_data_source_failures)" -eq 0
+test "$((now - ${docker_ts%.*}))" -lt 600
+test "$(prom_value docker_metrics_check_success)" -eq 1
+test "$((now - ${security_ts%.*}))" -lt 300
+test "$(prom_value auditd_check_success)" -eq 1
+test "$(prom_value audit_log_pipeline_check_success)" -eq 1
+audit_pipeline_ts="$(prom_value audit_log_pipeline_last_event_timestamp_seconds)"
+test "$((now - ${audit_pipeline_ts%.*}))" -lt 300
+test "$(prom_value ufw_status_check_success)" -eq 1
+test "$(prom_value 'fail2ban_check_success{jail="sshd"}')" -eq 1
+test "$((now - ${sub2api_ts%.*}))" -lt 300
+test "$(prom_value sub2api_log_check_success)" -eq 1
+```
+
+The play output reports each remote Ansible `backup_file`. Save those paths with the
+deployment record. To roll back, first remove the four cron files so no collector runs
+while files are being restored:
+
+```bash
+sudo rm -f /etc/cron.d/ops-{daily-ops-audit,docker-metrics,security-metrics,sub2api-capacity-metrics}
+```
+
+For every replaced file, install the reported backup over its original destination.
+Collectors use their declared `0755` or `0644` mode; cron and logrotate files use
+`0644`:
+
+```bash
+sudo install -o root -g root -m 0755 "$COLLECTOR_BACKUP" /opt/ops/observability/scripts/write-docker-metrics.sh
+sudo install -o root -g root -m 0644 "$CRON_BACKUP" /etc/cron.d/ops-docker-metrics
+sudo install -o root -g root -m 0644 "$LOGROTATE_BACKUP" /etc/logrotate.d/ops-observability
+```
+
+`backup=none (new file)` means no previous destination existed. In that case, leave
+the cron removed and remove only the corresponding newly managed collector or
+logrotate file after confirming its path. Rollback does not delete generated reports,
+logs, or textfile metrics. Run the complete post-deployment validation block again
+after restoration.
 
 ## Operations
 
@@ -98,6 +270,15 @@ After changing Alertmanager config or templates, validate and recreate Alertmana
 ```bash
 cd /opt/ops/observability
 docker compose up -d --force-recreate --no-deps alertmanager
+```
+
+After changing Promtail configuration or its position storage mount, validate the
+configuration and recreate Promtail:
+
+```bash
+cd /opt/ops/observability
+install -d -m 0750 /var/lib/observability/promtail
+docker compose up -d --force-recreate --no-deps promtail
 ```
 
 

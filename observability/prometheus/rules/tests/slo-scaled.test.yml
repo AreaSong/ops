@@ -1,0 +1,61 @@
+rule_files:
+  - slo.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: complete scaled window preserves availability and budget
+    interval: 1m
+    input_series:
+      - series: 'probe_success{scope="business",service="sub2api",journey="health",check="health-json"}'
+        values: '1+0x120'
+    promql_expr_test:
+      - expr: 'service:synthetic_availability:ratio_30d{service="sub2api",journey="health"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_availability:ratio_30d{service="sub2api",journey="health",slo="synthetic_availability",objective="0.999"}'
+            value: 1
+      - expr: 'service:synthetic_slo_coverage:ratio_30d{service="sub2api",journey="health"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_slo_coverage:ratio_30d{service="sub2api",journey="health",slo="synthetic_availability",objective="0.999"}'
+            value: 1
+      - expr: 'service:synthetic_error_budget_remaining:ratio_30d{service="sub2api",journey="health"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_error_budget_remaining:ratio_30d{service="sub2api",journey="health",slo="synthetic_availability",objective="0.999"}'
+            value: 1
+
+  - name: missing raw samples reduce scaled coverage
+    interval: 1m
+    input_series:
+      - series: 'probe_success{scope="business",service="resume-jadeai",journey="public-home",check="resume-home"}'
+        values: '1+0x60 _x59'
+    promql_expr_test:
+      - expr: 'service:synthetic_availability:ratio_30d{service="resume-jadeai",journey="public-home"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_availability:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
+            value: 1
+      - expr: 'service:synthetic_slo_coverage:ratio_30d{service="resume-jadeai",journey="public-home"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_slo_coverage:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
+            value: 0.55
+
+  - name: one failed minute exhausts the scaled 99.9 percent budget
+    interval: 1m
+    input_series:
+      - series: 'probe_success{scope="business",service="account-vault",journey="login",check="login-page"}'
+        values: '1+0x119 0'
+    promql_expr_test:
+      - expr: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
+            value: 0.9917355371900827
+      - expr: 'service:synthetic_error_budget_remaining:ratio_30d{service="account-vault",journey="login"}'
+        eval_time: 2h
+        exp_samples:
+          - labels: 'service:synthetic_error_budget_remaining:ratio_30d{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
+            value: 0

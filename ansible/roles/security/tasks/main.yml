@@ -64,6 +64,11 @@
     enabled: true
   when: ansible_os_family == "RedHat"
 
+- name: Configure auditd baseline
+  ansible.builtin.import_tasks: auditd.yml
+  tags:
+    - auditd
+
 - name: Configure UFW default deny (Debian/Ubuntu)
   community.general.ufw:
     state: enabled

@@ -1,0 +1,21 @@
+{{ define "email.daily.audit.subject" -}}
+[LosAngeles][DAILY AUDIT][{{ .CommonLabels.report_date }}][{{ .CommonAnnotations.severity | toUpper }}]
+{{- end }}
+
+{{ define "email.daily.audit.html" -}}
+<!doctype html>
+<html>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
+    <h2 style="margin: 0 0 12px;">LosAngeles daily operations audit</h2>
+    <p style="margin: 0 0 16px;">
+      <strong>Date:</strong> {{ .CommonLabels.report_date }}<br>
+      <strong>Severity:</strong> {{ .CommonAnnotations.severity }}<br>
+      <strong>Host:</strong> {{ .CommonLabels.host }}
+    </p>
+    {{ range .Alerts.Firing }}
+    <pre style="white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">{{ .Annotations.report | html }}</pre>
+    {{ end }}
+    <p><a href="https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-operations-audit?orgId=1&from=now-30d&to=now">Open daily audit dashboard</a></p>
+  </body>
+</html>
+{{- end }}

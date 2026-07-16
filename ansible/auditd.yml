@@ -1,0 +1,12 @@
+---
+- name: Install the managed auditd baseline on LosAngeles
+  hosts: LosAngeles
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Apply auditd-only security tasks
+      ansible.builtin.import_role:
+        name: security
+        tasks_from: auditd
+      tags:
+        - auditd

@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+* * * * * root /opt/ops/observability/scripts/write-security-metrics.sh >>/var/log/observability/security-metrics.log 2>&1

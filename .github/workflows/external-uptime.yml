@@ -1,0 +1,72 @@
+name: LosAngeles External Uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      manage_issues:
+        description: Manage the production incident Issue (default branch only)
+        required: true
+        default: false
+        type: boolean
+      simulation_mode:
+        description: Controlled Issue lifecycle test mode
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - failure
+          - recovery
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: losangeles-external-uptime
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Check public HTTPS endpoints
+        id: check
+        continue-on-error: true
+        env:
+          SIMULATION_MODE: ${{ inputs.simulation_mode }}
+        shell: bash
+        run: |
+          set -o pipefail
+          if [[ "$SIMULATION_MODE" == "failure" ]]; then
+            printf 'checked_at=%s\nFAIL\tsimulation\thttp=503\tcurl_exit=22\terror=controlled workflow_dispatch failure\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee external-uptime-result.txt
+            exit 1
+          fi
+          scripts/monitor/external-uptime-check.sh 2>&1 | tee external-uptime-result.txt
+
+      - name: Open or close the incident issue
+        if: >-
+          always() &&
+          (github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' &&
+          github.ref_name == github.event.repository.default_branch &&
+          inputs.manage_issues))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          INCIDENT_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.simulation_mode != 'none' && 'simulation' || 'production' }}
+        shell: bash
+        run: |
+          scripts/monitor/external-uptime-incident.sh \
+            "$CHECK_OUTCOME" external-uptime-result.txt "$INCIDENT_KIND"
+
+      - name: Mark unhealthy checks as failed
+        if: steps.check.outcome == 'failure'
+        run: exit 1

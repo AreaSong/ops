@@ -124,6 +124,7 @@ services:
       - /opt/ops/observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/lib/observability/promtail:/var/lib/promtail
     networks:
       - monitoring
     depends_on:

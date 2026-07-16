@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """从 inventory/servers.yaml 生成 Ansible inventory 文件。"""
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -13,39 +14,52 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SERVERS_YAML = REPO_ROOT / "inventory" / "servers.yaml"
 OUTPUT = REPO_ROOT / "ansible" / "inventory" / "hosts.yml"
+CONNECTION_FIELDS = ("ansible_user", "ansible_ssh_private_key_file", "ansible_port")
 
 
-def main():
-    with open(SERVERS_YAML) as f:
-        data = yaml.safe_load(f)
+def build_inventory(data: dict) -> dict:
+    hosts = {}
+    for server in data.get("servers", []):
+        hostname = server["hostname"]
+        connection_host = server.get("private_ip") or server.get("public_ip") or hostname
+        host_vars = {
+            "ansible_host": connection_host,
+            "os": server.get("os", "unknown"),
+            "cloud": server.get("cloud", ""),
+            "region": server.get("region", ""),
+        }
+        if server.get("public_ip"):
+            host_vars["ansible_host_public"] = server["public_ip"]
+        for field in CONNECTION_FIELDS:
+            if server.get(field) not in (None, ""):
+                host_vars[field] = server[field]
+        hosts[hostname] = host_vars
 
-    servers = data.get("servers", [])
-    groups = data.get("groups", {})
+    children = {
+        group_name: {"hosts": {hostname: {} for hostname in hostnames}}
+        for group_name, hostnames in data.get("groups", {}).items()
+    }
+    return {"all": {"hosts": hosts, "children": children}}
 
-    lines = ["# 自动生成，请勿手动编辑。源文件: inventory/servers.yaml", "all:"]
-    lines.append("  hosts:")
 
-    for srv in servers:
-        hostname = srv["hostname"]
-        lines.append(f"    {hostname}:")
-        lines.append(f"      ansible_host: {srv.get('private_ip', '')}")
-        if srv.get("public_ip"):
-            lines.append(f"      ansible_host_public: {srv['public_ip']}")
-        lines.append(f"      os: {srv.get('os', 'unknown')}")
-        lines.append(f"      cloud: {srv.get('cloud', '')}")
-        lines.append(f"      region: {srv.get('region', '')}")
+def render_inventory(data: dict) -> str:
+    rendered = yaml.safe_dump(build_inventory(data), allow_unicode=True, sort_keys=False)
+    return "# 自动生成，请勿手动编辑。源文件: inventory/servers.yaml\n" + rendered
 
-    lines.append("  children:")
 
-    for group_name, hostnames in groups.items():
-        lines.append(f"    {group_name}:")
-        lines.append("      hosts:")
-        for hn in hostnames:
-            lines.append(f"        {hn}:")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=SERVERS_YAML)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    return parser.parse_args()
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text("\n".join(lines) + "\n")
-    print(f"Generated: {OUTPUT}")
+
+def main() -> None:
+    args = parse_args()
+    data = yaml.safe_load(args.source.read_text(encoding="utf-8"))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(render_inventory(data), encoding="utf-8")
+    print(f"Generated: {args.output}")
 
 
 if __name__ == "__main__":

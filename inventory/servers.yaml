@@ -41,6 +41,8 @@ servers:
     region: us-ca-los-angeles
     public_ip: "23.185.200.12"
     private_ip: ""
+    ansible_user: as
+    ansible_ssh_private_key_file: "~/.ssh/id_ed25519_losangeles"
     owner: as
     os: ubuntu-24.04
     roles:

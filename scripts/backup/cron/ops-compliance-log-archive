@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=UTC
+
+35 0 * * * root /opt/ops/scripts/backup/archive-compliance-logs.sh >>/var/log/backup/compliance-archive.log 2>&1

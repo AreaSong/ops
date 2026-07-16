@@ -29,6 +29,20 @@ scrape_configs:
         labels:
           instance: LosAngeles
 
+  - job_name: loki
+    static_configs:
+      - targets:
+          - loki:3100
+        labels:
+          instance: LosAngeles
+
+  - job_name: promtail
+    static_configs:
+      - targets:
+          - promtail:9080
+        labels:
+          instance: LosAngeles
+
   - job_name: blackbox_https
     metrics_path: /probe
     params:

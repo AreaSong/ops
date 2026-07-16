@@ -163,13 +163,69 @@ groups:
 
   - name: docker_alerts
     rules:
+      - alert: DockerMetricsStale
+        expr: absent(docker_metrics_last_run_timestamp) or time() - docker_metrics_last_run_timestamp > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker runtime metrics are stale"
+
+      - alert: DockerMetricsCollectionFailed
+        expr: docker_metrics_check_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker runtime metrics collection failed"
+
       - alert: DockerContainerDown
-        expr: docker_container_running == 0
+        expr: docker_container_running == 0 and on() docker_metrics_check_success == 1
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "Docker container down: {{ $labels.name }}"
+
+      - alert: DockerContainerUnhealthy
+        expr: docker_container_health_status{status="unhealthy"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker health check is unhealthy: {{ $labels.name }}"
+
+      - alert: DockerContainerMemoryHigh
+        expr: docker_container_memory_usage_ratio > 0.85 and docker_container_memory_usage_ratio <= 0.95
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker container memory usage is high: {{ $labels.name }}"
+
+      - alert: DockerContainerMemoryCritical
+        expr: docker_container_memory_usage_ratio > 0.95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Docker container memory usage is critical: {{ $labels.name }}"
+
+      - alert: DockerContainerPidsHigh
+        expr: docker_container_pids_usage_ratio > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Docker container PID usage is high: {{ $labels.name }}"
+
+      - alert: DockerContainerOomKilled
+        expr: docker_container_oom_killed == 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Docker container reports OOMKilled: {{ $labels.name }}"
 
   - name: datastore_alerts
     rules:
@@ -246,6 +302,59 @@ groups:
           severity: warning
         annotations:
           summary: "UFW status check failed"
+
+      - alert: AuditdServiceDown
+        expr: auditd_service_active == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "auditd is not active"
+          description: "System command and critical configuration audit logging is unavailable."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
+          loki_query: "{job=\"auditd\", host=\"LosAngeles\"}"
+
+      - alert: AuditdCheckFailed
+        expr: auditd_check_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "auditd status or rule check failed"
+
+      - alert: AuditdKernelDisabled
+        expr: auditd_kernel_enabled == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The kernel audit subsystem is disabled"
+          description: "auditd may be running, but the kernel is not accepting audit rules or events."
+
+      - alert: AuditdRulesMissing
+        expr: auditd_rules_loaded == 0 or auditd_required_rule_keys_present != auditd_required_rule_keys_expected
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "auditd managed baseline rules are incomplete"
+          description: "Compare auditd_required_rule_keys_present with the expected count and inspect auditctl -l."
+
+      - alert: AuditdEventsLost
+        expr: auditd_lost_events > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The kernel audit subsystem reports lost events"
+
+      - alert: AuditdBacklogHigh
+        expr: auditd_backlog_limit > 0 and auditd_backlog / auditd_backlog_limit > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The kernel audit backlog is above 80 percent"
 
       - alert: Fail2banSshdCheckFailed
         expr: fail2ban_check_success{jail="sshd"} == 0
@@ -366,6 +475,42 @@ groups:
           description: "The business log metrics parser is seeing unexpected enhanced Nginx access log lines."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
 
+  - name: daily_ops_audit_alerts
+    rules:
+      - alert: DailyOpsAuditStale
+        expr: absent(daily_ops_audit_last_success_timestamp) or time() - daily_ops_audit_last_success_timestamp > 28 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daily operations audit is missing or stale"
+          description: "The previous UTC day audit should be generated by 00:20 UTC."
+
+      - alert: DailyOpsAuditCriticalFindings
+        expr: daily_ops_audit_findings{severity="critical"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Daily operations audit contains critical findings"
+          description: "Review the daily audit email and dashboard before changing production."
+
+      - alert: DailyOpsAuditDataSourceFailure
+        expr: daily_ops_audit_data_source_failures > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daily operations audit could not read all data sources"
+
+      - alert: DailyOpsAuditDeliveryFailed
+        expr: daily_ops_audit_delivery{state="attempted"} == 1 and on() daily_ops_audit_delivery{state="accepted"} == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daily operations audit email was not accepted by Alertmanager"
+
   - name: cloudflare_origin_cert_alerts
     rules:
       - alert: CloudflareOriginCertMetricsStale
@@ -428,3 +573,52 @@ groups:
           summary: "Cloudflare Origin certificate expires within 7 days: {{ $labels.cert }}"
           description: "Rotate the Origin Certificate immediately to avoid Cloudflare Full strict origin TLS failure."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
+
+  - name: sub2api_capacity_symptom_alerts
+    rules:
+      - alert: Sub2apiCapacityMetricsStale
+        expr: absent(sub2api_capacity_metrics_last_run_timestamp) or time() - sub2api_capacity_metrics_last_run_timestamp > 300
+        for: 5m
+        labels:
+          severity: warning
+          scope: business
+          service: sub2api
+        annotations:
+          summary: "sub2api capacity symptom metrics are stale"
+          description: "The Docker log symptom collector has not completed in the last five minutes."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
+
+      - alert: Sub2apiLogCheckFailed
+        expr: sub2api_log_check_success == 0
+        for: 5m
+        labels:
+          severity: warning
+          scope: business
+          service: sub2api
+        annotations:
+          summary: "sub2api Docker log symptom check failed"
+          description: "Check that the sub2api container exists and the collector can read Docker logs."
+
+      - alert: Sub2apiNoAvailableAccountWarning
+        expr: sub2api_no_available_account_events_last_5m > 0 and sub2api_no_available_account_events_last_5m < 10
+        for: 2m
+        labels:
+          severity: warning
+          scope: business
+          service: sub2api
+        annotations:
+          summary: "sub2api has no available account events"
+          description: "The application reported {{ $value }} no-available-account events in the latest five-minute window."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
+
+      - alert: Sub2apiNoAvailableAccountCritical
+        expr: sub2api_no_available_account_events_last_5m >= 10
+        for: 2m
+        labels:
+          severity: critical
+          scope: business
+          service: sub2api
+        annotations:
+          summary: "sub2api account pool is unavailable at high frequency"
+          description: "At least ten no-available-account events were observed in the latest five-minute window."
+          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"

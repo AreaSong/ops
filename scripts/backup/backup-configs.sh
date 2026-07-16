@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+umask 077
+
 BACKUP_ROOT="/var/backups/ops/configs"
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="$BACKUP_ROOT/configs-$TS.tar.gz"
-mkdir -p "$BACKUP_ROOT" /var/log/backup
+install -d -m 0700 "$BACKUP_ROOT"
+install -d -m 0750 /var/log/backup
 
 items=()
 for p in /etc/x-ui /etc/nginx /etc/account-vault /opt/ops /opt/services; do
@@ -35,5 +38,6 @@ tar --exclude="/opt/ops/.git" \
     -czf "$OUT" "${items[@]}"
 
 tar -tzf "$OUT" >/dev/null
+chmod 0600 "$OUT"
 find "$BACKUP_ROOT" -type f -name "configs-*.tar.gz" -mtime +7 -delete
 printf "%s\n" "$OUT"

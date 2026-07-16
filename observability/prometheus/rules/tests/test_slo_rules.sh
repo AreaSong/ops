@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RULE_FILE="$SCRIPT_DIR/../slo.yml"
+IMAGE="prom/prometheus:v2.53.0@sha256:075b1ba2c4ebb04bc3a6ab86c06ec8d8099f8fda1c96ef6d104d9bb1def1d8bc"
+WORK_DIR="$(mktemp -d)"
+
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+grep -Fq 'service:synthetic_journey_success:ratio[30d]' "$RULE_FILE"
+grep -Fq '/ 43200' "$RULE_FILE"
+
+sed \
+  -e 's/\[30d\]/[2h]/g' \
+  -e 's#/ 43200#/ 120#' \
+  "$RULE_FILE" >"$WORK_DIR/slo.yml"
+cp "$SCRIPT_DIR/slo-scaled.test.yml" "$WORK_DIR/slo.test.yml"
+
+docker run --rm --entrypoint /bin/promtool \
+  -v "$WORK_DIR:/work:ro" \
+  "$IMAGE" test rules /work/slo.test.yml
+
+echo "scaled SLO recording rules: PASS"

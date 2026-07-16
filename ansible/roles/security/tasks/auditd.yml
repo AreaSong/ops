@@ -1,0 +1,323 @@
+---
+- name: Check whether audit configuration exists before package changes
+  ansible.builtin.stat:
+    path: /etc/audit
+  register: auditd_config_directory_before
+
+- name: Check whether audit rules directory exists before package changes
+  ansible.builtin.stat:
+    path: /etc/audit/rules.d
+  register: auditd_rules_directory_before
+
+- name: Find immutable directives in persisted audit rules
+  ansible.builtin.find:
+    paths: /etc/audit/rules.d
+    file_type: file
+    patterns: "*.rules"
+    contains: '^\s*-e\s+2(?:\s|$)'
+    read_whole_file: true
+  register: auditd_immutable_disk_rules
+  when: auditd_rules_directory_before.stat.isdir | default(false)
+
+- name: Refuse persisted immutable audit rules before loading changes
+  ansible.builtin.assert:
+    that:
+      - auditd_immutable_disk_rules.matched | int == 0
+    fail_msg: >-
+      Persisted audit rules contain -e 2 and would make the kernel rules immutable on load:
+      {{ auditd_immutable_disk_rules.files | map(attribute='path') | join(', ') }}.
+      Remove the directive under an approved maintenance plan before deploying this role.
+  when: auditd_rules_directory_before.stat.isdir | default(false)
+
+- name: Install auditd (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: auditd
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install auditd (RHEL)
+  ansible.builtin.dnf:
+    name: audit
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Ensure audit log directory exists
+  ansible.builtin.file:
+    path: /var/log/audit
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Check whether auditctl is available
+  ansible.builtin.stat:
+    path: /sbin/auditctl
+  register: auditctl_binary
+
+- name: Read current kernel audit status
+  ansible.builtin.command: /sbin/auditctl -s
+  register: auditd_status_before
+  changed_when: false
+  check_mode: false
+  when: auditctl_binary.stat.exists
+
+- name: Refuse changes when audit rules are immutable
+  ansible.builtin.assert:
+    that:
+      - auditd_status_before.stdout_lines | select('match', '^enabled\s+2$') | list | length == 0
+    fail_msg: "Kernel audit rules are immutable (enabled=2); a maintenance-window reboot is required before changes."
+  when: auditctl_binary.stat.exists
+
+- name: Read audit filesystem available space in MiB
+  ansible.builtin.command:
+    argv:
+      - /bin/df
+      - -m
+      - --output=avail
+      - /var/log
+  register: auditd_filesystem_space
+  changed_when: false
+  check_mode: false
+
+- name: Validate auditd disk thresholds
+  ansible.builtin.assert:
+    that:
+      - auditd_admin_space_left_mb | int > 0
+      - (auditd_space_left_mb | int) > (auditd_admin_space_left_mb | int)
+      - (auditd_filesystem_space.stdout_lines[-1] | trim | int) > ((auditd_space_left_mb | int) + (auditd_min_free_margin_mb | int))
+    fail_msg: "Audit filesystem does not have enough headroom for the configured suspend thresholds."
+
+- name: Record auditd rollback snapshot path
+  ansible.builtin.set_fact:
+    auditd_rollback_path: "/var/backups/ops/auditd-{{ ansible_date_time.iso8601_basic_short }}"
+  when: not ansible_check_mode
+
+- name: Check whether the managed audit rules already exist
+  ansible.builtin.stat:
+    path: /etc/audit/rules.d/ops-baseline.rules
+  register: auditd_baseline_before
+  when: not ansible_check_mode
+
+- name: Read loaded audit rules before deployment
+  ansible.builtin.command: /sbin/auditctl -l
+  register: auditd_rules_before
+  changed_when: false
+  check_mode: false
+  when: auditctl_binary.stat.exists
+
+- name: Prepare root-only auditd rollback snapshot
+  when: not ansible_check_mode
+  block:
+    - name: Create auditd rollback directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - /var/backups/ops
+        - "{{ auditd_rollback_path }}"
+        - "{{ auditd_rollback_path }}/audit"
+
+    - name: Snapshot the complete audit configuration
+      ansible.builtin.command:
+        argv:
+          - /bin/cp
+          - -a
+          - /etc/audit/.
+          - "{{ auditd_rollback_path }}/audit/"
+      changed_when: true
+
+    - name: Save pre-deployment kernel audit status
+      ansible.builtin.copy:
+        dest: "{{ auditd_rollback_path }}/auditctl-status-before.txt"
+        content: "{{ auditd_status_before.stdout }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Save pre-deployment loaded audit rules
+      ansible.builtin.copy:
+        dest: "{{ auditd_rollback_path }}/auditctl-rules-before.txt"
+        content: "{{ auditd_rules_before.stdout }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Verify the auditd rollback snapshot
+      ansible.builtin.stat:
+        path: "{{ auditd_rollback_path }}/audit/auditd.conf"
+      register: auditd_snapshot_config
+
+    - name: Require a usable auditd rollback snapshot
+      ansible.builtin.assert:
+        that:
+          - auditd_snapshot_config.stat.exists
+          - auditd_snapshot_config.stat.isreg
+        fail_msg: "Auditd deployment stopped because its rollback snapshot is incomplete."
+
+- name: Configure and validate the managed auditd baseline
+  when: not (ansible_check_mode and not (auditd_config_directory_before.stat.isdir | default(false)))
+  block:
+    - name: Configure auditd retention and disk safeguards
+      ansible.builtin.template:
+        src: auditd.conf.j2
+        dest: /etc/audit/auditd.conf
+        owner: root
+        group: root
+        mode: "0640"
+        backup: true
+      notify: restart auditd
+
+    - name: Install baseline audit rules
+      ansible.builtin.copy:
+        src: ops-baseline.rules
+        dest: /etc/audit/rules.d/ops-baseline.rules
+        owner: root
+        group: root
+        mode: "0640"
+        backup: true
+      notify: load audit rules
+
+    - name: Ensure auditd is running
+      ansible.builtin.systemd:
+        name: auditd
+        state: started
+        enabled: true
+
+    - name: Apply pending auditd handlers before validation
+      ansible.builtin.meta: flush_handlers
+      when: not ansible_check_mode
+
+    - name: Verify auditd service is active after deployment
+      ansible.builtin.command: /usr/bin/systemctl is-active auditd
+      register: auditd_service_active_after
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify auditd service is enabled after deployment
+      ansible.builtin.command: /usr/bin/systemctl is-enabled auditd
+      register: auditd_service_enabled_after
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify kernel audit status after deployment
+      ansible.builtin.command: /sbin/auditctl -s
+      register: auditd_status_after
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify loaded audit rules after deployment
+      ansible.builtin.command: /sbin/auditctl -l
+      register: auditd_rules_after
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require healthy auditd runtime state
+      ansible.builtin.assert:
+        that:
+          - auditd_service_active_after.stdout == 'active'
+          - auditd_service_enabled_after.stdout == 'enabled'
+          - auditd_status_after.stdout_lines | select('match', '^enabled\s+1$') | list | length == 1
+          - auditd_status_after.stdout_lines | select('match', '^lost\s+0$') | list | length == 1
+          - auditd_rules_after.stdout | length > 0
+        fail_msg: "auditd runtime validation failed after configuration deployment."
+      when: not ansible_check_mode
+
+    - name: Require every managed audit rule key
+      ansible.builtin.assert:
+        that:
+          - auditd_rules_after.stdout is search('(^|\\s)(-k\\s+|key=)' ~ item ~ '(\\s|$)')
+        fail_msg: "Managed audit rule key is missing after deployment: {{ item }}"
+      loop: "{{ auditd_required_keys }}"
+      when: not ansible_check_mode
+  rescue:
+    - name: Restore auditd.conf from the rollback snapshot
+      ansible.builtin.copy:
+        src: "{{ auditd_rollback_path }}/audit/auditd.conf"
+        dest: /etc/audit/auditd.conf
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0640"
+      when: not ansible_check_mode
+
+    - name: Restore the previous managed audit rules
+      ansible.builtin.copy:
+        src: "{{ auditd_rollback_path }}/audit/rules.d/ops-baseline.rules"
+        dest: /etc/audit/rules.d/ops-baseline.rules
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0640"
+      when:
+        - not ansible_check_mode
+        - auditd_baseline_before.stat.exists
+
+    - name: Remove rules created by the failed deployment
+      ansible.builtin.file:
+        path: /etc/audit/rules.d/ops-baseline.rules
+        state: absent
+      when:
+        - not ansible_check_mode
+        - not auditd_baseline_before.stat.exists
+
+    - name: Reload restored audit rules
+      ansible.builtin.command: /sbin/augenrules --load
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Restart auditd after restoration
+      ansible.builtin.command: /usr/sbin/service auditd restart
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Verify auditd recovered after rollback
+      ansible.builtin.command: /usr/bin/systemctl is-active auditd
+      register: auditd_rollback_service_state
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Read kernel audit status after rollback
+      ansible.builtin.command: /sbin/auditctl -s
+      register: auditd_rollback_status
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Read loaded audit rules after rollback
+      ansible.builtin.command: /sbin/auditctl -l
+      register: auditd_rollback_rules
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require successful auditd rollback
+      ansible.builtin.assert:
+        that:
+          - auditd_rollback_service_state.stdout == 'active'
+          - auditd_rollback_status.stdout_lines | select('match', '^lost\s+0$') | list | length == 1
+          - (auditd_rollback_rules.stdout | trim) == (auditd_rules_before.stdout | trim)
+        fail_msg: "Auditd deployment and automatic rollback both failed; use the recorded snapshot immediately."
+      when: not ansible_check_mode
+
+    - name: Stop after restoring the failed auditd deployment
+      ansible.builtin.fail:
+        msg: >-
+          Auditd deployment validation failed and the previous managed files were restored from
+          {{ auditd_rollback_path }}. Original failure: {{ ansible_failed_result.msg | default('unknown') }}
+      when: not ansible_check_mode
+  always:
+    - name: Report auditd rollback snapshot path
+      ansible.builtin.debug:
+        msg: >-
+          auditd rollback snapshot={{ auditd_rollback_path | default('none (check mode)') }}
+
+- name: Explain first-install auditd check-mode boundary
+  ansible.builtin.debug:
+    msg: >-
+      auditd is not installed yet, so check mode validated package intent, persisted-rule safety,
+      and disk prerequisites only. Run the controller-side syntax/tests before approving the real
+      installation; the role will snapshot and validate the complete runtime state during execution.
+  when:
+    - ansible_check_mode
+    - not (auditd_config_directory_before.stat.isdir | default(false))

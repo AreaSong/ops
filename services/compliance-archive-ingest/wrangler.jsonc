@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "losangeles-compliance-archive-ingest",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-16",
+  "observability": {
+    "enabled": true
+  },
+  "r2_buckets": [
+    {
+      "binding": "ARCHIVE_BUCKET",
+      "bucket_name": "losangeles-compliance-logs"
+    }
+  ]
+}

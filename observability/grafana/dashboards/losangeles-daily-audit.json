@@ -1,0 +1,310 @@
+{
+  "uid": "losangeles-daily-audit",
+  "title": "LosAngeles Daily Operations Audit",
+  "tags": [
+    "LosAngeles",
+    "audit",
+    "daily"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "日报年龄",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 6},
+      "targets": [
+        {
+          "expr": "(time() - daily_ops_audit_last_success_timestamp) / 3600",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 26},
+              {"color": "red", "value": 28}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "日报发现",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 6},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_findings",
+          "legendFormat": "{{severity}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 1},
+              {"color": "red", "value": 2}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "数据源与邮件",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 6},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_data_source_failures",
+          "legendFormat": "数据源失败",
+          "refId": "A"
+        },
+        {
+          "expr": "daily_ops_audit_delivery{state=\"attempted\"}",
+          "legendFormat": "邮件已尝试",
+          "refId": "B"
+        },
+        {
+          "expr": "daily_ops_audit_delivery{state=\"accepted\"}",
+          "legendFormat": "邮件已接受",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "每日主机流量",
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_network_bytes",
+          "legendFormat": "{{direction}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "bytes"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "每日 HTTP 请求",
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_http_requests",
+          "legendFormat": "{{service}} {{status_class}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "每日 4xx / 5xx",
+      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_http_requests{status_class=~\"4xx|5xx\"}",
+          "legendFormat": "{{service}} {{status_class}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "每日请求延迟分位数",
+      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_http_latency_seconds{percentile=~\"p50|p95|p99\"}",
+          "legendFormat": "{{service}} {{percentile}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "s"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "每日安全事件",
+      "gridPos": {"x": 0, "y": 22, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_security_events",
+          "legendFormat": "{{event}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "备份与容器问题",
+      "gridPos": {"x": 12, "y": 22, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_backup_issues",
+          "legendFormat": "backup {{type}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daily_ops_audit_expected_containers_down",
+          "legendFormat": "expected containers down",
+          "refId": "B"
+        },
+        {
+          "expr": "daily_ops_audit_runtime_issues",
+          "legendFormat": "runtime {{type}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "主机资源日峰值",
+      "gridPos": {"x": 0, "y": 30, "w": 24, "h": 8},
+      "targets": [
+        {
+          "expr": "daily_ops_audit_memory_used_percent_peak",
+          "legendFormat": "memory %",
+          "refId": "A"
+        },
+        {
+          "expr": "daily_ops_audit_disk_used_percent_peak",
+          "legendFormat": "disk %",
+          "refId": "B"
+        },
+        {
+          "expr": "daily_ops_audit_load1_peak",
+          "legendFormat": "load1",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "日报任务日志",
+      "datasource": "Loki",
+      "gridPos": {"x": 0, "y": 38, "w": 24, "h": 10},
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{job=\"observability\", host=\"LosAngeles\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ]
+}

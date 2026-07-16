@@ -3,6 +3,8 @@
   hosts: all
   become: true
   gather_facts: true
+  vars_files:
+    - roles/security/defaults/main.yml
   tasks:
     - name: Check timezone is UTC
       ansible.builtin.command: timedatectl show -p Timezone --value
@@ -40,6 +42,51 @@
       ansible.builtin.debug:
         msg: "FAIL: fail2ban is not active"
       when: fail2ban_status.status is not defined or fail2ban_status.status.ActiveState != "active"
+
+    - name: Check auditd service state
+      ansible.builtin.command: systemctl is-active auditd
+      register: auditd_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check auditd service enablement
+      ansible.builtin.command: systemctl is-enabled auditd
+      register: auditd_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Check auditd kernel status
+      ansible.builtin.command: auditctl -s
+      register: auditd_kernel_status
+      changed_when: false
+      failed_when: false
+
+    - name: Check loaded audit rules
+      ansible.builtin.command: auditctl -l
+      register: auditd_rules
+      changed_when: false
+      failed_when: false
+
+    - name: Require healthy auditd service and kernel state
+      ansible.builtin.assert:
+        that:
+          - auditd_status.rc == 0
+          - auditd_status.stdout == 'active'
+          - auditd_enabled.rc == 0
+          - auditd_enabled.stdout == 'enabled'
+          - auditd_kernel_status.rc == 0
+          - auditd_kernel_status.stdout is search('(?m)^enabled 1$')
+          - auditd_kernel_status.stdout is search('(?m)^lost 0$')
+          - auditd_rules.rc == 0
+          - auditd_rules.stdout | length > 0
+        fail_msg: "auditd service, kernel state, or loaded-rule validation failed."
+
+    - name: Require every baseline audit key
+      ansible.builtin.assert:
+        that:
+          - auditd_rules.stdout is search('(^|\\s)(-k\\s+|key=)' ~ item ~ '(\\s|$)')
+        fail_msg: "auditd baseline key is missing: {{ item }}"
+      loop: "{{ auditd_required_keys }}"
 
     - name: Check node_exporter is running
       ansible.builtin.systemd:

@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=UTC
+
+20 0 * * * root /opt/ops/observability/scripts/write-daily-ops-audit.sh >>/var/log/observability/daily-ops-audit.log 2>&1
