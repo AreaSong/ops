@@ -14,7 +14,7 @@
     paths: /etc/audit/rules.d
     file_type: file
     patterns: "*.rules"
-    contains: '^\s*-e\s+2(?:\s|$)'
+    contains: '(?m)^\s*-e\s+2(?:\s|$)'
     read_whole_file: true
   register: auditd_immutable_disk_rules
   when: auditd_rules_directory_before.stat.isdir | default(false)

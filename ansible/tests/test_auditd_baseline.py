@@ -51,6 +51,19 @@ class AuditdBaselineTests(unittest.TestCase):
         for line in rules.splitlines():
             self.assertRegex(line, r"^(-w /[^\s]+ -p [rwaxt]+ -k [^\s]+|-a always,exit .+ -k [^\s]+)$")
 
+    def test_immutable_rule_scan_is_multiline(self) -> None:
+        task_file = yaml.safe_load(
+            (ROLE_ROOT / "tasks" / "auditd.yml").read_text(encoding="utf-8")
+        )
+        immutable_scan = next(
+            task["ansible.builtin.find"]
+            for task in task_file
+            if task.get("name") == "Find immutable directives in persisted audit rules"
+        )
+        pattern = immutable_scan["contains"]
+        self.assertTrue(pattern.startswith("(?m)"))
+        self.assertRegex("# header\n-e 2\n", pattern)
+
     def test_deployment_has_snapshot_rollback_and_runtime_gates(self) -> None:
         task_file = yaml.safe_load(
             (ROLE_ROOT / "tasks" / "auditd.yml").read_text(encoding="utf-8")
