@@ -8,7 +8,7 @@ ansible/
 ├── baseline.yml          # 基线配置（幂等）
 ├── audit.yml             # 合规巡检
 ├── auditd.yml            # LosAngeles auditd 独立部署
-├── github-cli.yml        # 固定版本 GitHub CLI 与 attestation 依赖
+├── cosign.yml            # 固定版本 cosign 与 OCI attestation 依赖
 ├── nginx-cloudflare-origin.yml # Cloudflare-only 源站事务式变更
 ├── observability-host-jobs.yml # 日报、日志和主机采集作业
 ├── templates/            # Nginx Cloudflare 访问控制模板

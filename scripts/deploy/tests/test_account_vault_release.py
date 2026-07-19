@@ -112,10 +112,13 @@ raise SystemExit(2)
                     "trivyReportSha256": "f" * 64,
                     "migrationPolicy": "expand-only",
                     "migrationTreeSha256": "1" * 64,
-                    "provenance": "github-build-provenance",
+                    "attestationScheme": "sigstore-keyless-oci-v1",
+                    "provenance": "cosign-keyless-slsa-v1",
                     "sbomAttestationPredicate": "https://cyclonedx.org/bom",
                     "trivyAttestationPredicate": "https://areasong.top/attestations/trivy/v1",
                     "attestedSubjectDigest": "sha256:" + "a" * 64,
+                    "certificateIdentity": "https://github.com/AreaSong/sorryiosSearch/.github/workflows/ci.yml@refs/heads/main",
+                    "certificateOidcIssuer": "https://token.actions.githubusercontent.com",
                     "repository": "AreaSong/sorryiosSearch",
                     "workflowRef": "AreaSong/sorryiosSearch/.github/workflows/ci.yml@refs/heads/main",
                     "runId": "123456789",
@@ -455,7 +458,7 @@ fi
             FAKE_ATTESTATION_FAIL="true",
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("provenance verification failed", result.stderr)
+        self.assertIn("keyless OCI attestation verification failed", result.stderr)
         self.assertFalse(self.docker_log.exists())
 
     def test_deploy_rejects_runtime_management_role_reuse(self) -> None:

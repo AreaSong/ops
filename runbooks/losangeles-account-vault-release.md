@@ -10,7 +10,7 @@
 - Web 使用低权限 `DATABASE_APP_USER`；migration 使用 PostgreSQL 管理角色。
 - 生产镜像必须声明 `USER node`，Compose 同时强制 `user: node`、只读根文件系统、`cap_drop: ALL` 和 `no-new-privileges`。
 - CI 阻断 HIGH/CRITICAL，生成 CycloneDX SBOM，并要求 Prisma migration 为 expand-only（只扩展、保持旧镜像兼容）。
-- 发布脚本要求 GitHub CI 生成的 `published-release-manifest.json`，将 Git SHA、候选 Image ID、RepoDigest、SBOM、Trivy、migration tree 和 GitHub provenance 绑定。
+- 发布脚本要求 GitHub CI 生成的 `published-release-manifest.json`，将 Git SHA、候选 Image ID、RepoDigest、SBOM、Trivy、migration tree 和 cosign keyless OCI attestation 绑定。
 - migration 之后只重建 Web，不重建 PostgreSQL。
 
 ## 2. 首次发布前数据库权限
@@ -29,7 +29,7 @@
 
 1. Account Vault `main` 的 backend、frontend、migration、secret-scan、image-security 和 publish 全部成功。
 2. GHCR package 为 private，生产凭据只有 packages:read。
-3. 经批准运行 `ansible/github-cli.yml` 安装校验和固定的 GitHub CLI；`/etc/account-vault/github-read-token` 必须为 `root:root 0600`，仅具备读取私有 package、仓库和 attestation 的权限。
+3. 经批准运行 `ansible/cosign.yml` 安装校验和固定的 cosign 与 jq；`/etc/account-vault/github-read-token` 必须为 `root:root 0600`，仅具备读取私有 package 的权限。
 4. 发布脚本必须成功验证 OCI attestation 的 signer workflow、`refs/heads/main`、Git SHA 和 GitHub-hosted runner；SLSA provenance、CycloneDX SBOM 与 Trivy 扫描 predicate 三类证明缺一不可，并合并生成 root-only 回执。
 5. 从同一成功 run 下载 `account-vault-published-release-<git-sha>` artifact，将 JSON 放到 root-only 临时批准路径并设置 `root:root 0600`。
 6. `/etc/account-vault/account-vault.env` 为 `root:root 0600`，包含脚本要求的全部变量，且 runtime 用户与管理用户、密码均不同。

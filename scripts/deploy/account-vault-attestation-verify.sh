@@ -6,8 +6,9 @@ IMAGE="${1:-}"
 GIT_SHA="${2:-}"
 RECEIPT_OUT="${3:-}"
 TOKEN_FILE="${ACCOUNT_VAULT_GITHUB_TOKEN_FILE:-/etc/account-vault/github-read-token}"
-REPOSITORY="AreaSong/sorryiosSearch"
-SIGNER_WORKFLOW="AreaSong/sorryiosSearch/.github/workflows/ci.yml"
+REGISTRY_USER="${ACCOUNT_VAULT_GHCR_USER:-AreaSong}"
+CERTIFICATE_IDENTITY="https://github.com/AreaSong/sorryiosSearch/.github/workflows/ci.yml@refs/heads/main"
+OIDC_ISSUER="https://token.actions.githubusercontent.com"
 
 [[ "$IMAGE" =~ ^ghcr\.io/areasong/sorryiossearch@sha256:[0-9a-f]{64}$ ]] || {
   echo "Attestation verifier requires the immutable Account Vault RepoDigest." >&2
@@ -21,14 +22,12 @@ SIGNER_WORKFLOW="AreaSong/sorryiosSearch/.github/workflows/ci.yml"
   echo "Attestation verifier requires a receipt output path." >&2
   exit 2
 }
-command -v gh >/dev/null 2>&1 || {
-  echo "GitHub CLI is required for provenance verification." >&2
-  exit 1
-}
-command -v jq >/dev/null 2>&1 || {
-  echo "jq is required for provenance receipt validation." >&2
-  exit 1
-}
+for command_name in cosign jq mktemp stat; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    echo "Required attestation verifier command is missing: $command_name" >&2
+    exit 1
+  }
+done
 [ "$(id -u)" -eq 0 ] || {
   echo "Attestation verification must run as root." >&2
   exit 1
@@ -38,38 +37,63 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+work_dir="$(mktemp -d /var/tmp/account-vault-attestation.XXXXXX)"
+docker_config="$work_dir/docker"
 temporary="${RECEIPT_OUT}.tmp"
-provenance="${temporary}.provenance"
-sbom="${temporary}.sbom"
-trivy="${temporary}.trivy"
+provenance="$work_dir/provenance.json"
+sbom="$work_dir/sbom.json"
+trivy="$work_dir/trivy.json"
 cleanup() {
-  rm -f "$temporary" "$provenance" "$sbom" "$trivy"
+  rm -rf "$work_dir"
+  rm -f "$temporary"
 }
 trap cleanup EXIT
+install -d -m 0700 "$docker_config"
+export DOCKER_CONFIG="$docker_config"
+
+cosign login ghcr.io --username "$REGISTRY_USER" --password-stdin <"$TOKEN_FILE" >/dev/null
 
 verify_predicate() {
   local predicate_type="$1"
   local output="$2"
-  GH_TOKEN="$(<"$TOKEN_FILE")" gh attestation verify "oci://$IMAGE" \
-    --repo "$REPOSITORY" \
-    --signer-workflow "$SIGNER_WORKFLOW" \
-    --source-digest "$GIT_SHA" \
-    --source-ref refs/heads/main \
-    --predicate-type "$predicate_type" \
-    --deny-self-hosted-runners \
-    --bundle-from-oci \
-    --format json >"$output"
-  jq -e 'type == "array" and length > 0' "$output" >/dev/null
+  local raw_output="${output}.raw"
+  cosign verify-attestation \
+    --type "$predicate_type" \
+    --certificate-identity "$CERTIFICATE_IDENTITY" \
+    --certificate-oidc-issuer "$OIDC_ISSUER" \
+    --certificate-github-workflow-name "Account Vault CI" \
+    --certificate-github-workflow-ref refs/heads/main \
+    --certificate-github-workflow-repository AreaSong/sorryiosSearch \
+    --certificate-github-workflow-sha "$GIT_SHA" \
+    --certificate-github-workflow-trigger push \
+    --output json \
+    "$IMAGE" >"$raw_output"
+  jq -s -e '
+    select(length > 0 and all(.[ ];
+      type == "object" and
+      (.payloadType | type == "string" and length > 0) and
+      (.payload | type == "string" and length > 0) and
+      (.signatures | type == "array" and length > 0)
+    ))
+  ' "$raw_output" >"$output"
 }
 
-verify_predicate https://slsa.dev/provenance/v1 "$provenance"
-verify_predicate https://cyclonedx.org/bom "$sbom"
+verify_predicate slsaprovenance1 "$provenance"
+verify_predicate cyclonedx "$sbom"
 verify_predicate https://areasong.top/attestations/trivy/v1 "$trivy"
 jq -n \
+  --arg scheme sigstore-keyless-oci-v1 \
+  --arg image "$IMAGE" \
+  --arg gitSha "$GIT_SHA" \
+  --arg certificateIdentity "$CERTIFICATE_IDENTITY" \
+  --arg certificateOidcIssuer "$OIDC_ISSUER" \
   --slurpfile provenance "$provenance" \
   --slurpfile sbom "$sbom" \
   --slurpfile trivy "$trivy" \
-  '{provenance: $provenance[0], sbom: $sbom[0], trivy: $trivy[0]}' >"$temporary"
+  '{scheme: $scheme, image: $image, gitSha: $gitSha,
+    certificateIdentity: $certificateIdentity,
+    certificateOidcIssuer: $certificateOidcIssuer,
+    provenance: $provenance[0], sbom: $sbom[0], trivy: $trivy[0]}' >"$temporary"
 chmod 0600 "$temporary"
 mv "$temporary" "$RECEIPT_OUT"
 trap - EXIT
