@@ -488,6 +488,7 @@ def verify_archive_dir(archive_dir: Path, expected_archive_id: str | None = None
 
 def verify_chain(manifest_root: Path) -> int:
     manifests = []
+    seen_days = set()
     for path in manifest_root.rglob("manifest.json"):
         relative_path = path.relative_to(manifest_root).as_posix()
         path_match = MANIFEST_PATH_RE.fullmatch(relative_path)
@@ -508,6 +509,9 @@ def verify_chain(manifest_root: Path) -> int:
         )
         if payload["day"] != path_day.isoformat():
             raise ValueError(f"manifest day does not match its path: {path}")
+        if path_day in seen_days:
+            raise ValueError(f"duplicate compliance archive day: {path_day}")
+        seen_days.add(path_day)
         manifests.append((path_day, path, payload))
     manifests.sort(key=lambda item: item[0])
     if not manifests:
@@ -516,8 +520,6 @@ def verify_chain(manifest_root: Path) -> int:
     previous_day = None
     for current_day, path, payload in manifests:
         if previous_day is not None:
-            if current_day == previous_day:
-                raise ValueError(f"duplicate compliance archive day: {current_day}")
             expected_day = previous_day + dt.timedelta(days=1)
             if current_day != expected_day:
                 raise ValueError(
