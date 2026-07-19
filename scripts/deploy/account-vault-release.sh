@@ -199,8 +199,9 @@ require_release_evidence() {
   IFS=$'\t' read -r APPROVED_GIT_SHA APPROVED_IMAGE_ID < <(
     python3 "$RELEASE_VALIDATOR" evidence "$RELEASE_EVIDENCE" "$ACTIVE_IMAGE"
   ) || fail "published release evidence validation failed"
-  [ -n "$APPROVED_GIT_SHA" ] && [ -n "$APPROVED_IMAGE_ID" ] || \
+  if [ -z "$APPROVED_GIT_SHA" ] || [ -z "$APPROVED_IMAGE_ID" ]; then
     fail "published release evidence validation failed"
+  fi
 }
 
 acquire_lock() {
