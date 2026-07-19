@@ -34,6 +34,12 @@ class AreaForgeComposeTests(unittest.TestCase):
                 self.assertEqual(service["logging"]["driver"], "json-file")
                 self.assertTrue(service["healthcheck"]["test"])
 
+    def test_web_healthcheck_uses_the_container_hostname(self) -> None:
+        healthcheck = self.services["web"]["healthcheck"]["test"]
+        command = healthcheck[-1]
+        self.assertIn("process.env.HOSTNAME", command)
+        self.assertNotIn("127.0.0.1", command)
+
 
 if __name__ == "__main__":
     unittest.main()
