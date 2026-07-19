@@ -142,6 +142,10 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             "-e",
             "FAKE_R2_ROOT=/remote",
             "-e",
+            f"HOST_UID={os.getuid()}",
+            "-e",
+            f"HOST_GID={os.getgid()}",
+            "-e",
             "BACKUP_ROOT=/backup",
             "-e",
             f"R2_VERIFY_ENV={verify_env}",
@@ -168,9 +172,11 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             IMAGE,
             "/bin/bash",
             "-c",
-            "install -o root -g root -m 0600 /config/r2-verify.env /run/r2-verify.env && "
-            "install -o root -g root -m 0600 /config/r2-upload.env /run/r2-upload.env && "
-            "exec /repo/scripts/backup/verify-backup-set-r2.sh",
+            "set -e; "
+            "install -o root -g root -m 0600 /config/r2-verify.env /run/r2-verify.env; "
+            "install -o root -g root -m 0600 /config/r2-upload.env /run/r2-upload.env; "
+            "set +e; /repo/scripts/backup/verify-backup-set-r2.sh; status=$?; "
+            "chown -R \"$HOST_UID:$HOST_GID\" /output; exit \"$status\"",
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
         if result.returncode != 0 and metric_path.exists():
