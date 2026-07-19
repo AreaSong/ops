@@ -34,6 +34,12 @@ class ObservabilityComposeTests(unittest.TestCase):
         self.assertEqual(healthcheck, ["CMD", "/redis_exporter", "--version"])
         self.assertNotIn("wget", healthcheck)
 
+    def test_promtail_can_read_host_adm_logs_without_capabilities(self) -> None:
+        services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
+        promtail = services["promtail"]
+        self.assertEqual(promtail["group_add"], ["4"])
+        self.assertEqual(promtail["cap_drop"], ["ALL"])
+
 
 if __name__ == "__main__":
     unittest.main()

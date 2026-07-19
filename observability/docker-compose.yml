@@ -154,6 +154,9 @@ services:
     logging: *json-log-options
     security_opt: *security-options
     cap_drop: *cap-drop-all
+    # Host log files are 0640/0750 and owned by the Ubuntu adm group (GID 4).
+    group_add:
+      - "4"
     read_only: true
     command:
       - -config.file=/etc/promtail/promtail-config.yml
