@@ -200,9 +200,7 @@ jobs:
       - name: Test compliance archive ingest
         run: node --test services/compliance-archive-ingest/test/*.test.js
 
-      - name: Validate Compose, inventory, YAML, JSON, docs, and shell
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - name: Validate Compose and runtime inventory
         run: |
           set -euo pipefail
           docker compose -f observability/docker-compose.yml config --quiet --no-interpolate --no-env-resolution
@@ -212,9 +210,21 @@ jobs:
           docker compose -f services/sub2api/compose.yml config --quiet --no-interpolate
           ASSET_INVENTORY_PATH=inventory/losangeles-assets.yaml \
             python3 observability/scripts/runtime_snapshot.py --validate-only
-          python3 scripts/tests/validate_structured_files.py
-          node --test scripts/tests/*.test.mjs
-          find ansible observability scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
+
+      - name: Validate structured files
+        run: python3 scripts/tests/validate_structured_files.py
+
+      - name: Test repository Node helpers
+        run: node --test scripts/tests/*.test.mjs
+
+      - name: Run ShellCheck
+        run: find ansible observability scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
+
+      - name: Validate Git diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
           if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BASE_SHA" =~ ^0+$ ]]; then
             base="$BASE_SHA"
           elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
