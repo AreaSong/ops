@@ -29,7 +29,7 @@
 
 1. Account Vault `main` 的 backend、frontend、migration、secret-scan、image-security 和 publish 全部成功。
 2. GHCR package 为 private，生产凭据只有 packages:read。
-3. 经批准运行 `ansible/cosign.yml` 安装校验和固定的 cosign 与 jq；`/etc/account-vault/github-read-token` 必须为 `root:root 0600`，仅具备读取私有 package 的权限。
+3. 经批准运行 `ansible/cosign.yml` 安装校验和固定的 cosign 与 jq；`/etc/account-vault/github-read-token` 必须为 `root:root 0600`，仅具备读取私有 package 的权限。发布脚本使用该文件创建一次性 `DOCKER_CONFIG`，从 Registry manifest 的 `config.digest` 核对候选 Image ID，并在成功、失败或中断后删除临时认证目录，不复用 root 的持久 Docker 登录配置。
 4. 发布脚本必须成功验证 OCI attestation 的 signer workflow、`refs/heads/main`、Git SHA 和 GitHub-hosted runner；SLSA provenance、CycloneDX SBOM 与 Trivy 扫描 predicate 三类证明缺一不可，并合并生成 root-only 回执。
 5. 从同一成功 run 下载 `account-vault-published-release-<git-sha>` artifact，将 JSON 放到 root-only 临时批准路径并设置 `root:root 0600`。
 6. `/etc/account-vault/account-vault.env` 为 `root:root 0600`，包含脚本要求的全部变量，且 runtime 用户与管理用户、密码均不同。
