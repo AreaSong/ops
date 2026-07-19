@@ -91,8 +91,20 @@ jobs:
           python3 -m unittest
           scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_missing_daily_report_blocks_archive
 
-      - name: Test compliance archive pipeline
-        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_compliance_archive_pipeline.py'
+      - name: Test compliance archive two-day pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_two_archives_form_verified_remote_chain
+
+      - name: Test compliance archive day-continuity pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_repeated_or_skipped_day_is_rejected_before_upload
+
+      - name: Test compliance archive remote-list failure pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_remote_list_failure_is_not_treated_as_an_empty_archive
 
       - name: Test isolated restore controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areaforge_isolated.py'
