@@ -186,7 +186,7 @@ jobs:
         run: bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
 
       - name: Test SLO rules
-        run: bash observability/prometheus/rules/tests/test_slo_rules.sh
+        run: bash -x observability/prometheus/rules/tests/test_slo_rules.sh
 
       - name: Validate observability configs
         run: bash scripts/tests/validate_observability_configs.sh
