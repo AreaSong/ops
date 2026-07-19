@@ -69,6 +69,7 @@
           - --untracked-files=all
       register: host_jobs_git_status
       changed_when: false
+      check_mode: false
 
     - name: Require a clean controller Git worktree
       ansible.builtin.assert:
@@ -81,6 +82,7 @@
         argv: [/usr/bin/git, -C, "{{ playbook_dir }}/..", rev-parse, --verify, HEAD]
       register: host_jobs_git_head
       changed_when: false
+      check_mode: false
 
     - name: Record the immutable host-job generation identity
       ansible.builtin.set_fact:

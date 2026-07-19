@@ -100,6 +100,15 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn(current, content, path.name)
             self.assertNotIn("/opt/ops/observability/scripts/", content, path.name)
 
+    def test_git_identity_checks_run_during_check_mode(self) -> None:
+        tasks = {task.get("name"): task for task in self.play["tasks"]}
+        for task_name in (
+            "Inspect the controller Git worktree before staging host jobs",
+            "Read the exact controller Git commit",
+        ):
+            self.assertIn(task_name, tasks)
+            self.assertIs(tasks[task_name].get("check_mode"), False)
+
 
 if __name__ == "__main__":
     unittest.main()
