@@ -4,7 +4,7 @@ global:
   smtp_from: 2695266624@qq.com
   smtp_auth_username: 2695266624@qq.com
   smtp_auth_identity: 2695266624@qq.com
-  smtp_auth_password_file: /etc/alertmanager/smtp_password
+  smtp_auth_password_file: /etc/alertmanager/smtp_password.mount
   smtp_require_tls: true
 
 templates:

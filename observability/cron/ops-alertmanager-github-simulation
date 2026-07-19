@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+33 3 1 * * root /usr/bin/flock -n /run/lock/ops-alertmanager-github-issues.lock /bin/bash -c '/usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py --config /etc/ops/alertmanager-github.env --require-enabled --simulation-mode failure && /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py --config /etc/ops/alertmanager-github.env --require-enabled --simulation-mode recovery' >>/var/log/observability/alertmanager-github-issues.log 2>&1

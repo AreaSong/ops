@@ -142,6 +142,10 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             "-e",
             "FAKE_R2_ROOT=/remote",
             "-e",
+            f"HOST_UID={os.getuid()}",
+            "-e",
+            f"HOST_GID={os.getgid()}",
+            "-e",
             "BACKUP_ROOT=/backup",
             "-e",
             f"R2_VERIFY_ENV={verify_env}",
@@ -149,6 +153,8 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             f"R2_BACKUP_ENV={upload_env}",
             "-e",
             "R2_VERIFY_METRIC_OUT=/output/backup-set-r2-verify.prom",
+            "-e",
+            "R2_VERIFY_STATE_OUT=/output/backup-set-r2-verify.state",
             "-e",
             "R2_VERIFY_LOCK_FILE=/tmp/verify.lock",
             "-v",
@@ -166,9 +172,11 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             IMAGE,
             "/bin/bash",
             "-c",
-            "install -o root -g root -m 0600 /config/r2-verify.env /run/r2-verify.env && "
-            "install -o root -g root -m 0600 /config/r2-upload.env /run/r2-upload.env && "
-            "exec /repo/scripts/backup/verify-backup-set-r2.sh",
+            "set -e; "
+            "install -o root -g root -m 0600 /config/r2-verify.env /run/r2-verify.env; "
+            "install -o root -g root -m 0600 /config/r2-upload.env /run/r2-upload.env; "
+            "set +e; /repo/scripts/backup/verify-backup-set-r2.sh; status=$?; "
+            "chown -R \"$HOST_UID:$HOST_GID\" /output; exit \"$status\"",
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
         if result.returncode != 0 and metric_path.exists():
@@ -180,6 +188,10 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
         self.assertEqual(result.returncode, 0, result.stderr)
         metric = (self.output_root / "backup-set-r2-verify.prom").read_text(encoding="utf-8")
         self.assertIn("backup_set_r2_verify_artifacts 9", metric)
+        state = (self.output_root / "backup-set-r2-verify.state").read_text(encoding="utf-8")
+        self.assertIn(f"manifest_relative=manifests/{self.manifest.name}", state)
+        self.assertRegex(state, r"manifest_sha256=[0-9a-f]{64}")
+        self.assertRegex(state, r"verified_at=[0-9]+")
 
     def test_remote_artifact_corruption_fails_without_success_metric(self) -> None:
         payload = backup_manifest.load_manifest(self.manifest)

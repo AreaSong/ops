@@ -1,0 +1,7 @@
+# Managed by AreaSong/ops. Match the original TCP peer before Real-IP rewriting.
+geo $realip_remote_addr $cloudflare_origin_allowed {
+    default 0;
+{% for cidr in cloudflare_ipv4 + cloudflare_ipv6 %}
+    {{ cidr }} 1;
+{% endfor %}
+}

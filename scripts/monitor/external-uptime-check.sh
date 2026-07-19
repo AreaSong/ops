@@ -8,7 +8,7 @@ readonly -a TARGETS=(
   "account-vault|https://sorryiossearch.areasong.top/health"
   "sub2api|https://cpa.areasong.top/health"
   "areaforge|https://forge.areasong.top/"
-  "grafana|https://monitor.areasong.top/"
+  "grafana|https://monitor.areasong.top/api/health"
   "log-gateway|https://log.areasong.top/"
 )
 
@@ -19,21 +19,39 @@ check_target() {
   local index="$1"
   local target="$2"
   local name url result exit_code http_code error_detail error_file
+  local -a curl_args
   name="${target%%|*}"
   url="${target#*|}"
   error_file="$WORK_DIR/$index.error"
-  if result="$(curl \
-    --fail \
-    --silent \
-    --show-error \
-    --location \
-    --proto '=https' \
-    --tlsv1.2 \
-    --retry 1 \
-    --retry-delay 2 \
-    --retry-all-errors \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
-    --max-time "$CURL_TIMEOUT_SECONDS" \
+
+  curl_args=(
+    --fail
+    --silent
+    --show-error
+    --location
+    --proto '=https'
+    --tlsv1.2
+    --retry 1
+    --retry-delay 2
+    --retry-all-errors
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS"
+    --max-time "$CURL_TIMEOUT_SECONDS"
+  )
+
+  if [[ "$name" == grafana ]]; then
+    if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+      curl_args+=(
+        --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+        --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+      )
+    elif [[ "${CF_ACCESS_REQUIRED:-false}" == true ]]; then
+      printf 'FAIL\t%s\thttp=000\tcurl_exit=2\terror=Cloudflare Access service token is not configured\n' \
+        "$name" > "$WORK_DIR/$index"
+      return 1
+    fi
+  fi
+
+  if result="$(curl "${curl_args[@]}" \
     --output /dev/null \
     --write-out '%{http_code}\t%{time_total}' \
     "$url" 2>"$error_file")"; then

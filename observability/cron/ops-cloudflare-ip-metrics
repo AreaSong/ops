@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+23 1 * * * root /usr/bin/flock -n /run/lock/ops-cloudflare-ip-metrics.lock /var/lib/ops/observability-host-jobs/current/observability/scripts/cloudflare_ip_metrics.py >>/var/log/observability/cloudflare-ip-metrics.log 2>&1

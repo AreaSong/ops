@@ -7,6 +7,7 @@ IMAGE="prom/prometheus:v2.53.0@sha256:075b1ba2c4ebb04bc3a6ab86c06ec8d8099f8fda1c
 WORK_DIR="$(mktemp -d)"
 
 trap 'rm -rf "$WORK_DIR"' EXIT
+chmod 0755 "$WORK_DIR"
 
 grep -Fq 'service:synthetic_journey_success:ratio[30d]' "$RULE_FILE"
 grep -Fq '/ 43200' "$RULE_FILE"

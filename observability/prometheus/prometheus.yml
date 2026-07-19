@@ -50,10 +50,31 @@ scrape_configs:
         - http_2xx_tls
     static_configs:
       - targets:
-          - https://monitor.areasong.top/
           - https://log.areasong.top/
         labels:
           instance: LosAngeles
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox_grafana_internal
+    metrics_path: /probe
+    params:
+      module:
+        - http_2xx
+    static_configs:
+      - targets:
+          - http://grafana:3000/api/health
+        labels:
+          instance: grafana
+          service: grafana
+          check: internal-readiness
     relabel_configs:
       - source_labels:
           - __address__

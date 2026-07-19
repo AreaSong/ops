@@ -3,6 +3,7 @@ name: LosAngeles External Uptime
 on:
   schedule:
     - cron: "*/5 * * * *"
+    - cron: "17 3 1 * *"
   workflow_dispatch:
     inputs:
       manage_issues:
@@ -25,7 +26,11 @@ permissions:
   issues: write
 
 concurrency:
-  group: losangeles-external-uptime
+  group: >-
+    losangeles-external-uptime-${{
+      github.event_name == 'schedule' && github.event.schedule == '17 3 1 * *'
+      && 'monthly-simulation' || 'probe'
+    }}
   cancel-in-progress: true
 
 jobs:
@@ -34,13 +39,18 @@ jobs:
     timeout-minutes: 4
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
 
       - name: Check public HTTPS endpoints
         id: check
         continue-on-error: true
         env:
           SIMULATION_MODE: ${{ inputs.simulation_mode }}
+          CF_ACCESS_REQUIRED: "true"
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         shell: bash
         run: |
           set -o pipefail
@@ -70,3 +80,46 @@ jobs:
       - name: Mark unhealthy checks as failed
         if: steps.check.outcome == 'failure'
         run: exit 1
+
+  monthly-issue-simulation:
+    if: >-
+      always() &&
+      github.event_name == 'schedule' &&
+      github.event.schedule == '17 3 1 * *'
+    needs: monitor
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+
+      - name: Exercise the managed Issue failure and recovery lifecycle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result_file="$(mktemp)"
+          cleanup() {
+            scripts/monitor/external-uptime-incident.sh success "$result_file" simulation || true
+            rm -f "$result_file"
+          }
+          trap cleanup EXIT
+
+          printf 'checked_at=%s\nFAIL\tsimulation\thttp=503\tcurl_exit=22\terror=monthly controlled failure\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$result_file"
+          scripts/monitor/external-uptime-incident.sh failure "$result_file" simulation
+
+          gh issue list --state open --label external-uptime-test --limit 100 \
+            --json body | jq -e \
+            'any(.[]; (.body // "") | contains("<!-- areasong-external-uptime-simulation:v1 -->"))'
+
+          scripts/monitor/external-uptime-incident.sh success "$result_file" simulation
+          trap - EXIT
+          rm -f "$result_file"
+
+          ! gh issue list --state open --label external-uptime-test --limit 100 \
+            --json body | jq -e \
+            'any(.[]; (.body // "") | contains("<!-- areasong-external-uptime-simulation:v1 -->"))'

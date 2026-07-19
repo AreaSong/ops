@@ -5,6 +5,11 @@
   gather_facts: false
   vars:
     compliance_archive_enabled: false
+    alertmanager_github_issues_enabled: false
+    host_jobs_release_id: ""
+    host_jobs_root: /var/lib/ops/observability-host-jobs
+    host_jobs_generation: "{{ host_jobs_root }}/generations/{{ host_jobs_release_id }}"
+    host_jobs_current: "{{ host_jobs_root }}/current"
     collector_files:
       - { name: write-daily-ops-audit.sh, mode: "0755" }
       - { name: daily_ops_audit.py, mode: "0755" }
@@ -13,29 +18,106 @@
       - { name: daily_ops_audit_reporting.py, mode: "0644" }
       - { name: write-docker-metrics.sh, mode: "0755" }
       - { name: docker_metrics.py, mode: "0755" }
+      - { name: runtime_snapshot.py, mode: "0755" }
+      - { name: business_error_log.py, mode: "0755" }
+      - { name: cloudflare_ip_metrics.py, mode: "0755" }
+      - { name: alertmanager_github_issues.py, mode: "0755" }
+      - { name: write-business-log-metrics.sh, mode: "0755" }
+      - { name: write-cloudflare-origin-cert-metrics.sh, mode: "0755" }
+      - { name: write-fail2ban-enriched-log.py, mode: "0755" }
       - { name: write-security-metrics.sh, mode: "0755" }
       - { name: write-sub2api-capacity-metrics.sh, mode: "0755" }
-    shell_collectors:
-      - /opt/ops/observability/scripts/write-daily-ops-audit.sh
-      - /opt/ops/observability/scripts/write-docker-metrics.sh
-      - /opt/ops/observability/scripts/write-security-metrics.sh
-      - /opt/ops/observability/scripts/write-sub2api-capacity-metrics.sh
+    shell_collector_names:
+      - write-daily-ops-audit.sh
+      - write-docker-metrics.sh
+      - write-business-log-metrics.sh
+      - write-cloudflare-origin-cert-metrics.sh
+      - write-security-metrics.sh
+      - write-sub2api-capacity-metrics.sh
     cron_files:
       - ops-daily-ops-audit
       - ops-docker-metrics
+      - ops-runtime-snapshot
+      - ops-business-error-log
+      - ops-cloudflare-ip-metrics
+      - ops-business-log-metrics
+      - ops-cloudflare-origin-cert-metrics
+      - ops-fail2ban-enriched
       - ops-security-metrics
       - ops-sub2api-capacity-metrics
+    alertmanager_github_cron_files:
+      - ops-alertmanager-github-issues
+      - ops-alertmanager-github-simulation
     compliance_archive_files:
       - { name: compliance_log_archive.py, mode: "0755" }
       - { name: archive-compliance-logs.sh, mode: "0755" }
       - { name: verify-compliance-log-archive.sh, mode: "0755" }
-    compliance_archive_shell_files:
-      - /opt/ops/scripts/backup/archive-compliance-logs.sh
-      - /opt/ops/scripts/backup/verify-compliance-log-archive.sh
+    compliance_archive_shell_names:
+      - archive-compliance-logs.sh
+      - verify-compliance-log-archive.sh
     compliance_archive_cron_files:
       - ops-compliance-log-archive
   tasks:
-    - name: Create observability host directories
+    - name: Inspect the controller Git worktree before staging host jobs
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/git
+          - -C
+          - "{{ playbook_dir }}/.."
+          - status
+          - --porcelain=v1
+          - --untracked-files=all
+      register: host_jobs_git_status
+      changed_when: false
+
+    - name: Require a clean controller Git worktree
+      ansible.builtin.assert:
+        that:
+          - host_jobs_git_status.stdout == ''
+        fail_msg: Refusing to deploy host jobs from a dirty or untracked /opt/ops checkout.
+
+    - name: Read the exact controller Git commit
+      ansible.builtin.command:
+        argv: [/usr/bin/git, -C, "{{ playbook_dir }}/..", rev-parse, --verify, HEAD]
+      register: host_jobs_git_head
+      changed_when: false
+
+    - name: Record the immutable host-job generation identity
+      ansible.builtin.set_fact:
+        host_jobs_release_id: "{{ host_jobs_git_head.stdout | trim }}"
+
+    - name: Inspect the requested host-job generation and current pointer
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ host_jobs_generation }}"
+        - "{{ host_jobs_current }}"
+      register: host_jobs_pointer_state
+
+    - name: Refuse to overwrite an existing inactive generation
+      ansible.builtin.assert:
+        that:
+          - >-
+            not host_jobs_pointer_state.results[0].stat.exists or
+            (host_jobs_pointer_state.results[1].stat.islnk | default(false) and
+            host_jobs_pointer_state.results[1].stat.lnk_source == 'generations/' ~ host_jobs_release_id)
+        fail_msg: The requested host-job generation exists but is not the active current generation.
+
+    - name: Determine whether the requested generation is already active
+      ansible.builtin.set_fact:
+        host_jobs_generation_already_active: >-
+          {{ (host_jobs_pointer_state.results[0].stat.exists | default(false)) and
+             (host_jobs_pointer_state.results[1].stat.islnk | default(false)) and
+             host_jobs_pointer_state.results[1].stat.lnk_source == ('generations/' ~ host_jobs_release_id) }}
+
+    - name: Require a commit-addressed host-job generation
+      ansible.builtin.assert:
+        that:
+          - host_jobs_release_id is match('^[0-9a-f]{40}$')
+        fail_msg: The controller checkout must have a valid Git commit before host jobs are deployed.
+
+    - name: Create observability host and generation directories
       ansible.builtin.file:
         path: "{{ item.path }}"
         state: directory
@@ -43,90 +125,166 @@
         group: "{{ item.group }}"
         mode: "{{ item.mode }}"
       loop:
-        - { path: /opt/ops/observability/scripts, group: root, mode: "0755" }
         - { path: /var/log/observability, group: adm, mode: "0750" }
         - { path: /var/log/backup, group: adm, mode: "0750" }
+        - { path: /var/log/business-errors, group: adm, mode: "0750" }
         - { path: /var/lib/observability/promtail, group: root, mode: "0750" }
+        - { path: /var/lib/observability, group: root, mode: "0750" }
         - { path: /var/lib/node_exporter/textfile_collector, group: root, mode: "0755" }
+        - { path: /var/lib/ops/runtime, group: root, mode: "0755" }
         - { path: /var/backups/ops/compliance-logs, group: root, mode: "0700" }
+        - { path: "{{ host_jobs_root }}/generations", group: root, mode: "0755" }
+        - { path: "{{ host_jobs_generation }}/observability/scripts", group: root, mode: "0755" }
+        - { path: "{{ host_jobs_generation }}/scripts/backup", group: root, mode: "0755" }
+        - { path: "{{ host_jobs_generation }}/logrotate", group: root, mode: "0755" }
+      when: >-
+        not (host_jobs_generation_already_active | bool) or item.path in [
+          '/var/log/observability', '/var/log/backup', '/var/log/business-errors',
+          '/var/lib/observability/promtail', '/var/lib/observability',
+          '/var/lib/node_exporter/textfile_collector', '/var/lib/ops/runtime',
+          '/var/backups/ops/compliance-logs', host_jobs_root + '/generations'
+        ]
 
-    - name: Deploy observability collector files
+    - name: Stage observability collector generation
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../observability/scripts/{{ item.name }}"
-        dest: "/opt/ops/observability/scripts/{{ item.name }}"
+        dest: "{{ host_jobs_generation }}/observability/scripts/{{ item.name }}"
         owner: root
         group: root
         mode: "{{ item.mode }}"
-        backup: true
       loop: "{{ collector_files }}"
-      register: collector_copy_results
+      when: not host_jobs_generation_already_active | bool
 
-    - name: Validate collector shell syntax
+    - name: Validate staged collector shell syntax
       ansible.builtin.command:
         argv:
           - /usr/bin/bash
           - -n
-          - "{{ item }}"
-      loop: "{{ shell_collectors }}"
+          - "{{ host_jobs_generation }}/observability/scripts/{{ item }}"
+      loop: "{{ shell_collector_names }}"
       changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
 
-    - name: Validate daily audit Python imports
+    - name: Validate staged daily audit Python imports
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
-          - /opt/ops/observability/scripts/daily_ops_audit.py
+          - "{{ host_jobs_generation }}/observability/scripts/daily_ops_audit.py"
           - --help
       environment:
         PYTHONDONTWRITEBYTECODE: "1"
       changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
 
-    - name: Install observability cron jobs
-      ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
-        dest: "/etc/cron.d/{{ item }}"
-        owner: root
-        group: root
-        mode: "0644"
-        backup: true
-      loop: "{{ cron_files }}"
-      register: cron_copy_results
+    - name: Validate staged runtime snapshot inventory
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/runtime_snapshot.py"
+          - --validate-only
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+        ASSET_INVENTORY_PATH: /opt/ops/inventory/losangeles-assets.yaml
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
 
-    - name: Install observability log rotation
+    - name: Validate staged business error collector
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/business_error_log.py"
+          - --validate-only
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Validate staged Cloudflare IP collector
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/cloudflare_ip_metrics.py"
+          - --validate-only
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+        CLOUDFLARE_IP_CONFIG_DIR: /opt/ops/security/cloudflare
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Validate staged Alertmanager GitHub Issue entry point
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/alertmanager_github_issues.py"
+          - --validate-only
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Stage observability log rotation
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../observability/logrotate/ops-observability"
-        dest: /etc/logrotate.d/ops-observability
+        dest: "{{ host_jobs_generation }}/logrotate/ops-observability"
         owner: root
         group: root
         mode: "0644"
-        backup: true
-      register: logrotate_copy_result
+      when: not host_jobs_generation_already_active | bool
 
-    - name: Validate observability log rotation
+    - name: Validate staged observability log rotation
       ansible.builtin.command:
         argv:
           - /usr/sbin/logrotate
           - --debug
-          - /etc/logrotate.d/ops-observability
+          - "{{ host_jobs_generation }}/logrotate/ops-observability"
       changed_when: false
+      when:
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
 
-    - name: Remove the compliance archive activation gate while changing its deployment
-      ansible.builtin.file:
-        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
-        state: absent
-      when: compliance_archive_enabled | bool
+    - name: Inspect the Alertmanager GitHub Issue sync credential file
+      ansible.builtin.stat:
+        path: /etc/ops/alertmanager-github.env
+      register: alertmanager_github_credential
+      when: alertmanager_github_issues_enabled | bool
 
-    - name: Disable the compliance archive cron when the feature is disabled
-      ansible.builtin.file:
-        path: "/etc/cron.d/{{ item }}"
-        state: absent
-      loop: "{{ compliance_archive_cron_files }}"
-      when: not (compliance_archive_enabled | bool)
+    - name: Require a root-only Alertmanager GitHub Issue sync credential
+      ansible.builtin.assert:
+        that:
+          - alertmanager_github_credential.stat.exists
+          - alertmanager_github_credential.stat.pw_name == 'root'
+          - alertmanager_github_credential.stat.gr_name == 'root'
+          - alertmanager_github_credential.stat.mode == '0600'
+        fail_msg: /etc/ops/alertmanager-github.env must be root:root mode 0600 before enabling Issue sync.
+      when: alertmanager_github_issues_enabled | bool
 
-    - name: Remove the compliance archive activation gate when the feature is disabled
-      ansible.builtin.file:
-        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
-        state: absent
-      when: not (compliance_archive_enabled | bool)
+    - name: Validate the enabled Alertmanager GitHub Issue sync configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/alertmanager_github_issues.py"
+          - --config
+          - /etc/ops/alertmanager-github.env
+          - --validate-only
+          - --require-enabled
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - alertmanager_github_issues_enabled | bool
+        - not ansible_check_mode
 
     - name: Verify compliance archive credential files before enabling its cron
       ansible.builtin.stat:
@@ -147,36 +305,131 @@
       loop: "{{ compliance_archive_credentials.results | default([]) }}"
       when: compliance_archive_enabled | bool
 
-    - name: Deploy compliance archive files
+    - name: Stage compliance archive generation
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../scripts/backup/{{ item.name }}"
-        dest: "/opt/ops/scripts/backup/{{ item.name }}"
+        dest: "{{ host_jobs_generation }}/scripts/backup/{{ item.name }}"
         owner: root
         group: root
         mode: "{{ item.mode }}"
-        backup: true
       loop: "{{ compliance_archive_files }}"
-      register: compliance_archive_file_results
-      when: compliance_archive_enabled | bool
+      when:
+        - compliance_archive_enabled | bool
+        - not host_jobs_generation_already_active | bool
 
-    - name: Validate compliance archive shell syntax
+    - name: Validate staged compliance archive shell syntax
       ansible.builtin.command:
         argv:
           - /usr/bin/bash
           - -n
-          - "{{ item }}"
-      loop: "{{ compliance_archive_shell_files }}"
+          - "{{ host_jobs_generation }}/scripts/backup/{{ item }}"
+      loop: "{{ compliance_archive_shell_names }}"
       changed_when: false
-      when: compliance_archive_enabled | bool
+      when:
+        - compliance_archive_enabled | bool
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
 
-    - name: Validate compliance archive Python entry point
+    - name: Validate staged compliance archive Python entry point
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
-          - /opt/ops/scripts/backup/compliance_log_archive.py
+          - "{{ host_jobs_generation }}/scripts/backup/compliance_log_archive.py"
           - --help
       changed_when: false
+      when:
+        - compliance_archive_enabled | bool
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
+
+    - name: Create the next host-job generation pointer
+      ansible.builtin.file:
+        src: "generations/{{ host_jobs_release_id }}"
+        dest: "{{ host_jobs_root }}/.current-{{ host_jobs_release_id }}"
+        state: link
+        force: true
+        owner: root
+        group: root
+      when:
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
+
+    - name: Atomically activate the validated host-job generation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "import os, sys; os.replace(sys.argv[1], sys.argv[2])"
+          - "{{ host_jobs_root }}/.current-{{ host_jobs_release_id }}"
+          - "{{ host_jobs_current }}"
+      when:
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
+
+    - name: Install observability cron jobs
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        dest: "/etc/cron.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      loop: "{{ cron_files }}"
+      register: cron_copy_results
+
+    - name: Install Alertmanager GitHub Issue sync cron jobs
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        dest: "/etc/cron.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      loop: "{{ alertmanager_github_cron_files }}"
+      register: alertmanager_github_cron_results
+      when: alertmanager_github_issues_enabled | bool
+
+    - name: Remove Alertmanager GitHub Issue sync cron jobs when disabled
+      ansible.builtin.file:
+        path: "/etc/cron.d/{{ item }}"
+        state: absent
+      loop: "{{ alertmanager_github_cron_files }}"
+      when: not (alertmanager_github_issues_enabled | bool)
+
+    - name: Remove stale Alertmanager GitHub Issue sync metrics when disabled
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector/alertmanager-github-issues.prom
+        state: absent
+      when: not (alertmanager_github_issues_enabled | bool)
+
+    - name: Install validated observability log rotation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/logrotate/ops-observability"
+        dest: /etc/logrotate.d/ops-observability
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+      register: logrotate_copy_result
+
+    - name: Remove the compliance archive activation gate while changing its deployment
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
+        state: absent
       when: compliance_archive_enabled | bool
+
+    - name: Disable the compliance archive cron when the feature is disabled
+      ansible.builtin.file:
+        path: "/etc/cron.d/{{ item }}"
+        state: absent
+      loop: "{{ compliance_archive_cron_files }}"
+      when: not (compliance_archive_enabled | bool)
+
+    - name: Remove the compliance archive activation gate when the feature is disabled
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
+        state: absent
+      when: not (compliance_archive_enabled | bool)
 
     - name: Install compliance archive cron job
       ansible.builtin.copy:
@@ -204,10 +457,9 @@
       register: compliance_archive_activation_metric
       when: compliance_archive_enabled | bool
 
-    - name: Report collector backup paths
+    - name: Report the active host-job generation
       ansible.builtin.debug:
-        msg: "{{ item.item.name }} backup={{ item.backup_file | default('none (new file)') }}"
-      loop: "{{ collector_copy_results.results }}"
+        msg: "host_jobs_current={{ host_jobs_current }} generation={{ host_jobs_release_id }}"
 
     - name: Report cron backup paths
       ansible.builtin.debug:
@@ -217,12 +469,6 @@
     - name: Report logrotate backup path
       ansible.builtin.debug:
         msg: "ops-observability backup={{ logrotate_copy_result.backup_file | default('none (new file)') }}"
-
-    - name: Report compliance archive file backup paths
-      ansible.builtin.debug:
-        msg: "{{ item.item.name }} backup={{ item.backup_file | default('none (new file)') }}"
-      loop: "{{ compliance_archive_file_results.results | default([]) }}"
-      when: compliance_archive_enabled | bool
 
     - name: Report compliance archive cron backup paths
       ansible.builtin.debug:

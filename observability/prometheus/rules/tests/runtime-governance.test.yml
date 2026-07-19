@@ -1,0 +1,58 @@
+rule_files:
+  - /rules/alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - interval: 15s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: AccountVaultReleaseMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              scope: deployment
+              service: account-vault
+            exp_annotations:
+              summary: Account Vault release evidence metric is missing
+              description: Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom.
+
+  - interval: 15s
+    input_series:
+      - series: business_error_log_events_last_run
+        values: 25 0
+    alert_rule_test:
+      - eval_time: 0s
+        alertname: BusinessErrorEventsBurst
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Business warning/error events increased sharply
+              description: More than twenty sanitized warning/error events were recorded in one collector run.
+              loki_query: '{job="business_errors", host="LosAngeles"}'
+      - eval_time: 15s
+        alertname: BusinessErrorEventsBurst
+        exp_alerts: []
+
+  - interval: 15s
+    input_series:
+      - series: 'account_vault_release_last_success{action="deploy"}'
+        values: 0 1
+    alert_rule_test:
+      - eval_time: 0s
+        alertname: AccountVaultReleaseFailed
+        exp_alerts:
+          - exp_labels:
+              action: deploy
+              severity: critical
+              scope: deployment
+              service: account-vault
+            exp_annotations:
+              summary: The latest Account Vault release action failed
+              description: Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying.
+              grafana_url: https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now
+      - eval_time: 15s
+        alertname: AccountVaultReleaseFailed
+        exp_alerts: []

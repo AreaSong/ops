@@ -1,0 +1,243 @@
+name: Ops Governance CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository and full secret-scan history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq python3-yaml shellcheck
+
+      - name: Test observability Python
+        run: python3 -m unittest discover -s observability/scripts/tests -p 'test_*.py'
+
+      - name: Test Ansible contracts
+        run: python3 -m unittest discover -s ansible/tests -p 'test_*.py'
+
+      - name: Test inventory consistency
+        run: python3 -m unittest discover -s inventory/tests -p 'test_*.py'
+
+      - name: Test release controls
+        run: python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+
+      - name: Test backup manifest controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_manifest.py'
+
+      - name: Test compliance archive build and part verification
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_build_filters_one_utc_day_and_verifies_parts
+
+      - name: Test compliance archive corrupt part rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_corrupt_part_is_rejected
+
+      - name: Test compliance archive hash-chain break detection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_detects_validly_rehashed_break
+
+      - name: Test compliance archive skipped-day rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_a_skipped_day
+
+      - name: Test compliance archive duplicate-day rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_duplicate_days
+
+      - name: Test compliance archive path-identity rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_path_identity_mismatch
+
+      - name: Test compliance archive gzip expansion limit
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_uncompressed_source_limit_blocks_gzip_expansion
+
+      - name: Test compliance archive timezone handling
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_timezone_less_logs_use_the_host_timezone
+
+      - name: Test compliance archive missing-report rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_missing_daily_report_blocks_archive
+
+      - name: Test compliance archive two-day pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_two_archives_form_verified_remote_chain
+
+      - name: Test compliance archive day-continuity pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_repeated_or_skipped_day_is_rejected_before_upload
+
+      - name: Test compliance archive remote-list failure pipeline
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_archive_pipeline.ComplianceArchivePipelineTests.test_remote_list_failure_is_not_treated_as_an_empty_archive
+
+      - name: Test isolated restore controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areaforge_isolated.py'
+
+      - name: Test R2 verifier complete remote set
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_complete_remote_set_is_downloaded_and_verified
+
+      - name: Test R2 verifier artifact corruption
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_artifact_corruption_fails_without_success_metric
+
+      - name: Test R2 verifier manifest sidecar corruption
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_manifest_sidecar_corruption_fails
+
+      - name: Test R2 verifier pointer consistency
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_pointer_must_match_local_complete_set
+
+      - name: Test R2 verifier credential separation
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_upload_credential_file_cannot_be_reused_for_verification
+
+      - name: Test R2 verifier access-key separation
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_upload_access_key_cannot_be_reused_for_verification
+
+      - name: Test R2 verifier HTTPS endpoint enforcement
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_http_r2_endpoint_is_rejected_before_access
+
+      - name: Test repository Python helpers
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Test external uptime check
+        run: bash scripts/monitor/tests/test_external_uptime_check.sh
+
+      - name: Test external uptime incident handling
+        run: bash scripts/monitor/tests/test_external_uptime_incident.sh
+
+      - name: Test Docker metrics
+        run: bash observability/scripts/tests/test_docker_metrics.sh
+
+      - name: Test security metrics
+        run: bash observability/scripts/tests/test_security_metrics.sh
+
+      - name: Test Sub2API capacity metrics
+        run: bash observability/scripts/tests/test_sub2api_capacity_metrics.sh
+
+      - name: Test backup integrity rules
+        run: bash observability/prometheus/rules/tests/test_backup_integrity_rules.sh
+
+      - name: Test log pipeline rules
+        run: bash observability/prometheus/rules/tests/test_log_pipeline_rules.sh
+
+      - name: Test runtime governance rules
+        run: bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
+
+      - name: Test SLO rule source invariants
+        run: |
+          set -euxo pipefail
+          grep -Fq 'service:synthetic_journey_success:ratio[30d]' observability/prometheus/rules/slo.yml
+          grep -Fq '/ 43200' observability/prometheus/rules/slo.yml
+
+      - name: Test SLO rules with Promtool
+        run: bash -x observability/prometheus/rules/tests/test_slo_rules.sh
+
+      - name: Validate observability configs
+        run: bash scripts/tests/validate_observability_configs.sh
+
+      - name: Test compliance archive ingest
+        run: node --test services/compliance-archive-ingest/test/*.test.js
+
+      - name: Validate Compose and runtime inventory
+        run: |
+          set -euo pipefail
+          docker compose -f observability/docker-compose.yml config --quiet --no-interpolate --no-env-resolution
+          docker compose -f services/account-vault/compose.yml config --quiet --no-interpolate
+          docker compose -f services/areaforge/compose.yml config --quiet --no-interpolate
+          docker compose -f services/resume-jadeai/compose.yml config --quiet --no-interpolate
+          docker compose -f services/sub2api/compose.yml config --quiet --no-interpolate
+          ASSET_INVENTORY_PATH=inventory/losangeles-assets.yaml \
+            python3 observability/scripts/runtime_snapshot.py --validate-only
+
+      - name: Validate structured files
+        run: python3 scripts/tests/validate_structured_files.py
+
+      - name: Test repository Node helpers
+        run: node --test scripts/tests/*.test.mjs
+
+      - name: Run ShellCheck
+        run: find ansible observability scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
+
+      - name: Validate Git diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BASE_SHA" =~ ^0+$ ]]; then
+            base="$BASE_SHA"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base=HEAD^
+          else
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          git diff --check "$base" HEAD --
+
+      - name: Scan Git history and working tree for secrets
+        run: >-
+          docker run --rm
+          -v "$PWD:/repo"
+          -w /repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          detect --source . --redact --no-banner --exit-code 1

@@ -8,6 +8,7 @@ CONFIG_FILE="${R2_VERIFY_ENV:-/etc/ops/r2-verify.env}"
 UPLOAD_CONFIG_FILE="${R2_BACKUP_ENV:-/etc/ops/r2-backup.env}"
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"
 METRIC_OUT="${R2_VERIFY_METRIC_OUT:-/var/lib/node_exporter/textfile_collector/backup-set-r2-verify.prom}"
+STATE_OUT="${R2_VERIFY_STATE_OUT:-/var/lib/ops/backup-set-r2-verify/state}"
 LOCK_FILE="${R2_VERIFY_LOCK_FILE:-/run/lock/ops-r2-backup-verify.lock}"
 REMOTE_NAME="r2"
 STARTED_AT="$(date +%s)"
@@ -131,6 +132,7 @@ LOCAL_MANIFEST="$BACKUP_ROOT/$MANIFEST_RELATIVE"
 [ -r "$LOCAL_MANIFEST" ] || fail "local manifest is missing: $MANIFEST_RELATIVE"
 [ "$(sha256sum "$MANIFEST_PATH" | awk '{print $1}')" = "$(sha256sum "$LOCAL_MANIFEST" | awk '{print $1}')" ] || \
   fail "R2 manifest does not match the local complete set"
+MANIFEST_SHA256="$(sha256sum "$LOCAL_MANIFEST" | awk '{print $1}')"
 
 mapfile -t ARTIFACTS < <(
   python3 "$SCRIPT_DIR/backup_manifest.py" list-artifacts --manifest "$MANIFEST_PATH"
@@ -146,12 +148,13 @@ python3 "$SCRIPT_DIR/backup_manifest.py" verify \
   --manifest "$MANIFEST_PATH"
 
 DURATION_SECONDS="$(( $(date +%s) - STARTED_AT ))"
+VERIFIED_AT="$(date +%s)"
 METRIC_TMP="${METRIC_OUT}.tmp"
 install -d -m 0755 "$(dirname "$METRIC_OUT")"
 {
   echo '# HELP backup_set_r2_verify_last_success_timestamp Unix timestamp of the latest complete R2 backup set verification.'
   echo '# TYPE backup_set_r2_verify_last_success_timestamp gauge'
-  printf 'backup_set_r2_verify_last_success_timestamp %s\n' "$(date +%s)"
+  printf 'backup_set_r2_verify_last_success_timestamp %s\n' "$VERIFIED_AT"
   echo '# HELP backup_set_r2_verify_duration_seconds Duration of the latest complete R2 backup set verification.'
   echo '# TYPE backup_set_r2_verify_duration_seconds gauge'
   printf 'backup_set_r2_verify_duration_seconds %s\n' "$DURATION_SECONDS"
@@ -161,5 +164,15 @@ install -d -m 0755 "$(dirname "$METRIC_OUT")"
 } > "$METRIC_TMP"
 mv "$METRIC_TMP" "$METRIC_OUT"
 chmod 0644 "$METRIC_OUT"
+
+STATE_TMP="${STATE_OUT}.tmp"
+install -d -m 0700 "$(dirname "$STATE_OUT")"
+{
+  printf 'manifest_relative=%s\n' "$MANIFEST_RELATIVE"
+  printf 'manifest_sha256=%s\n' "$MANIFEST_SHA256"
+  printf 'verified_at=%s\n' "$VERIFIED_AT"
+} >"$STATE_TMP"
+chmod 0600 "$STATE_TMP"
+mv "$STATE_TMP" "$STATE_OUT"
 
 echo "R2 backup set verification completed: manifest=$MANIFEST_RELATIVE artifacts=${#ARTIFACTS[@]} duration_seconds=$DURATION_SECONDS"

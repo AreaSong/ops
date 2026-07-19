@@ -1,0 +1,297 @@
+schema_version: 1
+host:
+  id: LosAngeles
+  owner: as
+  lifecycle: production
+  public_ip: 23.185.200.12
+
+services:
+  - service_id: ssh
+    name: OpenSSH
+    owner: as
+    lifecycle: production
+    runtime:
+      type: systemd
+      units: [ssh.service]
+      config_paths: [/etc/ssh/sshd_config, /etc/ssh/sshd_config.d/90-ops-hardening.conf]
+    ports:
+      - { bind: "0.0.0.0", host_port: 22, protocol: tcp, exposure: public }
+    observability: { dashboards: [losangeles-security-overview] }
+
+  - service_id: docker
+    name: Docker Engine
+    owner: as
+    lifecycle: production
+    runtime:
+      type: systemd
+      units: [docker.service]
+      config_paths: [/etc/docker/daemon.json]
+    observability: { prometheus_jobs: [node], dashboards: [losangeles-services-backups] }
+
+  - service_id: nginx
+    name: Nginx ingress
+    owner: as
+    lifecycle: production
+    runtime:
+      type: systemd
+      units: [nginx.service]
+      config_paths: [/etc/nginx/nginx.conf, /etc/nginx/sites-enabled]
+    ports:
+      - { bind: "0.0.0.0", host_port: 80, protocol: tcp, exposure: public }
+      - { bind: "0.0.0.0", host_port: 443, protocol: tcp, exposure: public }
+    backup: { required: true, jobs: [backup-configs], offsite: R2 }
+    observability: { log_jobs: [nginx], dashboards: [losangeles-app-health] }
+
+  - service_id: host-security
+    name: Host security audit
+    owner: as
+    lifecycle: production
+    runtime:
+      type: systemd
+      units: [auditd.service, fail2ban.service]
+      config_paths: [/etc/audit, /etc/fail2ban]
+    observability:
+      log_jobs: [auditd, fail2ban, fail2ban_enriched]
+      dashboards: [losangeles-security-overview]
+
+  - service_id: x-ui
+    name: x-ui
+    owner: as
+    lifecycle: production
+    runtime:
+      type: systemd
+      units: [x-ui.service]
+      config_paths: [/etc/systemd/system/x-ui.service]
+    ports:
+      - { bind: 127.0.0.1, host_port: 2096, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 46585, protocol: tcp, exposure: loopback }
+    backup: { required: true, jobs: [backup-configs] }
+
+  - service_id: xray
+    name: Xray
+    owner: as
+    lifecycle: production
+    runtime: { type: child-process, parent_service_id: x-ui }
+    ports:
+      - { bind: 127.0.0.1, host_port: 10000, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 11111, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 62789, protocol: tcp, exposure: loopback }
+    backup: { required: true, jobs: [backup-configs] }
+
+  - service_id: resume-jadeai
+    name: Resume JadeAI
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: resume-jadeai
+      runtime_compose: /opt/services/resume-jadeai/compose.yml
+      controlled_compose: /opt/ops/services/resume-jadeai/compose.yml
+      containers: [resume-jadeai-app-1]
+    ports:
+      - { bind: 127.0.0.1, host_port: 2082, container_port: 3000, protocol: tcp, exposure: loopback }
+    backup: { required: true, jobs: [backup-volumes], offsite: R2 }
+    observability:
+      prometheus_jobs: [blackbox_app_https, blackbox_business_resume_https]
+      dashboards: [losangeles-app-health]
+
+  - service_id: account-vault-web
+    name: Account Vault web
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: account-vault
+      runtime_compose: /opt/services/account-vault/compose.yml
+      controlled_compose: /opt/ops/services/account-vault/compose.yml
+      containers: [account-vault-web-1]
+    ports:
+      - { bind: 127.0.0.1, host_port: 8392, container_port: 3001, protocol: tcp, exposure: loopback }
+    backup: { required: true, jobs: [backup-configs], offsite: R2 }
+    observability:
+      prometheus_jobs: [blackbox_app_https, blackbox_business_account_vault_https]
+      dashboards: [losangeles-app-health]
+
+  - service_id: account-vault-postgres
+    name: Account Vault PostgreSQL
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: account-vault
+      runtime_compose: /opt/services/account-vault/compose.yml
+      controlled_compose: /opt/ops/services/account-vault/compose.yml
+      containers: [account-vault-postgres-1]
+    ports:
+      - { bind: 127.0.0.1, host_port: 25432, container_port: 5432, protocol: tcp, exposure: loopback }
+    data: { type: postgres, volume: sorryiossearch_pgdata, classification: confidential }
+    backup: { required: true, jobs: [backup-postgres], offsite: R2 }
+    observability: { prometheus_jobs: [postgres], dashboards: [losangeles-datastores] }
+
+  - service_id: areaforge-web
+    name: AreaForge web
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: areaforge
+      runtime_compose: /opt/areaforge/docker-compose.prod.yml
+      controlled_compose: /opt/ops/services/areaforge/compose.yml
+      containers: [areaforge-web]
+    ports:
+      - { bind: 127.0.0.1, host_port: 3020, container_port: 3000, protocol: tcp, exposure: loopback }
+    data: { type: files, path: /opt/areaforge, classification: confidential }
+    backup: { required: true, jobs: [backup-volumes], offsite: R2 }
+    observability:
+      prometheus_jobs: [blackbox_app_https]
+      dashboards: [losangeles-app-health]
+
+  - service_id: areaforge-postgres
+    name: AreaForge PostgreSQL
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: areaforge
+      runtime_compose: /opt/areaforge/docker-compose.prod.yml
+      controlled_compose: /opt/ops/services/areaforge/compose.yml
+      containers: [areaforge-postgres]
+    data: { type: postgres, classification: confidential }
+    backup: { required: true, jobs: [backup-postgres], offsite: R2 }
+    observability: { dashboards: [losangeles-datastores] }
+
+  - service_id: sub2api
+    name: Sub2API
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: sub2api
+      runtime_compose: /opt/services/sub2api/compose.yml
+      controlled_compose: /opt/ops/services/sub2api/compose.yml
+      containers: [sub2api]
+    ports:
+      - { bind: 127.0.0.1, host_port: 8080, container_port: 8080, protocol: tcp, exposure: loopback }
+    data: { type: files, path: /var/lib/sub2api/data, classification: confidential }
+    backup: { required: true, jobs: [backup-volumes], offsite: R2 }
+    observability:
+      prometheus_jobs: [blackbox_app_https, blackbox_business_sub2api_https]
+      dashboards: [losangeles-app-health, sub2api-slo-capacity]
+
+  - service_id: sub2api-postgres
+    name: Sub2API PostgreSQL
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: sub2api
+      runtime_compose: /opt/services/sub2api/compose.yml
+      controlled_compose: /opt/ops/services/sub2api/compose.yml
+      containers: [sub2api-postgres]
+    data: { type: postgres, path: /var/lib/sub2api/postgres_data, classification: confidential }
+    backup: { required: true, jobs: [backup-postgres], offsite: R2 }
+    observability: { prometheus_jobs: [postgres], dashboards: [losangeles-datastores] }
+
+  - service_id: sub2api-redis
+    name: Sub2API Redis
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: sub2api
+      runtime_compose: /opt/services/sub2api/compose.yml
+      controlled_compose: /opt/ops/services/sub2api/compose.yml
+      containers: [sub2api-redis]
+    data: { type: redis, path: /var/lib/sub2api/redis_data, classification: confidential }
+    backup: { required: true, jobs: [backup-redis], offsite: R2 }
+    observability: { prometheus_jobs: [redis], dashboards: [losangeles-datastores] }
+
+  - service_id: observability-stack
+    name: Prometheus Grafana Loki stack
+    owner: as
+    lifecycle: production
+    runtime:
+      type: docker-compose
+      compose_project: observability
+      runtime_compose: /opt/ops/observability/docker-compose.yml
+      controlled_compose: /opt/ops/observability/docker-compose.yml
+      containers:
+        - prometheus
+        - alertmanager
+        - grafana
+        - loki
+        - promtail
+        - node-exporter
+        - blackbox-exporter
+        - postgres-exporter-sub2api
+        - postgres-exporter-account-vault
+        - redis-exporter-sub2api
+    ports:
+      - { bind: 127.0.0.1, host_port: 9090, container_port: 9090, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 9093, container_port: 9093, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 3000, container_port: 3000, protocol: tcp, exposure: loopback }
+      - { bind: 127.0.0.1, host_port: 3100, container_port: 3100, protocol: tcp, exposure: loopback }
+    data: { type: metrics-logs, path: /var/lib/observability, classification: operational }
+    backup: { required: true, jobs: [backup-volumes, backup-configs], offsite: R2 }
+    observability:
+      prometheus_jobs: [prometheus, alertmanager, loki, promtail, node, blackbox_https]
+      dashboards: [losangeles-host-overview, losangeles-services-backups]
+
+routes:
+  - service_id: resume-jadeai
+    hostname: resume.areasong.top
+    cloudflare_mode: proxied
+    observed_origin_policy: direct
+    desired_origin_policy: cloudflare-only
+    nginx_file: /etc/nginx/sites-enabled/cdn.resume.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:2082"]
+    tls_mode: cloudflare-origin-ca
+  - service_id: account-vault-web
+    hostname: sorryiossearch.areasong.top
+    cloudflare_mode: proxied
+    observed_origin_policy: direct
+    desired_origin_policy: cloudflare-only
+    nginx_file: /etc/nginx/sites-enabled/cdn.sorryiossearch.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:8392"]
+    tls_mode: cloudflare-origin-ca
+  - service_id: observability-stack
+    hostname: monitor.areasong.top
+    cloudflare_mode: proxied
+    observed_origin_policy: direct
+    desired_origin_policy: cloudflare-only
+    nginx_file: /etc/nginx/sites-enabled/monitor.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:3000"]
+    tls_mode: cloudflare-origin-ca
+  - service_id: areaforge-web
+    hostname: forge.areasong.top
+    cloudflare_mode: proxied
+    observed_origin_policy: direct
+    desired_origin_policy: cloudflare-only
+    nginx_file: /etc/nginx/sites-enabled/forge.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:3020"]
+    tls_mode: cloudflare-origin-ca
+  - service_id: sub2api
+    hostname: cpa.areasong.top
+    cloudflare_mode: dns-only
+    observed_origin_policy: direct
+    desired_origin_policy: direct
+    nginx_file: /etc/nginx/sites-enabled/direct.cpa.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:8080"]
+    tls_mode: lets-encrypt
+  - service_id: x-ui
+    hostname: log.areasong.top
+    cloudflare_mode: dns-only
+    observed_origin_policy: direct
+    desired_origin_policy: direct
+    nginx_file: /etc/nginx/sites-enabled/direct.log.areasong.top.conf
+    backend_endpoints:
+      - "http://127.0.0.1:46585"
+      - "http://127.0.0.1:10000"
+      - "http://127.0.0.1:2096"
+    tls_mode: lets-encrypt
+
+config_pairs:
+  - { service_id: resume-jadeai, runtime: /opt/services/resume-jadeai/compose.yml, controlled: /opt/ops/services/resume-jadeai/compose.yml, severity: warning }
+  - { service_id: account-vault-web, runtime: /opt/services/account-vault/compose.yml, controlled: /opt/ops/services/account-vault/compose.yml, severity: warning }
+  - { service_id: areaforge-web, runtime: /opt/areaforge/docker-compose.prod.yml, controlled: /opt/ops/services/areaforge/compose.yml, severity: warning }
+  - { service_id: sub2api, runtime: /opt/services/sub2api/compose.yml, controlled: /opt/ops/services/sub2api/compose.yml, severity: warning }

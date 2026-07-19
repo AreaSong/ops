@@ -4,6 +4,10 @@
 范围：业务服务 Compose 配置治理  
 目标：将 `/opt/services/*/compose.yml` 的当前生产配置纳入 `/opt/ops` Git 留痕，提升恢复、审计、复盘能力。
 
+> 历史边界：本文记录 2026-07-05 的首次受控副本建立过程。当时采用的“先改运行文件、
+> 再回填 Git”顺序已废止；当前权威流程以 `services/README.md` 为准，必须先修改、审查并
+> 提交受控文件，再经批准同步到运行路径。
+
 ## 变更结论
 
 已完成：
@@ -27,7 +31,7 @@
 
 - 当前实际运行文件仍在 `/opt/services/<service>/compose.yml`。
 - `/opt/ops/services/*/compose.yml` 是 Git 受控副本，不会自动驱动生产服务。
-- 后续变更建议流程：先修改运行文件 -> 验证服务 -> 同步到 `/opt/ops/services/` -> 提交 Git。
+- 本文当时使用的 runtime-first 流程仅保留为历史记录，不得用于后续生产变更。
 
 ## 验证结果
 

@@ -2,16 +2,19 @@
 
 This directory stores Git-controlled copies of production service Compose files.
 
-Active runtime files currently live under `/opt/services/<service>/compose.yml`.
-The files here are operational records and recovery references. When changing a
-service Compose file, update the runtime file first, verify the service, then sync
-the verified file back here and commit it.
+Active runtime files currently live under `/opt/services/<service>/compose.yml`,
+except AreaForge, whose authoritative runtime path is recorded in the asset
+inventory. The files here are the reviewed source of truth, recovery references,
+and deployment inputs. Change and validate the controlled copy first; an approved
+deployment then installs that exact file to the runtime path. Do not edit runtime
+first and backfill Git afterward.
 
 Current controlled copies:
 
 - `services/sub2api/compose.yml` from `/opt/services/sub2api/compose.yml`
 - `services/account-vault/compose.yml` from `/opt/services/account-vault/compose.yml`
 - `services/resume-jadeai/compose.yml` from `/opt/services/resume-jadeai/compose.yml`
+- `services/areaforge/compose.yml` from `/opt/areaforge/docker-compose.prod.yml`
 
 Secret handling:
 

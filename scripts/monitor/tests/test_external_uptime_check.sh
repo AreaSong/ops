@@ -16,9 +16,20 @@ cat > "$WORK_DIR/bin/curl" <<'FAKE_CURL'
 set -u
 
 url=""
+client_id_header=0
+client_secret_header=0
 for argument in "$@"; do
   url="$argument"
+  [[ "$argument" == "CF-Access-Client-Id: test-client-id" ]] && client_id_header=1
+  [[ "$argument" == "CF-Access-Client-Secret: test-client-secret" ]] && client_secret_header=1
 done
+
+if [[ "$url" == *monitor.areasong.top* && "${EXPECT_ACCESS_HEADERS:-false}" == true ]]; then
+  if [[ "$client_id_header" -ne 1 || "$client_secret_header" -ne 1 ]]; then
+    printf 'missing Cloudflare Access headers\n' >&2
+    exit 2
+  fi
+fi
 
 case "${FAKE_CURL_MODE:-success}" in
   success)
@@ -46,15 +57,26 @@ chmod 0755 "$WORK_DIR/bin/curl"
 run_check() {
   local mode="$1"
   local output="$2"
-  set +e
   FAKE_CURL_MODE="$mode" PATH="$WORK_DIR/bin:$PATH" "$CHECK_SCRIPT" > "$output" 2>&1
-  local status=$?
-  set -e
-  return "$status"
 }
 
 run_check success "$WORK_DIR/success.txt"
 [ "$(grep -c '^OK' "$WORK_DIR/success.txt")" -eq 6 ]
+
+CF_ACCESS_REQUIRED=true \
+CF_ACCESS_CLIENT_ID=test-client-id \
+CF_ACCESS_CLIENT_SECRET=test-client-secret \
+EXPECT_ACCESS_HEADERS=true \
+run_check success "$WORK_DIR/access-success.txt"
+[ "$(grep -c '^OK' "$WORK_DIR/access-success.txt")" -eq 6 ]
+
+set +e
+CF_ACCESS_REQUIRED=true run_check success "$WORK_DIR/access-missing.txt"
+access_missing_status=$?
+set -e
+[ "$access_missing_status" -ne 0 ]
+grep -Fq $'FAIL\tgrafana\thttp=000\tcurl_exit=2\terror=Cloudflare Access service token is not configured' \
+  "$WORK_DIR/access-missing.txt"
 
 if run_check one-fail "$WORK_DIR/one-fail.txt"; then
   echo "one-fail case unexpectedly succeeded" >&2

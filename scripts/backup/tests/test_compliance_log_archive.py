@@ -143,13 +143,15 @@ class ComplianceLogArchiveTests(unittest.TestCase):
     def test_manifest_chain_rejects_duplicate_days(self) -> None:
         first = self._build()
         first_sha = compliance_log_archive.sha256_file(first / "manifest.json")
-        self._build(
+        second = self._build(
             previous=first_sha,
             archive_id="20260715-013500000000Z-89abcdef",
         )
 
-        with self.assertRaisesRegex(ValueError, "duplicate compliance archive day"):
-            compliance_log_archive.verify_chain(self.output)
+        manifests = [second / "manifest.json", first / "manifest.json"]
+        with mock.patch.object(Path, "rglob", return_value=iter(manifests)):
+            with self.assertRaisesRegex(ValueError, "duplicate compliance archive day"):
+                compliance_log_archive.verify_chain(self.output)
 
     def test_manifest_chain_rejects_path_identity_mismatch(self) -> None:
         archive_dir = self._build()

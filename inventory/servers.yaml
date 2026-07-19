@@ -6,36 +6,6 @@
 # 3. commit message 格式：[inventory] 描述变更
 
 servers:
-  - hostname: prod-web-01
-    cloud: aliyun
-    region: cn-hangzhou
-    public_ip: "x.x.x.x"
-    private_ip: "172.16.x.x"
-    os: ubuntu-22.04
-    roles:
-      - web
-    services:
-      - nginx
-      - app
-    data_disk: false
-    notes: "示例条目，请替换为真实数据"
-
-  - hostname: prod-monitor-01
-    cloud: aliyun
-    region: cn-hangzhou
-    public_ip: ""
-    private_ip: "172.16.x.x"
-    os: ubuntu-22.04
-    roles:
-      - monitor
-    services:
-      - prometheus
-      - grafana
-      - loki
-      - alertmanager
-    data_disk: true
-    notes: "可观测栈承载机器"
-
   - hostname: LosAngeles
     cloud: crystalclear-solutions-llc
     region: us-ca-los-angeles
@@ -88,13 +58,10 @@ servers:
 # Ansible 分组（自动生成 inventory 时使用）
 groups:
   prod:
-    - prod-web-01
-    - prod-monitor-01
     - LosAngeles
   monitor:
-    - prod-monitor-01
+    - LosAngeles
   web:
-    - prod-web-01
     - LosAngeles
   docker_app:
     - LosAngeles
