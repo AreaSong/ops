@@ -43,10 +43,22 @@ jobs:
       - name: Test release controls
         run: python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
 
-      - name: Test backup and recovery controls
+      - name: Test backup manifest controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_manifest.py'
+
+      - name: Test compliance archive controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_compliance_log_archive.py'
+
+      - name: Test compliance archive pipeline
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_compliance_archive_pipeline.py'
+
+      - name: Test isolated restore controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areaforge_isolated.py'
+
+      - name: Test R2 verifier controls
         env:
           R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
-        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_*.py'
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_verify_backup_set_r2.py'
 
       - name: Test repository Python helpers
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
