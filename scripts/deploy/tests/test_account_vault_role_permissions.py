@@ -57,27 +57,38 @@ class AccountVaultRolePermissionIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.addCleanup(self.remove_container)
+        self.wait_for_final_postgres()
+
+    def wait_for_final_postgres(self) -> None:
         deadline = time.monotonic() + 90
+        last_health = "unknown"
+        last_ready_error = ""
         while time.monotonic() < deadline:
-            health = subprocess.run(
-                ["docker", "inspect", "--format", "{{.State.Health.Status}}", self.container],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if health.stdout.strip() == "healthy":
-                break
-            time.sleep(0.5)
-        else:
             logs = subprocess.run(
                 ["docker", "logs", self.container],
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            self.fail(f"PostgreSQL did not become healthy within 90 seconds:\n{logs.stderr}{logs.stdout}")
-        ready = self.psql("SELECT 1", check=False)
-        self.assertEqual(ready.returncode, 0, ready.stderr)
+            health = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Health.Status}}", self.container],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            last_health = health.stdout.strip() or health.stderr.strip()
+            init_complete = "PostgreSQL init process complete; ready for start up." in logs.stdout
+            if init_complete and last_health == "healthy":
+                ready = self.psql("SELECT 1", check=False)
+                if ready.returncode == 0:
+                    return
+                last_ready_error = ready.stderr.strip()
+            time.sleep(0.5)
+
+        self.fail(
+            "PostgreSQL final server did not become ready within 90 seconds: "
+            f"health={last_health!r}, psql={last_ready_error!r}"
+        )
 
     def remove_container(self) -> None:
         subprocess.run(
