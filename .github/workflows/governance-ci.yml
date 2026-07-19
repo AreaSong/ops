@@ -109,10 +109,54 @@ jobs:
       - name: Test isolated restore controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areaforge_isolated.py'
 
-      - name: Test R2 verifier controls
+      - name: Test R2 verifier complete remote set
         env:
           R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
-        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_verify_backup_set_r2.py'
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_complete_remote_set_is_downloaded_and_verified
+
+      - name: Test R2 verifier artifact corruption
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_artifact_corruption_fails_without_success_metric
+
+      - name: Test R2 verifier manifest sidecar corruption
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_manifest_sidecar_corruption_fails
+
+      - name: Test R2 verifier pointer consistency
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_remote_pointer_must_match_local_complete_set
+
+      - name: Test R2 verifier credential separation
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_upload_credential_file_cannot_be_reused_for_verification
+
+      - name: Test R2 verifier access-key separation
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_upload_access_key_cannot_be_reused_for_verification
+
+      - name: Test R2 verifier HTTPS endpoint enforcement
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_http_r2_endpoint_is_rejected_before_access
 
       - name: Test repository Python helpers
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
