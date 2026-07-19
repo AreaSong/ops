@@ -29,6 +29,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
                 "ops-fail2ban-enriched",
                 "ops-security-metrics",
                 "ops-sub2api-capacity-metrics",
+                "ops-docker-build-cache-prune",
             },
         )
         self.assertEqual(
@@ -70,6 +71,42 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         for cron_name in managed - {"ops-daily-ops-audit"}:
             cron = (REPO_ROOT / "observability" / "cron" / cron_name).read_text(encoding="utf-8")
             self.assertIn("/usr/bin/flock -n /run/lock/", cron, cron_name)
+
+    def test_heavy_collectors_are_staggered_inside_flock(self) -> None:
+        delays = {
+            "ops-docker-metrics": 5,
+            "ops-fail2ban-enriched": 12,
+            "ops-runtime-snapshot": 15,
+            "ops-business-error-log": 25,
+            "ops-business-log-metrics": 35,
+            "ops-security-metrics": 45,
+            "ops-sub2api-capacity-metrics": 50,
+        }
+        for cron_name, delay in delays.items():
+            cron = (REPO_ROOT / "observability" / "cron" / cron_name).read_text(encoding="utf-8")
+            flock_offset = cron.index("/usr/bin/flock -n /run/lock/")
+            sleep_offset = cron.index(f"/usr/bin/sleep {delay}")
+            self.assertLess(flock_offset, sleep_offset, cron_name)
+            self.assertIn(
+                f"/bin/bash -c '/usr/bin/sleep {delay}; exec ",
+                cron,
+                cron_name,
+            )
+
+    def test_weekly_docker_cleanup_is_build_cache_only(self) -> None:
+        cron = (REPO_ROOT / "observability" / "cron" / "ops-docker-build-cache-prune").read_text(
+            encoding="utf-8"
+        )
+        script = (
+            REPO_ROOT / "observability" / "scripts" / "prune-docker-build-cache.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("40 6 * * 0 root", cron)
+        self.assertIn("/usr/bin/flock -n /run/lock/ops-docker-build-cache-prune.lock", cron)
+        self.assertIn('readonly RETENTION=336h', script)
+        self.assertIn('builder prune --force --filter "until=${RETENTION}"', script)
+        self.assertNotIn("image prune", script)
+        self.assertNotIn("volume prune", script)
+        self.assertNotIn("system prune", script)
 
     def test_validated_generation_is_activated_before_cron_installation(self) -> None:
         task_names = [task.get("name") for task in self.play["tasks"]]

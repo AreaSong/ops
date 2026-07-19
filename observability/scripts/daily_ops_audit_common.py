@@ -141,6 +141,7 @@ class ServiceStats:
     bytes_sent: int = 0
     client_hashes: set[str] = field(default_factory=set)
     paths: Counter[str] = field(default_factory=Counter)
+    error_paths: Counter[str] = field(default_factory=Counter)
     latencies: list[float] = field(default_factory=list)
     slow_requests: int = 0
 

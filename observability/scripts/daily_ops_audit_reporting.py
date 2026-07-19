@@ -67,12 +67,35 @@ def _backup_findings(data: AuditData) -> list[Finding]:
 
 
 def _traffic_findings(data: AuditData) -> list[Finding]:
-    total_5xx = sum(item.statuses["5xx"] for item in data.services.values())
     findings: list[Finding] = []
-    if total_5xx > 50:
-        findings.append(Finding("critical", f"HTTP 5xx 总量过高：{total_5xx}"))
-    elif total_5xx > 0:
-        findings.append(Finding("warning", f"观察到 HTTP 5xx：{total_5xx}"))
+    for service in SERVICES:
+        item = data.services[service]
+        total = sum(item.statuses.values())
+        errors = item.statuses["5xx"]
+        if errors == 0:
+            continue
+        error_ratio = errors / max(total, 1)
+        if total < 1000:
+            findings.append(
+                Finding(
+                    "warning",
+                    f"{service} 低流量服务出现 HTTP 5xx：{errors}/{total} ({error_ratio:.3%})",
+                )
+            )
+        elif error_ratio > 0.01:
+            findings.append(
+                Finding(
+                    "critical",
+                    f"{service} HTTP 5xx 错误率过高：{errors}/{total} ({error_ratio:.3%})",
+                )
+            )
+        elif error_ratio > 0.001:
+            findings.append(
+                Finding(
+                    "warning",
+                    f"{service} HTTP 5xx 错误率偏高：{errors}/{total} ({error_ratio:.3%})",
+                )
+            )
     if data.security["ssh_failed"] > 100:
         findings.append(Finding("warning", f"SSH 登录失败次数偏高：{data.security['ssh_failed']}"))
     if data.security["ufw_blocks"] > 6000:
@@ -133,6 +156,26 @@ def _top_paths_section(data: AuditData) -> list[str]:
     return lines
 
 
+def _http_error_section(data: AuditData) -> list[str]:
+    lines = [
+        "",
+        "### HTTP 5xx 错误率",
+        "",
+        "| 服务 | 5xx | 请求 | 错误率 | Top 规范化错误路径 |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for service in SERVICES:
+        item = data.services[service]
+        total = sum(item.statuses.values())
+        errors = item.statuses["5xx"]
+        error_ratio = errors / max(total, 1)
+        paths = ", ".join(
+            f"`{path}` ({count})" for path, count in item.error_paths.most_common(5)
+        ) or "无"
+        lines.append(f"| {service} | {errors} | {total} | {error_ratio:.3%} | {paths} |")
+    return lines
+
+
 def _security_section(data: AuditData) -> list[str]:
     security = data.security
     return [
@@ -190,7 +233,7 @@ def build_report(data: AuditData, findings: list[Finding]) -> str:
         f"- 发现：critical={critical} warning={warning}",
         "",
     ]
-    lines += _web_section(data) + _top_paths_section(data)
+    lines += _web_section(data) + _top_paths_section(data) + _http_error_section(data)
     lines += _security_section(data) + _host_section(data) + _findings_section(data, findings)
     lines += [
         "",
@@ -218,6 +261,15 @@ def _http_metrics(data: AuditData) -> list[str]:
     lines += _metric_header("daily_ops_audit_http_bytes_sent", "Nginx response bytes in the audit window.")
     for service in SERVICES:
         lines.append(f'daily_ops_audit_http_bytes_sent{{service="{service}"}} {data.services[service].bytes_sent}')
+    lines += _metric_header(
+        "daily_ops_audit_http_error_ratio",
+        "HTTP 5xx requests divided by all HTTP requests in the audit window.",
+    )
+    for service in SERVICES:
+        item = data.services[service]
+        total = sum(item.statuses.values())
+        error_ratio = item.statuses["5xx"] / max(total, 1)
+        lines.append(f'daily_ops_audit_http_error_ratio{{service="{service}"}} {error_ratio:.9f}')
     return lines
 
 

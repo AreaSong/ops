@@ -188,6 +188,27 @@ class LogCollectorTests(unittest.TestCase):
             self.assertEqual(stats["ops-log-gateway"].latencies, [])
             self.assertEqual((parse_errors, unmapped, failures), (0, 1, []))
 
+    def test_nginx_records_only_normalized_5xx_paths_as_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "ops-business-access.log"
+            base.write_text(
+                nginx_line(
+                    "15/Jul/2026:12:00:00 +0000",
+                    "/users/alice@example.com?token=secret",
+                    status=502,
+                )
+                + nginx_line("15/Jul/2026:12:00:01 +0000", "/health", status=200),
+                encoding="utf-8",
+            )
+            stats, _, _ = collectors.collect_nginx(
+                dt.datetime(2026, 7, 15, tzinfo=UTC).timestamp(),
+                dt.datetime(2026, 7, 16, tzinfo=UTC).timestamp(),
+                [],
+                pattern=f"{base}*",
+                client_salt=b"test-salt",
+            )
+            self.assertEqual(stats["resume-jadeai"].error_paths, {"/users/:value": 1})
+
     def test_security_collects_gzip_and_ufw_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -292,7 +313,40 @@ class ReportingAndCliTests(unittest.TestCase):
         self.assertNotIn('report_date="', metrics)
         self.assertIn('daily_ops_audit_delivery{state="accepted"} 0', metrics)
         self.assertIn('daily_ops_audit_http_latency_seconds{service="sub2api",percentile="p95"}', metrics)
+        self.assertIn('daily_ops_audit_http_error_ratio{service="resume-jadeai"} 0.000000000', metrics)
         self.assertNotIn('quantile="', metrics)
+
+    def test_http_5xx_findings_use_per_service_request_volume_and_ratio(self) -> None:
+        data = sample_data()
+        low_volume = data.services["resume-jadeai"]
+        low_volume.statuses.clear()
+        low_volume.statuses.update({"2xx": 998, "5xx": 1})
+        findings = reporting.build_findings(data)
+        self.assertTrue(any(item.severity == "warning" and "低流量" in item.message for item in findings))
+
+        low_volume.statuses.clear()
+        low_volume.statuses.update({"2xx": 9989, "5xx": 11})
+        findings = reporting.build_findings(data)
+        self.assertTrue(any(item.severity == "warning" and "错误率偏高" in item.message for item in findings))
+
+        low_volume.statuses.clear()
+        low_volume.statuses.update({"2xx": 989, "5xx": 11})
+        findings = reporting.build_findings(data)
+        self.assertTrue(any(item.severity == "critical" and "错误率过高" in item.message for item in findings))
+
+        low_volume.statuses.clear()
+        low_volume.statuses.update({"2xx": 9990, "5xx": 10})
+        findings = reporting.build_findings(data)
+        self.assertFalse(any("HTTP 5xx" in item.message for item in findings))
+
+    def test_report_includes_service_error_ratio_and_normalized_error_paths(self) -> None:
+        data = sample_data()
+        item = data.services["resume-jadeai"]
+        item.statuses["5xx"] = 1
+        item.error_paths["/users/:value"] = 1
+        report = reporting.build_report(data, reporting.build_findings(data))
+        self.assertIn("HTTP 5xx 错误率", report)
+        self.assertIn("| resume-jadeai | 1 | 3 | 33.333% | `/users/:value` (1) |", report)
 
     def test_unmapped_host_warning_requires_material_volume_and_ratio(self) -> None:
         data = sample_data()

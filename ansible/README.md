@@ -63,7 +63,7 @@ ansible-playbook auditd.yml --limit LosAngeles
 
 ## LosAngeles 日报、日志审计和合规归档
 
-默认部署 10 个常规 host job 和 logrotate，覆盖日报、运行快照、Docker、安全、容量、
+默认部署 11 个常规 host job 和 logrotate，覆盖日报、运行快照、Docker、安全、容量、
 Cloudflare IP/证书和脱敏业务日志；另有 2 个 GitHub Issue 同步/演练 cron，只有显式启用
 并配置 root-only Token 后才部署：
 
@@ -82,13 +82,8 @@ ansible-playbook observability-host-jobs.yml --limit LosAngeles \
   -e compliance_archive_enabled=true
 ```
 
-play 输出的 `backup_file` 必须记录。回滚时先移除受管 cron，再按输出路径恢复原文件，
-例如：
-
-```bash
-sudo install -o root -g root -m 0755 "$BACKUP_FILE" /opt/ops/observability/scripts/<name>
-sudo install -o root -g root -m 0644 "$CRON_BACKUP" /etc/cron.d/<name>
-```
+回滚时将 `/var/lib/ops/observability-host-jobs/current` 原子切回上一不可变 generation，
+再核对受管 cron 指向 `current`；不要逐文件手改 `/etc/cron.d` 或运行脚本。
 
 ## 注意事项
 

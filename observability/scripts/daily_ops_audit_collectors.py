@@ -99,17 +99,19 @@ def _record_nginx_match(
         match.group("client").encode("utf-8"), key=client_salt, digest_size=12
     ).hexdigest()
     item.client_hashes.add(digest)
-    _record_nginx_request(match, service, item)
+    _record_nginx_request(match, service, item, status_class)
     return True
 
 
 def _record_nginx_request(
-    match: re.Match[str], service: str, item: ServiceStats
+    match: re.Match[str], service: str, item: ServiceStats, status_class: str
 ) -> None:
     request_parts = match.group("request").split()
     target = request_parts[1] if len(request_parts) >= 2 else "/"
     path = normalize_path(target)
     item.paths[path] += 1
+    if status_class == "5xx":
+        item.error_paths[path] += 1
     raw_latency = match.group("request_time")
     if (
         raw_latency == "-"

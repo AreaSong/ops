@@ -1,4 +1,4 @@
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-*/5 * * * * root /usr/bin/flock -n /run/lock/ops-fail2ban-enriched.lock /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/write-fail2ban-enriched-log.py >>/var/log/observability/fail2ban-enriched.log 2>&1
+*/5 * * * * root /usr/bin/flock -n /run/lock/ops-fail2ban-enriched.lock /bin/bash -c '/usr/bin/sleep 12; exec /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/write-fail2ban-enriched-log.py' >>/var/log/observability/fail2ban-enriched.log 2>&1

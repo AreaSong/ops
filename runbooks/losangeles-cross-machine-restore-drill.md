@@ -373,17 +373,29 @@ curl -fsS http://127.0.0.1:9090/-/healthy
 
 ### 12.3 公网接管前验证
 
+Cloudflare-only 源站策略启用后，四个代理域名的直接 `--resolve` 请求预期返回 `403`；这证明请求未绕过 Cloudflare。DNS-only 的 `cpa.areasong.top` 和 `log.areasong.top` 仍应直连成功。
+
 在 DNS 切换前，使用 `--resolve` 指向新机器 IP 验证：
 
 ```bash
 NEW_IP="<new-server-public-ip>"
 
-curl -k --resolve monitor.areasong.top:443:${NEW_IP} https://monitor.areasong.top/
-curl -k --resolve resume.areasong.top:443:${NEW_IP} https://resume.areasong.top/
-curl -k --resolve sorryiossearch.areasong.top:443:${NEW_IP} https://sorryiossearch.areasong.top/health
+curl -ksS -o /dev/null -w '%{http_code}\n' --resolve monitor.areasong.top:443:${NEW_IP} https://monitor.areasong.top/ # 预期 403
+curl -ksS -o /dev/null -w '%{http_code}\n' --resolve resume.areasong.top:443:${NEW_IP} https://resume.areasong.top/ # 预期 403
+curl -ksS -o /dev/null -w '%{http_code}\n' --resolve sorryiossearch.areasong.top:443:${NEW_IP} https://sorryiossearch.areasong.top/health # 预期 403
+curl -ksS -o /dev/null -w '%{http_code}\n' --resolve forge.areasong.top:443:${NEW_IP} https://forge.areasong.top/api/health # 预期 403
 curl -k --resolve cpa.areasong.top:443:${NEW_IP} https://cpa.areasong.top/health
 curl -k --resolve log.areasong.top:443:${NEW_IP} https://log.areasong.top/
 ```
+
+紧急维护四个代理域名时，不临时放宽公网源站 ACL。通过 SSH 隧道连接对应的 loopback 内部端口，再从本机访问：
+
+```bash
+ssh -N -L 13000:127.0.0.1:3000 LosAngeles
+curl -fsS http://127.0.0.1:13000/api/health
+```
+
+以上示例对应 Grafana。其他服务的实际端口必须先按 `inventory/services.yaml` 和服务器当前监听状态确认；不要猜测端口，也不要把内部端口发布到公网。
 
 停止条件：
 
@@ -402,6 +414,7 @@ curl -k --resolve log.areasong.top:443:${NEW_IP} https://log.areasong.top/
 
 - `resume.areasong.top`
 - `sorryiossearch.areasong.top`
+- `forge.areasong.top`
 - `monitor.areasong.top`
 
 检查：

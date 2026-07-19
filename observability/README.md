@@ -71,9 +71,10 @@ Cron:
 - Cloudflare Origin Certificate metrics hourly
 - Cloudflare official-IP drift daily
 - Previous complete UTC day operations audit at `00:20 UTC`
+- Docker BuildKit cache older than 14 days every Sunday at `06:40 UTC` (no image or volume pruning)
 - Optional critical-alert GitHub Issue sync every five minutes and monthly failure/recovery simulation
 
-The ten normal host jobs are always managed. The two GitHub Issue jobs are only installed with `-e alertmanager_github_issues_enabled=true` and require `/etc/ops/alertmanager-github.env` to be `root:root 0600`. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
+The normal host jobs are always managed. The two GitHub Issue jobs are only installed with `-e alertmanager_github_issues_enabled=true` and require `/etc/ops/alertmanager-github.env` to be `root:root 0600`. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
 
 ## Daily operations audit
 
@@ -81,7 +82,7 @@ The daily audit aggregates the previous complete UTC day without persisting raw 
 addresses, query strings, credentials, cookies, or log lines. It reports:
 
 - host RX/TX bytes and resource peaks
-- per-service HTTP status classes, response bytes, unique-client count, normalized top paths, and P50/P95/P99 latency
+- per-service HTTP status classes, 5xx error ratio, normalized 5xx paths, response bytes, unique-client count, normalized top paths, and P50/P95/P99 latency
 - SSH, sudo, Fail2ban, and UFW events
 - current systemd, Docker, firewall, active-alert, local backup, and R2 state
 
