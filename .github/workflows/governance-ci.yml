@@ -31,17 +31,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes jq python3-yaml shellcheck
 
-      - name: Run Python governance tests
+      - name: Test observability Python
+        run: python3 -m unittest discover -s observability/scripts/tests -p 'test_*.py'
+
+      - name: Test Ansible contracts
+        run: python3 -m unittest discover -s ansible/tests -p 'test_*.py'
+
+      - name: Test inventory consistency
+        run: python3 -m unittest discover -s inventory/tests -p 'test_*.py'
+
+      - name: Test release controls
+        run: python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+
+      - name: Test backup and recovery controls
         env:
           R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
-        run: |
-          set -euo pipefail
-          python3 -m unittest discover -s observability/scripts/tests -p 'test_*.py' -v
-          python3 -m unittest discover -s ansible/tests -p 'test_*.py' -v
-          python3 -m unittest discover -s inventory/tests -p 'test_*.py' -v
-          python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py' -v
-          python3 -m unittest discover -s scripts/backup/tests -p 'test_*.py' -v
-          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_*.py'
+
+      - name: Test repository Python helpers
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
       - name: Run Shell and Prometheus tests
         run: |
