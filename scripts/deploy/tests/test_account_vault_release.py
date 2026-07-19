@@ -37,6 +37,8 @@ class AccountVaultReleaseTests(unittest.TestCase):
         self.backup_manifest_tool = self.root / "backup_manifest.py"
         self.release_evidence = self.root / "published-release-manifest.json"
         self.attestation_verifier = self.fake_bin / "verify-attestation"
+        self.github_token = self.root / "github-read-token"
+        self.registry_auth_root = self.root / "registry-auth"
         self.release_metric = self.root / "metrics" / "account-vault-release.prom"
         self.state_dir = self.root / "state"
         self.docker_log = self.root / "docker.log"
@@ -89,6 +91,9 @@ class AccountVaultReleaseTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.r2_state.chmod(0o600)
+        self.github_token.write_text("test-read-packages-token\n", encoding="utf-8")
+        self.github_token.chmod(0o600)
+        self.registry_auth_root.mkdir()
         self.backup_manifest_tool.write_text(
             """import sys
 if sys.argv[1] == "verify":
@@ -185,10 +190,12 @@ elif [[ "$1" == image && "$2" == inspect && "$3" == --format ]]; then
   case "$4" in
     *RepoDigests*) printf '%s\n' "$FAKE_RELEASE_IMAGE" ;;
     '{{.Config.User}}') printf '%s\n' "${FAKE_IMAGE_USER:-node}" ;;
-    '{{.Id}}') printf '%s\n' "$FAKE_CANDIDATE_IMAGE_ID" ;;
+    '{{.Id}}') printf '%s\n' "${FAKE_LOCAL_PULLED_IMAGE_ID:-$FAKE_CANDIDATE_IMAGE_ID}" ;;
     *org.opencontainers.image.revision*) printf '%s\n' "${FAKE_IMAGE_REVISION:-$FAKE_GIT_SHA}" ;;
     *) printf '%s\n' "$FAKE_RELEASE_IMAGE" ;;
   esac
+elif [[ "$1" == manifest && "$2" == inspect ]]; then
+  printf '{"schemaVersion":2,"config":{"digest":"%s"}}\n' "$FAKE_REGISTRY_CONFIG_DIGEST"
 elif [[ "$1" == exec && "$*" == *'verify_contract=1'* ]]; then
   echo '0|0|false|1|true|false|false|false|false|false|0|false'
 elif [[ "$1" == compose && "$*" == *' ps -q web' ]]; then
@@ -211,6 +218,8 @@ fi
                 "ACCOUNT_VAULT_R2_VERIFY_STATE": str(self.r2_state),
                 "ACCOUNT_VAULT_RELEASE_VALIDATOR": str(RELEASE_VALIDATOR),
                 "ACCOUNT_VAULT_ATTESTATION_VERIFIER": str(self.attestation_verifier),
+                "ACCOUNT_VAULT_GITHUB_TOKEN_FILE": str(self.github_token),
+                "ACCOUNT_VAULT_REGISTRY_AUTH_ROOT": str(self.registry_auth_root),
                 "ACCOUNT_VAULT_ROLE_PERMISSION_HELPER": str(ROLE_PERMISSION_HELPER),
                 "ACCOUNT_VAULT_RELEASE_METRIC_OUT": str(self.release_metric),
                 "ACCOUNT_VAULT_RELEASE_LOCK_FILE": str(self.root / "run" / "release.lock"),
@@ -221,6 +230,8 @@ fi
                 "FAKE_RELEASE_IMAGE": RELEASE_IMAGE,
                 "FAKE_LOCAL_IMAGE_ID": LOCAL_IMAGE_ID,
                 "FAKE_CANDIDATE_IMAGE_ID": CANDIDATE_IMAGE_ID,
+                "FAKE_LOCAL_PULLED_IMAGE_ID": CANDIDATE_IMAGE_ID,
+                "FAKE_REGISTRY_CONFIG_DIGEST": CANDIDATE_IMAGE_ID,
                 "FAKE_GIT_SHA": GIT_SHA,
             }
         )
@@ -304,13 +315,16 @@ fi
             "test-role-grants-003",
         )
         docker_log = self.docker_log.read_text()
+        self.assertIn("login ghcr.io --username AreaSong --password-stdin", docker_log)
         self.assertIn(f"pull {RELEASE_IMAGE}", docker_log)
+        self.assertIn(f"manifest inspect {RELEASE_IMAGE}", docker_log)
         self.assertIn("--profile tools run --rm --no-deps migrate", docker_log)
         self.assertIn("verify_contract=1", docker_log)
         self.assertIn("up -d --no-deps --force-recreate web", docker_log)
         self.assertIn("/ready", self.curl_log.read_text())
         self.assertIn("/api/auth/status", self.curl_log.read_text())
         self.assertIn('account_vault_release_last_success{action="deploy"} 1', self.release_metric.read_text())
+        self.assertEqual(list(self.registry_auth_root.iterdir()), [])
 
     def test_rollback_swaps_current_and_previous_without_migration(self) -> None:
         self._seed_release_state(RELEASE_IMAGE, PREVIOUS_IMAGE)
@@ -520,7 +534,23 @@ fi
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must declare the node runtime user", result.stderr)
 
-    def test_deploy_rejects_image_id_that_differs_from_published_evidence(self) -> None:
+    def test_deploy_accepts_containerd_manifest_id_when_registry_config_matches(self) -> None:
+        result = self._run(
+            "deploy",
+            RELEASE_IMAGE,
+            "--evidence",
+            str(self.release_evidence),
+            "--approve-migration",
+            "--approve-role-grants",
+            "--role-grants-change-id",
+            "test-role-grants-containerd",
+            "--change-id",
+            "test-containerd",
+            FAKE_LOCAL_PULLED_IMAGE_ID="sha256:" + "a" * 64,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_deploy_rejects_registry_config_digest_that_differs_from_evidence(self) -> None:
         result = self._run(
             "deploy",
             RELEASE_IMAGE,
@@ -532,10 +562,11 @@ fi
             "test-role-grants-image-id",
             "--change-id",
             "test-image-id",
-            FAKE_CANDIDATE_IMAGE_ID="sha256:" + "9" * 64,
+            FAKE_REGISTRY_CONFIG_DIGEST="sha256:" + "9" * 64,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("image ID does not match", result.stderr)
+        self.assertIn("registry image config digest does not match", result.stderr)
+        self.assertEqual(list(self.registry_auth_root.iterdir()), [])
 
     def test_deploy_rejects_nonproduction_origin_before_database_writes(self) -> None:
         content = self.env_file.read_text(encoding="utf-8").replace(

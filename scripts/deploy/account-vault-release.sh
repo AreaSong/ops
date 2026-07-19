@@ -15,6 +15,9 @@ BACKUP_MANIFEST_TOOL="${ACCOUNT_VAULT_BACKUP_MANIFEST_TOOL:-/opt/ops/scripts/bac
 R2_VERIFY_STATE="${ACCOUNT_VAULT_R2_VERIFY_STATE:-/var/lib/ops/backup-set-r2-verify/state}"
 RELEASE_VALIDATOR="${ACCOUNT_VAULT_RELEASE_VALIDATOR:-/opt/ops/scripts/deploy/account-vault-release-validate.py}"
 ATTESTATION_VERIFIER="${ACCOUNT_VAULT_ATTESTATION_VERIFIER:-/opt/ops/scripts/deploy/account-vault-attestation-verify.sh}"
+TOKEN_FILE="${ACCOUNT_VAULT_GITHUB_TOKEN_FILE:-/etc/account-vault/github-read-token}"
+REGISTRY_USER="${ACCOUNT_VAULT_GHCR_USER:-AreaSong}"
+REGISTRY_AUTH_ROOT="${ACCOUNT_VAULT_REGISTRY_AUTH_ROOT:-/var/tmp}"
 # shellcheck disable=SC2034 # Consumed by the sourced release-state library.
 METRIC_OUT="${ACCOUNT_VAULT_RELEASE_METRIC_OUT:-/var/lib/node_exporter/textfile_collector/account-vault-release.prom}"
 ROLE_PERMISSION_HELPER="${ACCOUNT_VAULT_ROLE_PERMISSION_HELPER:-/opt/ops/scripts/deploy/account-vault-role-permissions.sh}"
@@ -41,6 +44,7 @@ COMPOSE_BACKUP=""
 COMPOSE_EXISTED=false
 COMPOSE_INSTALLED=false
 OPERATION_COMMITTED=false
+REGISTRY_AUTH_DIR=""
 # shellcheck disable=SC2034 # Consumed by the sourced release-state library.
 STARTED_AT="$(date +%s)"
 log() {
@@ -130,7 +134,7 @@ parse_args() {
 
 require_commands() {
   local command_name
-  for command_name in awk cat chmod cmp cp curl date dirname docker find flock grep gzip id install ln mv python3 rm sha256sum sleep stat tr; do
+  for command_name in awk cat chmod cmp cp curl date dirname docker find flock grep gzip id install jq ln mktemp mv python3 rm sha256sum sleep stat tr; do
     command -v "$command_name" >/dev/null 2>&1 || fail "required command is missing: $command_name"
   done
 }
@@ -185,6 +189,41 @@ require_secure_file() {
   owner="$(stat -c '%U:%G' "$path")"
   [ "$mode" = 600 ] || fail "$description must use mode 0600"
   [ "$owner" = root:root ] || fail "$description must be owned by root:root"
+}
+
+cleanup_registry_auth() {
+  local directory="${REGISTRY_AUTH_DIR:-}"
+  [ -n "$directory" ] || return 0
+  case "$directory" in
+    "$REGISTRY_AUTH_ROOT"/account-vault-registry-auth.*)
+      rm -rf -- "$directory" || true
+      ;;
+  esac
+  REGISTRY_AUTH_DIR=""
+}
+
+prepare_registry_auth() {
+  [ -n "$REGISTRY_AUTH_DIR" ] && return 0
+  require_secure_file "$TOKEN_FILE" "GitHub read token"
+  [ -d "$REGISTRY_AUTH_ROOT" ] || fail "temporary registry authentication root is missing: $REGISTRY_AUTH_ROOT"
+  REGISTRY_AUTH_DIR="$(mktemp -d "$REGISTRY_AUTH_ROOT/account-vault-registry-auth.XXXXXX")"
+  chmod 0700 "$REGISTRY_AUTH_DIR"
+  DOCKER_CONFIG="$REGISTRY_AUTH_DIR" docker login ghcr.io \
+    --username "$REGISTRY_USER" --password-stdin <"$TOKEN_FILE" >/dev/null
+}
+
+registry_docker() {
+  [ -n "$REGISTRY_AUTH_DIR" ] || fail "temporary GHCR authentication is not initialized"
+  DOCKER_CONFIG="$REGISTRY_AUTH_DIR" docker "$@"
+}
+
+registry_image_config_digest() {
+  local image="$1"
+  registry_docker manifest inspect "$image" | jq -er '
+    select(.schemaVersion == 2) |
+    .config.digest |
+    select(type == "string" and test("^sha256:[0-9a-f]{64}$"))
+  '
 }
 
 validate_release_environment() {
@@ -347,16 +386,19 @@ restore_runtime_compose() {
 }
 
 ensure_image_available() {
-  local verify_evidence="${1:-true}" repo_digests image_id image_user revision
+  local verify_evidence="${1:-true}" repo_digests registry_config_digest image_user revision
   if is_release_digest "$ACTIVE_IMAGE"; then
-    docker pull "$ACTIVE_IMAGE" >/dev/null
+    prepare_registry_auth
+    registry_docker pull "$ACTIVE_IMAGE" >/dev/null
     repo_digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ACTIVE_IMAGE")"
     grep -Fxq "$ACTIVE_IMAGE" <<<"$repo_digests" || fail "pulled image does not expose the requested RepoDigest"
     image_user="$(docker image inspect --format '{{.Config.User}}' "$ACTIVE_IMAGE")"
     [ "$image_user" = node ] || fail "approved release image must declare the node runtime user"
     if [ "$verify_evidence" = true ]; then
-      image_id="$(docker image inspect --format '{{.Id}}' "$ACTIVE_IMAGE")"
-      [ "$image_id" = "$APPROVED_IMAGE_ID" ] || fail "pulled image ID does not match published release evidence"
+      registry_config_digest="$(registry_image_config_digest "$ACTIVE_IMAGE")" || \
+        fail "cannot read the pulled image config digest from the authenticated registry manifest"
+      [ "$registry_config_digest" = "$APPROVED_IMAGE_ID" ] || \
+        fail "registry image config digest does not match published release evidence"
       revision="$(docker image inspect --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' "$ACTIVE_IMAGE")"
       [ "$revision" = "$APPROVED_GIT_SHA" ] || fail "image revision does not match published release evidence"
     fi
@@ -418,6 +460,7 @@ cleanup_failed_operation() {
   if [ "$OPERATION_COMMITTED" = false ]; then
     restore_previous_web || true
   fi
+  cleanup_registry_auth
   publish_metric 0 "${ACTION:-unknown}" "$failed_image" || true
 }
 
@@ -510,6 +553,7 @@ main() {
     rollback) rollback_release ;;
     verify) verify_current ;;
   esac
+  cleanup_registry_auth
   trap - ERR HUP INT TERM
   log "Account Vault $ACTION completed successfully."
 }
