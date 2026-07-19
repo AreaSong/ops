@@ -109,6 +109,7 @@
             - "{{ nginx_rollback_root }}"
             - "{{ nginx_rollback_root }}/snippets"
             - "{{ nginx_rollback_root }}/sites-available"
+          when: not ansible_check_mode
 
         - name: Back up existing managed Nginx snippets
           ansible.builtin.copy:
@@ -119,7 +120,9 @@
             group: root
             mode: preserve
           loop: "{{ managed_snippet_state.results }}"
-          when: item.stat.exists
+          when:
+            - not ansible_check_mode
+            - item.stat.exists
 
         - name: Back up existing available Cloudflare-proxied virtual hosts
           ansible.builtin.copy:
@@ -130,7 +133,9 @@
             group: root
             mode: preserve
           loop: "{{ available_cloudflare_site_state.results }}"
-          when: item.stat.exists
+          when:
+            - not ansible_check_mode
+            - item.stat.exists
 
         - name: Install Cloudflare original peer allow map
           ansible.builtin.template:
@@ -235,14 +240,18 @@
             group: root
             mode: preserve
           loop: "{{ managed_snippet_state.results }}"
-          when: item.stat.exists
+          when:
+            - not ansible_check_mode
+            - item.stat.exists
 
         - name: Remove managed Nginx snippets created by the failed change
           ansible.builtin.file:
             path: "{{ item.item }}"
             state: absent
           loop: "{{ managed_snippet_state.results }}"
-          when: not item.stat.exists
+          when:
+            - not ansible_check_mode
+            - not item.stat.exists
 
         - name: Restore pre-existing available Cloudflare-proxied virtual hosts
           ansible.builtin.copy:
@@ -253,21 +262,27 @@
             group: root
             mode: preserve
           loop: "{{ available_cloudflare_site_state.results }}"
-          when: item.stat.exists
+          when:
+            - not ansible_check_mode
+            - item.stat.exists
 
         - name: Remove available virtual hosts created by the failed change
           ansible.builtin.file:
             path: "/etc/nginx/sites-available/{{ item.item }}"
             state: absent
           loop: "{{ available_cloudflare_site_state.results }}"
-          when: not item.stat.exists
+          when:
+            - not ansible_check_mode
+            - not item.stat.exists
 
         - name: Remove enabled symlinks created by the failed change
           ansible.builtin.file:
             path: "/etc/nginx/sites-enabled/{{ item.item }}"
             state: absent
           loop: "{{ enabled_cloudflare_site_state.results }}"
-          when: not item.stat.exists
+          when:
+            - not ansible_check_mode
+            - not item.stat.exists
 
         - name: Validate restored Nginx configuration
           ansible.builtin.command:
@@ -275,23 +290,29 @@
           register: nginx_rollback_validation
           changed_when: false
           failed_when: false
+          when: not ansible_check_mode
 
         - name: Reload restored Nginx configuration
           ansible.builtin.service:
             name: nginx
             state: reloaded
-          when: nginx_rollback_validation.rc == 0
+          when:
+            - not ansible_check_mode
+            - nginx_rollback_validation.rc == 0
 
         - name: Require successful Nginx rollback
           ansible.builtin.assert:
             that:
               - nginx_rollback_validation.rc == 0
             fail_msg: "Cloudflare origin deployment and Nginx rollback both failed. Use {{ nginx_rollback_root }} immediately."
+          when: not ansible_check_mode
 
         - name: Report the rolled-back Cloudflare origin deployment
           ansible.builtin.fail:
             msg: >-
-              Cloudflare origin deployment failed and was rolled back from {{ nginx_rollback_root }}.
+              {{ 'Cloudflare origin check-mode simulation failed before runtime changes.'
+                 if ansible_check_mode else
+                 'Cloudflare origin deployment failed and was rolled back from ' ~ nginx_rollback_root ~ '.' }}
               Original failure: {{ ansible_failed_result.msg | default('unknown') }}
 
     - name: Report retained Nginx rollback snapshot

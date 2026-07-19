@@ -46,6 +46,15 @@ class NginxCloudflareOriginTests(unittest.TestCase):
             "Probe the public routes through Cloudflare",
         ):
             self.assertEqual(block[name].get("when"), "not ansible_check_mode", name)
+        self.assertEqual(
+            block["Create root-only Nginx rollback directories"].get("when"),
+            "not ansible_check_mode",
+        )
+        for name in (
+            "Back up existing managed Nginx snippets",
+            "Back up existing available Cloudflare-proxied virtual hosts",
+        ):
+            self.assertIn("not ansible_check_mode", block[name].get("when", []), name)
 
     def test_change_is_backed_up_validated_and_probed_in_order(self) -> None:
         self.assertLess(
