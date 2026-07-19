@@ -1,0 +1,293 @@
+---
+- name: Restrict Cloudflare-proxied Nginx virtual hosts to Cloudflare origins
+  hosts: LosAngeles
+  become: true
+  gather_facts: false
+  vars:
+    cloudflare_ipv4: "{{ lookup('file', playbook_dir + '/../security/cloudflare/ips-v4.txt').splitlines() | reject('equalto', '') | list }}"
+    cloudflare_ipv6: "{{ lookup('file', playbook_dir + '/../security/cloudflare/ips-v6.txt').splitlines() | reject('equalto', '') | list }}"
+    cloudflare_sites:
+      - cdn.resume.areasong.top.conf
+      - cdn.sorryiossearch.areasong.top.conf
+      - forge.areasong.top.conf
+      - monitor.areasong.top.conf
+    cloudflare_hostnames:
+      - resume.areasong.top
+      - sorryiossearch.areasong.top
+      - forge.areasong.top
+      - monitor.areasong.top
+    cloudflare_external_probes:
+      - { url: "https://resume.areasong.top/", status_codes: [200, 301, 302, 307, 308] }
+      - { url: "https://sorryiossearch.areasong.top/health", status_codes: [200] }
+      - { url: "https://forge.areasong.top/", status_codes: [200, 301, 302, 307, 308] }
+      - { url: "https://monitor.areasong.top/api/health", status_codes: [200, 301, 302, 307, 308, 401, 403] }
+    nginx_rollback_root: "/var/backups/ops/nginx-cloudflare-origin-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+    managed_snippets:
+      - /etc/nginx/conf.d/cloudflare-origin-map.conf
+      - /etc/nginx/snippets/cloudflare-real-ip.conf
+      - /etc/nginx/snippets/cloudflare-origin-only.conf
+
+  tasks:
+    - name: Require non-empty Cloudflare address lists
+      ansible.builtin.assert:
+        that:
+          - cloudflare_ipv4 | length >= 10
+          - cloudflare_ipv6 | length >= 5
+        fail_msg: Cloudflare IPv4 or IPv6 inventory is unexpectedly small.
+
+    - name: Verify direct DNS-only site files before changing proxied sites
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/nginx/sites-enabled/direct.cpa.areasong.top.conf
+        - /etc/nginx/sites-enabled/direct.log.areasong.top.conf
+      register: direct_sites
+
+    - name: Require both direct DNS-only site files
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: "DNS-only Nginx site is missing before the Cloudflare change: {{ item.item }}"
+      loop: "{{ direct_sites.results }}"
+
+    - name: Inspect the active Nginx include topology
+      ansible.builtin.command:
+        argv: [/usr/sbin/nginx, -T]
+      register: nginx_preflight_config
+      changed_when: false
+
+    - name: Require the standard HTTP-level conf.d include
+      ansible.builtin.assert:
+        that:
+          - nginx_preflight_config.stdout is search('include\\s+/etc/nginx/conf\\.d/\\*\\.conf;')
+        fail_msg: Nginx does not load /etc/nginx/conf.d/*.conf in HTTP context.
+
+    - name: Inspect managed Nginx snippets before changing files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop: "{{ managed_snippets }}"
+      register: managed_snippet_state
+
+    - name: Inspect available Cloudflare-proxied virtual hosts before changing files
+      ansible.builtin.stat:
+        path: "/etc/nginx/sites-available/{{ item }}"
+        follow: false
+      loop: "{{ cloudflare_sites }}"
+      register: available_cloudflare_site_state
+
+    - name: Inspect enabled Cloudflare-proxied virtual hosts before changing files
+      ansible.builtin.stat:
+        path: "/etc/nginx/sites-enabled/{{ item }}"
+        follow: false
+      loop: "{{ cloudflare_sites }}"
+      register: enabled_cloudflare_site_state
+
+    - name: Refuse to replace unmanaged enabled site files
+      ansible.builtin.assert:
+        that:
+          - >-
+            not item.stat.exists or
+            (item.stat.islnk and
+            item.stat.lnk_source == '/etc/nginx/sites-available/' ~ item.item)
+        fail_msg: >-
+          Refusing to replace non-canonical enabled site {{ item.item }}.
+          Back it up and convert it to the managed sites-available symlink first.
+      loop: "{{ enabled_cloudflare_site_state.results }}"
+
+    - name: Apply Cloudflare origin policy with automatic file rollback
+      block:
+        - name: Create root-only Nginx rollback directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+          loop:
+            - "{{ nginx_rollback_root }}"
+            - "{{ nginx_rollback_root }}/snippets"
+            - "{{ nginx_rollback_root }}/sites-available"
+
+        - name: Back up existing managed Nginx snippets
+          ansible.builtin.copy:
+            src: "{{ item.item }}"
+            dest: "{{ nginx_rollback_root }}/snippets/{{ item.item | basename }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: preserve
+          loop: "{{ managed_snippet_state.results }}"
+          when: item.stat.exists
+
+        - name: Back up existing available Cloudflare-proxied virtual hosts
+          ansible.builtin.copy:
+            src: "/etc/nginx/sites-available/{{ item.item }}"
+            dest: "{{ nginx_rollback_root }}/sites-available/{{ item.item }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: preserve
+          loop: "{{ available_cloudflare_site_state.results }}"
+          when: item.stat.exists
+
+        - name: Install Cloudflare original peer allow map
+          ansible.builtin.template:
+            src: templates/cloudflare-origin-map.conf.j2
+            dest: /etc/nginx/conf.d/cloudflare-origin-map.conf
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Install Cloudflare real client IP trust chain
+          ansible.builtin.template:
+            src: templates/cloudflare-real-ip.conf.j2
+            dest: /etc/nginx/snippets/cloudflare-real-ip.conf
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Install Cloudflare-only origin access policy
+          ansible.builtin.template:
+            src: templates/cloudflare-origin-only.conf.j2
+            dest: /etc/nginx/snippets/cloudflare-origin-only.conf
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Install controlled Cloudflare-proxied virtual hosts
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../observability/nginx/sites/{{ item }}"
+            dest: "/etc/nginx/sites-available/{{ item }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop: "{{ cloudflare_sites }}"
+
+        - name: Enable controlled Cloudflare-proxied virtual hosts
+          ansible.builtin.file:
+            src: "/etc/nginx/sites-available/{{ item }}"
+            dest: "/etc/nginx/sites-enabled/{{ item }}"
+            state: link
+            owner: root
+            group: root
+          loop: "{{ cloudflare_sites }}"
+
+        - name: Validate Nginx configuration before reload
+          ansible.builtin.command:
+            argv: [/usr/sbin/nginx, -t]
+          changed_when: false
+
+        - name: Reload the validated Nginx configuration
+          ansible.builtin.service:
+            name: nginx
+            state: reloaded
+
+        - name: Probe that direct origin access is rejected locally
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/curl
+              - --silent
+              - --show-error
+              - --insecure
+              - --output
+              - /dev/null
+              - --write-out
+              - "%{http_code}"
+              - --resolve
+              - "{{ item }}:443:127.0.0.1"
+              - "https://{{ item }}/"
+          loop: "{{ cloudflare_hostnames }}"
+          register: local_origin_probes
+          changed_when: false
+
+        - name: Require every proxied origin to reject direct local traffic
+          ansible.builtin.assert:
+            that:
+              - item.stdout == '403'
+            fail_msg: "Cloudflare-only origin policy did not return 403 for {{ item.item }}: {{ item.stdout }}"
+          loop: "{{ local_origin_probes.results }}"
+
+        - name: Probe the public routes through Cloudflare
+          ansible.builtin.uri:
+            url: "{{ item.url }}"
+            method: GET
+            follow_redirects: safe
+            validate_certs: true
+            status_code: "{{ item.status_codes }}"
+            timeout: 15
+          loop: "{{ cloudflare_external_probes }}"
+          changed_when: false
+
+      rescue:
+        - name: Restore pre-existing managed Nginx snippets
+          ansible.builtin.copy:
+            src: "{{ nginx_rollback_root }}/snippets/{{ item.item | basename }}"
+            dest: "{{ item.item }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: preserve
+          loop: "{{ managed_snippet_state.results }}"
+          when: item.stat.exists
+
+        - name: Remove managed Nginx snippets created by the failed change
+          ansible.builtin.file:
+            path: "{{ item.item }}"
+            state: absent
+          loop: "{{ managed_snippet_state.results }}"
+          when: not item.stat.exists
+
+        - name: Restore pre-existing available Cloudflare-proxied virtual hosts
+          ansible.builtin.copy:
+            src: "{{ nginx_rollback_root }}/sites-available/{{ item.item }}"
+            dest: "/etc/nginx/sites-available/{{ item.item }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: preserve
+          loop: "{{ available_cloudflare_site_state.results }}"
+          when: item.stat.exists
+
+        - name: Remove available virtual hosts created by the failed change
+          ansible.builtin.file:
+            path: "/etc/nginx/sites-available/{{ item.item }}"
+            state: absent
+          loop: "{{ available_cloudflare_site_state.results }}"
+          when: not item.stat.exists
+
+        - name: Remove enabled symlinks created by the failed change
+          ansible.builtin.file:
+            path: "/etc/nginx/sites-enabled/{{ item.item }}"
+            state: absent
+          loop: "{{ enabled_cloudflare_site_state.results }}"
+          when: not item.stat.exists
+
+        - name: Validate restored Nginx configuration
+          ansible.builtin.command:
+            argv: [/usr/sbin/nginx, -t]
+          register: nginx_rollback_validation
+          changed_when: false
+          failed_when: false
+
+        - name: Reload restored Nginx configuration
+          ansible.builtin.service:
+            name: nginx
+            state: reloaded
+          when: nginx_rollback_validation.rc == 0
+
+        - name: Require successful Nginx rollback
+          ansible.builtin.assert:
+            that:
+              - nginx_rollback_validation.rc == 0
+            fail_msg: "Cloudflare origin deployment and Nginx rollback both failed. Use {{ nginx_rollback_root }} immediately."
+
+        - name: Report the rolled-back Cloudflare origin deployment
+          ansible.builtin.fail:
+            msg: >-
+              Cloudflare origin deployment failed and was rolled back from {{ nginx_rollback_root }}.
+              Original failure: {{ ansible_failed_result.msg | default('unknown') }}
+
+    - name: Report retained Nginx rollback snapshot
+      ansible.builtin.debug:
+        msg: "Cloudflare origin Nginx rollback snapshot={{ nginx_rollback_root }}"

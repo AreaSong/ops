@@ -1,11 +1,13 @@
 # LosAngeles 生产服务器加固与规范化核查进度
 
-更新时间：2026-07-06 04:05 UTC
+更新时间：2026-07-18 14:02 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
+
+> 2026-07-18 更新：本文主体是第一轮历史核查。第二轮治理正在实施，尚未完成生产部署与回验；当前进度以 `runbooks/losangeles-round2-governance-20260718.md` 为准。此前“已收尾”不能作为第二轮完成证据。
 
 ## 1. 核查结论
 

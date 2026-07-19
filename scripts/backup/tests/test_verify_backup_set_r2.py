@@ -150,6 +150,8 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             "-e",
             "R2_VERIFY_METRIC_OUT=/output/backup-set-r2-verify.prom",
             "-e",
+            "R2_VERIFY_STATE_OUT=/output/backup-set-r2-verify.state",
+            "-e",
             "R2_VERIFY_LOCK_FILE=/tmp/verify.lock",
             "-v",
             f"{REPO_ROOT}:/repo:ro",
@@ -180,6 +182,10 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
         self.assertEqual(result.returncode, 0, result.stderr)
         metric = (self.output_root / "backup-set-r2-verify.prom").read_text(encoding="utf-8")
         self.assertIn("backup_set_r2_verify_artifacts 9", metric)
+        state = (self.output_root / "backup-set-r2-verify.state").read_text(encoding="utf-8")
+        self.assertIn(f"manifest_relative=manifests/{self.manifest.name}", state)
+        self.assertRegex(state, r"manifest_sha256=[0-9a-f]{64}")
+        self.assertRegex(state, r"verified_at=[0-9]+")
 
     def test_remote_artifact_corruption_fails_without_success_metric(self) -> None:
         payload = backup_manifest.load_manifest(self.manifest)

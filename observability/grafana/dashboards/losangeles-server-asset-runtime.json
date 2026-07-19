@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 39,
+  "title": "LosAngeles Server Asset and Runtime",
+  "uid": "losangeles-server-asset-runtime",
+  "version": 2,
+  "timezone": "browser",
+  "refresh": "30s",
+  "tags": ["LosAngeles", "asset", "runtime"],
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Runtime snapshot age",
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 5},
+      "targets": [{"expr": "time() - ops_runtime_snapshot_last_success_timestamp", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 120}, {"color": "red", "value": 180}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Critical drift",
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 5},
+      "targets": [{"expr": "sum(ops_config_drift{severity=\"critical\"})", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Expected containers running",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 5},
+      "targets": [{"expr": "sum(docker_container_running)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Sanitized business errors",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 5},
+      "targets": [{"expr": "business_error_log_events_last_run", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 20}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "CPU and memory usage",
+      "gridPos": {"x": 0, "y": 5, "w": 12, "h": 7},
+      "targets": [
+        {"expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU", "refId": "A"},
+        {"expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "legendFormat": "Memory", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Root filesystem usage",
+      "gridPos": {"x": 12, "y": 5, "w": 12, "h": 7},
+      "targets": [{"expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100", "legendFormat": "/", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Service directory",
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 10},
+      "targets": [{"expr": "ops_asset_service_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Domain to Nginx and backend",
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 10},
+      "targets": [{"expr": "ops_asset_domain_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Declared host ports",
+      "gridPos": {"x": 0, "y": 22, "w": 12, "h": 10},
+      "targets": [{"expr": "ops_asset_port_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Live listeners",
+      "gridPos": {"x": 12, "y": 22, "w": 12, "h": 10},
+      "targets": [{"expr": "ops_listener_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Container runtime and image source",
+      "gridPos": {"x": 0, "y": 32, "w": 24, "h": 12},
+      "targets": [{"expr": "ops_container_runtime_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Container security posture",
+      "gridPos": {"x": 0, "y": 44, "w": 12, "h": 11},
+      "targets": [{"expr": "ops_container_security_state", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Configuration drift",
+      "gridPos": {"x": 12, "y": 44, "w": 12, "h": 11},
+      "targets": [{"expr": "ops_config_drift == 1", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 14,
+      "type": "logs",
+      "title": "Sanitized business warnings and errors",
+      "gridPos": {"x": 0, "y": 55, "w": 24, "h": 11},
+      "datasource": "Loki",
+      "targets": [{"expr": "{job=\"business_errors\",host=\"LosAngeles\"}", "refId": "A", "queryType": "range", "datasource": "Loki"}],
+      "options": {"showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none"}
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Account Vault release status",
+      "gridPos": {"x": 0, "y": 66, "w": 6, "h": 5},
+      "targets": [{"expr": "account_vault_release_last_success", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [{"type": "value", "options": {"0": {"text": "Failed", "color": "red"}, "1": {"text": "Succeeded", "color": "green"}}}],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Account Vault release age",
+      "gridPos": {"x": 6, "y": 66, "w": 6, "h": 5},
+      "targets": [{"expr": "time() - account_vault_release_last_attempt_timestamp", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 17,
+      "type": "table",
+      "title": "Account Vault release image",
+      "gridPos": {"x": 12, "y": 66, "w": 12, "h": 5},
+      "targets": [{"expr": "account_vault_release_info", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Cloudflare IP check",
+      "gridPos": {"x": 0, "y": 71, "w": 6, "h": 5},
+      "targets": [{"expr": "cloudflare_ip_ranges_check_success", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [{"type": "value", "options": {"0": {"text": "Failed", "color": "red"}, "1": {"text": "Succeeded", "color": "green"}}}],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Cloudflare IP check age",
+      "gridPos": {"x": 6, "y": 71, "w": 6, "h": 5},
+      "targets": [{"expr": "time() - cloudflare_ip_ranges_last_run_timestamp", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 86400}, {"color": "red", "value": 129600}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Cloudflare managed and official CIDRs",
+      "gridPos": {"x": 12, "y": 71, "w": 12, "h": 7},
+      "targets": [{"expr": "cloudflare_ip_ranges_match", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+    }
+  ]
+}

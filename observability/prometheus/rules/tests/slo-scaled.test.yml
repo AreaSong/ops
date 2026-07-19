@@ -47,13 +47,13 @@ tests:
     interval: 1m
     input_series:
       - series: 'probe_success{scope="business",service="account-vault",journey="login",check="login-page"}'
-        values: '1+0x119 0'
+        values: '1+0x118 0 stale'
     promql_expr_test:
       - expr: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login"}'
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
-            value: 0.9917355371900827
+            value: 0.9916666666666667
       - expr: 'service:synthetic_error_budget_remaining:ratio_30d{service="account-vault",journey="login"}'
         eval_time: 2h
         exp_samples:

@@ -1,11 +1,29 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-06 04:05 UTC
+更新时间：2026-07-18 16:31 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
+
+> 状态边界：下方 2026-07-06 的“本轮完成”结论只代表第一轮单机治理基线。2026-07-18 已启动第二轮治理，当前本地实现尚未全部提交、部署和生产回验，因此整项任务仍为实施中。第二轮权威进度、批准门禁和验收清单见 `runbooks/losangeles-round2-governance-20260718.md`。
+
+## 0. 2026-07-18 第二轮状态
+
+| 项目 | 当前结论 |
+| --- | --- |
+| 第一轮基线 | 已完成并保留 |
+| 第二轮本地实现 | 资产/端口/容器面板、脱敏业务日志、Cloudflare IP 漂移、cron 纳管、容器加固、Alertmanager Issue 同步和 Account Vault 供应链已实现并通过本地测试 |
+| 生产部署 | 尚未完成 |
+| Cloudflare Access | 控制面只读确认当前无 Access Application、无 service token |
+| GitHub 分支保护 | 控制面只读确认 `ops` 与 `sorryiosSearch` 均未配置 classic branch protection；required checks 尚未落地 |
+| GitHub Actions secrets / GHCR | `ops` 当前无 repository secrets；`sorryiossearch` GHCR package 尚不存在，需首次 publish 后配置并验证 private/read-only 凭据 |
+| Account Vault 生产 | 公网 `/ready` 当前仍返回 SPA HTML，说明新 DB-readiness 镜像尚未部署 |
+| 高风险门禁 | 源站仅 Cloudflare、Loki 7 天删除、Account Vault migration/digest 发布均待分别确认 |
+| 验收 | 待 30、60、120 分钟；24/48/72 小时已取消 |
+
+在第二轮最终验收完成前，本文历史章节中的“P0/P1 无”“监控完成”和“Cloudflare 治理完成”不得外推为当前全部工作已 100% 完成。
 
 ## 1. 本轮结论
 
@@ -36,6 +54,7 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 | x-ui / xray 入口 | `https://log.areasong.top/` | DNS-only，经 Nginx |
 | resume-jadeai | `https://resume.areasong.top/` | Cloudflare 代理 |
 | account-vault | `https://sorryiossearch.areasong.top/` | Cloudflare 代理 |
+| AreaForge | `https://forge.areasong.top/` | Cloudflare 代理 |
 | sub2api | `https://cpa.areasong.top/` | DNS-only |
 | www 门户 | `https://www.areasong.top/` | 旧入口已下线，当前预留 |
 
@@ -110,6 +129,9 @@ Grafana Dashboard：
 - `LosAngeles Security Overview`
 - `LosAngeles App and Business Health`
 - `LosAngeles Certificates and Cloudflare`
+- `LosAngeles Daily Operations Audit`
+- `LosAngeles Server Asset and Runtime`（待第二轮生产部署）
+- `sub2api SLO and Capacity`
 
 已覆盖：
 
@@ -134,7 +156,7 @@ Grafana Dashboard：
 
 当前策略：
 
-- `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top` 使用 Cloudflare 代理和 Origin Certificate。
+- `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top` 使用 Cloudflare 代理和 Origin Certificate。
 - `cpa.areasong.top`、`log.areasong.top` 为 DNS-only，使用 Let's Encrypt。
 - `www.areasong.top` 旧 Access / Tunnel 入口已下线，预留后续门户网站。
 
@@ -147,7 +169,7 @@ Grafana Dashboard：
 
 已完成：
 
-- `inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 已同步。
+- `inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md`、`losangeles-assets.yaml` 已同步。
 - LosAngeles provider / region / owner 已按可核验证据补齐。
 - 云厂商控制台 `https://server.zgocloud.cc/` 已人工核对，实例名称为 `LosAngeles`。
 - 云主账号 MFA 已开启，绑定邮箱和手机号可用，主账号未共用，当前无 API Key。
@@ -175,7 +197,7 @@ Grafana Dashboard：
 | 单机无 HA | 风险接受 | 当前只有一台主机；已用 R2 异地备份、恢复预案和本机隔离恢复演练补偿；有第二台主机或更高 SLA 后再做 HA/跨机器接管 |
 | 登录后业务指标 | 暂未做 | 需要测试账号或应用侧指标配合 |
 | Redis 高危命令 / ACL | 阶段 1 已实施并持久化 | C1c 已精确禁用 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`MONITOR`、`KEYS`、`CONFIG SET/REWRITE` 等高风险命令；C1d 已通过 `/data/users.acl` 持久化；分用户 ACL 仍需应用侧 Redis username 支持 |
-| p95 / p99 分位延迟 | 暂未做 | 当前有 Nginx request_time 最大值和慢请求数量；分位需要更细日志管道或应用 metrics |
+| p95 / p99 分位延迟 | 每日日报已覆盖 | 每日流量审计已按服务输出 P50/P95/P99；实时高频 histogram 仍需应用 metrics 才能获得 |
 | sub2api 数据库运行用户 | 风险接受 / 应用侧待配合 | 当前仍使用 superuser `sub2api`；C2f 已确认直接切换失败原因是启动时执行 `CREATE TABLE IF NOT EXISTS schema_migrations` 需要 `public` schema `CREATE` 权限；C2g 已确认当前上游未发现独立 migration-only 命令或关闭启动自动 migration 的开关 |
 | 门户网站 | 暂未接入 | `www.areasong.top` 已预留，用户暂不急 |
 | 主机名规范化 | 暂不改 | `LosAngeles` 可用，改名有运维影响 |

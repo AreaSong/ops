@@ -1,0 +1,92 @@
+x-security-options: &security-options
+  - no-new-privileges:true
+
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  web:
+    image: ghcr.io/areasong/areaforge-web:v0.1.7@sha256:3a54995ca3776456c197e60f4a179ea0e6e30cf763ccb6ea372c5cbf555d48fd
+    container_name: areaforge-web
+    restart: unless-stopped
+    user: nextjs
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    logging: *json-log-options
+    security_opt: *security-options
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/.next/cache:rw,nosuid,nodev,size=128m
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      APP_URL: ${APP_URL:?APP_URL is required}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      AUTH_SESSION_COOKIE_NAME: ${AUTH_SESSION_COOKIE_NAME:-af_session}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?AUTH_SESSION_SECRET is required}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_BASE_URL: ${AI_BASE_URL:-https://sub2api.example.com/v1}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-30000}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+      AI_LOG_PROMPTS: ${AI_LOG_PROMPTS:-false}
+      AI_ALLOW_SENSITIVE_CONTEXT: ${AI_ALLOW_SENSITIVE_CONTEXT:-false}
+      UPLOAD_DIR: /app/uploads
+      AREAFORGE_OPS_STATE_DIR: ${AREAFORGE_OPS_STATE_DIR:-/app/ops-state}
+      AREAFORGE_IMAGE: ghcr.io/areasong/areaforge-web:v0.1.7@sha256:3a54995ca3776456c197e60f4a179ea0e6e30cf763ccb6ea372c5cbf555d48fd
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    volumes:
+      - areaforge-uploads:/app/uploads
+      - ${AREAFORGE_OPS_STATE_HOST_DIR:-/opt/areaforge/ops-state}:/app/ops-state
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    container_name: areaforge-postgres
+    restart: unless-stopped
+    user: postgres
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: "0.75"
+    pids_limit: 256
+    logging: *json-log-options
+    security_opt: *security-options
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /var/run/postgresql:rw,noexec,nosuid,size=16m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - areaforge-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  areaforge-postgres-data:
+  areaforge-uploads:

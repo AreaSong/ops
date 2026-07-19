@@ -35,6 +35,10 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
   - `resume-jadeai` public resume homepage
   - `account-vault` login page and auth status API
   - `sub2api` login page and health JSON
+- Sanitized runtime asset snapshots for CPU/load/memory/disk, listeners, systemd, containers, security state, domain routing, Compose paths, and configuration drift
+- Sanitized warning/error collection for the four business services, forwarded to Loki as `job="business_errors"`
+- Daily comparison of the deployed Cloudflare proxy CIDRs with the official IPv4/IPv6 lists
+- Optional Alertmanager critical-alert to GitHub Issue synchronization with failure/recovery lifecycle simulation
 
 ## Textfile metrics
 
@@ -49,14 +53,27 @@ Scripts:
 - `observability/scripts/write-security-metrics.sh`
 - `observability/scripts/write-sub2api-capacity-metrics.sh`
 - `observability/scripts/write-daily-ops-audit.sh`
+- `observability/scripts/runtime_snapshot.py`
+- `observability/scripts/business_error_log.py`
+- `observability/scripts/cloudflare_ip_metrics.py`
+- `observability/scripts/alertmanager_github_issues.py`
 
 Cron:
 
-- Docker container metrics every 5 minutes
+- Docker container metrics every minute
 - Backup freshness metrics daily after backup jobs
 - Security log and firewall metrics every minute
 - sub2api account-pool symptom metrics every minute
+- Runtime asset snapshot and configuration drift every minute
+- Sanitized business warning/error collection every minute
+- Business access-log metrics every minute
+- Fail2ban enrichment every five minutes
+- Cloudflare Origin Certificate metrics hourly
+- Cloudflare official-IP drift daily
 - Previous complete UTC day operations audit at `00:20 UTC`
+- Optional critical-alert GitHub Issue sync every five minutes and monthly failure/recovery simulation
+
+The ten normal host jobs are always managed. The two GitHub Issue jobs are only installed with `-e alertmanager_github_issues_enabled=true` and require `/etc/ops/alertmanager-github.env` to be `root:root 0600`. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
 
 ## Daily operations audit
 
@@ -156,10 +173,12 @@ ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles
 ansible-playbook observability-host-jobs.yml --limit LosAngeles
 ```
 
-The playbook deploys the daily audit, Docker, security, and sub2api collector files;
-installs their four `/etc/cron.d/ops-*` jobs; installs the observability logrotate
-policy; and creates the textfile collector and persistent Promtail positions
-directories. Remote copies are backed up by Ansible before replacement.
+The playbook deploys all daily-audit, runtime, Docker, security, traffic, business-error,
+Cloudflare, Fail2ban and sub2api collector files; installs ten normal
+`/etc/cron.d/ops-*` jobs; optionally installs the two GitHub Issue jobs; installs the
+observability logrotate policy; and creates the textfile collector, business-error log,
+and persistent Promtail positions directories. Remote copies are backed up by Ansible
+before replacement.
 
 Post-deployment validation:
 
@@ -168,12 +187,15 @@ expected to remain `0` until the separately approved auditd deployment has compl
 the complete block again after auditd so the full observability gate is meaningful.
 
 ```bash
-sudo stat -c '%a %U:%G %n' /etc/cron.d/ops-{daily-ops-audit,docker-metrics,security-metrics,sub2api-capacity-metrics}
+sudo stat -c '%a %U:%G %n' /etc/cron.d/ops-{daily-ops-audit,docker-metrics,runtime-snapshot,business-error-log,cloudflare-ip-metrics,business-log-metrics,cloudflare-origin-cert-metrics,fail2ban-enriched,security-metrics,sub2api-capacity-metrics}
 sudo logrotate --debug /etc/logrotate.d/ops-observability
 sudo /opt/ops/observability/scripts/write-daily-ops-audit.sh --no-email
 sudo /opt/ops/observability/scripts/write-docker-metrics.sh
 sudo /opt/ops/observability/scripts/write-security-metrics.sh
 sudo /opt/ops/observability/scripts/write-sub2api-capacity-metrics.sh
+sudo /opt/ops/observability/scripts/runtime_snapshot.py
+sudo /opt/ops/observability/scripts/business_error_log.py
+sudo /opt/ops/observability/scripts/cloudflare_ip_metrics.py
 
 prom_value() {
   curl -fsSG http://127.0.0.1:9090/api/v1/query \
@@ -186,6 +208,9 @@ daily_ts="$(prom_value daily_ops_audit_last_success_timestamp)"
 docker_ts="$(prom_value docker_metrics_last_run_timestamp)"
 security_ts="$(prom_value security_metrics_last_success_timestamp)"
 sub2api_ts="$(prom_value sub2api_capacity_metrics_last_run_timestamp)"
+runtime_ts="$(prom_value ops_runtime_snapshot_last_success_timestamp)"
+business_error_ts="$(prom_value business_error_log_last_success_timestamp)"
+cloudflare_ip_ts="$(prom_value cloudflare_ip_ranges_last_run_timestamp)"
 
 test "$((now - ${daily_ts%.*}))" -lt 100800
 test "$(prom_value daily_ops_audit_data_source_failures)" -eq 0
@@ -200,14 +225,31 @@ test "$(prom_value ufw_status_check_success)" -eq 1
 test "$(prom_value 'fail2ban_check_success{jail="sshd"}')" -eq 1
 test "$((now - ${sub2api_ts%.*}))" -lt 300
 test "$(prom_value sub2api_log_check_success)" -eq 1
+test "$((now - ${runtime_ts%.*}))" -lt 180
+test "$(prom_value ops_runtime_snapshot_check_success)" -eq 1
+test "$((now - ${business_error_ts%.*}))" -lt 180
+test "$(prom_value business_error_log_check_success)" -eq 1
+test "$(prom_value business_error_log_source_failures)" -eq 0
+test "$((now - ${cloudflare_ip_ts%.*}))" -lt 300
+test "$(prom_value cloudflare_ip_ranges_check_success)" -eq 1
+test "$(prom_value 'min(cloudflare_ip_ranges_match)')" -eq 1
+```
+
+The first host-job deployment is allowed to report only the explicitly registered
+`observed=direct, desired=cloudflare-only` route drift until the separately approved
+origin restriction is applied. After all controlled Compose files and Cloudflare-only
+routes have converged, the final gate is:
+
+```bash
+test "$(prom_value 'sum(ops_config_drift)')" -eq 0
 ```
 
 The play output reports each remote Ansible `backup_file`. Save those paths with the
-deployment record. To roll back, first remove the four cron files so no collector runs
-while files are being restored:
+deployment record. To roll back, first remove all managed cron files so no collector
+runs while files are being restored:
 
 ```bash
-sudo rm -f /etc/cron.d/ops-{daily-ops-audit,docker-metrics,security-metrics,sub2api-capacity-metrics}
+sudo rm -f /etc/cron.d/ops-{daily-ops-audit,docker-metrics,runtime-snapshot,business-error-log,cloudflare-ip-metrics,business-log-metrics,cloudflare-origin-cert-metrics,fail2ban-enriched,security-metrics,sub2api-capacity-metrics,alertmanager-github-issues,alertmanager-github-simulation}
 ```
 
 For every replaced file, install the reported backup over its original destination.

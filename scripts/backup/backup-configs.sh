@@ -10,7 +10,7 @@ install -d -m 0700 "$BACKUP_ROOT"
 install -d -m 0750 /var/log/backup
 
 items=()
-for p in /etc/x-ui /etc/nginx /etc/account-vault /opt/ops /opt/services; do
+for p in /etc/x-ui /etc/nginx /etc/account-vault /opt/ops /opt/services /var/lib/ops/account-vault-release; do
   [ -e "$p" ] && items+=("$p")
 done
 for p in /var/lib/sub2api/docker-compose.yml /var/lib/sub2api/compose.yml /var/lib/sub2api/.env /var/lib/sub2api/*.env; do

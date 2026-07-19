@@ -1,81 +1,12 @@
 # 服务与端口台账（结构化）
 
+# LosAngeles 的详细拓扑以 losangeles-assets.yaml 为权威源；本文件保留跨主机服务摘要。
 # 维护规则：
 # 1. 新增/变更服务或端口时更新本文件并 git 提交
 # 2. 同步更新 ports.md 人类可读摘要
 # 3. commit message 格式：[inventory] 描述变更
 
 services:
-  - name: nginx
-    host: prod-web-01
-    deploy_type: docker-compose
-    compose_path: /opt/compose/nginx
-    ports:
-      - port: 443
-        protocol: tcp
-        expose: "0.0.0.0/0"
-        notes: "公网 HTTPS"
-      - port: 80
-        protocol: tcp
-        expose: "0.0.0.0/0"
-        notes: "HTTP 重定向到 HTTPS"
-    dependencies: []
-    backup: false
-    monitoring:
-      - node_exporter
-      - promtail
-
-  - name: app
-    host: prod-web-01
-    deploy_type: docker-compose
-    compose_path: /opt/compose/app
-    ports:
-      - port: 8080
-        protocol: tcp
-        expose: "127.0.0.1"
-        notes: "内网，nginx 反代"
-    dependencies:
-      - mysql
-      - redis
-    backup: false
-    monitoring:
-      - node_exporter
-      - promtail
-
-  - name: mysql
-    host: prod-db-01
-    deploy_type: docker-compose
-    compose_path: /opt/compose/mysql
-    ports:
-      - port: 3306
-        protocol: tcp
-        expose: "172.16.0.0/16"
-        notes: "仅内网"
-    dependencies: []
-    backup: true
-    backup_script: scripts/backup/backup-mysql.sh
-    monitoring:
-      - node_exporter
-      - promtail
-      - mysqld_exporter
-
-  - name: redis
-    host: prod-db-01
-    deploy_type: docker-compose
-    compose_path: /opt/compose/redis
-    ports:
-      - port: 6379
-        protocol: tcp
-        expose: "172.16.0.0/16"
-        notes: "仅内网"
-    dependencies: []
-    backup: true
-    backup_script: scripts/backup/backup-redis.sh
-    monitoring:
-      - node_exporter
-      - promtail
-      - redis_exporter
-
   - name: nginx
     host: LosAngeles
     deploy_type: systemd
@@ -94,7 +25,7 @@ services:
       - sub2api
       - account-vault-web
       - x-ui
-    backup: false
+    backup: true
     monitoring: []
 
   - name: x-ui
@@ -143,7 +74,7 @@ services:
         expose: "127.0.0.1"
         notes: "映射到容器 3000，Nginx 反代"
     dependencies: []
-    backup: false
+    backup: true
     monitoring:
       - docker_container_running
       - blackbox_app_https
@@ -160,7 +91,7 @@ services:
         notes: "映射到容器 3001，Nginx 反代"
     dependencies:
       - account-vault-postgres
-    backup: false
+    backup: true
     monitoring:
       - docker_container_running
       - blackbox_app_https
@@ -224,7 +155,7 @@ services:
     dependencies:
       - sub2api-postgres
       - sub2api-redis
-    backup: false
+    backup: true
     monitoring:
       - docker_container_running
       - blackbox_app_https
@@ -263,8 +194,3 @@ global_ports:
     service: ssh
     expose: "0.0.0.0/0"
     notes: "当前未限制来源 IP；密钥登录，root/password disabled，Fail2ban sshd jail；有固定出口 IP 后再收紧。"
-  - port: 9100
-    protocol: tcp
-    service: node_exporter
-    expose: "172.16.0.0/16"
-    notes: "内网监控采集"

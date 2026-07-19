@@ -36,6 +36,30 @@ scrape_configs:
           host: LosAngeles
           __path__: /var/log/observability/*.log
 
+  - job_name: business_errors
+    pipeline_stages:
+      - json:
+          expressions:
+            event_timestamp: timestamp
+            service: service
+            level: level
+            message: message
+      - timestamp:
+          source: event_timestamp
+          format: RFC3339Nano
+      - labels:
+          service:
+          level:
+      - output:
+          source: message
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: business_errors
+          host: LosAngeles
+          __path__: /var/log/business-errors/*.log
+
   - job_name: syslog
     static_configs:
       - targets:

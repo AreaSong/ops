@@ -8,7 +8,10 @@ ansible/
 ├── baseline.yml          # 基线配置（幂等）
 ├── audit.yml             # 合规巡检
 ├── auditd.yml            # LosAngeles auditd 独立部署
+├── github-cli.yml        # 固定版本 GitHub CLI 与 attestation 依赖
+├── nginx-cloudflare-origin.yml # Cloudflare-only 源站事务式变更
 ├── observability-host-jobs.yml # 日报、日志和主机采集作业
+├── templates/            # Nginx Cloudflare 访问控制模板
 ├── inventory/
 │   └── hosts.yml         # 从 servers.yaml 自动生成
 └── roles/
@@ -60,7 +63,9 @@ ansible-playbook auditd.yml --limit LosAngeles
 
 ## LosAngeles 日报、日志审计和合规归档
 
-先部署四类 host collector 和 logrotate：
+默认部署 10 个常规 host job 和 logrotate，覆盖日报、运行快照、Docker、安全、容量、
+Cloudflare IP/证书和脱敏业务日志；另有 2 个 GitHub Issue 同步/演练 cron，只有显式启用
+并配置 root-only Token 后才部署：
 
 ```bash
 ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles

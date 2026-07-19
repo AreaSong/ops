@@ -1,0 +1,91 @@
+name: Ops Governance CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository and full secret-scan history
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes jq python3-yaml shellcheck
+
+      - name: Run Python governance tests
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s observability/scripts/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s ansible/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s inventory/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/backup/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+
+      - name: Run Shell and Prometheus tests
+        run: |
+          set -euo pipefail
+          bash scripts/monitor/tests/test_external_uptime_check.sh
+          bash scripts/monitor/tests/test_external_uptime_incident.sh
+          bash observability/scripts/tests/test_docker_metrics.sh
+          bash observability/scripts/tests/test_security_metrics.sh
+          bash observability/scripts/tests/test_sub2api_capacity_metrics.sh
+          bash observability/prometheus/rules/tests/test_backup_integrity_rules.sh
+          bash observability/prometheus/rules/tests/test_log_pipeline_rules.sh
+          bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
+          bash observability/prometheus/rules/tests/test_slo_rules.sh
+          bash scripts/tests/validate_observability_configs.sh
+          node --test services/compliance-archive-ingest/test/*.test.js
+
+      - name: Validate Compose, inventory, YAML, JSON, docs, and shell
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          docker compose -f observability/docker-compose.yml config --quiet --no-interpolate --no-env-resolution
+          docker compose -f services/account-vault/compose.yml config --quiet --no-interpolate
+          docker compose -f services/areaforge/compose.yml config --quiet --no-interpolate
+          docker compose -f services/resume-jadeai/compose.yml config --quiet --no-interpolate
+          docker compose -f services/sub2api/compose.yml config --quiet --no-interpolate
+          ASSET_INVENTORY_PATH=inventory/losangeles-assets.yaml \
+            python3 observability/scripts/runtime_snapshot.py --validate-only
+          python3 scripts/tests/validate_structured_files.py
+          node --test scripts/tests/*.test.mjs
+          find ansible observability scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$BASE_SHA" =~ ^0+$ ]]; then
+            base="$BASE_SHA"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            base=HEAD^
+          else
+            base="$(git hash-object -t tree /dev/null)"
+          fi
+          git diff --check "$base" HEAD --
+
+      - name: Scan Git history and working tree for secrets
+        run: >-
+          docker run --rm
+          -v "$PWD:/repo"
+          -w /repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          detect --source . --redact --no-banner --exit-code 1

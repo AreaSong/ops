@@ -43,6 +43,16 @@ groups:
 
   - name: blackbox_alerts
     rules:
+      - alert: GrafanaInternalProbeFailed
+        expr: probe_success{job="blackbox_grafana_internal"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: grafana
+        annotations:
+          summary: "Grafana internal readiness probe failed"
+          description: "The local Grafana API health endpoint is unavailable independently of Cloudflare Access."
+
       - alert: HttpProbeFailed
         expr: probe_success{job="blackbox_https"} == 0
         for: 2m
@@ -511,8 +521,105 @@ groups:
         annotations:
           summary: "Daily operations audit email was not accepted by Alertmanager"
 
+  - name: runtime_asset_and_business_error_alerts
+    rules:
+      - alert: RuntimeSnapshotStale
+        expr: absent(ops_runtime_snapshot_last_success_timestamp) or time() - ops_runtime_snapshot_last_success_timestamp > 180
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LosAngeles runtime asset snapshot is stale"
+          description: "The sanitized service, listener, container, and drift snapshot has not completed in three minutes."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
+
+      - alert: RuntimeSnapshotCheckFailed
+        expr: ops_runtime_snapshot_check_success == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LosAngeles runtime asset snapshot is incomplete"
+          description: "At least one inventory, systemd, listener, Docker, or drift collector failed."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
+
+      - alert: SecurityCriticalConfigurationDrift
+        expr: ops_config_drift{severity="critical"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Security-critical configuration drift: {{ $labels.service_id }} {{ $labels.hostname }}"
+          description: "A Cloudflare-protected Nginx route is missing its expected backend, real-IP trust chain, or origin allowlist."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
+
+      - alert: ControlledConfigurationDrift
+        expr: ops_config_drift{severity="warning"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Controlled configuration drift: {{ $labels.service_id }}"
+          description: "The runtime Compose file differs from its Git-controlled recovery copy."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
+
+      - alert: BusinessErrorLogStale
+        expr: absent(business_error_log_last_success_timestamp) or time() - business_error_log_last_success_timestamp > 180
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sanitized business error log collector is stale"
+          description: "The collector for resume, Account Vault, sub2api, and AreaForge has not completed in three minutes."
+
+      - alert: BusinessErrorLogCheckFailed
+        expr: business_error_log_check_success == 0 or business_error_log_source_failures > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sanitized business error log collector cannot read every source"
+          description: "Check the configured Docker container names and collector permissions."
+
+      - alert: BusinessErrorEventsBurst
+        expr: business_error_log_events_last_run > 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Business warning/error events increased sharply"
+          description: "More than twenty sanitized warning/error events were recorded in one collector run."
+          loki_query: "{job=\"business_errors\", host=\"LosAngeles\"}"
+
   - name: cloudflare_origin_cert_alerts
     rules:
+      - alert: CloudflareIpRangeMetricsStale
+        expr: absent(cloudflare_ip_ranges_last_run_timestamp) or time() - cloudflare_ip_ranges_last_run_timestamp > 36 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cloudflare IP range comparison is stale"
+          description: "The daily comparison with Cloudflare's official IPv4 and IPv6 lists has not completed."
+
+      - alert: CloudflareIpRangeCheckFailed
+        expr: cloudflare_ip_ranges_check_success == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cloudflare IP range comparison failed"
+          description: "The official list could not be fetched or a managed CIDR file is invalid."
+
+      - alert: CloudflareIpRangeDrift
+        expr: cloudflare_ip_ranges_match == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Managed Cloudflare {{ $labels.family }} ranges differ from the official list"
+          description: "Review the official change, update the Git-managed CIDRs, run nginx -t, and reload only after approval."
+
       - alert: CloudflareOriginCertMetricsStale
         expr: absent(cloudflare_origin_cert_metrics_last_run_timestamp) or time() - cloudflare_origin_cert_metrics_last_run_timestamp > 3 * 3600
         for: 15m
@@ -622,3 +729,58 @@ groups:
           summary: "sub2api account pool is unavailable at high frequency"
           description: "At least ten no-available-account events were observed in the latest five-minute window."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
+
+  - name: release_governance_alerts
+    rules:
+      - alert: AccountVaultReleaseMetricsMissing
+        expr: absent(account_vault_release_last_success)
+        for: 15m
+        labels:
+          severity: warning
+          scope: deployment
+          service: account-vault
+        annotations:
+          summary: "Account Vault release evidence metric is missing"
+          description: "Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom."
+
+      - alert: AccountVaultReleaseFailed
+        expr: account_vault_release_last_success == 0
+        for: 0m
+        labels:
+          severity: critical
+          scope: deployment
+          service: account-vault
+        annotations:
+          summary: "The latest Account Vault release action failed"
+          description: "Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerGitHubIssueSyncDisabled
+        expr: absent(alertmanager_github_issue_sync_configured) or alertmanager_github_issue_sync_configured == 0
+        for: 15m
+        labels:
+          severity: warning
+          scope: alerting
+        annotations:
+          summary: "Alertmanager critical-alert GitHub Issue sync is disabled"
+          description: "Provision the root-only GitHub token configuration or explicitly document a temporary risk acceptance."
+
+      - alert: AlertmanagerGitHubIssueSyncFailed
+        expr: alertmanager_github_issue_sync_success == 0
+        for: 10m
+        labels:
+          severity: warning
+          scope: alerting
+        annotations:
+          summary: "Alertmanager critical-alert GitHub Issue sync failed"
+          description: "Check local Alertmanager access, the fine-grained GitHub token, repository scope, and the sync log."
+
+      - alert: AlertmanagerGitHubIssueSyncStale
+        expr: alertmanager_github_issue_sync_configured == 1 and time() - alertmanager_github_issue_sync_last_success_timestamp > 900
+        for: 5m
+        labels:
+          severity: warning
+          scope: alerting
+        annotations:
+          summary: "Alertmanager critical-alert GitHub Issue sync is stale"
+          description: "The five-minute host job has not published a fresh sync result."

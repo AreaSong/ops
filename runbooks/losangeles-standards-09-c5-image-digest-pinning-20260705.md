@@ -4,6 +4,8 @@
 范围：业务与监控 Docker Compose 镜像治理  
 目标：减少 `latest` 与可变 tag 导致的不可复现部署风险。
 
+> 历史记录：本文的 Account Vault 本地 build 例外反映 2026-07-05 生产状态。2026-07-18 已实现 GHCR RepoDigest、CI 扫描/SBOM/发布证据和受控发布脚本，见 `losangeles-account-vault-release.md`。在新链路完成生产部署前状态为“计划取代”；生产回验后再标记 superseded。
+
 ## 变更结论
 
 已完成：
