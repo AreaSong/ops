@@ -28,6 +28,12 @@ class ObservabilityComposeTests(unittest.TestCase):
                 self.assertTrue(healthcheck.get("test"))
                 self.assertGreater(healthcheck.get("retries", 0), 0)
 
+    def test_distroless_redis_exporter_healthcheck_uses_its_binary(self) -> None:
+        services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
+        healthcheck = services["redis-exporter-sub2api"]["healthcheck"]["test"]
+        self.assertEqual(healthcheck, ["CMD", "/redis_exporter", "--version"])
+        self.assertNotIn("wget", healthcheck)
+
 
 if __name__ == "__main__":
     unittest.main()
