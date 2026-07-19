@@ -28,6 +28,15 @@ class NginxCloudflareOriginTests(unittest.TestCase):
         self.assertLess(self.names.index("Refuse to replace unmanaged enabled site files"), deployment_index)
         self.assertEqual(len(self.play["vars"]["cloudflare_sites"]), 4)
         self.assertEqual(len(self.play["vars"]["cloudflare_hostnames"]), 4)
+        self.assertNotIn("nginx_rollback_root", self.play["vars"])
+        self.assertLess(
+            self.names.index("Record one immutable Nginx rollback path for this run"),
+            deployment_index,
+        )
+        self.assertLess(
+            self.names.index("Back up existing available Cloudflare-proxied virtual hosts"),
+            deployment_index,
+        )
         preflight = next(task for task in self.tasks if task["name"] == "Inspect the active Nginx include topology")
         self.assertIs(preflight.get("check_mode"), False)
 
@@ -46,20 +55,22 @@ class NginxCloudflareOriginTests(unittest.TestCase):
             "Probe the public routes through Cloudflare",
         ):
             self.assertEqual(block[name].get("when"), "not ansible_check_mode", name)
+        top_level = {task["name"]: task for task in self.tasks}
         self.assertEqual(
-            block["Create root-only Nginx rollback directories"].get("when"),
+            top_level["Create root-only Nginx rollback directories"].get("when"),
             "not ansible_check_mode",
         )
         for name in (
             "Back up existing managed Nginx snippets",
             "Back up existing available Cloudflare-proxied virtual hosts",
         ):
-            self.assertIn("not ansible_check_mode", block[name].get("when", []), name)
+            self.assertIn("not ansible_check_mode", top_level[name].get("when", []), name)
 
     def test_change_is_backed_up_validated_and_probed_in_order(self) -> None:
+        deployment_index = self.names.index("Apply Cloudflare origin policy with automatic file rollback")
         self.assertLess(
-            self.block_names.index("Back up existing available Cloudflare-proxied virtual hosts"),
-            self.block_names.index("Install controlled Cloudflare-proxied virtual hosts"),
+            self.names.index("Back up existing available Cloudflare-proxied virtual hosts"),
+            deployment_index,
         )
         self.assertIn("Install Cloudflare original peer allow map", self.block_names)
         self.assertLess(

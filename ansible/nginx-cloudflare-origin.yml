@@ -21,7 +21,6 @@
       - { url: "https://sorryiossearch.areasong.top/health", status_codes: [200] }
       - { url: "https://forge.areasong.top/", status_codes: [200, 301, 302, 307, 308] }
       - { url: "https://monitor.areasong.top/api/health", status_codes: [200, 301, 302, 307, 308, 401, 403] }
-    nginx_rollback_root: "/var/backups/ops/nginx-cloudflare-origin-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
     managed_snippets:
       - /etc/nginx/conf.d/cloudflare-origin-map.conf
       - /etc/nginx/snippets/cloudflare-real-ip.conf
@@ -96,47 +95,51 @@
           Back it up and convert it to the managed sites-available symlink first.
       loop: "{{ enabled_cloudflare_site_state.results }}"
 
+    - name: Record one immutable Nginx rollback path for this run
+      ansible.builtin.set_fact:
+        nginx_rollback_root: "/var/backups/ops/nginx-cloudflare-origin-{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+
+    - name: Create root-only Nginx rollback directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - "{{ nginx_rollback_root }}"
+        - "{{ nginx_rollback_root }}/snippets"
+        - "{{ nginx_rollback_root }}/sites-available"
+      when: not ansible_check_mode
+
+    - name: Back up existing managed Nginx snippets
+      ansible.builtin.copy:
+        src: "{{ item.item }}"
+        dest: "{{ nginx_rollback_root }}/snippets/{{ item.item | basename }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+      loop: "{{ managed_snippet_state.results }}"
+      when:
+        - not ansible_check_mode
+        - item.stat.exists
+
+    - name: Back up existing available Cloudflare-proxied virtual hosts
+      ansible.builtin.copy:
+        src: "/etc/nginx/sites-available/{{ item.item }}"
+        dest: "{{ nginx_rollback_root }}/sites-available/{{ item.item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+      loop: "{{ available_cloudflare_site_state.results }}"
+      when:
+        - not ansible_check_mode
+        - item.stat.exists
+
     - name: Apply Cloudflare origin policy with automatic file rollback
       block:
-        - name: Create root-only Nginx rollback directories
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: directory
-            owner: root
-            group: root
-            mode: "0700"
-          loop:
-            - "{{ nginx_rollback_root }}"
-            - "{{ nginx_rollback_root }}/snippets"
-            - "{{ nginx_rollback_root }}/sites-available"
-          when: not ansible_check_mode
-
-        - name: Back up existing managed Nginx snippets
-          ansible.builtin.copy:
-            src: "{{ item.item }}"
-            dest: "{{ nginx_rollback_root }}/snippets/{{ item.item | basename }}"
-            remote_src: true
-            owner: root
-            group: root
-            mode: preserve
-          loop: "{{ managed_snippet_state.results }}"
-          when:
-            - not ansible_check_mode
-            - item.stat.exists
-
-        - name: Back up existing available Cloudflare-proxied virtual hosts
-          ansible.builtin.copy:
-            src: "/etc/nginx/sites-available/{{ item.item }}"
-            dest: "{{ nginx_rollback_root }}/sites-available/{{ item.item }}"
-            remote_src: true
-            owner: root
-            group: root
-            mode: preserve
-          loop: "{{ available_cloudflare_site_state.results }}"
-          when:
-            - not ansible_check_mode
-            - item.stat.exists
-
         - name: Install Cloudflare original peer allow map
           ansible.builtin.template:
             src: templates/cloudflare-origin-map.conf.j2
