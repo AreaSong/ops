@@ -318,6 +318,11 @@ fi
         self.assertIn("login ghcr.io --username AreaSong --password-stdin", docker_log)
         self.assertIn(f"pull {RELEASE_IMAGE}", docker_log)
         self.assertIn(f"manifest inspect {RELEASE_IMAGE}", docker_log)
+        self.assertIn(
+            'image inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}}',
+            docker_log,
+        )
+        self.assertNotIn(r'\"org.opencontainers.image.revision\"', docker_log)
         self.assertIn("--profile tools run --rm --no-deps migrate", docker_log)
         self.assertIn("verify_contract=1", docker_log)
         self.assertIn("up -d --no-deps --force-recreate web", docker_log)

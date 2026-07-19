@@ -399,7 +399,7 @@ ensure_image_available() {
         fail "cannot read the pulled image config digest from the authenticated registry manifest"
       [ "$registry_config_digest" = "$APPROVED_IMAGE_ID" ] || \
         fail "registry image config digest does not match published release evidence"
-      revision="$(docker image inspect --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' "$ACTIVE_IMAGE")"
+      revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$ACTIVE_IMAGE")"
       [ "$revision" = "$APPROVED_GIT_SHA" ] || fail "image revision does not match published release evidence"
     fi
   else
