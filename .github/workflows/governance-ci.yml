@@ -46,8 +46,50 @@ jobs:
       - name: Test backup manifest controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_manifest.py'
 
-      - name: Test compliance archive controls
-        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_compliance_log_archive.py'
+      - name: Test compliance archive build and part verification
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_build_filters_one_utc_day_and_verifies_parts
+
+      - name: Test compliance archive corrupt part rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_corrupt_part_is_rejected
+
+      - name: Test compliance archive hash-chain break detection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_detects_validly_rehashed_break
+
+      - name: Test compliance archive skipped-day rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_a_skipped_day
+
+      - name: Test compliance archive duplicate-day rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_duplicate_days
+
+      - name: Test compliance archive path-identity rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_manifest_chain_rejects_path_identity_mismatch
+
+      - name: Test compliance archive gzip expansion limit
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_uncompressed_source_limit_blocks_gzip_expansion
+
+      - name: Test compliance archive timezone handling
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_timezone_less_logs_use_the_host_timezone
+
+      - name: Test compliance archive missing-report rejection
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_compliance_log_archive.ComplianceLogArchiveTests.test_missing_daily_report_blocks_archive
 
       - name: Test compliance archive pipeline
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_compliance_archive_pipeline.py'
