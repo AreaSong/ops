@@ -15,6 +15,11 @@ ROLE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
 EXPECTED_RP_ID = "sorryiossearch.areasong.top"
 EXPECTED_ORIGIN = f"https://{EXPECTED_RP_ID}"
 EXPECTED_REPOSITORY = "AreaSong/sorryiosSearch"
+EXPECTED_ATTESTATION_SCHEME = "sigstore-keyless-oci-v1"
+EXPECTED_CERTIFICATE_IDENTITY = (
+    "https://github.com/AreaSong/sorryiosSearch/.github/workflows/ci.yml@refs/heads/main"
+)
+EXPECTED_CERTIFICATE_ISSUER = "https://token.actions.githubusercontent.com"
 EXPECTED_SBOM_PREDICATE = "https://cyclonedx.org/bom"
 EXPECTED_TRIVY_PREDICATE = "https://areasong.top/attestations/trivy/v1"
 
@@ -91,10 +96,13 @@ def validate_evidence(path: Path, image: str) -> tuple[str, str]:
         SHA256_RE.fullmatch(str(evidence.get("sbomSha256", ""))) is not None,
         SHA256_RE.fullmatch(str(evidence.get("trivyReportSha256", ""))) is not None,
         IMAGE_ID_RE.fullmatch(image_id) is not None,
-        evidence.get("provenance") == "github-build-provenance",
+        evidence.get("attestationScheme") == EXPECTED_ATTESTATION_SCHEME,
+        evidence.get("provenance") == "cosign-keyless-slsa-v1",
         evidence.get("sbomAttestationPredicate") == EXPECTED_SBOM_PREDICATE,
         evidence.get("trivyAttestationPredicate") == EXPECTED_TRIVY_PREDICATE,
         evidence.get("attestedSubjectDigest") == subject_digest,
+        evidence.get("certificateIdentity") == EXPECTED_CERTIFICATE_IDENTITY,
+        evidence.get("certificateOidcIssuer") == EXPECTED_CERTIFICATE_ISSUER,
         evidence.get("repository") == EXPECTED_REPOSITORY,
         workflow_ref.startswith(f"{EXPECTED_REPOSITORY}/.github/workflows/ci.yml@"),
         str(evidence.get("runId", "")).isdigit(),

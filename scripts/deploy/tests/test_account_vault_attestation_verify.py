@@ -24,23 +24,31 @@ class AccountVaultAttestationVerifyTests(unittest.TestCase):
         self.token.write_text("test-read-token\n", encoding="utf-8")
         self.token.chmod(0o600)
         self.receipt = self.root / "receipt.json"
-        self.gh_log = self.root / "gh.log"
+        self.cosign_log = self.root / "cosign.log"
         self._write_executable("id", '#!/bin/sh\n[ "${1:-}" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n')
         self._write_executable("stat", "#!/bin/sh\necho '600 root:root'\n")
         self._write_executable(
-            "gh",
+            "cosign",
             """#!/bin/sh
-printf '%s\n' "$*" >>"$FAKE_GH_LOG"
+set -eu
+printf 'DOCKER_CONFIG=%s %s\n' "${DOCKER_CONFIG:-}" "$*" >>"$FAKE_COSIGN_LOG"
+if [ "${1:-}" = login ]; then
+  cat >/dev/null
+  exit 0
+fi
+[ "${1:-}" = verify-attestation ] || exit 2
 predicate=''
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = --predicate-type ]; then
+  if [ "$1" = --type ]; then
     predicate="$2"
     break
   fi
   shift
 done
-[ "$predicate" != "${FAKE_GH_FAIL_PREDICATE:-}" ] || exit 1
-printf '[{"verificationResult":{"statement":{"predicateType":"%s"}}}]\n' "$predicate"
+[ -n "$predicate" ]
+[ "$predicate" != "${FAKE_COSIGN_FAIL_PREDICATE:-}" ] || exit 1
+[ "$predicate" != "${FAKE_COSIGN_MALFORMED_PREDICATE:-}" ] || { printf '{}\n'; exit 0; }
+printf '{"payloadType":"application/vnd.in-toto+json","payload":"dGVzdA==","signatures":[{"sig":"%s"}]}\n' "$predicate"
 """,
         )
 
@@ -58,7 +66,7 @@ printf '[{"verificationResult":{"statement":{"predicateType":"%s"}}}]\n' "$predi
             {
                 "PATH": f"{self.fake_bin}:{environment['PATH']}",
                 "ACCOUNT_VAULT_GITHUB_TOKEN_FILE": str(self.token),
-                "FAKE_GH_LOG": str(self.gh_log),
+                "FAKE_COSIGN_LOG": str(self.cosign_log),
             }
         )
         environment.update(overrides)
@@ -73,21 +81,42 @@ printf '[{"verificationResult":{"statement":{"predicateType":"%s"}}}]\n' "$predi
     def test_requires_and_archives_all_three_attestation_predicates(self) -> None:
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
-        calls = self.gh_log.read_text(encoding="utf-8")
+        calls = self.cosign_log.read_text(encoding="utf-8")
+        self.assertIn("login ghcr.io --username AreaSong --password-stdin", calls)
         for predicate in (
-            "https://slsa.dev/provenance/v1",
-            "https://cyclonedx.org/bom",
+            "slsaprovenance1",
+            "cyclonedx",
             "https://areasong.top/attestations/trivy/v1",
         ):
-            self.assertIn(f"--predicate-type {predicate}", calls)
-        self.assertEqual(calls.count("--deny-self-hosted-runners"), 3)
-        self.assertEqual(calls.count("--bundle-from-oci"), 3)
+            self.assertIn(f"verify-attestation --type {predicate}", calls)
+        for constraint in (
+            "--certificate-identity https://github.com/AreaSong/sorryiosSearch/.github/workflows/ci.yml@refs/heads/main",
+            "--certificate-oidc-issuer https://token.actions.githubusercontent.com",
+            "--certificate-github-workflow-name Account Vault CI",
+            "--certificate-github-workflow-ref refs/heads/main",
+            "--certificate-github-workflow-repository AreaSong/sorryiosSearch",
+            f"--certificate-github-workflow-sha {GIT_SHA}",
+            "--certificate-github-workflow-trigger push",
+        ):
+            self.assertEqual(calls.count(constraint), 3)
+        self.assertNotIn("test-read-token", calls)
+
         receipt = json.loads(self.receipt.read_text(encoding="utf-8"))
-        self.assertEqual(set(receipt), {"provenance", "sbom", "trivy"})
+        self.assertEqual(receipt["scheme"], "sigstore-keyless-oci-v1")
+        self.assertEqual(receipt["image"], IMAGE)
+        self.assertEqual(receipt["gitSha"], GIT_SHA)
+        self.assertEqual(set(receipt) - {"scheme", "image", "gitSha", "certificateIdentity", "certificateOidcIssuer"}, {"provenance", "sbom", "trivy"})
+        self.assertEqual(len(receipt["provenance"]), 1)
+        self.assertEqual(receipt["provenance"][0]["payloadType"], "application/vnd.in-toto+json")
         self.assertEqual(self.receipt.stat().st_mode & 0o777, 0o600)
 
     def test_fails_closed_when_any_required_predicate_is_missing(self) -> None:
-        result = self._run(FAKE_GH_FAIL_PREDICATE="https://cyclonedx.org/bom")
+        result = self._run(FAKE_COSIGN_FAIL_PREDICATE="cyclonedx")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.receipt.exists())
+
+    def test_fails_closed_when_cosign_output_is_not_a_dsse_envelope(self) -> None:
+        result = self._run(FAKE_COSIGN_MALFORMED_PREDICATE="slsaprovenance1")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.receipt.exists())
 

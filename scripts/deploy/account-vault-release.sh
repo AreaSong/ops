@@ -154,7 +154,7 @@ require_release_attestation() {
   install -d -m 0700 "$STATE_DIR"
   APPROVED_ATTESTATION_RECEIPT="$STATE_DIR/pending-attestation-${CHANGE_ID}.json"
   "$ATTESTATION_VERIFIER" "$ACTIVE_IMAGE" "$APPROVED_GIT_SHA" "$APPROVED_ATTESTATION_RECEIPT" || \
-    fail "GitHub build provenance verification failed"
+    fail "keyless OCI attestation verification failed"
   require_secure_file "$APPROVED_ATTESTATION_RECEIPT" "attestation verification receipt"
 }
 
