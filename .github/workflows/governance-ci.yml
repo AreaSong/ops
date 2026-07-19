@@ -161,20 +161,38 @@ jobs:
       - name: Test repository Python helpers
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
-      - name: Run Shell and Prometheus tests
-        run: |
-          set -euo pipefail
-          bash scripts/monitor/tests/test_external_uptime_check.sh
-          bash scripts/monitor/tests/test_external_uptime_incident.sh
-          bash observability/scripts/tests/test_docker_metrics.sh
-          bash observability/scripts/tests/test_security_metrics.sh
-          bash observability/scripts/tests/test_sub2api_capacity_metrics.sh
-          bash observability/prometheus/rules/tests/test_backup_integrity_rules.sh
-          bash observability/prometheus/rules/tests/test_log_pipeline_rules.sh
-          bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
-          bash observability/prometheus/rules/tests/test_slo_rules.sh
-          bash scripts/tests/validate_observability_configs.sh
-          node --test services/compliance-archive-ingest/test/*.test.js
+      - name: Test external uptime check
+        run: bash scripts/monitor/tests/test_external_uptime_check.sh
+
+      - name: Test external uptime incident handling
+        run: bash scripts/monitor/tests/test_external_uptime_incident.sh
+
+      - name: Test Docker metrics
+        run: bash observability/scripts/tests/test_docker_metrics.sh
+
+      - name: Test security metrics
+        run: bash observability/scripts/tests/test_security_metrics.sh
+
+      - name: Test Sub2API capacity metrics
+        run: bash observability/scripts/tests/test_sub2api_capacity_metrics.sh
+
+      - name: Test backup integrity rules
+        run: bash observability/prometheus/rules/tests/test_backup_integrity_rules.sh
+
+      - name: Test log pipeline rules
+        run: bash observability/prometheus/rules/tests/test_log_pipeline_rules.sh
+
+      - name: Test runtime governance rules
+        run: bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
+
+      - name: Test SLO rules
+        run: bash observability/prometheus/rules/tests/test_slo_rules.sh
+
+      - name: Validate observability configs
+        run: bash scripts/tests/validate_observability_configs.sh
+
+      - name: Test compliance archive ingest
+        run: node --test services/compliance-archive-ingest/test/*.test.js
 
       - name: Validate Compose, inventory, YAML, JSON, docs, and shell
         env:
