@@ -55,6 +55,7 @@
         argv: [/usr/sbin/nginx, -T]
       register: nginx_preflight_config
       changed_when: false
+      check_mode: false
 
     - name: Require the standard HTTP-level conf.d include
       ansible.builtin.assert:
@@ -177,11 +178,13 @@
           ansible.builtin.command:
             argv: [/usr/sbin/nginx, -t]
           changed_when: false
+          when: not ansible_check_mode
 
         - name: Reload the validated Nginx configuration
           ansible.builtin.service:
             name: nginx
             state: reloaded
+          when: not ansible_check_mode
 
         - name: Probe that direct origin access is rejected locally
           ansible.builtin.command:
@@ -200,6 +203,7 @@
           loop: "{{ cloudflare_hostnames }}"
           register: local_origin_probes
           changed_when: false
+          when: not ansible_check_mode
 
         - name: Require every proxied origin to reject direct local traffic
           ansible.builtin.assert:
@@ -207,6 +211,7 @@
               - item.stdout == '403'
             fail_msg: "Cloudflare-only origin policy did not return 403 for {{ item.item }}: {{ item.stdout }}"
           loop: "{{ local_origin_probes.results }}"
+          when: not ansible_check_mode
 
         - name: Probe the public routes through Cloudflare
           ansible.builtin.uri:
@@ -218,6 +223,7 @@
             timeout: 15
           loop: "{{ cloudflare_external_probes }}"
           changed_when: false
+          when: not ansible_check_mode
 
       rescue:
         - name: Restore pre-existing managed Nginx snippets
