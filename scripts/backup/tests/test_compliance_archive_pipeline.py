@@ -12,6 +12,16 @@ from pathlib import Path
 UTC = dt.timezone.utc
 REPO_ROOT = Path(__file__).resolve().parents[3]
 IMAGE = os.environ.get("COMPLIANCE_ARCHIVE_TEST_IMAGE", "python:3.12-slim")
+CONTAINER_ENTRYPOINT = """
+set -e
+install -m 0600 /config-source/compliance-archive.env /config/compliance-archive.env
+install -m 0600 /config-source/compliance-archive-verify.env /config/compliance-archive-verify.env
+set +e
+/repo/scripts/backup/archive-compliance-logs.sh
+status=$?
+chown -R "$HOST_UID:$HOST_GID" /archive /remote /metrics
+exit "$status"
+"""
 
 
 class ComplianceArchivePipelineTests(unittest.TestCase):
@@ -171,6 +181,10 @@ printf '{"stored":true}\n'
             "-e",
             "FAKE_R2_ROOT=/remote",
             "-e",
+            f"HOST_UID={os.getuid()}",
+            "-e",
+            f"HOST_GID={os.getgid()}",
+            "-e",
             "COMPLIANCE_ARCHIVE_TIMEOUT_ACTIVE=1",
             "-e",
             f"COMPLIANCE_ARCHIVE_DATE={day}",
@@ -201,11 +215,15 @@ printf '{"stored":true}\n'
             "-v",
             f"{self.metrics}:/metrics",
             "-v",
-            f"{self.config}:/config:ro",
+            f"{self.config}:/config-source:ro",
+            "--tmpfs",
+            "/config:rw,noexec,nosuid,nodev,mode=0700",
             "-v",
             f"{self.fake_bin}:/fake-bin:ro",
             IMAGE,
-            "/repo/scripts/backup/archive-compliance-logs.sh",
+            "/bin/bash",
+            "-c",
+            CONTAINER_ENTRYPOINT,
         ]
         return subprocess.run(command, capture_output=True, text=True, timeout=120)
 
