@@ -9,7 +9,7 @@
 
 ## 1. 结论
 
-LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、R2 Postgres 隔离恢复、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。单机生产收尾清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
+LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ban、公网端口收敛、Nginx 统一入口、本机与 R2 备份、恢复演练、R2 Postgres 隔离恢复、Prometheus/Grafana/Alertmanager/Loki、数据库与 Redis exporter、安全日志、Cloudflare/证书台账均已落地。单机生产收尾清单见 `runbooks/records/losangeles-single-host-production-closure-20260706.md`。
 
 但如果严格按 `standards/09` 的企业级全生命周期标准验收，当前不是“所有 P0 字面项 100% 满分”，而是：
 
@@ -57,11 +57,11 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 ### 可直接做的低风险项
 
 1. 修正 `inventory/services.yaml` 中 SSH 全局端口描述：从 `restricted/限制来源 IP` 改为“当前 Anywhere，密钥登录 + Fail2ban；固定出口 IP 后再限制”。
-2. 新增本验收矩阵到 `runbooks/losangeles-standards-09-audit.md`，并在 `runbooks/README.md` 建索引。
+2. 新增本验收矩阵到 `runbooks/records/losangeles-standards-09-audit.md`，并在 `runbooks/README.md` 建索引。
 3. 补充 `losangeles-current-status.md`：说明 `standards/09` 严格验收下仍有“风险接受/云侧能力限制/账单暂缓/维护窗口优化项”。
 4. SMTP 密码文件权限已收紧到 `600 root:root`。
 5. 旧 account-vault compose 已改名为 `docker-compose.legacy.yml`。
-6. Nginx 安全响应头已补齐，记录见 `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`。
+6. Nginx 安全响应头已补齐，记录见 `runbooks/records/losangeles-standards-09-a1-nginx-security-headers-20260705.md`。
 
 ### 需要维护窗口或明确确认的项
 
@@ -78,7 +78,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 ## 4. 后续执行口径
 
-1. 当前单机生产模型已收尾，后续按 `runbooks/losangeles-single-host-production-closure-20260706.md` 做日常维护。
+1. 当前单机生产模型已收尾，后续按 `runbooks/records/losangeles-single-host-production-closure-20260706.md` 做日常维护。
 2. 批次 A、B1、B2、B3、C1、C3a、C3b、C3c 已完成；Postgres 角色权限只读复核、C2f sub2api migration/runtime 失败点定位和 C2g migration 能力分析已完成。
 3. Redis 分用户治理、sub2api 应用侧 migration/runtime 拆分属于维护窗口或应用侧能力配合项。
 4. 跨机器实机恢复、高可用、多机部署属于未来有第二台主机或明确 SLA 需求后的升级项。
@@ -92,7 +92,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`
 
 ## 6. 2026-07-06 C1b Redis ACL / 高危命令兼容性分析
 
@@ -102,7 +102,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
 
 
 ## 7. 2026-07-06 C1c Redis ACL 阶段 1 实施
@@ -115,7 +115,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`
 
 
 ## 8. 2026-07-06 C1d Redis ACL 持久化实施
@@ -126,7 +126,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
 
 
 ## 9. 2026-07-06 C1e Redis ACL 备份覆盖
@@ -137,7 +137,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
 
 
 ## 10. 2026-07-06 C1f R2 异地备份复核
@@ -148,7 +148,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
 
 
 ## 11. 2026-07-06 C1g R2 隔离恢复演练
@@ -159,7 +159,7 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
 
 ## 12. 2026-07-06 C1h Postgres 隔离恢复演练
 
@@ -169,4 +169,4 @@ LosAngeles 当前已经具备可生产运行的单机基础盘：SSH/UFW/Fail2ba
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`

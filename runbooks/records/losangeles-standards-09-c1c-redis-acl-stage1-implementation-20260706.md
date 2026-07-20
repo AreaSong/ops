@@ -118,4 +118,4 @@ sudo docker exec sub2api-redis redis-cli ACL SETUSER default +@all
 
 ## 8. C1d 后续更新
 
-2026-07-06 已完成 Redis ACL 持久化，记录见 `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`。
+2026-07-06 已完成 Redis ACL 持久化，记录见 `runbooks/records/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`。

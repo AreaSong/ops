@@ -7,22 +7,22 @@
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
 
-> 2026-07-18 更新：本文主体是第一轮历史核查。第二轮治理正在实施，尚未完成生产部署与回验；当前进度以 `runbooks/losangeles-round2-governance-20260718.md` 为准。此前“已收尾”不能作为第二轮完成证据。
+> 2026-07-18 更新：本文主体是第一轮历史核查。第二轮治理正在实施，尚未完成生产部署与回验；当前进度以 `runbooks/records/losangeles-round2-governance-20260718.md` 为准。此前“已收尾”不能作为第二轮完成证据。
 
 ## 1. 核查结论
 
-原进度报告的核心结论大体成立：LosAngeles 已完成本轮生产加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线。按当前单机生产模型，本轮已收尾；当前状态快照见 `runbooks/losangeles-current-status.md`，日常维护清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
+原进度报告的核心结论大体成立：LosAngeles 已完成本轮生产加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线。按当前单机生产模型，本轮已收尾；当前状态快照见 `runbooks/records/losangeles-current-status.md`，日常维护清单见 `runbooks/records/losangeles-single-host-production-closure-20260706.md`。
 
 本次核查后需要修正和补充的重点如下：
 
-- 当前状态快照已完成：`runbooks/losangeles-current-status.md` 记录完成项、入口、Dashboard、备份恢复位置、风险接受项、未来增强项和当前不要做的操作。
-- 单机生产收尾已完成：`runbooks/losangeles-single-host-production-closure-20260706.md` 记录当前能力边界、风险接受项、日常运维节奏、变更纪律和未来项目触发条件。
+- 当前状态快照已完成：`runbooks/records/losangeles-current-status.md` 记录完成项、入口、Dashboard、备份恢复位置、风险接受项、未来增强项和当前不要做的操作。
+- 单机生产收尾已完成：`runbooks/records/losangeles-single-host-production-closure-20260706.md` 记录当前能力边界、风险接受项、日常运维节奏、变更纪律和未来项目触发条件。
 
 - `/opt/as_password` 明文密码文件已删除；用户已确认修改 `as` 密码。后续临时提权通过共享终端里的 `sudo -v` 授权，不再保留明文密码文件。
 - 系统更新与重启维护窗口已完成；当前内核为 `6.8.0-134-generic`，`/var/run/reboot-required` 不存在；`apt` 待升级仅剩 `fwupd` 分阶段发布项。
 - Alertmanager 已接入 QQ 邮箱通知；SMTP 授权码保存在 `/etc/observability/alertmanager-smtp-password`，不进入 Git。
-- 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。
-- 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。
+- 备份恢复演练已完成：Postgres 临时容器导入、Redis RDB 校验、configs/volumes 解包验证均通过；记录见 `runbooks/records/losangeles-backup-restore-drill-20260703.md`。
+- 应用级恢复演练已完成：JadeAI、account-vault、sub2api 均已用隔离临时容器验证恢复数据可被业务容器启动读取；记录见 `runbooks/records/losangeles-app-restore-drill-20260704.md`。
 - Cloudflare R2 异地对象存储备份已接入；初次同步完成并验证远端 `losangeles/` 前缀下有 22 个对象、总大小约 86.178 MiB；R2 拉回恢复演练已通过；2026-07-06 已补做 R2 Postgres 隔离恢复演练，确认 `sub2api-postgres` 与 `account-vault-postgres-1` dump 可导入无网络临时 Postgres；生命周期策略已配置为 `losangeles/` 前缀 90 天后删除对象。
 - 服务目录规范化继续推进；`sub2api` 已完成迁移和旧目录清理；`account-vault` 已完成 build context 与 env_file 迁移；旧 `/root/JadeAI` 与 `/root/sorryiosSearch` 已确认无运行时依赖、归档并删除。
 - Cloudflare / 证书策略台账已补齐控制台只读核对结果；DNS 代理状态、TTL、SSL/TLS 模式、WAF/安全规则、DDoS、缓存/重定向/转换/Workers 路由均已记录；Origin Certificate 创建人/轮换负责人已补齐；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为预留门户网站；LosAngeles provider/region/owner 台账已基于 RDAP、ASN、ipinfo、本机网络和虚拟化信息补齐；`/opt/ops` root-only 变更流程已固化到标准文档。
@@ -36,7 +36,7 @@
 | 主机基础信息 | 完成 | hostname 为 `LosAngeles`；系统为 Ubuntu 24.04；`ens3` 地址为 `23.185.200.12/24`。 |
 | inventory 台账 | 完成 | `/opt/ops/inventory/servers.yaml`、`servers.md`、`services.yaml`、`ports.md` 均已有 LosAngeles 记录；provider/region/owner 已按可核验证据补齐，主机级私网 IP 明确为无。 |
 | `/opt/ops` 仓库 | 完成 | remote 为 `git@github.com:AreaSong/ops.git`；前序加固、备份、监控提交已存在，当前提交状态以 `git log -1 --oneline` 和 `git status --short` 为准。 |
-| 当前状态快照 | 完成 | 已新增 `runbooks/losangeles-current-status.md`，作为本轮任务收尾锚点，记录完成项、关键入口、监控面板、备份恢复、风险接受项和未来增强项。 |
+| 当前状态快照 | 完成 | 已新增 `runbooks/records/losangeles-current-status.md`，作为本轮任务收尾锚点，记录完成项、关键入口、监控面板、备份恢复、风险接受项和未来增强项。 |
 | 系统更新与重启维护 | 完成 | 2026-07-03 已执行 `apt-get dist-upgrade` 并重启；升级日志为 `/var/log/ops/maintenance-20260703-apt-upgrade.log`；重启后内核为 `6.8.0-134-generic`，核心入口、监控、Docker、R2 dry-run 均通过。 |
 | 非 root sudo 用户 | 完成 | `as` 属于 `sudo` 组，当前 sudo 缓存可用。 |
 | SSH 加固 | 完成 | `sshd -T` 显示 `permitrootlogin no`、`passwordauthentication no`、`pubkeyauthentication yes`、`kbdinteractiveauthentication no`。 |
@@ -50,14 +50,14 @@
 | x-ui / xray 本机化 | 完成 | x-ui active/enabled；`127.0.0.1:46585`、`127.0.0.1:2096`、`127.0.0.1:10000` 均仅本机监听。 |
 | 本机备份 | 完成 | root crontab 已配置 Postgres、Redis、configs、volumes 定时备份；`/var/backups/ops` 有 2026-07-03 最新产物。 |
 | 备份完整性抽检 | 完成 | 最新 `.sql.gz` 通过 `gzip -t`；最新 `.tar.gz` 通过 `tar -tzf`。 |
-| 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/losangeles-backup-restore-drill-20260703.md`。 |
-| 应用级恢复演练 | 完成 | 2026-07-04 完成非破坏性演练；JadeAI 临时容器读取恢复数据返回 307；account-vault 临时 Postgres 恢复后 web `/health` 返回 200；sub2api 临时 Postgres、Redis、数据目录恢复后 `/health` 返回 200；记录见 `runbooks/losangeles-app-restore-drill-20260704.md`。 |
+| 备份恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；Postgres 临时导入、Redis RDB 校验、configs/volumes 解包均通过；记录见 `runbooks/records/losangeles-backup-restore-drill-20260703.md`。 |
+| 应用级恢复演练 | 完成 | 2026-07-04 完成非破坏性演练；JadeAI 临时容器读取恢复数据返回 307；account-vault 临时 Postgres 恢复后 web `/health` 返回 200；sub2api 临时 Postgres、Redis、数据目录恢复后 `/health` 返回 200；记录见 `runbooks/records/losangeles-app-restore-drill-20260704.md`。 |
 | Cloudflare R2 异地备份 | 完成 | `sync-r2.sh` 已接入；`/etc/ops/r2-backup.env` 为 root-only；root crontab 每日 04:15 同步；远端已验证 22 个对象、86.178 MiB。 |
-| R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/losangeles-r2-restore-drill-20260703.md`。 |
-| R2 Postgres 隔离恢复演练 | 完成 | 2026-07-06 完成非破坏性演练；从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump，导入 `--network none` 临时 Postgres 容器并完成元数据级验证；记录见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。 |
-| 单机生产收尾 | 完成 | 已新增 `runbooks/losangeles-single-host-production-closure-20260706.md`，明确当前单机生产模型已完成，跨机器实机恢复属于未来有第二台主机后的升级项。 |
-| 跨机器恢复演练预案 | 完成，未来增强 | 已新增 `runbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前只有一台主机，未执行跨机器实机演练，作为未来增强项。 |
-| R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/losangeles-r2-lifecycle-policy-20260703.md`。 |
+| R2 拉回恢复演练 | 完成 | 2026-07-03 完成非破坏性演练；从 R2 拉回 22 个对象，`rclone check --size-only --one-way` 通过；Postgres、Redis、configs、volumes 抽样恢复验证通过；记录见 `runbooks/records/losangeles-r2-restore-drill-20260703.md`。 |
+| R2 Postgres 隔离恢复演练 | 完成 | 2026-07-06 完成非破坏性演练；从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump，导入 `--network none` 临时 Postgres 容器并完成元数据级验证；记录见 `runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。 |
+| 单机生产收尾 | 完成 | 已新增 `runbooks/records/losangeles-single-host-production-closure-20260706.md`，明确当前单机生产模型已完成，跨机器实机恢复属于未来有第二台主机后的升级项。 |
+| 跨机器恢复演练预案 | 完成，未来增强 | 已新增 `runbooks/playbooks/losangeles-cross-machine-restore-drill.md`，覆盖临时机器要求、R2 拉回、恢复点选择、configs/Postgres/Redis/volumes 恢复、隔离应用启动、完整接管、DNS 切换、回滚和验收清单；当前只有一台主机，未执行跨机器实机演练，作为未来增强项。 |
+| R2 生命周期策略 | 完成 | Cloudflare 控制台已配置 `losangeles-expire-after-90-days`，对 `losangeles/` 前缀对象 90 天后删除；默认 7 天中止未完成分片上传规则保留；记录见 `runbooks/records/losangeles-r2-lifecycle-policy-20260703.md`。 |
 | Cloudflare / 证书策略台账 | 完成 | 已更新 `inventory/cloudflare-areasong-top.md`，记录 `areasong.top` NS、DNS 代理状态、TTL、源站证书、公网证书表现、SSL/TLS、WAF、安全规则、DDoS、缓存/重定向/转换/Workers 路由核对结果，并补齐 Origin Certificate 创建人/轮换负责人、180/90/30/7 天提醒策略；旧 `www.areasong.top` / Tunnel `hWin` 入口已由用户删除并记录为门户网站预留域名。 |
 | 云厂商控制台治理 | 完成核对，部分风险接受 | 用户已在 `https://server.zgocloud.cc/` 人工核对：实例名 `LosAngeles`；MFA 已开启；邮箱/手机号可用；主账号未共用；无 API Key。厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力，已记录为能力限制并以 UFW、Fail2ban、备份/R2、Loki/Grafana/Alertmanager 补偿；账单/到期治理按用户要求暂缓。 |
 | Cloudflare Origin Certificate 本地监控 | 完成 | 已新增 `write-cloudflare-origin-cert-metrics.sh`、`cloudflare-origin-cert.prom`、`ops-cloudflare-origin-cert-metrics` cron、`cloudflare_origin_cert_alerts`、Alertmanager 长周期提醒路由和 `LosAngeles Certificates and Cloudflare` Dashboard；覆盖证书文件读取失败、指标过期、180/90/30/7 天分级过期提醒。 |
@@ -72,7 +72,7 @@
 | 应用级 HTTP 健康检查 | 完成 | 已新增 `blackbox_app_https`，覆盖 `resume.areasong.top/`、`sorryiossearch.areasong.top/health`、`cpa.areasong.top/health`；新增 `app_health_alerts` 和 `LosAngeles App Health`。 |
 | 业务关键路径 Blackbox 探针 | 第一批完成 | 已新增公开、只读、无副作用探针：`resume-jadeai` 简历首页、`account-vault` 登录页和认证状态 API、`sub2api` 登录页和健康 JSON；新增 `business_probe_alerts`，并扩展 `LosAngeles App and Business Health`。 |
 | 业务访问日志错误率与慢请求监控 | 基础完成 | 已新增 `/etc/nginx/conf.d/00-ops-business-log.conf` 生成增强访问日志 `/var/log/nginx/ops-business-access.log`，保留原默认 access log；新增 `write-business-log-metrics.sh`、`business-log.prom`、`ops-business-log-metrics` cron、`business_log_alerts`，并扩展 `LosAngeles App and Business Health` Dashboard，按 `resume-jadeai`、`account-vault`、`sub2api` 查看真实请求 4xx/5xx、慢请求和采集新鲜度。 |
-| JadeAI fingerprint 事件处置 | 完成 | 数据未丢失，根因为浏览器 fingerprint 匿名身份错位；已归属修正并记录 `runbooks/losangeles-jadeai-fingerprint-incident-20260703.md`。 |
+| JadeAI fingerprint 事件处置 | 完成 | 数据未丢失，根因为浏览器 fingerprint 匿名身份错位；已归属修正并记录 `runbooks/records/losangeles-jadeai-fingerprint-incident-20260703.md`。 |
 | Grafana 基础 Dashboard | 完成 | 存在 `losangeles-host-overview.json` 和 `losangeles-services-backups.json`。 |
 | Loki / Promtail 基础采集 | 完成 | Promtail 配置采集 `/var/log/nginx/*.log`、`/var/log/backup/*.log`、`/var/log/syslog`；Loki `/ready` 返回 200。 |
 
@@ -140,7 +140,7 @@
 2. 有测试账号或应用配合后，继续补登录后任务指标、关键接口分位延迟和更细的应用内部业务指标。
 3. 视告警噪声情况继续细化 Alertmanager 抑制策略和通知周期。
 4. 规划并接入 `www.areasong.top` 门户网站，包括部署位置、DNS/证书策略、Nginx 配置、Cloudflare 代理/WAF/缓存策略和回滚方案。
-5. 当前进入日常维护阶段，按 `runbooks/losangeles-single-host-production-closure-20260706.md` 执行每日/每周/每月检查；后续有新机器或临时云主机时，再按 `runbooks/losangeles-cross-machine-restore-drill.md` 执行跨机器实机恢复演练。
+5. 当前进入日常维护阶段，按 `runbooks/records/losangeles-single-host-production-closure-20260706.md` 执行每日/每周/每月检查；后续有新机器或临时云主机时，再按 `runbooks/playbooks/losangeles-cross-machine-restore-drill.md` 执行跨机器实机恢复演练。
 
 ## 2026-07-05 C4 容器日志上限显式化
 
@@ -154,7 +154,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md`
+- `runbooks/records/losangeles-standards-09-c4-container-logging-limits-20260705.md`
 
 ## 2026-07-05 C5 镜像 digest 固定
 
@@ -168,7 +168,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c5-image-digest-pinning-20260705.md`
+- `runbooks/records/losangeles-standards-09-c5-image-digest-pinning-20260705.md`
 
 后续：
 
@@ -186,7 +186,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c6a-no-new-privileges-20260705.md`
+- `runbooks/records/losangeles-standards-09-c6a-no-new-privileges-20260705.md`
 
 后续：
 
@@ -204,7 +204,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c6b-cap-drop-monitoring-helpers-20260705.md`
+- `runbooks/records/losangeles-standards-09-c6b-cap-drop-monitoring-helpers-20260705.md`
 
 后续：
 
@@ -226,7 +226,7 @@
 - `services/sub2api/compose.yml`
 - `services/account-vault/compose.yml`
 - `services/resume-jadeai/compose.yml`
-- `runbooks/losangeles-standards-09-g1-service-compose-controlled-copies-20260705.md`
+- `runbooks/records/losangeles-standards-09-g1-service-compose-controlled-copies-20260705.md`
 
 ## 2026-07-05 R1 备份恢复演练
 
@@ -240,7 +240,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-r1-backup-restore-drill-20260705.md`
+- `runbooks/records/losangeles-standards-09-r1-backup-restore-drill-20260705.md`
 
 后续：
 
@@ -260,7 +260,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`
+- `runbooks/records/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`
 
 ## 2026-07-05 A1 Nginx 安全响应头
 
@@ -277,7 +277,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`
+- `runbooks/records/losangeles-standards-09-a1-nginx-security-headers-20260705.md`
 
 ## 2026-07-05 C2e Postgres 角色权限只读复核
 
@@ -292,7 +292,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`
+- `runbooks/records/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`
 
 后续：
 
@@ -320,7 +320,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`
 
 ## 2026-07-06 C2f sub2api migration/runtime 只读分析
 
@@ -337,7 +337,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
 
 后续：
 
@@ -368,7 +368,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`
 
 ## 2026-07-06 C7 Postgres exporter PostgreSQL 18 兼容性修复
 
@@ -391,7 +391,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`
+- `runbooks/records/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`
 
 ## 2026-07-06 B3 fstab UUID 收敛
 
@@ -407,7 +407,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`
+- `runbooks/records/losangeles-standards-09-b3-fstab-uuid-20260706.md`
 
 ## 2026-07-06 C3c 容器资源限制运行态复核
 
@@ -421,7 +421,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
+- `runbooks/records/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
 
 ## 2026-07-06 C1 Redis 策略只读复核
 
@@ -441,7 +441,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1-redis-policy-readonly-audit-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1-redis-policy-readonly-audit-20260706.md`
 
 
 ## 2026-07-06 C1c Redis ACL 阶段 1 实施
@@ -459,7 +459,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`
 
 
 ## 2026-07-06 C1d Redis ACL 持久化实施
@@ -476,7 +476,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`
 
 
 ## 2026-07-06 C1e Redis ACL 备份覆盖
@@ -493,7 +493,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
 
 
 ## 2026-07-06 C1f R2 异地备份复核
@@ -511,7 +511,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`
 
 
 ## 2026-07-06 C1g R2 隔离恢复演练
@@ -531,7 +531,7 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
 
 ## 2026-07-06 C1h Postgres 隔离恢复演练
 
@@ -549,4 +549,4 @@
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`

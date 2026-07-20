@@ -2,7 +2,7 @@
 
 执行时间：20260704T205812Z UTC
 服务器：LosAngeles
-依据：runbooks/losangeles-standards-09-handbook-coverage-20260705.md
+依据：runbooks/records/losangeles-standards-09-handbook-coverage-20260705.md
 
 ## 范围
 

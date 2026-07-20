@@ -13,8 +13,8 @@
 Cloudflare / DNS / 证书台账已有基础闭环，见：
 
 - `inventory/cloudflare-areasong-top.md`
-- `runbooks/losangeles-current-status.md`
-- `runbooks/losangeles-hardening-progress.md`
+- `runbooks/records/losangeles-current-status.md`
+- `runbooks/records/losangeles-hardening-progress.md`
 
 本次 D2 聚焦剩余的“服务器内查不到或不能代替控制台确认”的控制面事项。2026-07-05 用户已在云厂商控制台人工核对并回填结果。
 

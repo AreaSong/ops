@@ -7,7 +7,7 @@
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
 
-> 状态边界：下方 2026-07-06 的“本轮完成”结论只代表第一轮单机治理基线。2026-07-18 已启动第二轮治理，当前本地实现尚未全部提交、部署和生产回验，因此整项任务仍为实施中。第二轮权威进度、批准门禁和验收清单见 `runbooks/losangeles-round2-governance-20260718.md`。
+> 状态边界：下方 2026-07-06 的“本轮完成”结论只代表第一轮单机治理基线。2026-07-18 已启动第二轮治理，当前本地实现尚未全部提交、部署和生产回验，因此整项任务仍为实施中。第二轮权威进度、批准门禁和验收清单见 `runbooks/records/losangeles-round2-governance-20260718.md`。
 
 ## 0. 2026-07-18 第二轮状态
 
@@ -34,7 +34,7 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 - P0 未完成项：无
 - P1 未完成项：无
 - 生产安全基线：完成
-- 单机生产收尾：完成，见 `runbooks/losangeles-single-host-production-closure-20260706.md`
+- 单机生产收尾：完成，见 `runbooks/records/losangeles-single-host-production-closure-20260706.md`
 - 备份与异地备份：完成
 - 本机恢复、R2 拉回恢复、R2 Postgres 隔离恢复、应用级恢复：完成
 - 跨机器恢复：预案完成；当前只有一台主机，实机演练属于未来有第二台主机后的升级项
@@ -90,12 +90,12 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 
 已完成演练：
 
-- 本机备份恢复演练：`runbooks/losangeles-backup-restore-drill-20260703.md`
-- R2 拉回恢复演练：`runbooks/losangeles-r2-restore-drill-20260703.md`
-- 应用级恢复演练：`runbooks/losangeles-app-restore-drill-20260704.md`
-- R2 隔离恢复演练：`runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
-- R2 Postgres 隔离恢复演练：`runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
-- 跨机器恢复预案：`runbooks/losangeles-cross-machine-restore-drill.md`
+- 本机备份恢复演练：`runbooks/records/losangeles-backup-restore-drill-20260703.md`
+- R2 拉回恢复演练：`runbooks/records/losangeles-r2-restore-drill-20260703.md`
+- 应用级恢复演练：`runbooks/records/losangeles-app-restore-drill-20260704.md`
+- R2 隔离恢复演练：`runbooks/records/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`
+- R2 Postgres 隔离恢复演练：`runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`
+- 跨机器恢复预案：`runbooks/playbooks/losangeles-cross-machine-restore-drill.md`
 
 未来增强：
 
@@ -229,11 +229,11 @@ Grafana Dashboard：
 
 本轮 LosAngeles 服务器加固、规范化、备份恢复、可观测、告警、Cloudflare/证书治理和运维流程主线完成。
 
-按单机生产模型，本轮可以收尾；日常维护清单见 `runbooks/losangeles-single-host-production-closure-20260706.md`。后续工作均按增强项、业务新需求、外部条件或维护窗口另行启动。
+按单机生产模型，本轮可以收尾；日常维护清单见 `runbooks/records/losangeles-single-host-production-closure-20260706.md`。后续工作均按增强项、业务新需求、外部条件或维护窗口另行启动。
 
 ## 12. standards/09 严格验收口径
 
-已新增 `runbooks/losangeles-standards-09-audit.md`，按 `standards/09-server-ops-handbook.md` 附录 A 对 LosAngeles 做逐项验收。
+已新增 `runbooks/records/losangeles-standards-09-audit.md`，按 `standards/09-server-ops-handbook.md` 附录 A 对 LosAngeles 做逐项验收。
 
 严格口径下，本轮主线完成不等于 `standards/09` 所有理想企业架构项均 100% 完成。当前仍有三类项目需要单独标记：
 
@@ -247,7 +247,7 @@ Grafana Dashboard：
 
 状态：控制台人工确认已完成；账号安全完成；厂商能力限制和账单暂缓项已记录。
 
-已更新 `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`，将 Cloudflare 已完成项、服务器侧已确认事实、云厂商控制台确认结果、厂商能力限制和补偿控制分开管理。
+已更新 `runbooks/records/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md`，将 Cloudflare 已完成项、服务器侧已确认事实、云厂商控制台确认结果、厂商能力限制和补偿控制分开管理。
 
 已确认：控制台实例名为 `LosAngeles`；云主账号 MFA 已开启；绑定邮箱和手机号可用；主账号未共用；当前无 API Key。云厂商无安全组/云防火墙/网络规则、快照、审计与安全通知能力。账单/到期治理按用户要求暂缓。
 
@@ -255,7 +255,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md`：
+已完成 `runbooks/records/losangeles-standards-09-a1-nginx-security-headers-20260705.md`：
 
 - 全局启用 `server_tokens off`。
 - 5 个 HTTPS 入口完成源站安全响应头基线核对与补齐。
@@ -279,7 +279,7 @@ Grafana Dashboard：
 
 留痕：
 
-- `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md`
+- `runbooks/records/losangeles-standards-09-b3-fstab-uuid-20260706.md`
 
 ## 2026-07-06 C3c 容器资源限制运行态复核
 
@@ -293,7 +293,7 @@ Grafana Dashboard：
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
+- `runbooks/records/losangeles-standards-09-c3c-container-runtime-resource-limit-audit-20260706.md`
 
 ## 2026-07-06 C1 Redis 策略只读复核
 
@@ -313,9 +313,9 @@ Grafana Dashboard：
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c1-redis-policy-readonly-audit-20260706.md`
+- `runbooks/records/losangeles-standards-09-c1-redis-policy-readonly-audit-20260706.md`
 
-已完成 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`：
+已完成 `runbooks/records/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md`：
 
 - `account-vault` 已确认使用低权限 `account_vault_app`。
 - `sub2api_app` 低权限角色已存在，且具备当前业务表 DML 权限。
@@ -326,7 +326,7 @@ Grafana Dashboard：
 
 状态：分析完成；当时运行态不变；后续 C1c 已完成阶段 1 运行态收紧。
 
-已完成 `runbooks/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1b-redis-acl-compatibility-analysis-20260706.md`：
 
 - 确认不能直接 `-@dangerous`，因为会误伤 `INFO`、`CONFIG GET`、`SLOWLOG`、`LATENCY` 等监控/诊断命令。
 - 确认 `sub2api` 未发现直接使用 `FLUSHALL`、`FLUSHDB`、`CONFIG`、`SHUTDOWN`、`KEYS`。
@@ -341,7 +341,7 @@ Grafana Dashboard：
 
 状态：已实施；C1d 已完成持久化。
 
-已完成 `runbooks/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1c-redis-acl-stage1-implementation-20260706.md`：
 
 - 对 Redis `default` 用户精确禁用 `FLUSHALL`、`FLUSHDB`、`SHUTDOWN`、`DEBUG`、`MONITOR`、`KEYS`、`CLIENT KILL/PAUSE`、`CONFIG SET/REWRITE`、`REPLICAOF/SLAVEOF`、`MODULE LOAD/LOADEX/UNLOAD`。
 - 保留 `INFO`、`CONFIG GET`、`CLIENT LIST`、`BGSAVE`、`SAVE`、`BGREWRITEAOF`、`SCAN`、`EVAL`、`SCRIPT LOAD` 和 `ACL SETUSER`。
@@ -355,7 +355,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1d-redis-acl-persistence-20260706.md`：
 
 - 从当前 Redis ACL 生成 root-only `/var/lib/sub2api/redis_data/users.acl`，内容不进 Git、不打印。
 - Redis 启动命令已增加 `--aclfile /data/users.acl`。
@@ -369,7 +369,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`：
 
 - 确认旧 Redis 备份包只包含 `metadata.txt` 和 `redis_data/dump.rdb`，未覆盖持久化 ACL 文件。
 - 更新 `backup-redis.sh`，在 `users.acl` 存在时随 `dump.rdb` 一起打包。
@@ -383,7 +383,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1f-r2-backup-sync-verification-20260706.md`：
 
 - 已执行 R2 同步，并验证最新 Redis 备份对象 `redis/redis-20260706-023215.tar.gz` 存在于 R2。
 - 验证远端对象大小为 `136204` 字节，未下载或展开备份内容。
@@ -398,7 +398,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`：
 
 - 先执行 R2 同步，确认最新本机备份进入 R2。
 - 从 R2 拉回选定恢复点到 root-only 临时隔离目录。
@@ -416,7 +416,7 @@ Grafana Dashboard：
 
 状态：完成。
 
-已完成 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`：
 
 - 从 R2 拉回 `sub2api-postgres` 和 `account-vault-postgres-1` 的选定 `.sql.gz` 恢复点。
 - 两个 Postgres dump 均通过 `gzip -t`。
@@ -450,13 +450,13 @@ Grafana Dashboard：
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
+- `runbooks/records/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md`
 
 ## 2026-07-06 C2g sub2api migration 能力分析
 
 状态：完成；运行态不变；低权限 runtime 切换继续等待应用侧能力。
 
-已完成 `runbooks/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`：
+已完成 `runbooks/records/losangeles-standards-09-c2g-sub2api-migration-capability-analysis-20260706.md`：
 
 - 只读核对上游源码 `b650bdd68d25bad3e502b2e34efe775555da2eba` 和当前生产镜像受控副本。
 - 确认当前 CLI 仅有 `--setup`、`--version`，未发现 migration-only 命令。
@@ -486,4 +486,4 @@ Grafana Dashboard：
 
 留痕：
 
-- `runbooks/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`
+- `runbooks/records/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`

@@ -14,7 +14,7 @@
 
 这次才算完成“先完整检查，再开始优化”的检查阶段。
 
-上一份 `runbooks/losangeles-standards-09-audit.md` 主要是附录 A 的 P0 初步验收矩阵；本报告扩展到了 `standards/09` 31 章清单里的 P0/P1/P2 方向，覆盖系统、存储、软件源、账号、SSH、sudo、授权 key 指纹、UFW、Fail2ban、Nginx、TLS、Docker、Compose、数据库/Redis、备份恢复、监控告警、日志轮转、定时任务、凭据权限、台账与云侧控制面项。
+上一份 `runbooks/records/losangeles-standards-09-audit.md` 主要是附录 A 的 P0 初步验收矩阵；本报告扩展到了 `standards/09` 31 章清单里的 P0/P1/P2 方向，覆盖系统、存储、软件源、账号、SSH、sudo、授权 key 指纹、UFW、Fail2ban、Nginx、TLS、Docker、Compose、数据库/Redis、备份恢复、监控告警、日志轮转、定时任务、凭据权限、台账与云侧控制面项。
 
 总体判断：
 
@@ -95,7 +95,7 @@
   - `losangeles-backup-restore-drill-20260703.md`
   - `losangeles-r2-restore-drill-20260703.md`
   - `losangeles-app-restore-drill-20260704.md`
-  - `losangeles-cross-machine-restore-drill.md`
+  - `playbooks/losangeles-cross-machine-restore-drill.md`
 
 ### 2.7 监控与告警
 
@@ -160,7 +160,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-b3-fstab-uuid-20260706.md` 将 `/`、`/boot`、`/boot/efi` 切换为 UUID。
+- 已通过 `runbooks/records/losangeles-standards-09-b3-fstab-uuid-20260706.md` 将 `/`、`/boot`、`/boot/efi` 切换为 UUID。
 - `findmnt --verify --verbose` 通过，结果为 `0 parse errors, 0 errors`。
 - `mount -a` 通过。
 - 已执行 `systemctl daemon-reload`。
@@ -198,8 +198,8 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-batch-b2-20260705.md` 配置 `/etc/docker/daemon.json`：`live-restore=true`、`log-driver=json-file`、`max-size=50m`、`max-file=5`。
-- 已通过 `runbooks/losangeles-standards-09-c4-container-logging-limits-20260705.md` 完成业务与监控容器 Compose 显式日志轮转。
+- 已通过 `runbooks/records/losangeles-standards-09-batch-b2-20260705.md` 配置 `/etc/docker/daemon.json`：`live-restore=true`、`log-driver=json-file`、`max-size=50m`、`max-file=5`。
+- 已通过 `runbooks/records/losangeles-standards-09-c4-container-logging-limits-20260705.md` 完成业务与监控容器 Compose 显式日志轮转。
 - 当前运行容器已验证为 `max-size=50m`、`max-file=5`。
 
 判断：
@@ -220,7 +220,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-c5-image-digest-pinning-20260705.md` 固定当前生产镜像 digest。
+- 已通过 `runbooks/records/losangeles-standards-09-c5-image-digest-pinning-20260705.md` 固定当前生产镜像 digest。
 - 当前生产 compose 已去除第三方镜像 `latest` 引用。
 
 风险：
@@ -322,7 +322,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/systemd/journald.conf.d/90-ops-limits.conf`。
+- 已通过 `runbooks/records/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/systemd/journald.conf.d/90-ops-limits.conf`。
 - 当前配置为 `Storage=persistent`、`SystemMaxUse=1G`、`RuntimeMaxUse=256M`。
 - 已重启 `systemd-journald` 生效。
 
@@ -344,7 +344,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 将 `/etc/logrotate.d/rsyslog`、`/etc/logrotate.d/fail2ban`、`/etc/logrotate.d/ufw` 调整为 26 周保留。
+- 已通过 `runbooks/records/losangeles-standards-09-batch-b1-20260705.md` 将 `/etc/logrotate.d/rsyslog`、`/etc/logrotate.d/fail2ban`、`/etc/logrotate.d/ufw` 调整为 26 周保留。
 - `logrotate -d /etc/logrotate.conf` 已通过。
 
 判断：
@@ -385,8 +385,8 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md` 完成只读复核。
-- 已通过 `runbooks/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md` 完成 `sub2api` migration/runtime 失败点只读定位。
+- 已通过 `runbooks/records/losangeles-standards-09-c2e-postgres-role-readonly-audit-20260705.md` 完成只读复核。
+- 已通过 `runbooks/records/losangeles-standards-09-c2f-sub2api-migration-runtime-analysis-20260706.md` 完成 `sub2api` migration/runtime 失败点只读定位。
 - `account-vault` 已使用低权限 `account_vault_app`，该角色无 superuser / createdb / createrole / replication / bypassrls。
 - `sub2api_app` 低权限角色已存在，且具备现有业务表 DML 权限。
 - `sub2api` 业务容器当前仍使用 superuser `sub2api`。
@@ -413,7 +413,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-a1-nginx-security-headers-20260705.md` 完成源站安全响应头核对与补齐。
+- 已通过 `runbooks/records/losangeles-standards-09-a1-nginx-security-headers-20260705.md` 完成源站安全响应头核对与补齐。
 - 全局启用 `server_tokens off`。
 - `resume`、`sorryiossearch`、`log` 已补齐 HSTS / nosniff / frame / referrer。
 - `cpa` 已补 HSTS，保留应用侧 CSP / nosniff / frame / referrer。
@@ -470,7 +470,7 @@
 
 后续状态：
 
-- 已通过 `runbooks/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/sysctl.d/99-ops-baseline.conf`。
+- 已通过 `runbooks/records/losangeles-standards-09-batch-b1-20260705.md` 新增 `/etc/sysctl.d/99-ops-baseline.conf`。
 - 基线覆盖 TCP syncookies、rp_filter、Docker 需要的 ip_forward、BBR/fq、kptr_restrict、ptrace_scope、unprivileged_bpf 等。
 - 已执行 `sysctl --system`。
 
@@ -484,7 +484,7 @@
 
 ## 4. 云侧确认结果与能力限制
 
-2026-07-05 用户已在云厂商控制台人工核对，并回填到 `runbooks/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md` 与 `inventory/servers.yaml`。
+2026-07-05 用户已在云厂商控制台人工核对，并回填到 `runbooks/records/losangeles-standards-09-d2-cloud-control-plane-governance-20260705.md` 与 `inventory/servers.yaml`。
 
 已确认：
 

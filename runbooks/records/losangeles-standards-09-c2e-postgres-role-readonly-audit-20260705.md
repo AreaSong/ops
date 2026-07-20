@@ -87,7 +87,7 @@
 判断：
 
 - `sub2api_app` 当前 DML 权限完整，但不具备 schema / DDL 权限。
-- 结合 `runbooks/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md`，`sub2api` 启动流程存在 migration / DDL 行为，直接切换到纯 DML 用户会导致应用 unhealthy。
+- 结合 `runbooks/records/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md`，`sub2api` 启动流程存在 migration / DDL 行为，直接切换到纯 DML 用户会导致应用 unhealthy。
 - 因此 `sub2api` 当前仍是数据库权限治理的明确剩余风险项。
 
 ## 后续建议

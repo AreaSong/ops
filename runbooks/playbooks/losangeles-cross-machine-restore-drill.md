@@ -12,13 +12,13 @@
 - 灾难恢复：LosAngeles 不可用，需要在新机器上恢复核心服务。
 - 定期演练：未来开一台临时机器，验证 R2 备份能跨机器恢复。
 
-当前 LosAngeles 只有一台主机，因此本 Runbook 是未来升级预案，不作为当前单机生产模型的完成门槛。单机收尾状态见 `runbooks/losangeles-single-host-production-closure-20260706.md`。
+当前 LosAngeles 只有一台主机，因此本 Runbook 是未来升级预案，不作为当前单机生产模型的完成门槛。单机收尾状态见 `runbooks/records/losangeles-single-host-production-closure-20260706.md`。
 
 当前状态：
 
 - 本机备份恢复演练已通过。
-- R2 拉回恢复演练已通过；2026-07-06 已完成本机隔离 R2 拉回恢复演练，详见 `runbooks/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`。
-- R2 Postgres 隔离恢复演练已通过；2026-07-06 已从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump 并导入 `--network none` 临时 Postgres，详见 `runbooks/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。
+- R2 拉回恢复演练已通过；2026-07-06 已完成本机隔离 R2 拉回恢复演练，详见 `runbooks/records/losangeles-standards-09-c1g-r2-isolated-restore-drill-20260706.md`。
+- R2 Postgres 隔离恢复演练已通过；2026-07-06 已从 R2 拉回 `sub2api-postgres` 与 `account-vault-postgres-1` dump 并导入 `--network none` 临时 Postgres，详见 `runbooks/records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md`。
 - 应用级恢复演练已通过。
 - 跨机器实机恢复尚未执行；当前记录为未来增强项。
 

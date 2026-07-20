@@ -123,7 +123,7 @@ bash -n observability/scripts/write-daily-ops-audit.sh
 jq empty observability/grafana/dashboards/losangeles-daily-audit.json
 ```
 
-Operational response is documented in `runbooks/daily-ops-audit.md`.
+Operational response is documented in `runbooks/playbooks/daily-ops-audit.md`.
 
 ## Security audit
 
@@ -140,7 +140,7 @@ dashboard links these metrics with the filtered audit log stream.
 The local audit log rotation budget is a capacity guard, not a 180-day archive.
 Compliance with the repository's 180-day tamper-resistant retention requirement
 needs a separately approved immutable or access-isolated object-store archive.
-See `runbooks/auditd-security-audit.md` for validation, privacy rules, and rollback.
+See `runbooks/playbooks/auditd-security-audit.md` for validation, privacy rules, and rollback.
 
 Daily sensitive-log archiving is a separate pipeline from Loki. When its control-plane
 prerequisites are ready, enable the managed cron with
@@ -148,7 +148,7 @@ prerequisites are ready, enable the managed cron with
 an append-only Worker endpoint, and verifies through a separate read-only R2 token.
 Cloudflare R2 currently does not provide S3 Object Lock, so the Worker protects against
 host-side overwrite/delete but is not a substitute for a cloud-provider WORM control.
-See `runbooks/compliance-log-archive.md`.
+See `runbooks/playbooks/compliance-log-archive.md`.
 
 ## Synthetic SLO and sub2api capacity symptoms
 
@@ -163,7 +163,7 @@ counts the exact `no available account` symptom, emits aggregate metrics, and
 deletes its root-only temporary log copy. It never writes raw application logs to
 the textfile collector.
 
-See `runbooks/sub2api-slo-capacity.md` for objectives, warm-up behavior, and response.
+See `runbooks/playbooks/sub2api-slo-capacity.md` for objectives, warm-up behavior, and response.
 
 Managed host-job deployment:
 

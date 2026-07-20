@@ -74,7 +74,7 @@ env_file:
 - build context 已从 `/root/sorryiosSearch` 改为 `/opt/services/account-vault/app`。
 - env_file 已从 `/root/sorryiosSearch/.env` 改为 `/etc/account-vault/account-vault.env`。
 - `account-vault-web-1` 已重建并通过本机与域名入口验证。
-- 记录见 `runbooks/losangeles-account-vault-source-migration-20260703.md`。
+- 记录见 `runbooks/records/losangeles-account-vault-source-migration-20260703.md`。
 
 2026-07-04 04:59 BST 已完成旧目录删除：
 

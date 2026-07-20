@@ -120,4 +120,4 @@ sudo docker compose -f compose.yml up -d redis
 - 分用户 ACL 仍需等待 `sub2api` 支持 Redis username 后再做。
 - C1e 已将 `users.acl` 纳入 Redis 备份包；后续恢复演练按 `dump.rdb` 与 `users.acl` 同步恢复验证。
 
-留痕：`runbooks/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`
+留痕：`runbooks/records/losangeles-standards-09-c1e-redis-acl-backup-coverage-20260706.md`

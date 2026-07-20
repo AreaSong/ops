@@ -95,7 +95,7 @@ collector cron 日志写入 `/var/log/observability/security-metrics.log`，由
 当前 Loki 也只有 7 天热存储，并与被审计主机同机，不能作为防篡改归档。
 
 每日敏感日志封装、哈希链、Worker 追加式写入和独立只读回验见
-`runbooks/compliance-log-archive.md`。Cloudflare R2 当前不支持 Object Lock；若要求
+`runbooks/playbooks/compliance-log-archive.md`。Cloudflare R2 当前不支持 Object Lock；若要求
 云厂商级 WORM，必须另选支持保留锁的对象存储。上线前先观测 7 天实际增量，以
 `日均字节 x 180 x 1.3` 规划容量；bucket、Worker、token 权限和生命周期属于独立
 生产控制面变更。
