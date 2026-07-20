@@ -40,8 +40,12 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"postgres\"}",
-          "refId": "A"
+          "expr": "up{job=\"postgres\",instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -55,6 +59,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -69,8 +77,12 @@
       },
       "targets": [
         {
-          "expr": "(sum by(instance) (pg_stat_activity_count) / max by(instance) (pg_settings_max_connections)) * 100",
-          "refId": "A"
+          "expr": "(sum by(instance) (pg_stat_activity_count{instance=~\"$instance\"}) / max by(instance) (pg_settings_max_connections{instance=~\"$instance\"})) * 100",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -84,6 +96,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -98,8 +114,12 @@
       },
       "targets": [
         {
-          "expr": "pg_database_size_bytes",
-          "refId": "A"
+          "expr": "pg_database_size_bytes{instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -113,6 +133,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -127,8 +151,12 @@
       },
       "targets": [
         {
-          "expr": "increase(pg_stat_database_deadlocks[5m])",
-          "refId": "A"
+          "expr": "increase(pg_stat_database_deadlocks{instance=~\"$instance\"}[5m])",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -142,6 +170,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -169,8 +201,12 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"redis\"}",
-          "refId": "A"
+          "expr": "up{job=\"redis\",instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -184,6 +220,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -198,8 +238,12 @@
       },
       "targets": [
         {
-          "expr": "redis_memory_used_bytes",
-          "refId": "A"
+          "expr": "redis_memory_used_bytes{instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -213,6 +257,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -227,8 +275,12 @@
       },
       "targets": [
         {
-          "expr": "rate(redis_commands_processed_total[5m])",
-          "refId": "A"
+          "expr": "rate(redis_commands_processed_total{instance=~\"$instance\"}[5m])",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -242,6 +294,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -256,8 +312,12 @@
       },
       "targets": [
         {
-          "expr": "redis_db_keys",
-          "refId": "A"
+          "expr": "redis_db_keys{instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -271,10 +331,59 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "PostgreSQL 与 Redis 的可用性、容量和关键运行指标。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "label": "实例",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(up{job=~\"postgres|redis\"}, instance)",
+        "definition": "label_values(up{job=~\"postgres|redis\"}, instance)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

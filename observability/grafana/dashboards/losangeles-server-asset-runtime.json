@@ -41,7 +41,11 @@
       "targets": [
         {
           "expr": "time() - ops_runtime_snapshot_last_success_timestamp",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -80,6 +84,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -95,7 +103,11 @@
       "targets": [
         {
           "expr": "sum(ops_config_drift{severity=\"critical\"})",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -130,6 +142,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -145,7 +161,11 @@
       "targets": [
         {
           "expr": "sum(docker_container_running)",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -167,6 +187,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -182,7 +206,11 @@
       "targets": [
         {
           "expr": "business_error_log_events_last_run",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -221,6 +249,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -237,12 +269,20 @@
         {
           "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
           "legendFormat": "CPU",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
           "legendFormat": "内存",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -258,6 +298,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -274,7 +318,11 @@
         {
           "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
           "legendFormat": "/",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -290,6 +338,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -320,7 +372,11 @@
           "expr": "ops_asset_service_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -370,6 +426,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -387,7 +447,11 @@
           "expr": "ops_asset_domain_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -438,6 +502,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -455,7 +523,11 @@
           "expr": "ops_asset_port_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -504,6 +576,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -521,7 +597,11 @@
           "expr": "ops_listener_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -569,6 +649,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -599,7 +683,11 @@
           "expr": "ops_container_runtime_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -650,6 +738,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -667,7 +759,11 @@
           "expr": "ops_container_security_state",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -716,6 +812,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -733,7 +833,11 @@
           "expr": "ops_config_drift == 1",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -782,6 +886,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -794,13 +902,19 @@
         "w": 24,
         "h": 11
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "expr": "{job=\"business_errors\",host=\"LosAngeles\"}",
           "refId": "A",
           "queryType": "range",
-          "datasource": "Loki"
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          }
         }
       ],
       "options": {
@@ -843,7 +957,11 @@
       "targets": [
         {
           "expr": "account_vault_release_last_success",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -893,6 +1011,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -908,7 +1030,11 @@
       "targets": [
         {
           "expr": "time() - account_vault_release_last_attempt_timestamp",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -930,6 +1056,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -947,7 +1077,11 @@
           "expr": "account_vault_release_info",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -992,6 +1126,10 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -1020,7 +1158,11 @@
       "targets": [
         {
           "expr": "cloudflare_ip_ranges_check_success",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -1070,6 +1212,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -1085,7 +1231,11 @@
       "targets": [
         {
           "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -1124,6 +1274,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -1141,7 +1295,11 @@
           "expr": "cloudflare_ip_ranges_match",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -1184,10 +1342,28 @@
         "footer": {
           "show": false
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "服务、域名、端口、容器、配置漂移和发布状态的资产视图。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

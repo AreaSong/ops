@@ -43,7 +43,11 @@
         {
           "expr": "service:synthetic_availability:ratio_30d{service=\"sub2api\"}",
           "legendFormat": "{{journey}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -83,6 +87,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -99,7 +107,11 @@
         {
           "expr": "service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\"}",
           "legendFormat": "{{journey}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -139,6 +151,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -155,7 +171,11 @@
         {
           "expr": "service:synthetic_error_budget_remaining:ratio_30d{service=\"sub2api\"}",
           "legendFormat": "{{journey}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -195,6 +215,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -211,7 +235,11 @@
         {
           "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\"}",
           "legendFormat": "{{journey}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -249,6 +277,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -278,7 +310,11 @@
         {
           "expr": "probe_success{scope=\"business\",service=\"sub2api\"}",
           "legendFormat": "{{journey}} / {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -294,6 +330,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -310,17 +350,29 @@
         {
           "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\"}",
           "legendFormat": "{{journey}} 5m",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "service:synthetic_burn_rate:ratio_1h{service=\"sub2api\"}",
           "legendFormat": "{{journey}} 1h",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "service:synthetic_burn_rate:ratio_6h{service=\"sub2api\"}",
           "legendFormat": "{{journey}} 6h",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -335,6 +387,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -351,17 +407,29 @@
         {
           "expr": "business_http_5xx_last_5m{service=\"sub2api\"}",
           "legendFormat": "HTTP 5xx",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "business_http_slow_requests_last_5m{service=\"sub2api\",threshold=\"2s\"}",
           "legendFormat": "慢请求 ≥ 2 秒",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "sub2api_no_available_account_events_last_5m",
           "legendFormat": "无可用账号",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -376,6 +444,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -405,12 +477,20 @@
         {
           "expr": "sum by (instance) (pg_stat_activity_count{service=\"sub2api\"}) / clamp_min(max by (instance) (pg_settings_max_connections{service=\"sub2api\"}), 1)",
           "legendFormat": "PostgreSQL 连接 {{instance}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "redis_memory_used_bytes{service=\"sub2api\"} / clamp_min(redis_memory_max_bytes{service=\"sub2api\"}, 1)",
           "legendFormat": "Redis 内存 {{instance}}",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -426,6 +506,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -442,7 +526,11 @@
         {
           "expr": "probe_duration_seconds{scope=\"business\",service=\"sub2api\"}",
           "legendFormat": "{{journey}} / {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -457,6 +545,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -473,12 +565,20 @@
         {
           "expr": "increase(pg_stat_database_deadlocks{service=\"sub2api\"}[5m])",
           "legendFormat": "PostgreSQL 死锁 {{instance}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "increase(redis_rejected_connections_total{service=\"sub2api\"}[5m])",
           "legendFormat": "Redis 拒绝连接 {{instance}}",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -493,6 +593,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -509,17 +613,29 @@
         {
           "expr": "docker_container_cpu_limit_usage_ratio{name=\"sub2api\"}",
           "legendFormat": "CPU / 限额",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "docker_container_memory_usage_ratio{name=\"sub2api\"}",
           "legendFormat": "内存 / 限额",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "docker_container_pids_usage_ratio{name=\"sub2api\"}",
           "legendFormat": "PID / 限额",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -534,10 +650,28 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "Sub2API 的可用性目标、错误预算、业务链路和容量风险。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

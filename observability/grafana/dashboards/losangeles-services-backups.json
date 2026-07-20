@@ -40,7 +40,11 @@
       "targets": [
         {
           "expr": "probe_success{job=\"blackbox_https\"}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -57,7 +61,11 @@
           "width": 240
         }
       },
-      "id": 9
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
@@ -71,7 +79,11 @@
       "targets": [
         {
           "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox_https\"} - time()) / 86400",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -88,7 +100,11 @@
           "width": 240
         }
       },
-      "id": 10
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
@@ -102,7 +118,11 @@
       "targets": [
         {
           "expr": "docker_container_running",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -119,7 +139,11 @@
           "width": 240
         }
       },
-      "id": 11
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "id": 14,
@@ -146,7 +170,11 @@
       "targets": [
         {
           "expr": "(time() - backup_last_success_timestamp) / 3600",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -161,7 +189,11 @@
           "placement": "bottom"
         }
       },
-      "id": 12
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "id": 5,
@@ -177,7 +209,11 @@
         {
           "expr": "(time() - backup_set_last_success_timestamp) / 3600",
           "legendFormat": "清单距今",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -191,6 +227,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -207,7 +247,11 @@
         {
           "expr": "(time() - backup_set_r2_verify_last_success_timestamp) / 3600",
           "legendFormat": "R2 验证距今",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -221,6 +265,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -250,12 +298,20 @@
         {
           "expr": "backup_set_artifacts",
           "legendFormat": "本地清单",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "backup_set_r2_verify_artifacts",
           "legendFormat": "R2 已验证",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -269,6 +325,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -285,12 +345,20 @@
         {
           "expr": "backup_set_artifact_span_seconds",
           "legendFormat": "文件时间跨度",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "backup_set_r2_verify_duration_seconds",
           "legendFormat": "R2 验证耗时",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -304,10 +372,28 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "服务入口、容器运行状态与备份完整性。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

@@ -42,7 +42,11 @@
         {
           "expr": "cloudflare_origin_cert_days_until_expiry",
           "legendFormat": "{{cert}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -85,6 +89,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -101,7 +109,11 @@
         {
           "expr": "cloudflare_origin_cert_check_success",
           "legendFormat": "{{cert}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -151,6 +163,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -167,7 +183,11 @@
         {
           "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
           "legendFormat": "距上次成功",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -189,6 +209,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -218,7 +242,11 @@
         {
           "expr": "cloudflare_origin_cert_days_until_expiry",
           "legendFormat": "{{cert}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -232,6 +260,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -248,7 +280,11 @@
         {
           "expr": "(probe_ssl_earliest_cert_expiry{job=~\"blackbox_https|blackbox_app_https|blackbox_business_.*_https\"} - time()) / 86400",
           "legendFormat": "{{service}} {{check}} {{target}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -262,10 +298,28 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "源站证书、公开 TLS 证书和 Cloudflare 相关检查。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

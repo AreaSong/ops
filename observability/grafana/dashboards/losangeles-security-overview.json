@@ -43,7 +43,11 @@
       "targets": [
         {
           "expr": "ufw_enabled",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -93,6 +97,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -108,7 +116,11 @@
       "targets": [
         {
           "expr": "(time() - security_metrics_last_success_timestamp) / 60",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -130,6 +142,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -146,17 +162,29 @@
         {
           "expr": "ssh_failed_login_last_24h",
           "legendFormat": "登录失败",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "ssh_invalid_user_last_24h",
           "legendFormat": "无效用户",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "ssh_accepted_login_last_24h",
           "legendFormat": "登录成功",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -170,6 +198,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -186,12 +218,20 @@
         {
           "expr": "fail2ban_currently_failed{jail=\"sshd\"}",
           "legendFormat": "当前失败",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "fail2ban_currently_banned{jail=\"sshd\"}",
           "legendFormat": "当前封禁",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -205,6 +245,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -233,7 +277,11 @@
       "targets": [
         {
           "expr": "nginx_http_requests_last_5m",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -249,6 +297,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -265,12 +317,20 @@
         {
           "expr": "nginx_http_requests_last_5m{status_class=\"4xx\"}",
           "legendFormat": "4xx",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "nginx_http_requests_last_5m{status_class=\"5xx\"}",
           "legendFormat": "5xx",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -284,6 +344,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -310,10 +374,16 @@
         "w": 24,
         "h": 10
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "datasource": "Loki",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{job=\"fail2ban\", host=\"LosAngeles\"} |~ \" (Ban|Unban) \"",
           "queryType": "range",
           "refId": "A"
@@ -344,10 +414,16 @@
         "w": 24,
         "h": 10
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "datasource": "Loki",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json | line_format \"{{.event_ts}} {{.action}} jail={{.jail}} ip={{.ip}} country={{.country}} asn={{.asn}} prefix={{.bgp_prefix}} org={{.as_name}}\"",
           "queryType": "range",
           "refId": "A"
@@ -393,7 +469,11 @@
       "targets": [
         {
           "expr": "auditd_service_active",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -443,6 +523,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -458,7 +542,11 @@
       "targets": [
         {
           "expr": "auditd_required_rule_keys_present / clamp_min(auditd_required_rule_keys_expected, 1)",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -495,6 +583,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -510,7 +602,11 @@
       "targets": [
         {
           "expr": "auditd_lost_events",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -545,6 +641,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -560,7 +660,11 @@
       "targets": [
         {
           "expr": "auditd_backlog / clamp_min(auditd_backlog_limit, 1)",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -601,6 +705,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -614,10 +722,16 @@
         "w": 24,
         "h": 10
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "datasource": "Loki",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{job=\"auditd\", host=\"LosAngeles\"}",
           "queryType": "range",
           "refId": "A"
@@ -640,5 +754,19 @@
   ],
   "description": "防火墙、SSH、Nginx、Fail2ban 与 auditd 的安全态势。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

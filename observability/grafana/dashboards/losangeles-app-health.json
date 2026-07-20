@@ -41,9 +41,13 @@
       },
       "targets": [
         {
-          "expr": "probe_success{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "expr": "probe_success{job=~\"$job\"}",
           "legendFormat": "{{service}} {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -93,6 +97,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -107,9 +115,13 @@
       },
       "targets": [
         {
-          "expr": "probe_http_status_code{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "expr": "probe_http_status_code{job=~\"$job\"}",
           "legendFormat": "{{service}} {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -148,6 +160,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -175,9 +191,13 @@
       },
       "targets": [
         {
-          "expr": "probe_duration_seconds{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "expr": "probe_duration_seconds{job=~\"$job\"}",
           "legendFormat": "{{service}} {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -193,6 +213,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -207,9 +231,13 @@
       },
       "targets": [
         {
-          "expr": "(probe_ssl_earliest_cert_expiry{job=~\"blackbox_app_https|blackbox_business_.*_https\"} - time()) / 86400",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=~\"$job\"} - time()) / 86400",
           "legendFormat": "{{service}} {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -225,6 +253,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -239,9 +271,13 @@
       },
       "targets": [
         {
-          "expr": "up{job=~\"blackbox_app_https|blackbox_business_.*_https\"}",
+          "expr": "up{job=~\"$job\"}",
           "legendFormat": "{{service}} {{check}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -257,6 +293,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -286,7 +326,11 @@
         {
           "expr": "business_http_requests_last_5m",
           "legendFormat": "{{service}} {{status_class}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -302,6 +346,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -318,12 +366,20 @@
         {
           "expr": "business_http_4xx_last_5m",
           "legendFormat": "{{service}} 4xx",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "business_http_5xx_last_5m",
           "legendFormat": "{{service}} 5xx",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -339,6 +395,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -355,7 +415,11 @@
         {
           "expr": "business_http_slow_requests_last_5m{threshold=\"2s\"}",
           "legendFormat": "{{service}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -369,6 +433,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -385,7 +453,11 @@
         {
           "expr": "business_http_request_time_max_seconds_last_5m",
           "legendFormat": "{{service}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -399,6 +471,10 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -415,12 +491,20 @@
         {
           "expr": "time() - business_log_metrics_last_success_timestamp",
           "legendFormat": "距上次成功",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "business_log_observed_lines_last_5m",
           "legendFormat": "近 5 分钟日志行数",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -495,10 +579,59 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     }
   ],
   "description": "应用入口、业务链路、真实请求与日志指标的统一健康视图。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "label": "探测任务",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(probe_success{job=~\"blackbox_app_https|blackbox_business_.*_https\"}, job)",
+        "definition": "label_values(probe_success{job=~\"blackbox_app_https|blackbox_business_.*_https\"}, job)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "blackbox_app_https|blackbox_business_.*_https",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

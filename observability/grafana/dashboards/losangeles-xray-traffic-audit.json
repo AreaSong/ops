@@ -41,9 +41,13 @@
       },
       "targets": [
         {
-          "expr": "rate(xray_outbound_traffic_bytes_total{direction=\"uplink\"}[5m])",
+          "expr": "rate(xray_outbound_traffic_bytes_total{direction=\"uplink\",tag=~\"$outbound\"}[5m])",
           "legendFormat": "{{tag}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -59,6 +63,10 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -73,9 +81,13 @@
       },
       "targets": [
         {
-          "expr": "rate(xray_outbound_traffic_bytes_total{direction=\"downlink\"}[5m])",
+          "expr": "rate(xray_outbound_traffic_bytes_total{direction=\"downlink\",tag=~\"$outbound\"}[5m])",
           "legendFormat": "{{tag}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -91,12 +103,16 @@
           "showLegend": true,
           "width": 240
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
       "id": 4,
       "type": "table",
-      "title": "累计流量（按分类与方向）",
+      "title": "本时段流量（按分类与方向）",
       "gridPos": {
         "x": 0,
         "y": 9,
@@ -105,10 +121,14 @@
       },
       "targets": [
         {
-          "expr": "xray_outbound_traffic_bytes_total",
+          "expr": "increase(xray_outbound_traffic_bytes_total{tag=~\"$outbound\"}[$__range])",
           "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "transformations": [
@@ -125,7 +145,7 @@
             "renameByName": {
               "tag": "服务分类",
               "direction": "方向",
-              "Value": "累计字节"
+              "Value": "本时段字节"
             }
           }
         }
@@ -138,6 +158,10 @@
       },
       "options": {
         "showHeader": true
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -153,7 +177,11 @@
       "targets": [
         {
           "expr": "(time() - xray_traffic_metrics_last_run_timestamp) / 60",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -188,6 +216,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -203,7 +235,11 @@
       "targets": [
         {
           "expr": "xray_traffic_metrics_check_success",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -253,6 +289,10 @@
           "values": false
         },
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -279,11 +319,17 @@
         "w": 24,
         "h": 12
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "datasource": "Loki",
-          "expr": "{job=\"xray_access\", host=\"LosAngeles\"}",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\", email=~\"$email\"} |~ \"email:\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -326,11 +372,17 @@
         "w": 24,
         "h": 9
       },
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
-          "datasource": "Loki",
-          "expr": "sum by (outbound) (rate({job=\"xray_access\", host=\"LosAngeles\"} |= \"accepted\" [5m]))",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (outbound) (rate({job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\"} |~ \"email:\" [5m]))",
           "legendFormat": "{{outbound}}",
           "queryType": "range",
           "refId": "A"
@@ -350,9 +402,159 @@
           "width": 240
         }
       }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Top 目的地域名（按连接次数）",
+      "description": "Client connections grouped by sniffed destination domain, ranked by count over the selected range.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(20, sum by (dest) (count_over_time({job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\", email=~\"$email\"} |~ \"email:\" | regexp \"accepted \\w+:(?P<dest>[^:\\s]+):[0-9]+\" | dest != \"\" [$__range])))",
+          "format": "table",
+          "instant": true,
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "dest": "目的地",
+              "Value": "连接次数"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "连接次数",
+            "desc": true
+          }
+        ]
+      }
     }
   ],
   "description": "x-ui/xray 节点流量审计：按服务分类的字节用量（Prometheus）与完整访问目的地清单（Loki）。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "annotations": {
+    "list": [
+      {
+        "name": "xray 告警",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{service=\"x-ui\",alertstate=\"firing\"}",
+        "titleFormat": "{{alertname}}",
+        "tagKeys": "severity,alertname"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "outbound",
+        "label": "出站分类",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(xray_outbound_traffic_bytes_total, tag)",
+        "definition": "label_values(xray_outbound_traffic_bytes_total, tag)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "email",
+        "label": "用户",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values({job=\"xray_access\"}, email)",
+        "definition": "label_values({job=\"xray_access\"}, email)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

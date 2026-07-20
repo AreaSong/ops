@@ -41,7 +41,11 @@
       "targets": [
         {
           "expr": "(time() - daily_ops_audit_last_success_timestamp) / 3600",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -72,6 +76,10 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -88,7 +96,11 @@
         {
           "expr": "daily_ops_audit_findings",
           "legendFormat": "{{severity}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -119,6 +131,10 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -135,17 +151,29 @@
         {
           "expr": "daily_ops_audit_data_source_failures",
           "legendFormat": "数据源失败",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_delivery{state=\"attempted\"}",
           "legendFormat": "邮件已尝试",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_delivery{state=\"accepted\"}",
           "legendFormat": "邮件已接受",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -159,6 +187,10 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -188,7 +220,11 @@
         {
           "expr": "daily_ops_audit_network_bytes",
           "legendFormat": "{{direction}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -231,6 +267,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -247,7 +287,11 @@
         {
           "expr": "daily_ops_audit_http_requests",
           "legendFormat": "{{service}} {{status_class}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -267,6 +311,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -283,7 +331,11 @@
         {
           "expr": "daily_ops_audit_http_requests{status_class=~\"4xx|5xx\"}",
           "legendFormat": "{{service}} {{status_class}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -303,6 +355,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -319,7 +375,11 @@
         {
           "expr": "daily_ops_audit_http_latency_seconds{percentile=~\"p50|p95|p99\"}",
           "legendFormat": "{{service}} {{percentile}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -339,6 +399,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -368,7 +432,11 @@
         {
           "expr": "daily_ops_audit_security_events",
           "legendFormat": "{{event}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -473,6 +541,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -489,17 +561,29 @@
         {
           "expr": "daily_ops_audit_backup_issues",
           "legendFormat": "备份 {{type}}",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_expected_containers_down",
           "legendFormat": "预期容器未运行",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_runtime_issues",
           "legendFormat": "运行态 {{type}}",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -676,6 +760,10 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
@@ -705,17 +793,29 @@
         {
           "expr": "daily_ops_audit_memory_used_percent_peak",
           "legendFormat": "内存使用率",
-          "refId": "A"
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_disk_used_percent_peak",
           "legendFormat": "disk %",
-          "refId": "B"
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         },
         {
           "expr": "daily_ops_audit_load1_peak",
           "legendFormat": "1 分钟负载",
-          "refId": "C"
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -735,13 +835,20 @@
           "mode": "multi",
           "sort": "desc"
         }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       }
     },
     {
       "id": 11,
       "type": "logs",
       "title": "日报任务日志",
-      "datasource": "Loki",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "gridPos": {
         "x": 0,
         "y": 42,
@@ -750,7 +857,10 @@
       },
       "targets": [
         {
-          "datasource": "Loki",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{job=\"observability\", host=\"LosAngeles\"}",
           "refId": "A"
         }
@@ -772,5 +882,19 @@
   ],
   "description": "每日主机、请求、安全、备份与审计任务的汇总视图。",
   "editable": false,
-  "graphTooltip": 1
+  "graphTooltip": 1,
+  "links": [
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "LosAngeles 看板",
+      "tags": [
+        "LosAngeles"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ]
 }

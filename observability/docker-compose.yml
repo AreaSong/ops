@@ -84,7 +84,7 @@ services:
       start_period: 20s
 
   grafana:
-    image: grafana/grafana:11.1.0@sha256:079600c9517b678c10cda6006b4487d3174512fd4c6cface37df7822756ed7a5
+    image: grafana/grafana:11.6.16@sha256:d67af92050b8d93b393dc741864752a69c9da1ffa39c1bb9af49ad5d9e47d2c3
     container_name: grafana
     restart: unless-stopped
     mem_limit: 384m
