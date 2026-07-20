@@ -138,6 +138,20 @@ class GrafanaLocalizationTests(unittest.TestCase):
         for var in variables.values():
             self.assertRegex(var["label"], HAN_RE, var["name"])
 
+    def test_loki_regexp_stages_use_raw_backtick_strings(self) -> None:
+        # LogQL 双引号字符串会处理转义，\w 这类正则写法必须放进反引号原始字符串
+        for dashboard in load_dashboards():
+            for panel in dashboard["panels"]:
+                for target in panel.get("targets", []):
+                    expr = target.get("expr", "")
+                    if "| regexp" not in expr:
+                        continue
+                    self.assertRegex(
+                        expr,
+                        r"\| regexp `[^`]+`",
+                        f"{dashboard['title']} / {panel['title']}",
+                    )
+
     def test_all_dashboards_have_cross_navigation_links(self) -> None:
         for dashboard in load_dashboards():
             links = dashboard.get("links", [])

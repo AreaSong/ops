@@ -424,7 +424,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(20, sum by (dest) (count_over_time({job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\", email=~\"$email\"} |~ \"email:\" | regexp \"accepted \\w+:(?P<dest>[^:\\s]+):[0-9]+\" | dest != \"\" [$__range])))",
+          "expr": "topk(20, sum by (dest) (count_over_time({job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\", email=~\"$email\"} |~ \"email:\" | regexp `accepted \\w+:(?P<dest>[^:\\s]+):[0-9]+` | dest != \"\" [$__range])))",
           "format": "table",
           "instant": true,
           "queryType": "instant",
