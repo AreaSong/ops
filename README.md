@@ -6,13 +6,15 @@
 
 ```
 ops/
-├── AGENTS.md              # Warp Agent 规则（自动加载）
+├── AGENTS.md              # Agent 规则与任务路由（导航中心，Warp 自动加载）
+├── CLAUDE.md / CODEX.md / GEMINI.md   # 各 AI 工具薄壳入口（路由表内联，指向 AGENTS.md）
+├── .cursor/rules/         # Cursor 薄壳入口（ops-routing.mdc）
 ├── warp/                  # Warp Profile + allowlist/denylist 配置
 ├── standards/             # 八大域运维规范
 ├── inventory/             # 结构化台账（YAML + Markdown）
 ├── ansible/               # 基线剧本 + 合规巡检
 ├── observability/         # Prometheus + Grafana + Loki + Alertmanager
-├── runbooks/              # 故障处置手册 + 复盘模板
+├── runbooks/              # playbooks/ 可复用流程 + records/ 一次性记录 + gotchas.md 坑点索引
 └── scripts/               # 备份脚本、工具脚本
 ```
 
