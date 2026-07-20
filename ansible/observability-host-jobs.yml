@@ -5,7 +5,8 @@
   gather_facts: false
   vars:
     compliance_archive_enabled: false
-    alertmanager_github_issues_enabled: false
+    # 2026-07-20 起生产默认启用（/etc/ops/alertmanager-github.env 已配 PAT）；临时停用需显式 -e alertmanager_github_issues_enabled=false
+    alertmanager_github_issues_enabled: true
     host_jobs_release_id: ""
     host_jobs_root: /var/lib/ops/observability-host-jobs
     host_jobs_generation: "{{ host_jobs_root }}/generations/{{ host_jobs_release_id }}"

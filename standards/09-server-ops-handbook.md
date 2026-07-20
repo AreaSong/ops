@@ -1130,7 +1130,7 @@ services:
 - [ ] P0 镜像固定版本 tag，无 latest
 - [ ] P0 端口发布显式绑定地址
 - [ ] P1 全容器 healthcheck + 内存 limit + 非 root
-- [ ] P1 trivy 扫描进 CI，高危阻断
+- [x] P1 trivy 扫描进 CI（.github/workflows/image-cve-scan.yml 周扫全部锁定镜像，CRITICAL 置红，HIGH 报告；2026-07-20）
 - [ ] P1 基础镜像收敛并定期重建
 - [ ] P2 K8s：16.5 基线逐项过
 - [ ] P2 清理走"先列后删"，无全量 prune

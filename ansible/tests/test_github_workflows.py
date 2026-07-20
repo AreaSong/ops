@@ -44,6 +44,16 @@ class GitHubWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(gate, content)
 
+    def test_image_cve_scan_is_read_only_scheduled_and_covers_all_compose_files(self) -> None:
+        content = (WORKFLOW_ROOT / "image-cve-scan.yml").read_text(encoding="utf-8")
+        self.assertRegex(content, r"permissions:\s+contents: read")
+        self.assertIn("schedule", content)
+        self.assertIn("workflow_dispatch", content)
+        self.assertRegex(content, r"aquasec/trivy:[0-9][^@\s]*@sha256:[0-9a-f]{64}")
+        self.assertIn("--ignore-unfixed", content)
+        for source in ("observability/docker-compose.yml", "services/*/compose.yml"):
+            self.assertIn(source, content)
+
     def test_monthly_external_simulation_has_a_separate_concurrency_group(self) -> None:
         content = (WORKFLOW_ROOT / "external-uptime.yml").read_text(encoding="utf-8")
         self.assertIn("monthly-simulation", content)

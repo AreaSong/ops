@@ -32,5 +32,6 @@ compactor:
   delete_request_store: filesystem
 
 limits_config:
-  retention_period: 168h
+  # 30 天留存支撑 xray 流量审计回溯；2026-07 核查 7 天数据约 100M，30 天投影 <0.5G（磁盘 34G 可用）
+  retention_period: 720h
   allow_structured_metadata: false

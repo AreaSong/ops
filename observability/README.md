@@ -74,7 +74,7 @@ Cron:
 - Docker BuildKit cache older than 14 days every Sunday at `06:40 UTC` (no image or volume pruning)
 - Optional critical-alert GitHub Issue sync every five minutes and monthly failure/recovery simulation
 
-The normal host jobs are always managed. The two GitHub Issue jobs are only installed with `-e alertmanager_github_issues_enabled=true` and require `/etc/ops/alertmanager-github.env` to be `root:root 0600`. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
+The normal host jobs are always managed. The two GitHub Issue jobs are enabled by default (since 2026-07-20) and require `/etc/ops/alertmanager-github.env` to be `root:root 0600`; pass `-e alertmanager_github_issues_enabled=false` to remove them temporarily. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
 
 ## Daily operations audit
 

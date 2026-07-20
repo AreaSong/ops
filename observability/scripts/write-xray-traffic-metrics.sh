@@ -47,23 +47,40 @@ print("# HELP xray_traffic_metrics_check_success Whether the xray statsquery API
 print("# TYPE xray_traffic_metrics_check_success gauge")
 print(f"xray_traffic_metrics_check_success {check_success}")
 
-print("# HELP xray_outbound_traffic_bytes_total Xray per-outbound traffic bytes since the xray process started.")
-print("# TYPE xray_outbound_traffic_bytes_total counter")
+def escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+outbound_samples: list[str] = []
+user_samples: list[str] = []
 for entry in stats:
     name = str(entry.get("name") or "")
     parts = name.split(">>>")
-    if len(parts) != 4 or parts[0] != "outbound" or parts[2] != "traffic":
-        continue
-    tag = parts[1]
-    direction = parts[3]
-    if direction not in ("uplink", "downlink"):
+    if len(parts) != 4 or parts[2] != "traffic" or parts[3] not in ("uplink", "downlink"):
         continue
     try:
         value = int(entry.get("value") or 0)
     except (TypeError, ValueError):
         continue
-    tag_label = tag.replace("\\", "\\\\").replace('"', '\\"')
-    print(f'xray_outbound_traffic_bytes_total{{tag="{tag_label}",direction="{direction}"}} {value}')
+    direction = parts[3]
+    if parts[0] == "outbound":
+        outbound_samples.append(
+            f'xray_outbound_traffic_bytes_total{{tag="{escape(parts[1])}",direction="{direction}"}} {value}'
+        )
+    elif parts[0] == "user":
+        user_samples.append(
+            f'xray_user_traffic_bytes_total{{email="{escape(parts[1])}",direction="{direction}"}} {value}'
+        )
+
+print("# HELP xray_outbound_traffic_bytes_total Xray per-outbound traffic bytes since the xray process started.")
+print("# TYPE xray_outbound_traffic_bytes_total counter")
+for sample in outbound_samples:
+    print(sample)
+
+print("# HELP xray_user_traffic_bytes_total Xray per-user traffic bytes since the xray process started.")
+print("# TYPE xray_user_traffic_bytes_total counter")
+for sample in user_samples:
+    print(sample)
 PY
 
 chmod 0644 "$TMP"
