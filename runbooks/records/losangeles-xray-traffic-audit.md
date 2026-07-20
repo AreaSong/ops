@@ -59,6 +59,13 @@ sudo cp /etc/x-ui/x-ui.db /etc/x-ui/x-ui.db.bak-$(date -u +%Y%m%d%H%M%S)
 | Prometheus 指标 | `/var/lib/node_exporter/textfile_collector/xray-traffic.prom` |
 | Grafana | `流量审计`（uid `losangeles-xray-traffic-audit`） |
 
+## 看板用法
+
+- 顶部 `出站分类`（`$outbound`）、`用户`（`$email`）下拉可筛，默认 All；字节速率、本时段流量、Top 域名、连接速率面板都跟随。
+- 「Top 目的地域名（按连接次数）」表用 LogQL 在查询期从 access log 抽取域名并 `topk(20)`，跟随时间选择器；这是"具体去了哪些域名"的权威视图。
+- 「本时段流量（按分类与方向）」用 `increase(...[$__range])`，跟随时间范围且正确处理 xray 重启导致的计数器清零（不是自进程启动以来的累计）。
+- 时间线上的红色注解来自 `ALERTS{service="x-ui"}`，标注 xray 审计告警何时触发。
+
 ## 手工核验
 
 ```bash
