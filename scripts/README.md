@@ -10,6 +10,7 @@
 | deploy/account-vault-attestation-verify.sh | fail-closed 验证 Account Vault cosign keyless OCI provenance、签名工作流、Git SHA 和来源分支 |
 | deploy/account-vault-role-permissions.sh | 分离执行或只读核验 Account Vault runtime 角色的最小权限契约 |
 | tests/validate_observability_configs.sh | 使用生产同版本镜像验证 Prometheus、Loki、Promtail、Blackbox 和 Alertmanager 配置 |
+| tests/validate_agent_governance.py | 校验 Agent 导航体系：五处路由表一致、路由引用存在、runbooks 分层、全库 markdown 无死链 |
 
 Account Vault 操作必须先阅读 [发布与回滚 Runbook](../runbooks/records/losangeles-account-vault-release.md)。
 

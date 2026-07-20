@@ -214,6 +214,9 @@ jobs:
       - name: Validate structured files
         run: python3 scripts/tests/validate_structured_files.py
 
+      - name: Validate agent governance routing
+        run: python3 scripts/tests/validate_agent_governance.py
+
       - name: Test repository Node helpers
         run: node --test scripts/tests/*.test.mjs
 
