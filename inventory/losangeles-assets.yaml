@@ -285,9 +285,9 @@ routes:
     desired_origin_policy: direct
     nginx_file: /etc/nginx/sites-enabled/direct.log.areasong.top.conf
     backend_endpoints:
-      - "http://127.0.0.1:46585"
+      - "https://127.0.0.1:46585"
       - "http://127.0.0.1:10000"
-      - "http://127.0.0.1:2096"
+      - "https://127.0.0.1:2096"
     tls_mode: lets-encrypt
 
 config_pairs:
