@@ -684,7 +684,7 @@ groups:
   - name: sub2api_capacity_symptom_alerts
     rules:
       - alert: Sub2apiCapacityMetricsStale
-        expr: absent(sub2api_capacity_metrics_last_run_timestamp) or time() - sub2api_capacity_metrics_last_run_timestamp > 300
+        expr: absent(sub2api_capacity_metrics_last_run_timestamp) or time() - sub2api_capacity_metrics_last_run_timestamp > 660
         for: 5m
         labels:
           severity: warning
@@ -692,7 +692,7 @@ groups:
           service: sub2api
         annotations:
           summary: "sub2api capacity symptom metrics are stale"
-          description: "The Docker log symptom collector has not completed in the last five minutes."
+          description: "The Docker log symptom collector missed its five-minute cadence for more than one full cycle (11 minutes)."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
 
       - alert: Sub2apiLogCheckFailed

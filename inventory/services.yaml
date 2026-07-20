@@ -194,3 +194,8 @@ global_ports:
     service: ssh
     expose: "0.0.0.0/0"
     notes: "当前未限制来源 IP；密钥登录，root/password disabled，Fail2ban sshd jail；有固定出口 IP 后再收紧。"
+  - port: 9100
+    protocol: tcp
+    service: node-exporter
+    expose: "172.16.0.0/12"
+    notes: "node-exporter host 网络监听主机 9100；UFW 仅放行 Docker 网段供 Prometheus 抓取，公网默认拒绝。"

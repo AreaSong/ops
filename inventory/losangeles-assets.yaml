@@ -231,6 +231,8 @@ services:
       - { bind: 127.0.0.1, host_port: 9093, container_port: 9093, protocol: tcp, exposure: loopback }
       - { bind: 127.0.0.1, host_port: 3000, container_port: 3000, protocol: tcp, exposure: loopback }
       - { bind: 127.0.0.1, host_port: 3100, container_port: 3100, protocol: tcp, exposure: loopback }
+      # node-exporter host 网络直监听 9100；UFW 仅放行 172.16.0.0/12（Docker 网段），公网默认拒绝
+      - { bind: "0.0.0.0", host_port: 9100, protocol: tcp, exposure: firewalled }
     data: { type: metrics-logs, path: /var/lib/observability, classification: operational }
     backup: { required: true, jobs: [backup-volumes, backup-configs], offsite: R2 }
     observability:

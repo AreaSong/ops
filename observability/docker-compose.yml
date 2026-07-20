@@ -39,6 +39,9 @@ services:
       - /var/lib/observability/prometheus:/prometheus
     networks:
       - monitoring
+    # node-exporter 已切 host 网络，经宿主机网关抓取
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - alertmanager
       - node-exporter
@@ -196,8 +199,8 @@ services:
     volumes:
       - /:/host:ro,rslave
       - /var/lib/node_exporter/textfile_collector:/var/lib/node_exporter/textfile_collector:ro
-    networks:
-      - monitoring
+    # host 网络才能采到主机网卡（ens3）指标；公网入站由 UFW 默认拒绝兜底
+    network_mode: host
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9100/metrics"]
       interval: 30s
