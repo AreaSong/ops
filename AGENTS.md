@@ -19,9 +19,42 @@
 
 1. 确认当前 Warp Profile：**Prod**（生产）还是 **Test**（测试）
 2. 读取 `inventory/servers.yaml` 和 `inventory/services.yaml`，了解目标机器和服务
-3. 涉及部署/变更/新建资源时，先读 `standards/` 下对应域文档
+3. 按下方**常见任务路由**匹配任务类型，读齐该行列出的全部文件后再动手
 4. SSH 到服务器后，确认 `/opt/ops/` 与 Git 仓库同步（`git log -1 --oneline`）
 5. kubectl 会话开始时确认当前 context 和 namespace
+
+## 常见任务路由（每个任务先查此表）
+
+| 任务 | 必读 | 流程/手册 |
+|------|------|----------|
+| 部署新服务/应用 | `standards/04-deployment.md`、`templates/app-deploy/` | `runbooks/playbooks/losangeles-standard-app-deploy.md` |
+| 服务返回 5xx | `runbooks/gotchas.md` | `runbooks/playbooks/service-5xx.md` |
+| 磁盘空间不足 | `runbooks/gotchas.md` | `runbooks/playbooks/disk-full.md` |
+| 主机失联 | `inventory/servers.yaml` | `runbooks/playbooks/host-unreachable.md` |
+| MySQL 慢查询 | `runbooks/gotchas.md` | `runbooks/playbooks/mysql-slow-query.md` |
+| 备份/恢复操作 | `standards/06-backup-dr.md` | `runbooks/playbooks/backup-set-integrity.md`、`runbooks/playbooks/losangeles-r2-backup.md` |
+| 配置修改/升级等变更 | `standards/05-change-management.md`、`runbooks/gotchas.md` | 按对应域 standards 执行 |
+| 新机器上线/验收 | `standards/00-server-checklist.md`、`standards/01-naming-inventory.md`、`standards/02-os-baseline.md` | — |
+| 监控告警建设 | `standards/08-observability.md` | `observability/README.md` |
+| 日常巡检/安全审计 | — | `runbooks/playbooks/daily-ops-audit.md`、`runbooks/playbooks/auditd-security-audit.md` |
+| **其他/未列任务** | `standards.md` 索引 + `runbooks/README.md` | 按最接近的域文档执行 |
+
+## 已知坑点（动手前查，完整索引见 `runbooks/gotchas.md`）
+
+- Redis 收紧权限禁止 `-@dangerous` 一刀切——会禁掉 exporter 依赖的监控命令
+- Redis 运行态 `ACL SETUSER` 重启即失效——必须配 `--aclfile` 持久化并纳入备份
+- 应用启动内嵌 migration 时不能切纯 CRUD 低权限数据库用户——会 `permission denied`
+- 改 `.env` 后 `docker compose up -d` 不一定重建容器——需 `--force-recreate` 并 inspect 复核
+- 容器日志上限必须显式写进 compose——依赖 daemon 默认值迁移后会丢
+- PostgreSQL 大版本升级会破坏 exporter collector 兼容性——按 PG 版本分别配 collector
+- "数据丢失"若应用用浏览器指纹做身份，先查身份错位再考虑恢复——误恢复反而覆盖数据
+
+## 同会话多任务纪律（强制）
+
+- 每个新任务——即使是同一会话的第 N 轮——必须重新匹配**常见任务路由**，重读该行列出的文件
+- "我前面读过了"不算数：上下文可能已被压缩，且不同任务的必读文件不同
+- 检验：问自己"这次任务读的文件和路由表该行列的完全一致吗？"有差异就回头重走路由
+- 任务完成后 30 秒自检：踩到新坑/发现缺失或过时规则了吗？符合 `runbooks/gotchas.md` 录入标准（2/3：可重复+代价高+不可见）就提炼进去，过时条目直接更新或清退
 
 ## 权限模型（Warp Profile 硬约束 + 本文档软约束）
 
