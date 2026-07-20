@@ -81,7 +81,7 @@ services:
       log_jobs: [xray_access]
       prometheus_jobs: [node]
       dashboards: [losangeles-xray-traffic-audit]
-      notes: "流量审计：access log 写 /var/log/xray/access.log 经 Promtail 入 Loki（目的地/用户/时间线完整）；路由按 geosite 分桶到 out-* 出站标签，出站字节经 xray api statsquery(:62789) 采成 xray_outbound_traffic_bytes_total；仅转发不含加密内容。"
+      notes: "流量审计：access log 写 /var/log/xray/access.log 经 Promtail 入 Loki（目的地/用户/时间线完整）；路由按 geosite 分桶到 out-* 出站标签，出站字节经 xray api statsquery(:62789) 采成 xray_outbound_traffic_bytes_total，每用户字节采成 xray_user_traffic_bytes_total（2026-07-21）；仅转发不含加密内容。"
 
   - service_id: resume-jadeai
     name: Resume JadeAI
@@ -242,7 +242,8 @@ services:
     backup: { required: true, jobs: [backup-volumes, backup-configs], offsite: R2 }
     observability:
       prometheus_jobs: [prometheus, alertmanager, loki, promtail, node, blackbox_https]
-      dashboards: [losangeles-host-overview, losangeles-services-backups]
+      dashboards: [losangeles-host-overview, losangeles-services-backups, losangeles-service-overview, losangeles-observability-selfcheck]
+      notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/etc/ops/alertmanager-github.env root:root 0600，fine-grained PAT 仅 AreaSong/ops Issues RW，2026-08-19 到期需轮换；5 分钟 cron + 每月演练）；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
 
 routes:
   - service_id: resume-jadeai
