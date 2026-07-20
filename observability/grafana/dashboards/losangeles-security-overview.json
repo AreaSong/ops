@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-security-overview",
-  "title": "LosAngeles Security Overview",
+  "title": "安全态势总览",
   "tags": [
     "LosAngeles",
     "security",
@@ -18,13 +18,26 @@
   },
   "panels": [
     {
-      "id": 1,
-      "type": "stat",
-      "title": "UFW enabled",
+      "id": 14,
+      "type": "row",
+      "title": "防火墙与 SSH",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 6,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "UFW 启用状态",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
         "h": 6
       },
       "targets": [
@@ -48,7 +61,22 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -70,11 +98,11 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Security metrics age",
+      "title": "安全指标新鲜度",
       "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
+        "x": 12,
+        "y": 1,
+        "w": 12,
         "h": 6
       },
       "targets": [
@@ -85,7 +113,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "m"
+          "unit": "suffix: 分钟"
         },
         "overrides": []
       },
@@ -107,27 +135,27 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "SSH login events 24h",
+      "title": "SSH 登录事件（24 小时）",
       "gridPos": {
-        "x": 12,
-        "y": 0,
+        "x": 0,
+        "y": 7,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "ssh_failed_login_last_24h",
-          "legendFormat": "failed",
+          "legendFormat": "登录失败",
           "refId": "A"
         },
         {
           "expr": "ssh_invalid_user_last_24h",
-          "legendFormat": "invalid user",
+          "legendFormat": "无效用户",
           "refId": "B"
         },
         {
           "expr": "ssh_accepted_login_last_24h",
-          "legendFormat": "accepted",
+          "legendFormat": "登录成功",
           "refId": "C"
         }
       ],
@@ -147,22 +175,22 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Fail2ban sshd state",
+      "title": "Fail2ban SSH 状态",
       "gridPos": {
-        "x": 0,
-        "y": 8,
+        "x": 12,
+        "y": 7,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "fail2ban_currently_failed{jail=\"sshd\"}",
-          "legendFormat": "currently failed",
+          "legendFormat": "当前失败",
           "refId": "A"
         },
         {
           "expr": "fail2ban_currently_banned{jail=\"sshd\"}",
-          "legendFormat": "currently banned",
+          "legendFormat": "当前封禁",
           "refId": "B"
         }
       ],
@@ -180,12 +208,25 @@
       }
     },
     {
+      "id": 15,
+      "type": "row",
+      "title": "Nginx 安全流量",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "id": 5,
       "type": "timeseries",
-      "title": "Nginx requests by status class 5m",
+      "title": "Nginx 请求（按状态码，5 分钟）",
       "gridPos": {
-        "x": 12,
-        "y": 8,
+        "x": 0,
+        "y": 16,
         "w": 12,
         "h": 8
       },
@@ -203,19 +244,21 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
       }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Nginx errors 5m",
+      "title": "Nginx 错误（5 分钟）",
       "gridPos": {
-        "x": 0,
+        "x": 12,
         "y": 16,
-        "w": 24,
+        "w": 12,
         "h": 8
       },
       "targets": [
@@ -244,13 +287,26 @@
       }
     },
     {
-      "id": 7,
-      "type": "logs",
-      "title": "Recent Fail2ban Ban / Unban events",
-      "description": "Shows raw Fail2ban sshd Ban and Unban log lines, including source IP addresses.",
+      "id": 16,
+      "type": "row",
+      "title": "Fail2ban 事件",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 24,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "最近 Fail2ban 封禁与解封事件",
+      "description": "Shows raw Fail2ban sshd Ban and Unban log lines, including source IP addresses.",
+      "gridPos": {
+        "x": 0,
+        "y": 25,
         "w": 24,
         "h": 10
       },
@@ -272,16 +328,19 @@
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
+      },
+      "fieldConfig": {
+        "defaults": {}
       }
     },
     {
       "id": 8,
       "type": "logs",
-      "title": "Fail2ban enriched IP intelligence",
+      "title": "Fail2ban IP 情报",
       "description": "Shows Fail2ban Ban and Unban events enriched with country, ASN, BGP prefix and network organization.",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 35,
         "w": 24,
         "h": 10
       },
@@ -303,15 +362,31 @@
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
+      },
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "auditd 审计",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "id": 9,
       "type": "stat",
-      "title": "auditd service active",
+      "title": "auditd 服务状态",
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 46,
         "w": 6,
         "h": 6
       },
@@ -336,7 +411,22 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -358,10 +448,10 @@
     {
       "id": 10,
       "type": "stat",
-      "title": "auditd rule coverage",
+      "title": "auditd 规则覆盖率",
       "gridPos": {
         "x": 6,
-        "y": 44,
+        "y": 46,
         "w": 6,
         "h": 6
       },
@@ -410,10 +500,10 @@
     {
       "id": 11,
       "type": "stat",
-      "title": "auditd lost events",
+      "title": "auditd 丢失事件",
       "gridPos": {
         "x": 12,
-        "y": 44,
+        "y": 46,
         "w": 6,
         "h": 6
       },
@@ -460,10 +550,10 @@
     {
       "id": 12,
       "type": "stat",
-      "title": "auditd backlog ratio",
+      "title": "auditd 队列使用率",
       "gridPos": {
         "x": 18,
-        "y": 44,
+        "y": 46,
         "w": 6,
         "h": 6
       },
@@ -516,11 +606,11 @@
     {
       "id": 13,
       "type": "logs",
-      "title": "Recent auditd events",
+      "title": "最近 auditd 审计事件",
       "description": "Shows critical-file and privilege audit records. EXECVE and PROCTITLE records are intentionally excluded from Loki to avoid copying command arguments.",
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 52,
         "w": 24,
         "h": 10
       },
@@ -542,7 +632,13 @@
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
+      },
+      "fieldConfig": {
+        "defaults": {}
       }
     }
-  ]
+  ],
+  "description": "防火墙、SSH、Nginx、Fail2ban 与 auditd 的安全态势。",
+  "editable": false,
+  "graphTooltip": 1
 }

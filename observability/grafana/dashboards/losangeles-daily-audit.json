@@ -1,12 +1,12 @@
 {
   "uid": "losangeles-daily-audit",
-  "title": "LosAngeles Daily Operations Audit",
+  "title": "每日运维审计",
   "tags": [
     "LosAngeles",
     "audit",
     "daily"
   ],
-  "timezone": "utc",
+  "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5m",
@@ -16,10 +16,28 @@
   },
   "panels": [
     {
+      "id": 12,
+      "type": "row",
+      "title": "日报概览",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "id": 1,
       "type": "stat",
-      "title": "日报年龄",
-      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 6},
+      "title": "日报生成距今",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 8,
+        "h": 6
+      },
       "targets": [
         {
           "expr": "(time() - daily_ops_audit_last_success_timestamp) / 3600",
@@ -28,13 +46,22 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "h",
+          "unit": "suffix: 小时",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "orange", "value": 26},
-              {"color": "red", "value": 28}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 26
+              },
+              {
+                "color": "red",
+                "value": 28
+              }
             ]
           }
         },
@@ -50,8 +77,13 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "日报发现",
-      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 6},
+      "title": "日报异常汇总",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 6
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_findings",
@@ -65,9 +97,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "orange", "value": 1},
-              {"color": "red", "value": 2}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
             ]
           }
         },
@@ -83,8 +124,13 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "数据源与邮件",
-      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 6},
+      "title": "数据采集与邮件",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 6
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_data_source_failures",
@@ -116,10 +162,28 @@
       }
     },
     {
+      "id": 13,
+      "type": "row",
+      "title": "流量与请求",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "id": 4,
       "type": "timeseries",
-      "title": "每日主机流量",
-      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+      "title": "每日主机网络流量",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_network_bytes",
@@ -128,19 +192,57 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "bytes"},
-        "overrides": []
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "receive"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "接收"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "transmit"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "发送"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "legend": {"displayMode": "list", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "每日 HTTP 请求",
-      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+      "title": "每日 HTTP 请求量",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_http_requests",
@@ -149,19 +251,34 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short"},
+        "defaults": {
+          "unit": "short"
+        },
         "overrides": []
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "每日 4xx / 5xx",
-      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+      "title": "每日错误请求（4xx / 5xx）",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_http_requests{status_class=~\"4xx|5xx\"}",
@@ -170,19 +287,34 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short"},
+        "defaults": {
+          "unit": "short"
+        },
         "overrides": []
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "每日请求延迟分位数",
-      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_http_latency_seconds{percentile=~\"p50|p95|p99\"}",
@@ -191,19 +323,47 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "s"},
+        "defaults": {
+          "unit": "s"
+        },
         "overrides": []
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "安全与备份",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "每日安全事件",
-      "gridPos": {"x": 0, "y": 22, "w": 12, "h": 8},
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_security_events",
@@ -212,54 +372,339 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short"},
-        "overrides": []
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail2ban_bans"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Fail2ban 封禁"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fail2ban_unbans"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Fail2ban 解封"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ssh_accepted"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "SSH 登录成功"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ssh_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "SSH 登录失败"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ssh_invalid_user"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "SSH 无效用户"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sudo_commands"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "sudo 命令"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ufw_blocks"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "UFW 拦截"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 9,
       "type": "timeseries",
-      "title": "备份与容器问题",
-      "gridPos": {"x": 12, "y": 22, "w": 12, "h": 8},
+      "title": "备份与容器异常",
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_backup_issues",
-          "legendFormat": "backup {{type}}",
+          "legendFormat": "备份 {{type}}",
           "refId": "A"
         },
         {
           "expr": "daily_ops_audit_expected_containers_down",
-          "legendFormat": "expected containers down",
+          "legendFormat": "预期容器未运行",
           "refId": "B"
         },
         {
           "expr": "daily_ops_audit_runtime_issues",
-          "legendFormat": "runtime {{type}}",
+          "legendFormat": "运行态 {{type}}",
           "refId": "C"
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short"},
-        "overrides": []
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup missing"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "备份缺失"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup stale"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "备份过期"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup r2_missing"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "R2 备份缺失"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup r2_stale"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "R2 备份过期"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup r2_verify_missing"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "R2 验证缺失"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup r2_verify_stale"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "R2 验证过期"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup set_missing"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "完整备份集缺失"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "backup set_stale"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "完整备份集过期"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expected containers down"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "预期容器未运行"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runtime docker_unhealthy"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Docker 容器异常"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runtime node_exporter_down"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Node Exporter 不可用"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runtime systemd_failed"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "systemd 单元失败"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runtime ufw_inactive"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "UFW 未启用"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "资源与任务",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "id": 10,
       "type": "timeseries",
-      "title": "主机资源日峰值",
-      "gridPos": {"x": 0, "y": 30, "w": 24, "h": 8},
+      "title": "主机资源每日峰值",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
       "targets": [
         {
           "expr": "daily_ops_audit_memory_used_percent_peak",
-          "legendFormat": "memory %",
+          "legendFormat": "内存使用率",
           "refId": "A"
         },
         {
@@ -269,17 +714,27 @@
         },
         {
           "expr": "daily_ops_audit_load1_peak",
-          "legendFormat": "load1",
+          "legendFormat": "1 分钟负载",
           "refId": "C"
         }
       ],
       "fieldConfig": {
-        "defaults": {"unit": "short"},
+        "defaults": {
+          "unit": "short"
+        },
         "overrides": []
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi", "sort": "desc"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
@@ -287,7 +742,12 @@
       "type": "logs",
       "title": "日报任务日志",
       "datasource": "Loki",
-      "gridPos": {"x": 0, "y": 38, "w": 24, "h": 10},
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 10
+      },
       "targets": [
         {
           "datasource": "Loki",
@@ -304,7 +764,13 @@
         "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
+      },
+      "fieldConfig": {
+        "defaults": {}
       }
     }
-  ]
+  ],
+  "description": "每日主机、请求、安全、备份与审计任务的汇总视图。",
+  "editable": false,
+  "graphTooltip": 1
 }

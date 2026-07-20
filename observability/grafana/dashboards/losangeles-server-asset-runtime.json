@@ -1,242 +1,1193 @@
 {
   "schemaVersion": 39,
-  "title": "LosAngeles Server Asset and Runtime",
+  "title": "资产与运行配置",
   "uid": "losangeles-server-asset-runtime",
   "version": 2,
   "timezone": "browser",
   "refresh": "30s",
-  "tags": ["LosAngeles", "asset", "runtime"],
-  "time": {"from": "now-6h", "to": "now"},
+  "tags": [
+    "LosAngeles",
+    "asset",
+    "runtime"
+  ],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
+    {
+      "id": 21,
+      "type": "row",
+      "title": "运行概览",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
     {
       "id": 1,
       "type": "stat",
-      "title": "Runtime snapshot age",
-      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 5},
-      "targets": [{"expr": "time() - ops_runtime_snapshot_last_success_timestamp", "refId": "A"}],
+      "title": "运行快照新鲜度",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "time() - ops_runtime_snapshot_last_success_timestamp",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 120}, {"color": "red", "value": 180}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 180
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Critical drift",
-      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 5},
-      "targets": [{"expr": "sum(ops_config_drift{severity=\"critical\"})", "refId": "A"}],
+      "title": "严重配置漂移",
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "sum(ops_config_drift{severity=\"critical\"})",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Expected containers running",
-      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 5},
-      "targets": [{"expr": "sum(docker_container_running)", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "title": "预期容器运行数",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "sum(docker_container_running)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Sanitized business errors",
-      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 5},
-      "targets": [{"expr": "business_error_log_events_last_run", "refId": "A"}],
+      "title": "已脱敏业务错误",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "business_error_log_events_last_run",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 20}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "CPU and memory usage",
-      "gridPos": {"x": 0, "y": 5, "w": 12, "h": 7},
+      "title": "CPU 与内存使用率",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 7
+      },
       "targets": [
-        {"expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU", "refId": "A"},
-        {"expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "legendFormat": "Memory", "refId": "B"}
+        {
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU",
+          "refId": "A"
+        },
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+          "legendFormat": "内存",
+          "refId": "B"
+        }
       ],
-      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Root filesystem usage",
-      "gridPos": {"x": 12, "y": 5, "w": 12, "h": 7},
-      "targets": [{"expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100", "legendFormat": "/", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}}
+      "title": "根文件系统使用率",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
+          "legendFormat": "/",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "服务与网络资产",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      }
     },
     {
       "id": 7,
       "type": "table",
-      "title": "Service directory",
-      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 10},
-      "targets": [{"expr": "ops_asset_service_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "服务目录",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "expr": "ops_asset_service_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "name": "服务名称",
+              "service_id": "服务 ID",
+              "runtime_type": "运行方式",
+              "lifecycle": "生命周期",
+              "owner": "负责人",
+              "units": "systemd 单元",
+              "compose_path": "Compose 文件"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 8,
       "type": "table",
-      "title": "Domain to Nginx and backend",
-      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 10},
-      "targets": [{"expr": "ops_asset_domain_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "域名、Nginx 与后端",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "expr": "ops_asset_domain_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "hostname": "域名",
+              "service_id": "服务 ID",
+              "cloudflare_mode": "Cloudflare 模式",
+              "desired_origin_policy": "期望源站策略",
+              "observed_origin_policy": "实际源站策略",
+              "tls_mode": "TLS 模式",
+              "backend_endpoint": "后端地址",
+              "nginx_file": "Nginx 配置"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 9,
       "type": "table",
-      "title": "Declared host ports",
-      "gridPos": {"x": 0, "y": 22, "w": 12, "h": 10},
-      "targets": [{"expr": "ops_asset_port_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "声明的主机端口",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "expr": "ops_asset_port_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "service_id": "服务 ID",
+              "bind": "绑定地址",
+              "host_port": "主机端口",
+              "container_port": "容器端口",
+              "protocol": "协议",
+              "exposure": "暴露范围"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 10,
       "type": "table",
-      "title": "Live listeners",
-      "gridPos": {"x": 12, "y": 22, "w": 12, "h": 10},
-      "targets": [{"expr": "ops_listener_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "实际监听端口",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "expr": "ops_listener_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "address": "监听地址",
+              "port": "端口",
+              "protocol": "协议",
+              "process": "进程",
+              "state": "状态"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "容器与配置治理",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
     },
     {
       "id": 11,
       "type": "table",
-      "title": "Container runtime and image source",
-      "gridPos": {"x": 0, "y": 32, "w": 24, "h": 12},
-      "targets": [{"expr": "ops_container_runtime_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "容器运行时与镜像来源",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "expr": "ops_container_runtime_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "name": "容器",
+              "service_id": "服务 ID",
+              "compose_project": "Compose 项目",
+              "compose_config": "Compose 文件",
+              "image_ref": "镜像",
+              "image_id": "镜像摘要",
+              "health": "健康状态",
+              "user": "运行用户"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 12,
       "type": "table",
-      "title": "Container security posture",
-      "gridPos": {"x": 0, "y": 44, "w": 12, "h": 11},
-      "targets": [{"expr": "ops_container_security_state", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "容器安全状态",
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 12,
+        "h": 11
+      },
+      "targets": [
+        {
+          "expr": "ops_container_security_state",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "name": "容器",
+              "service_id": "服务 ID",
+              "read_only_rootfs": "只读根文件系统",
+              "no_new_privileges": "禁止权限提升",
+              "cap_drop_all": "移除全部能力",
+              "privileged": "特权模式"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 13,
       "type": "table",
-      "title": "Configuration drift",
-      "gridPos": {"x": 12, "y": 44, "w": 12, "h": 11},
-      "targets": [{"expr": "ops_config_drift == 1", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "配置漂移明细",
+      "gridPos": {
+        "x": 12,
+        "y": 47,
+        "w": 12,
+        "h": 11
+      },
+      "targets": [
+        {
+          "expr": "ops_config_drift == 1",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "severity": "严重级别",
+              "kind": "类型",
+              "service_id": "服务 ID",
+              "hostname": "主机名",
+              "controlled_path": "受控路径",
+              "runtime_path": "运行路径"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 14,
       "type": "logs",
-      "title": "Sanitized business warnings and errors",
-      "gridPos": {"x": 0, "y": 55, "w": 24, "h": 11},
+      "title": "已脱敏业务警告与错误",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 11
+      },
       "datasource": "Loki",
-      "targets": [{"expr": "{job=\"business_errors\",host=\"LosAngeles\"}", "refId": "A", "queryType": "range", "datasource": "Loki"}],
-      "options": {"showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none"}
+      "targets": [
+        {
+          "expr": "{job=\"business_errors\",host=\"LosAngeles\"}",
+          "refId": "A",
+          "queryType": "range",
+          "datasource": "Loki"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      },
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "发布状态",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 24,
+        "h": 1
+      }
     },
     {
       "id": 15,
       "type": "stat",
-      "title": "Account Vault release status",
-      "gridPos": {"x": 0, "y": 66, "w": 6, "h": 5},
-      "targets": [{"expr": "account_vault_release_last_success", "refId": "A"}],
+      "title": "Account Vault 发布状态",
+      "gridPos": {
+        "x": 0,
+        "y": 70,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "account_vault_release_last_success",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "mappings": [{"type": "value", "options": {"0": {"text": "Failed", "color": "red"}, "1": {"text": "Succeeded", "color": "green"}}}],
-          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 16,
       "type": "stat",
-      "title": "Account Vault release age",
-      "gridPos": {"x": 6, "y": 66, "w": 6, "h": 5},
-      "targets": [{"expr": "time() - account_vault_release_last_attempt_timestamp", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "title": "Account Vault 发布距今",
+      "gridPos": {
+        "x": 6,
+        "y": 70,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "time() - account_vault_release_last_attempt_timestamp",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 17,
       "type": "table",
-      "title": "Account Vault release image",
-      "gridPos": {"x": 12, "y": 66, "w": 12, "h": 5},
-      "targets": [{"expr": "account_vault_release_info", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "Account Vault 发布镜像",
+      "gridPos": {
+        "x": 12,
+        "y": 70,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "account_vault_release_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "Value": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "action": "发布动作",
+              "image_ref": "发布镜像"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Cloudflare 清单",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 24,
+        "h": 1
+      }
     },
     {
       "id": 18,
       "type": "stat",
-      "title": "Cloudflare IP check",
-      "gridPos": {"x": 0, "y": 71, "w": 6, "h": 5},
-      "targets": [{"expr": "cloudflare_ip_ranges_check_success", "refId": "A"}],
+      "title": "Cloudflare IP 清单检查",
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "cloudflare_ip_ranges_check_success",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "mappings": [{"type": "value", "options": {"0": {"text": "Failed", "color": "red"}, "1": {"text": "Succeeded", "color": "green"}}}],
-          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 19,
       "type": "stat",
-      "title": "Cloudflare IP check age",
-      "gridPos": {"x": 6, "y": 71, "w": 6, "h": 5},
-      "targets": [{"expr": "time() - cloudflare_ip_ranges_last_run_timestamp", "refId": "A"}],
+      "title": "Cloudflare IP 检查距今",
+      "gridPos": {
+        "x": 6,
+        "y": 76,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
+          "refId": "A"
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 86400}, {"color": "red", "value": 129600}]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 86400
+              },
+              {
+                "color": "red",
+                "value": 129600
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"}
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     },
     {
       "id": 20,
       "type": "table",
-      "title": "Cloudflare managed and official CIDRs",
-      "gridPos": {"x": 12, "y": 71, "w": 12, "h": 7},
-      "targets": [{"expr": "cloudflare_ip_ranges_match", "format": "table", "instant": true, "refId": "A"}],
-      "transformations": [{"id": "labelsToFields", "options": {"mode": "columns"}}],
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}}}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "title": "Cloudflare 托管与官方 CIDR",
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "expr": "cloudflare_ip_ranges_match",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value": "一致状态"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
     }
-  ]
+  ],
+  "description": "服务、域名、端口、容器、配置漂移和发布状态的资产视图。",
+  "editable": false,
+  "graphTooltip": 1
 }

@@ -97,6 +97,8 @@ services:
       - /var/log/grafana:rw,noexec,nosuid,size=16m
     env_file:
       - /etc/observability/grafana.env
+    environment:
+      GF_USERS_DEFAULT_LANGUAGE: zh-Hans
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

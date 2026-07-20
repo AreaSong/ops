@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-app-health",
-  "title": "LosAngeles App and Business Health",
+  "title": "应用与业务健康",
   "tags": [
     "LosAngeles",
     "app",
@@ -17,12 +17,25 @@
   },
   "panels": [
     {
-      "id": 1,
-      "type": "stat",
-      "title": "App and business probe success",
+      "id": 11,
+      "type": "row",
+      "title": "可用性概览",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "应用与业务探测状态",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
         "w": 12,
         "h": 6
       },
@@ -48,7 +61,22 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -70,10 +98,10 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "HTTP status code",
+      "title": "HTTP 状态码",
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 1,
         "w": 12,
         "h": 6
       },
@@ -86,7 +114,24 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 400
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -106,12 +151,25 @@
       }
     },
     {
-      "id": 3,
-      "type": "timeseries",
-      "title": "App and business probe duration",
+      "id": 12,
+      "type": "row",
+      "title": "主动探测",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 7,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "探测响应时间",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -130,18 +188,20 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
       }
     },
     {
       "id": 4,
       "type": "timeseries",
-      "title": "TLS days until expiry",
+      "title": "TLS 证书剩余天数",
       "gridPos": {
         "x": 12,
-        "y": 6,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -154,24 +214,26 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d"
+          "unit": "suffix: 天"
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
       }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Blackbox scrape up",
+      "title": "探测采集状态",
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 16,
         "w": 24,
         "h": 8
       },
@@ -190,18 +252,33 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "真实业务流量",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Business real requests by service/status",
+      "title": "业务请求量（按服务与状态码）",
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 25,
         "w": 24,
         "h": 8
       },
@@ -220,18 +297,20 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
       }
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Business 4xx/5xx by service",
+      "title": "业务错误请求（4xx / 5xx）",
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -255,18 +334,20 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
       }
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Business slow requests >= 2s",
+      "title": "慢请求（≥ 2 秒）",
       "gridPos": {
         "x": 12,
-        "y": 30,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -293,10 +374,10 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Business request time max",
+      "title": "最大请求耗时",
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 41,
         "w": 12,
         "h": 8
       },
@@ -323,22 +404,22 @@
     {
       "id": 10,
       "type": "stat",
-      "title": "Business log metrics freshness",
+      "title": "业务日志指标新鲜度",
       "gridPos": {
         "x": 12,
-        "y": 38,
+        "y": 41,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "time() - business_log_metrics_last_success_timestamp",
-          "legendFormat": "age seconds",
+          "legendFormat": "距上次成功",
           "refId": "A"
         },
         {
           "expr": "business_log_observed_lines_last_5m",
-          "legendFormat": "observed lines",
+          "legendFormat": "近 5 分钟日志行数",
           "refId": "B"
         }
       ],
@@ -346,7 +427,60 @@
         "defaults": {
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "距上次成功"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 120
+                    },
+                    {
+                      "color": "red",
+                      "value": 180
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "近 5 分钟日志行数"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "colorMode": "value",
@@ -363,5 +497,8 @@
         "textMode": "auto"
       }
     }
-  ]
+  ],
+  "description": "应用入口、业务链路、真实请求与日志指标的统一健康视图。",
+  "editable": false,
+  "graphTooltip": 1
 }

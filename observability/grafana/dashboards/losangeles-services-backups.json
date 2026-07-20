@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-services-backups",
-  "title": "LosAngeles Services and Backups",
+  "title": "服务与备份",
   "tags": [
     "LosAngeles",
     "services",
@@ -16,11 +16,24 @@
   },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "HTTPS probe success",
+      "id": 13,
+      "type": "row",
+      "title": "服务状态",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTPS 探测状态",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -38,17 +51,20 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
-      }
+      },
+      "id": 9
     },
     {
       "type": "timeseries",
-      "title": "TLS days until expiry",
+      "title": "TLS 证书剩余天数",
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -60,23 +76,26 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d"
+          "unit": "suffix: 天"
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
-      }
+      },
+      "id": 10
     },
     {
       "type": "timeseries",
-      "title": "Docker expected containers running",
+      "title": "预期容器运行状态",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 9,
         "w": 24,
         "h": 8
       },
@@ -94,17 +113,33 @@
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "width": 240
         }
+      },
+      "id": 11
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "备份新鲜度",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "type": "timeseries",
-      "title": "Backup age hours",
+      "title": "备份距今",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 18,
         "w": 24,
         "h": 8
       },
@@ -116,7 +151,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "h"
+          "unit": "suffix: 小时"
         },
         "overrides": []
       },
@@ -125,28 +160,29 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "id": 12
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Complete backup set age",
+      "title": "完整备份集距今",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 26,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "(time() - backup_set_last_success_timestamp) / 3600",
-          "legendFormat": "manifest age",
+          "legendFormat": "清单距今",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "h"
+          "unit": "suffix: 小时"
         },
         "overrides": []
       },
@@ -160,23 +196,23 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "R2 complete-set verification age",
+      "title": "R2 完整备份集验证距今",
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 26,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "(time() - backup_set_r2_verify_last_success_timestamp) / 3600",
-          "legendFormat": "R2 verify age",
+          "legendFormat": "R2 验证距今",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "h"
+          "unit": "suffix: 小时"
         },
         "overrides": []
       },
@@ -188,24 +224,37 @@
       }
     },
     {
-      "id": 7,
-      "type": "timeseries",
-      "title": "Complete-set artifact counts",
+      "id": 15,
+      "type": "row",
+      "title": "备份完整性",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "完整备份集文件数",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "backup_set_artifacts",
-          "legendFormat": "local manifest",
+          "legendFormat": "本地清单",
           "refId": "A"
         },
         {
           "expr": "backup_set_r2_verify_artifacts",
-          "legendFormat": "R2 verified",
+          "legendFormat": "R2 已验证",
           "refId": "B"
         }
       ],
@@ -225,22 +274,22 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Backup set span and R2 verification duration",
+      "title": "备份集跨度与 R2 验证耗时",
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 35,
         "w": 12,
         "h": 8
       },
       "targets": [
         {
           "expr": "backup_set_artifact_span_seconds",
-          "legendFormat": "artifact span",
+          "legendFormat": "文件时间跨度",
           "refId": "A"
         },
         {
           "expr": "backup_set_r2_verify_duration_seconds",
-          "legendFormat": "R2 verify duration",
+          "legendFormat": "R2 验证耗时",
           "refId": "B"
         }
       ],
@@ -257,5 +306,8 @@
         }
       }
     }
-  ]
+  ],
+  "description": "服务入口、容器运行状态与备份完整性。",
+  "editable": false,
+  "graphTooltip": 1
 }

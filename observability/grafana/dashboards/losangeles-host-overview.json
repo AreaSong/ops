@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-host-overview",
-  "title": "LosAngeles Host Overview",
+  "title": "主机资源总览",
   "tags": [
     "LosAngeles",
     "node"
@@ -15,11 +15,24 @@
   },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "CPU usage",
+      "id": 7,
+      "type": "row",
+      "title": "计算资源",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU 使用率",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -40,14 +53,15 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "id": 1
     },
     {
       "type": "timeseries",
-      "title": "Memory usage",
+      "title": "内存使用率",
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -68,14 +82,57 @@
           "displayMode": "list",
           "placement": "bottom"
         }
+      },
+      "id": 2
+    },
+    {
+      "type": "timeseries",
+      "title": "1 分钟平均负载",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "node_load1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "id": 4
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "存储资源",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "type": "timeseries",
-      "title": "Disk usage by mount",
+      "title": "磁盘使用率（按挂载点）",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 18,
         "w": 24,
         "h": 8
       },
@@ -96,42 +153,28 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "id": 3
     },
     {
-      "type": "timeseries",
-      "title": "Load average 1m",
+      "id": 9,
+      "type": "row",
+      "title": "网络流量",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 16,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "expr": "node_load1",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
+        "y": 26,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "type": "timeseries",
-      "title": "Network receive",
+      "title": "网络接收速率",
       "gridPos": {
-        "x": 12,
-        "y": 16,
+        "x": 0,
+        "y": 27,
         "w": 12,
         "h": 8
       },
@@ -152,14 +195,15 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "id": 5
     },
     {
       "type": "timeseries",
-      "title": "Network transmit",
+      "title": "网络发送速率",
       "gridPos": {
-        "x": 0,
-        "y": 24,
+        "x": 12,
+        "y": 27,
         "w": 12,
         "h": 8
       },
@@ -180,7 +224,11 @@
           "displayMode": "list",
           "placement": "bottom"
         }
-      }
+      },
+      "id": 6
     }
-  ]
+  ],
+  "description": "主机 CPU、内存、磁盘、负载和网络资源概览。",
+  "editable": false,
+  "graphTooltip": 1
 }

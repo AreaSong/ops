@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-datastores",
-  "title": "LosAngeles Datastores",
+  "title": "数据库与缓存",
   "tags": [
     "LosAngeles",
     "postgres",
@@ -16,12 +16,25 @@
   },
   "panels": [
     {
-      "id": 1,
-      "type": "timeseries",
-      "title": "Postgres exporter up",
+      "id": 9,
+      "type": "row",
+      "title": "PostgreSQL 数据库",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "PostgreSQL 采集状态",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -47,10 +60,10 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Postgres connections %",
+      "title": "PostgreSQL 连接使用率",
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 1,
         "w": 12,
         "h": 8
       },
@@ -76,10 +89,10 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Postgres database size",
+      "title": "PostgreSQL 数据库大小",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -105,10 +118,10 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Postgres deadlocks 5m",
+      "title": "PostgreSQL 死锁（5 分钟）",
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 9,
         "w": 12,
         "h": 8
       },
@@ -132,12 +145,25 @@
       }
     },
     {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Redis exporter up",
+      "id": 10,
+      "type": "row",
+      "title": "Redis 缓存",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Redis 采集状态",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
         "w": 12,
         "h": 8
       },
@@ -163,10 +189,10 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Redis memory used",
+      "title": "Redis 内存使用量",
       "gridPos": {
         "x": 12,
-        "y": 16,
+        "y": 18,
         "w": 12,
         "h": 8
       },
@@ -192,10 +218,10 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Redis commands per second",
+      "title": "Redis 每秒命令数",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -221,10 +247,10 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Redis keys by DB",
+      "title": "Redis 键数量（按 DB）",
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -247,5 +273,8 @@
         }
       }
     }
-  ]
+  ],
+  "description": "PostgreSQL 与 Redis 的可用性、容量和关键运行指标。",
+  "editable": false,
+  "graphTooltip": 1
 }

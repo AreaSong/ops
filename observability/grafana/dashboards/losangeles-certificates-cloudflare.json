@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-certificates-cloudflare",
-  "title": "LosAngeles Certificates and Cloudflare",
+  "title": "证书与 Cloudflare",
   "tags": [
     "LosAngeles",
     "certificates",
@@ -16,12 +16,25 @@
   },
   "panels": [
     {
-      "id": 1,
-      "type": "stat",
-      "title": "Origin cert days until expiry",
+      "id": 6,
+      "type": "row",
+      "title": "证书状态",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "源站证书剩余天数",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
         "w": 8,
         "h": 6
       },
@@ -34,7 +47,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d",
+          "unit": "suffix: 天",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -77,10 +90,10 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Origin cert check success",
+      "title": "源站证书检查状态",
       "gridPos": {
         "x": 8,
-        "y": 0,
+        "y": 1,
         "w": 8,
         "h": 6
       },
@@ -106,7 +119,22 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -128,17 +156,17 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Origin cert metrics age",
+      "title": "证书指标新鲜度",
       "gridPos": {
         "x": 16,
-        "y": 0,
+        "y": 1,
         "w": 8,
         "h": 6
       },
       "targets": [
         {
           "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
-          "legendFormat": "age seconds",
+          "legendFormat": "距上次成功",
           "refId": "A"
         }
       ],
@@ -164,12 +192,25 @@
       }
     },
     {
-      "id": 4,
-      "type": "timeseries",
-      "title": "Origin cert days until expiry trend",
+      "id": 7,
+      "type": "row",
+      "title": "到期趋势",
+      "collapsed": false,
+      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 7,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "源站证书到期趋势",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -182,7 +223,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d"
+          "unit": "suffix: 天"
         },
         "overrides": []
       },
@@ -196,10 +237,10 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Public TLS days until expiry",
+      "title": "公开 TLS 证书剩余天数",
       "gridPos": {
         "x": 12,
-        "y": 6,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -212,7 +253,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d"
+          "unit": "suffix: 天"
         },
         "overrides": []
       },
@@ -223,5 +264,8 @@
         }
       }
     }
-  ]
+  ],
+  "description": "源站证书、公开 TLS 证书和 Cloudflare 相关检查。",
+  "editable": false,
+  "graphTooltip": 1
 }
