@@ -29,6 +29,7 @@ EXPECTED_TITLES = {
     "资产与运行配置",
     "服务与备份",
     "Sub2API SLO 与容量",
+    "流量审计",
 }
 
 

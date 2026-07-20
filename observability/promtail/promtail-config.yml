@@ -98,3 +98,18 @@ scrape_configs:
           job: auditd
           host: LosAngeles
           __path__: /var/log/audit/audit.log
+
+  - job_name: xray_access
+    pipeline_stages:
+      - regex:
+          expression: '\[(?P<inbound>[^\s\]]+) -> (?P<outbound>[^\s\]]+)\] email: (?P<email>\S+)'
+      - labels:
+          outbound:
+          email:
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: xray_access
+          host: LosAngeles
+          __path__: /var/log/xray/*.log

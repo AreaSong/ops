@@ -27,6 +27,7 @@
       - { name: write-fail2ban-enriched-log.py, mode: "0755" }
       - { name: write-security-metrics.sh, mode: "0755" }
       - { name: write-sub2api-capacity-metrics.sh, mode: "0755" }
+      - { name: write-xray-traffic-metrics.sh, mode: "0755" }
       - { name: prune-docker-build-cache.sh, mode: "0755" }
     shell_collector_names:
       - write-daily-ops-audit.sh
@@ -35,6 +36,7 @@
       - write-cloudflare-origin-cert-metrics.sh
       - write-security-metrics.sh
       - write-sub2api-capacity-metrics.sh
+      - write-xray-traffic-metrics.sh
       - prune-docker-build-cache.sh
     cron_files:
       - ops-daily-ops-audit
@@ -47,6 +49,7 @@
       - ops-fail2ban-enriched
       - ops-security-metrics
       - ops-sub2api-capacity-metrics
+      - ops-xray-traffic-metrics
       - ops-docker-build-cache-prune
     alertmanager_github_cron_files:
       - ops-alertmanager-github-issues

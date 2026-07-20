@@ -30,3 +30,14 @@
     copytruncate
     create 0640 root adm
 }
+
+/var/log/xray/*.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0644 root adm
+}

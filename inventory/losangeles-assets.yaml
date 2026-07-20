@@ -77,6 +77,11 @@ services:
       - { bind: 127.0.0.1, host_port: 11111, protocol: tcp, exposure: loopback }
       - { bind: 127.0.0.1, host_port: 62789, protocol: tcp, exposure: loopback }
     backup: { required: true, jobs: [backup-configs] }
+    observability:
+      log_jobs: [xray_access]
+      prometheus_jobs: [node]
+      dashboards: [losangeles-xray-traffic-audit]
+      notes: "流量审计：access log 写 /var/log/xray/access.log 经 Promtail 入 Loki（目的地/用户/时间线完整）；路由按 geosite 分桶到 out-* 出站标签，出站字节经 xray api statsquery(:62789) 采成 xray_outbound_traffic_bytes_total；仅转发不含加密内容。"
 
   - service_id: resume-jadeai
     name: Resume JadeAI

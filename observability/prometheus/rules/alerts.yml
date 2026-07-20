@@ -693,6 +693,31 @@ groups:
         annotations:
           summary: "sub2api capacity symptom metrics are stale"
           description: "The Docker log symptom collector missed its five-minute cadence for more than one full cycle (11 minutes)."
+
+  - name: xray_traffic_audit_alerts
+    rules:
+      - alert: XrayTrafficMetricsStale
+        expr: absent(xray_traffic_metrics_last_run_timestamp) or time() - xray_traffic_metrics_last_run_timestamp > 300
+        for: 10m
+        labels:
+          severity: warning
+          scope: business
+          service: x-ui
+        annotations:
+          summary: "xray traffic audit metrics are stale"
+          description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
+
+      - alert: XrayTrafficStatsQueryFailed
+        expr: xray_traffic_metrics_check_success == 0
+        for: 10m
+        labels:
+          severity: warning
+          scope: business
+          service: x-ui
+        annotations:
+          summary: "xray statsquery API is failing"
+          description: "The collector cannot read outbound traffic counters from the xray API on 127.0.0.1:62789."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
 
       - alert: Sub2apiLogCheckFailed

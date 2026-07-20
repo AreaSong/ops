@@ -29,6 +29,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
                 "ops-fail2ban-enriched",
                 "ops-security-metrics",
                 "ops-sub2api-capacity-metrics",
+                "ops-xray-traffic-metrics",
                 "ops-docker-build-cache-prune",
             },
         )
