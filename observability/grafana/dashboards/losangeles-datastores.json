@@ -1,6 +1,7 @@
 {
   "uid": "losangeles-datastores",
   "title": "数据库与缓存",
+  "description": "高密度：PG/Redis KPI 灯 + 压缩趋势。",
   "tags": [
     "LosAngeles",
     "postgres",
@@ -8,17 +9,19 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
     "to": "now"
   },
+  "editable": false,
+  "graphTooltip": 1,
   "panels": [
     {
-      "id": 9,
+      "id": 100,
       "type": "row",
-      "title": "PostgreSQL 数据库",
+      "title": "即时 KPI",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -29,18 +32,19 @@
       }
     },
     {
-      "id": 1,
-      "type": "timeseries",
-      "title": "PostgreSQL 采集状态",
+      "id": 50,
+      "type": "stat",
+      "title": "PG up",
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 12,
-        "h": 8
+        "w": 4,
+        "h": 3
       },
       "targets": [
         {
-          "expr": "up{job=\"postgres\",instance=~\"$instance\"}",
+          "expr": "min(up{job=\"postgres\",instance=~\"$instance\"}) or vector(0)",
+          "legendFormat": "PG up",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -50,14 +54,401 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 51,
+      "type": "stat",
+      "title": "Redis up",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "min(up{job=\"redis\",instance=~\"$instance\"}) or vector(0)",
+          "legendFormat": "Redis up",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 52,
+      "type": "stat",
+      "title": "PG 连接%",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(sum(pg_stat_activity_count{instance=~\"$instance\"}) / sum(pg_settings_max_connections{instance=~\"$instance\"})) * 100",
+          "legendFormat": "PG 连接%",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 53,
+      "type": "stat",
+      "title": "Redis 内存",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "sum(redis_memory_used_bytes{instance=~\"$instance\"})",
+          "legendFormat": "Redis 内存",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 54,
+      "type": "stat",
+      "title": "Redis 命令/s",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(redis_commands_processed_total{instance=~\"$instance\"}[5m]))",
+          "legendFormat": "Redis 命令/s",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 55,
+      "type": "stat",
+      "title": "PG 死锁 5m",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(pg_stat_database_deadlocks{instance=~\"$instance\"}[5m])) or vector(0)",
+          "legendFormat": "PG 死锁 5m",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "PostgreSQL",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "PG 采集 up",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"postgres\",instance=~\"$instance\"}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -68,12 +459,12 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "PostgreSQL 连接使用率",
+      "title": "连接使用率 %",
       "gridPos": {
-        "x": 12,
-        "y": 1,
-        "w": 12,
-        "h": 8
+        "x": 8,
+        "y": 5,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -82,19 +473,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent"
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -105,12 +503,12 @@
     {
       "id": 3,
       "type": "timeseries",
-      "title": "PostgreSQL 数据库大小",
+      "title": "库大小",
       "gridPos": {
-        "x": 0,
-        "y": 9,
-        "w": 12,
-        "h": 8
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -119,19 +517,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{datname}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -142,12 +547,12 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "PostgreSQL 死锁（5 分钟）",
+      "title": "死锁 5m",
       "gridPos": {
-        "x": 12,
-        "y": 9,
-        "w": 12,
-        "h": 8
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 4
       },
       "targets": [
         {
@@ -156,19 +561,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -179,12 +591,12 @@
     {
       "id": 10,
       "type": "row",
-      "title": "Redis 缓存",
+      "title": "Redis",
       "collapsed": false,
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 14,
         "w": 24,
         "h": 1
       }
@@ -192,12 +604,12 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Redis 采集状态",
+      "title": "Redis up",
       "gridPos": {
         "x": 0,
-        "y": 18,
-        "w": 12,
-        "h": 8
+        "y": 15,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -206,19 +618,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -229,12 +648,12 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Redis 内存使用量",
+      "title": "内存",
       "gridPos": {
-        "x": 12,
-        "y": 18,
-        "w": 12,
-        "h": 8
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -243,19 +662,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -266,12 +692,12 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Redis 每秒命令数",
+      "title": "命令/s",
       "gridPos": {
-        "x": 0,
-        "y": 26,
-        "w": 12,
-        "h": 8
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -280,19 +706,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "ops",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -303,12 +736,12 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Redis 键数量（按 DB）",
+      "title": "键数量",
       "gridPos": {
-        "x": 12,
-        "y": 26,
-        "w": 12,
-        "h": 8
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 5
       },
       "targets": [
         {
@@ -317,19 +750,26 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{db}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -338,9 +778,6 @@
       }
     }
   ],
-  "description": "PostgreSQL 与 Redis 的可用性、容量和关键运行指标。",
-  "editable": false,
-  "graphTooltip": 1,
   "templating": {
     "list": [
       {

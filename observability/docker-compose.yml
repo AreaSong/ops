@@ -102,6 +102,8 @@ services:
       - /etc/observability/grafana.env
     environment:
       GF_USERS_DEFAULT_LANGUAGE: zh-Hans
+      # Provisioned NOC home (file provider path inside container)
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/losangeles-service-overview.json
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

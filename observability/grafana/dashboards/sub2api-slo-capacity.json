@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -37,11 +37,11 @@
         "x": 0,
         "y": 1,
         "w": 6,
-        "h": 6
+        "h": 3
       },
       "targets": [
         {
-          "expr": "service:synthetic_availability:ratio_30d{service=\"sub2api\"}",
+          "expr": "last_over_time(service:synthetic_availability:ratio_30d{service=\"sub2api\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -101,11 +101,11 @@
         "x": 6,
         "y": 1,
         "w": 6,
-        "h": 6
+        "h": 3
       },
       "targets": [
         {
-          "expr": "service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\"}",
+          "expr": "last_over_time(service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -165,11 +165,11 @@
         "x": 12,
         "y": 1,
         "w": 6,
-        "h": 6
+        "h": 3
       },
       "targets": [
         {
-          "expr": "service:synthetic_error_budget_remaining:ratio_30d{service=\"sub2api\"}",
+          "expr": "last_over_time(service:synthetic_error_budget_remaining:ratio_30d{service=\"sub2api\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -229,7 +229,7 @@
         "x": 18,
         "y": 1,
         "w": 6,
-        "h": 6
+        "h": 3
       },
       "targets": [
         {
@@ -304,7 +304,7 @@
         "x": 0,
         "y": 8,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -344,7 +344,7 @@
         "x": 12,
         "y": 8,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -401,7 +401,7 @@
         "x": 0,
         "y": 16,
         "w": 24,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -471,7 +471,7 @@
         "x": 0,
         "y": 25,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -520,7 +520,7 @@
         "x": 12,
         "y": 25,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -559,7 +559,7 @@
         "x": 0,
         "y": 33,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
@@ -607,7 +607,7 @@
         "x": 12,
         "y": 33,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {

@@ -1,6 +1,7 @@
 {
   "uid": "losangeles-services-backups",
   "title": "服务与备份",
+  "description": "高密度：服务/备份 KPI + 压缩趋势。",
   "tags": [
     "LosAngeles",
     "services",
@@ -8,17 +9,19 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
     "to": "now"
   },
+  "editable": false,
+  "graphTooltip": 1,
   "panels": [
     {
-      "id": 13,
+      "id": 100,
       "type": "row",
-      "title": "服务状态",
+      "title": "即时 KPI",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -29,13 +32,419 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "HTTPS 探测状态",
+      "id": 50,
+      "type": "stat",
+      "title": "HTTPS 探测",
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 12,
-        "h": 8
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "min(probe_success{job=\"blackbox_https\"}) or vector(0)",
+          "legendFormat": "HTTPS 探测",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 51,
+      "type": "stat",
+      "title": "运行容器数",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "sum(docker_container_running) or vector(0)",
+          "legendFormat": "运行容器数",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 16
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 52,
+      "type": "stat",
+      "title": "备份最旧(h)",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(time() - min(backup_last_success_timestamp)) / 3600",
+          "legendFormat": "备份最旧(h)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 36
+              },
+              {
+                "color": "red",
+                "value": 48
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 53,
+      "type": "stat",
+      "title": "备份集(h)",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(time() - backup_set_last_success_timestamp) / 3600",
+          "legendFormat": "备份集(h)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 36
+              },
+              {
+                "color": "red",
+                "value": 48
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 54,
+      "type": "stat",
+      "title": "R2 校验(h)",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(time() - backup_set_r2_verify_last_success_timestamp) / 3600",
+          "legendFormat": "R2 校验(h)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 36
+              },
+              {
+                "color": "red",
+                "value": 48
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 55,
+      "type": "stat",
+      "title": "证书最少(天)",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "min((probe_ssl_earliest_cert_expiry{job=\"blackbox_https\"} - time()) / 86400)",
+          "legendFormat": "证书最少(天)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: 天",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "服务与证书趋势",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "HTTPS 探测",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -44,37 +453,42 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 240
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         }
       },
-      "id": 9,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       }
     },
     {
+      "id": 10,
       "type": "timeseries",
-      "title": "TLS 证书剩余天数",
+      "title": "TLS 剩余天",
       "gridPos": {
-        "x": 12,
-        "y": 1,
-        "w": 12,
-        "h": 8
+        "x": 8,
+        "y": 5,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -83,37 +497,42 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: 天"
+          "unit": "suffix: 天",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 240
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         }
       },
-      "id": 10,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       }
     },
     {
+      "id": 11,
       "type": "timeseries",
-      "title": "预期容器运行状态",
+      "title": "容器运行",
       "gridPos": {
-        "x": 0,
-        "y": 9,
-        "w": 24,
-        "h": 8
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 5
       },
       "targets": [
         {
@@ -122,24 +541,28 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{name}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "width": 240
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         }
       },
-      "id": 11,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -153,19 +576,20 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 10,
         "w": 24,
         "h": 1
       }
     },
     {
+      "id": 12,
       "type": "timeseries",
-      "title": "备份距今",
+      "title": "各备份距今(h)",
       "gridPos": {
         "x": 0,
-        "y": 18,
-        "w": 24,
-        "h": 8
+        "y": 11,
+        "w": 12,
+        "h": 5
       },
       "targets": [
         {
@@ -174,22 +598,28 @@
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "{{backup}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: 小时"
+          "unit": "suffix: 小时",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
-      "id": 12,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -198,34 +628,40 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "完整备份集距今",
+      "title": "备份集距今(h)",
       "gridPos": {
-        "x": 0,
-        "y": 26,
-        "w": 12,
-        "h": 8
+        "x": 12,
+        "y": 11,
+        "w": 6,
+        "h": 5
       },
       "targets": [
         {
           "expr": "(time() - backup_set_last_success_timestamp) / 3600",
-          "legendFormat": "清单距今",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "清单"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: 小时"
+          "unit": "suffix: 小时",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -236,34 +672,40 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "R2 完整备份集验证距今",
+      "title": "R2 校验距今(h)",
       "gridPos": {
-        "x": 12,
-        "y": 26,
-        "w": 12,
-        "h": 8
+        "x": 18,
+        "y": 11,
+        "w": 6,
+        "h": 5
       },
       "targets": [
         {
           "expr": "(time() - backup_set_r2_verify_last_success_timestamp) / 3600",
-          "legendFormat": "R2 验证距今",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "R2"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: 小时"
+          "unit": "suffix: 小时",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -279,7 +721,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 16,
         "w": 24,
         "h": 1
       }
@@ -287,22 +729,22 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "完整备份集文件数",
+      "title": "备份集文件数",
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 17,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
           "expr": "backup_set_artifacts",
-          "legendFormat": "本地清单",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "本地"
         },
         {
           "expr": "backup_set_r2_verify_artifacts",
@@ -316,14 +758,20 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -334,26 +782,26 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "备份集跨度与 R2 验证耗时",
+      "title": "跨度与验证耗时",
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 17,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
           "expr": "backup_set_artifact_span_seconds",
-          "legendFormat": "文件时间跨度",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "legendFormat": "文件跨度"
         },
         {
           "expr": "backup_set_r2_verify_duration_seconds",
-          "legendFormat": "R2 验证耗时",
+          "legendFormat": "R2 耗时",
           "refId": "B",
           "datasource": {
             "type": "prometheus",
@@ -363,14 +811,20 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         }
       },
       "datasource": {
@@ -379,9 +833,6 @@
       }
     }
   ],
-  "description": "服务入口、容器运行状态与备份完整性。",
-  "editable": false,
-  "graphTooltip": 1,
   "links": [
     {
       "type": "dashboards",

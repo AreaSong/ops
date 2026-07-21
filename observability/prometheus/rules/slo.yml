@@ -21,7 +21,8 @@ groups:
         expr: (1 - avg_over_time(service:synthetic_journey_success:ratio[6h])) / 0.001
 
   - name: synthetic_slo_long_window_recording
-    interval: 1h
+    # 1m so instant queries (5m lookback) do not show intermittent No data
+    interval: 1m
     rules:
       - record: service:synthetic_availability:ratio_30d
         expr: avg_over_time(service:synthetic_journey_success:ratio[30d])

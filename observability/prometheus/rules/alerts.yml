@@ -779,7 +779,7 @@ groups:
         annotations:
           summary: "The latest Account Vault release action failed"
           description: "Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying."
-          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubIssueSyncDisabled
         expr: absent(alertmanager_github_issue_sync_configured) or alertmanager_github_issue_sync_configured == 0
