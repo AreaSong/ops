@@ -63,8 +63,8 @@ services:
     container_name: areaforge-postgres
     restart: unless-stopped
     user: postgres
-    mem_limit: 512m
-    memswap_limit: 768m
+    mem_limit: 256m
+    memswap_limit: 384m
     cpus: "0.75"
     pids_limit: 256
     logging: *json-log-options

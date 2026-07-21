@@ -187,8 +187,8 @@ services:
     image: prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
     container_name: node-exporter
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 192m
+    mem_limit: 64m
+    memswap_limit: 96m
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
@@ -214,8 +214,8 @@ services:
     image: prom/blackbox-exporter:v0.25.0@sha256:b04a9fef4fa086a02fc7fcd8dcdbc4b7b35cc30cdee860fdc6a19dd8b208d63e
     container_name: blackbox-exporter
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 192m
+    mem_limit: 64m
+    memswap_limit: 96m
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
@@ -241,8 +241,8 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f
     container_name: postgres-exporter-sub2api
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 192m
+    mem_limit: 64m
+    memswap_limit: 96m
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
@@ -268,8 +268,8 @@ services:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1@sha256:e96064f876226d94bb6ce48a4c4b3dd76edba91168ec1ab024e5c4b959310b0f
     container_name: postgres-exporter-account-vault
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 192m
+    mem_limit: 64m
+    memswap_limit: 96m
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options
@@ -292,8 +292,8 @@ services:
     image: oliver006/redis_exporter:v1.62.0@sha256:c5a968ba5f30bab5e12181cceb89c4ed37cb4fe4d85490b5b66c7cfe4750b5e8
     container_name: redis-exporter-sub2api
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 192m
+    mem_limit: 64m
+    memswap_limit: 96m
     cpus: "0.25"
     pids_limit: 128
     logging: *json-log-options

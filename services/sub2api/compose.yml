@@ -221,8 +221,8 @@ services:
     image: redis:8-alpine@sha256:c5e375abb885e6b2021c0377879e4890bf76f9065b8922ffc113f2b226b9fc17
     container_name: sub2api-redis
     restart: unless-stopped
-    mem_limit: 640m
-    memswap_limit: 768m
+    mem_limit: 128m
+    memswap_limit: 192m
     cpus: "0.50"
     pids_limit: 256
     logging: *json-log-options

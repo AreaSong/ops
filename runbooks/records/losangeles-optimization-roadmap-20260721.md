@@ -89,7 +89,7 @@
 | 回滚 | 恢复旧 mem_limit 再 recreate |
 | 验收 | SwapUsed 下降趋势；无新 OOM；入口 health 200；`ops_config_drift=0` |
 
-**等待你单独回复「批准执行 2.1」后才改 compose / recreate。**
+**2.1 状态：用户已批准执行（2026-07-21）；见 [losangeles-mem-limit-tighten-20260721.md](losangeles-mem-limit-tighten-20260721.md)。**
 
 ### 批次 3 — D 安全深化
 

@@ -13,8 +13,8 @@ services:
   app:
     image: twwch/jadeai@sha256:7c714e104d6110aaafa135a6936af3735398c83c479549b467d22fc9c0ab5917
     restart: unless-stopped
-    mem_limit: 1024m
-    memswap_limit: 1280m
+    mem_limit: 384m
+    memswap_limit: 512m
     cpus: "1.00"
     pids_limit: 768
     logging: *json-log-options

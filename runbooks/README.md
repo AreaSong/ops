@@ -58,6 +58,7 @@
 | xray 流量审计 | [records/losangeles-xray-traffic-audit.md](records/losangeles-xray-traffic-audit.md) |
 | x-ui TCP/Nginx 调优 | [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md) |
 | 优化路线图（A→B 默认路径） | [records/losangeles-optimization-roadmap-20260721.md](records/losangeles-optimization-roadmap-20260721.md) |
+| 内存 limit 收敛 | [records/losangeles-mem-limit-tighten-20260721.md](records/losangeles-mem-limit-tighten-20260721.md) |
 
 ### 恢复演练记录
 

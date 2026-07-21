@@ -72,8 +72,8 @@ services:
   postgres:
     image: postgres:15-alpine@sha256:cd17e2ac98240fce1541ad2a803b34009b4eea5aec8a832363cdc7eca62e722e
     restart: unless-stopped
-    mem_limit: 512m
-    memswap_limit: 768m
+    mem_limit: 256m
+    memswap_limit: 384m
     cpus: "0.75"
     pids_limit: 512
     logging: *json-log-options
