@@ -2,7 +2,7 @@
 
 日期：2026-07-18
 范围：LosAngeles 单机生产服务器
-状态：实施中；本地实现与验证不等于生产完成
+状态：大部分已上生产；**剩余阻塞项见下文「2026-07-21 刷新」**。权威下一步见 [losangeles-optimization-roadmap-20260721.md](losangeles-optimization-roadmap-20260721.md)。
 
 ## 1. 目标与边界
 
@@ -11,6 +11,19 @@
 验收窗口只使用 30、60、120 分钟。24、48、72 小时验收已按用户要求取消，不得重新作为完成门禁。
 
 ## 2. 权威状态
+
+### 2026-07-21 刷新（只读回验）
+
+| 项目 | 结论 |
+| --- | --- |
+| 资产 / 漂移 / cron / 业务日志指标 | 生产 textfile 新鲜；`ops_config_drift > 0` 无序列 |
+| Alertmanager → GitHub Issue | 已启用（PAT 2026-08-19 到期需轮换） |
+| Loki retention | 720h / 30 天（非原计划 7 天） |
+| Cloudflare-only 源站 | `resume`/`sorryiossearch`/`monitor`/`forge` 已生效；台账 `observed_origin_policy` 已晋升 |
+| Cloudflare Access（Grafana） | **仍未创建**（本轮剩余主阻塞） |
+| Account Vault GHCR digest 发布 | 仍按原高风险门禁单项推进 |
+
+### 2026-07-18 原表（历史）
 
 | 项目 | 本地实现 | 本地验证 | 生产部署 | 生产回验 |
 | --- | --- | --- | --- | --- |

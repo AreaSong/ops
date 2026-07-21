@@ -249,7 +249,7 @@ routes:
   - service_id: resume-jadeai
     hostname: resume.areasong.top
     cloudflare_mode: proxied
-    observed_origin_policy: direct
+    observed_origin_policy: cloudflare-only
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/cdn.resume.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:2082"]
@@ -257,7 +257,7 @@ routes:
   - service_id: account-vault-web
     hostname: sorryiossearch.areasong.top
     cloudflare_mode: proxied
-    observed_origin_policy: direct
+    observed_origin_policy: cloudflare-only
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/cdn.sorryiossearch.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:8392"]
@@ -265,7 +265,7 @@ routes:
   - service_id: observability-stack
     hostname: monitor.areasong.top
     cloudflare_mode: proxied
-    observed_origin_policy: direct
+    observed_origin_policy: cloudflare-only
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/monitor.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:3000"]
@@ -273,7 +273,7 @@ routes:
   - service_id: areaforge-web
     hostname: forge.areasong.top
     cloudflare_mode: proxied
-    observed_origin_policy: direct
+    observed_origin_policy: cloudflare-only
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/forge.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:3020"]

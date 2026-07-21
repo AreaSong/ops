@@ -83,7 +83,7 @@
 | --- | --- | --- | --- |
 | `monitor.areasong.top` Access Application | self-hosted；运维邮箱 OTP allowlist；8 小时会话 | Cloudflare One 控制面只读确认当前没有任何 Access Application | 待创建后完成浏览器 OTP 验证 |
 | 外部监控 service token | 仅允许 GitHub Actions 读取 Grafana health；最小范围；有 owner/到期/轮换 | 控制面只读确认当前没有 service token | 待创建、写入 Actions secrets 并完成带/不带 token 对照探针 |
-| `resume` / `sorryiossearch` / `monitor` / `forge` 源站 | Nginx 仅允许 Cloudflare 官方 IPv4/IPv6 | 事务式 Ansible playbook 已在本地完成；尚未生产执行 | 待单项确认后验证 Cloudflare 路径可达、源站直连返回 403 |
+| `resume` / `sorryiossearch` / `monitor` / `forge` 源站 | Nginx 仅允许 Cloudflare 官方 IPv4/IPv6 | **生产已生效**（2026-07-21 只读回验）：站点 include `cloudflare-origin-only.conf`；本机 `--resolve` 直连返回 403；Cloudflare 公网路径可达（monitor 302 / forge 307） | 台账 `observed_origin_policy` 已晋升为 `cloudflare-only`；`cpa` / `log` 仍为 DNS-only + `direct` |
 
 Access 配置和 token 创建属于外部控制面写操作。token secret 只在创建时显示，不进入本台账；台账只记录名称、用途、owner、创建日、到期日、轮换日和 GitHub secret 名称。
 
