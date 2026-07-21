@@ -18,6 +18,7 @@ tests:
             exp_annotations:
               summary: "The auditd-to-Loki pipeline is stale"
               description: "No recent fixed audit pipeline probe is visible in Loki. Check auditd, file permissions, Promtail positions, and Loki ingestion."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: continuously fresh audit probe timestamp remains healthy
     interval: 1m
@@ -43,3 +44,4 @@ tests:
             exp_annotations:
               summary: "auditd events are not reaching Loki"
               description: "The fixed non-sensitive audit probe could not be emitted, queried, or observed within five minutes."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -55,7 +55,7 @@
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -115,9 +115,9 @@
       "type": "stat",
       "title": "Firing 告警",
       "gridPos": {
-        "x": 3,
+        "x": 2,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -181,9 +181,9 @@
       "type": "stat",
       "title": "停摆容器",
       "gridPos": {
-        "x": 6,
+        "x": 4,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -243,9 +243,9 @@
       "type": "stat",
       "title": "配置漂移",
       "gridPos": {
-        "x": 9,
+        "x": 6,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -305,9 +305,9 @@
       "type": "stat",
       "title": "备份最旧(h)",
       "gridPos": {
-        "x": 12,
+        "x": 8,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -367,13 +367,79 @@
       }
     },
     {
+      "id": 9,
+      "type": "stat",
+      "title": "R2 同步(h)",
+      "gridPos": {
+        "x": 10,
+        "y": 1,
+        "w": 2,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(time() - r2_backup_last_success_timestamp) / 3600",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "R2 同步(h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 24
+              },
+              {
+                "color": "red",
+                "value": 36
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "id": 6,
       "type": "stat",
       "title": "R2 校验(h)",
       "gridPos": {
-        "x": 15,
+        "x": 12,
         "y": 1,
-        "w": 3,
+        "w": 2,
         "h": 3
       },
       "targets": [
@@ -433,13 +499,79 @@
       }
     },
     {
+      "id": 10,
+      "type": "stat",
+      "title": "恢复演练(天)",
+      "gridPos": {
+        "x": 14,
+        "y": 1,
+        "w": 2,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(time() - areaforge_restore_drill_last_success_timestamp) / 86400",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "恢复演练(天)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 28
+              },
+              {
+                "color": "red",
+                "value": 35
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "id": 7,
       "type": "stat",
       "title": "最低错误预算",
       "gridPos": {
-        "x": 18,
+        "x": 16,
         "y": 1,
-        "w": 3,
+        "w": 4,
         "h": 3
       },
       "targets": [
@@ -503,9 +635,9 @@
       "type": "stat",
       "title": "xray 采集",
       "gridPos": {
-        "x": 21,
+        "x": 20,
         "y": 1,
-        "w": 3,
+        "w": 4,
         "h": 3
       },
       "targets": [

@@ -8,6 +8,7 @@ groups:
           severity: critical
         annotations:
           summary: "Complete backup set manifest is missing or stale"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupSetManifestInvalid
         expr: backup_set_artifacts != 9 or backup_set_artifact_span_seconds > 3 * 3600
@@ -16,6 +17,7 @@ groups:
           severity: critical
         annotations:
           summary: "Latest backup set is incomplete or spans too much time"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupSetVerificationStale
         expr: absent(backup_set_r2_verify_last_success_timestamp) or time() - backup_set_r2_verify_last_success_timestamp > 36 * 3600
@@ -24,6 +26,7 @@ groups:
           severity: critical
         annotations:
           summary: "Complete R2 backup set verification is missing or stale"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupSetVerificationIncomplete
         expr: backup_set_r2_verify_artifacts != 9
@@ -32,6 +35,7 @@ groups:
           severity: critical
         annotations:
           summary: "Latest R2 backup set verification did not cover all required artifacts"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: AreaForgeRestoreDrillStale
         expr: absent(areaforge_restore_drill_last_success_timestamp) or time() - areaforge_restore_drill_last_success_timestamp > 35 * 86400
@@ -40,6 +44,7 @@ groups:
           severity: warning
         annotations:
           summary: "AreaForge isolated restore drill is missing or older than 35 days"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: ComplianceLogArchiveStale
         expr: compliance_log_archive_configured == 1 and on() (absent(compliance_log_archive_last_success_timestamp) or time() - compliance_log_archive_last_success_timestamp > 36 * 3600)
@@ -49,6 +54,7 @@ groups:
         annotations:
           summary: "Immutable compliance log archive verification is stale"
           description: "The daily audit/auth/Nginx archive has not completed its independent remote read-back within 36 hours."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: ComplianceLogArchiveDayGap
         expr: compliance_log_archive_configured == 1 and on() (absent(compliance_log_archive_day_timestamp) or time() - compliance_log_archive_day_timestamp > 48 * 3600)
@@ -58,6 +64,7 @@ groups:
         annotations:
           summary: "Compliance log archive is missing a recent UTC day"
           description: "The newest verified archive does not cover the previous complete UTC day."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: ComplianceLogArchiveChainIncomplete
         expr: compliance_log_archive_configured == 1 and on() (absent(compliance_log_archive_chain_manifests) or compliance_log_archive_chain_manifests < 1 or absent(compliance_log_archive_append_only_gateway) or compliance_log_archive_append_only_gateway != 1)
@@ -67,3 +74,4 @@ groups:
         annotations:
           summary: "Compliance log archive hash chain or append-only gateway is not verified"
           description: "Do not treat the remote compliance archive as complete until the manifest chain and gateway verification recover."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"

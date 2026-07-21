@@ -20,6 +20,7 @@ tests:
             exp_annotations:
               summary: "Immutable compliance log archive verification is stale"
               description: "The daily audit/auth/Nginx archive has not completed its independent remote read-back within 36 hours."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 31m
         alertname: ComplianceLogArchiveDayGap
         exp_alerts:
@@ -30,6 +31,7 @@ tests:
             exp_annotations:
               summary: "Compliance log archive is missing a recent UTC day"
               description: "The newest verified archive does not cover the previous complete UTC day."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 16m
         alertname: ComplianceLogArchiveChainIncomplete
         exp_alerts:
@@ -40,6 +42,7 @@ tests:
             exp_annotations:
               summary: "Compliance log archive hash chain or append-only gateway is not verified"
               description: "Do not treat the remote compliance archive as complete until the manifest chain and gateway verification recover."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
   - name: disabled archive does not emit archive alerts
     interval: 1m
