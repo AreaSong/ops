@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -33,7 +33,7 @@
     {
       "id": 50,
       "type": "stat",
-      "title": "CPU %",
+      "title": "CPU 使用率",
       "gridPos": {
         "x": 0,
         "y": 1,
@@ -43,7 +43,7 @@
       "targets": [
         {
           "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-          "legendFormat": "CPU %",
+          "legendFormat": "CPU 使用率",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -231,7 +231,7 @@
     {
       "id": 53,
       "type": "stat",
-      "title": "Load1",
+      "title": "1 分钟负载",
       "gridPos": {
         "x": 12,
         "y": 1,
@@ -241,7 +241,7 @@
       "targets": [
         {
           "expr": "node_load1",
-          "legendFormat": "Load1",
+          "legendFormat": "1 分钟负载",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -512,7 +512,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Load1",
+      "title": "1 分钟负载趋势",
       "gridPos": {
         "x": 16,
         "y": 5,

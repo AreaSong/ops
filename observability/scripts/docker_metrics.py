@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 DEFAULT_CONTAINERS = (
@@ -31,6 +32,27 @@ DEFAULT_CONTAINERS = (
     "redis-exporter-sub2api",
 )
 
+CONTAINER_SERVICES = {
+    "resume-jadeai-app-1": "resume-jadeai",
+    "sub2api": "sub2api",
+    "sub2api-redis": "sub2api",
+    "sub2api-postgres": "sub2api",
+    "postgres-exporter-sub2api": "sub2api",
+    "redis-exporter-sub2api": "sub2api",
+    "account-vault-web-1": "account-vault",
+    "account-vault-postgres-1": "account-vault",
+    "postgres-exporter-account-vault": "account-vault",
+    "areaforge-web": "areaforge",
+    "areaforge-postgres": "areaforge",
+    "prometheus": "observability",
+    "grafana": "observability",
+    "alertmanager": "observability",
+    "loki": "observability",
+    "promtail": "observability",
+    "node-exporter": "observability",
+    "blackbox-exporter": "observability",
+}
+
 SIZE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)([A-Za-z]+)$")
 SIZE_FACTORS = {
     "B": 1,
@@ -52,6 +74,7 @@ class ContainerMetrics:
     running: int = 0
     restart_count: int = 0
     oom_killed: int = 0
+    started_at_timestamp_seconds: float = 0
     health: str = "missing"
     memory_limit_configured: float = 0
     cpu_limit_cores: float = 0
@@ -88,6 +111,16 @@ def parse_size(raw: str) -> float:
     return float(match.group(1)) * SIZE_FACTORS[match.group(2)]
 
 
+def parse_started_at(raw: str) -> float:
+    if not raw or raw.startswith("0001-01-01T00:00:00"):
+        return 0
+    normalized = raw.replace("Z", "+00:00")
+    fractional = re.match(r"^(.*\.)(\d+)([+-]\d\d:\d\d)$", normalized)
+    if fractional is not None:
+        normalized = f"{fractional.group(1)}{fractional.group(2)[:6]}{fractional.group(3)}"
+    return datetime.fromisoformat(normalized).timestamp()
+
+
 def inspect_container(name: str) -> ContainerMetrics:
     result = run_docker(["inspect", name])
     if result.returncode != 0:
@@ -101,6 +134,7 @@ def inspect_container(name: str) -> ContainerMetrics:
         running=int(bool(state.get("Running"))),
         restart_count=int(payload.get("RestartCount", 0)),
         oom_killed=int(bool(state.get("OOMKilled"))),
+        started_at_timestamp_seconds=parse_started_at(str(state.get("StartedAt", ""))),
         health=str(health),
         memory_limit_configured=float(host_config.get("Memory") or 0),
         cpu_limit_cores=float(host_config.get("NanoCpus") or 0) / 1_000_000_000,
@@ -140,6 +174,14 @@ def escape_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
+def container_labels(name: str, status: str | None = None) -> str:
+    service = CONTAINER_SERVICES.get(name, name)
+    labels = f'name="{escape_label(name)}",service="{escape_label(service)}"'
+    if status is not None:
+        labels += f',status="{escape_label(status)}"'
+    return labels
+
+
 def emit_family(lines: list[str], name: str, help_text: str, values: list[tuple[str, float]]) -> None:
     lines.extend((f"# HELP {name} {help_text}", f"# TYPE {name} gauge"))
     for labels, value in values:
@@ -159,6 +201,7 @@ def render(metrics: dict[str, ContainerMetrics], check_success: int) -> str:
         ("docker_container_running", "Whether the expected Docker container is running.", "running"),
         ("docker_container_restart_count", "Docker restart count for the container.", "restart_count"),
         ("docker_container_oom_killed", "Whether the container's current state reports OOMKilled.", "oom_killed"),
+        ("docker_container_started_at_timestamp_seconds", "Unix timestamp when the current container instance started.", "started_at_timestamp_seconds"),
         ("docker_container_cpu_limit_cores", "Configured Docker CPU limit in cores.", "cpu_limit_cores"),
         ("docker_container_memory_limit_configured_bytes", "Configured Docker memory limit in bytes.", "memory_limit_configured"),
         ("docker_container_pids_limit", "Configured Docker process limit.", "pids_limit"),
@@ -174,18 +217,18 @@ def render(metrics: dict[str, ContainerMetrics], check_success: int) -> str:
     )
     for metric_name, help_text, attribute in state_definitions:
         values = [
-            (f'name="{escape_label(name)}"', float(getattr(item, attribute)))
+            (container_labels(name), float(getattr(item, attribute)))
             for name, item in metrics.items() if item.known
         ]
         emit_family(lines, metric_name, help_text, values)
     for metric_name, help_text, attribute in runtime_definitions:
         values = [
-            (f'name="{escape_label(name)}"', float(getattr(item, attribute)))
+            (container_labels(name), float(getattr(item, attribute)))
             for name, item in metrics.items() if item.stats_valid
         ]
         emit_family(lines, metric_name, help_text, values)
     health_values = [
-        (f'name="{escape_label(name)}",status="{escape_label(item.health)}"', 1.0)
+        (container_labels(name, item.health), 1.0)
         for name, item in metrics.items() if item.known
     ]
     emit_family(lines, "docker_container_health_status", "Current Docker health state as a one-hot series.", health_values)

@@ -17,6 +17,7 @@ tests:
             exp_annotations:
               summary: Account Vault release evidence metric is missing
               description: Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom.
+              grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
   - interval: 15s
     input_series:
@@ -32,6 +33,7 @@ tests:
               summary: Business warning/error events increased sharply
               description: More than twenty sanitized warning/error events were recorded in one collector run.
               loki_query: '{job="business_errors", host="LosAngeles"}'
+              grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
       - eval_time: 15s
         alertname: BusinessErrorEventsBurst
         exp_alerts: []

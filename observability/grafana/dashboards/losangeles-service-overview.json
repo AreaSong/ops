@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -17,6 +17,38 @@
   },
   "editable": false,
   "graphTooltip": 1,
+  "annotations": {
+    "list": [
+      {
+        "name": "容器部署与重建",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(docker_container_started_at_timestamp_seconds[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "部署/重建 {{name}}",
+        "tagKeys": "service,name"
+      },
+      {
+        "name": "容器自动重启",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "increase(docker_container_restart_count[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "自动重启 {{name}}",
+        "tagKeys": "service,name"
+      }
+    ]
+  },
   "templating": {
     "list": []
   },
@@ -836,7 +868,7 @@
     {
       "id": 42,
       "type": "stat",
-      "title": "OOM",
+      "title": "OOM 异常",
       "gridPos": {
         "x": 8,
         "y": 5,
@@ -846,7 +878,7 @@
       "targets": [
         {
           "expr": "count(docker_container_oom_killed == 1) or vector(0)",
-          "legendFormat": "OOM",
+          "legendFormat": "OOM 异常",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -962,16 +994,20 @@
               "instance 2": true,
               "instance 3": true,
               "job": true,
-              "job 1": true,
-              "job 2": true,
-              "job 3": true,
-              "status": true,
+          "job 1": true,
+          "job 2": true,
+          "job 3": true,
+          "service 1": true,
+          "service 2": true,
+          "service 3": true,
+          "status": true,
               "status 1": true,
               "status 2": true
             },
-            "renameByName": {
-              "name": "容器",
-              "Value #A": "重启次数",
+        "renameByName": {
+          "name": "容器",
+          "service": "服务",
+          "Value #A": "重启次数",
               "Value #B": "健康(1=ok)",
               "Value #C": "OOM"
             }
@@ -1117,7 +1153,7 @@
       }
     },
     {
-      "id": 10,
+      "id": 44,
       "type": "table",
       "title": "服务健康总表",
       "gridPos": {
@@ -1382,7 +1418,7 @@
     {
       "id": 12,
       "type": "stat",
-      "title": "PG/Redis up",
+      "title": "数据库与缓存可用",
       "gridPos": {
         "x": 20,
         "y": 9,
@@ -1392,7 +1428,7 @@
       "targets": [
         {
           "expr": "count(up{job=~\"postgres|redis\"} == 1) or vector(0)",
-          "legendFormat": "PG/Redis up",
+          "legendFormat": "数据库与缓存可用",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -1589,7 +1625,7 @@
     {
       "id": 20,
       "type": "timeseries",
-      "title": "CPU %",
+      "title": "CPU 使用率",
       "gridPos": {
         "x": 0,
         "y": 17,
@@ -1599,7 +1635,7 @@
       "targets": [
         {
           "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
-          "legendFormat": "CPU",
+          "legendFormat": "CPU 使用率",
           "refId": "A",
           "datasource": {
             "type": "prometheus",

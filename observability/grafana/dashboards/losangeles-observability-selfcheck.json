@@ -8,11 +8,43 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "1m",
   "time": {
     "from": "now-24h",
     "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "观测组件部署与重建",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(docker_container_started_at_timestamp_seconds{service=\"observability\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "部署/重建 {{name}}",
+        "tagKeys": "service,name"
+      },
+      {
+        "name": "观测组件自动重启",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "increase(docker_container_restart_count{service=\"observability\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "自动重启 {{name}}",
+        "tagKeys": "service,name"
+      }
+    ]
   },
   "panels": [
     {
@@ -479,6 +511,424 @@
       }
     },
     {
+      "id": 105,
+      "type": "row",
+      "title": "核心组件自监控",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "组件抓取状态",
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "min(up{job=\"grafana\"}) or on() vector(0)",
+          "legendFormat": "Grafana",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"alertmanager\"}) or on() vector(0)",
+          "legendFormat": "Alertmanager",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"blackbox_exporter\"}) or on() vector(0)",
+          "legendFormat": "Blackbox",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"loki\"}) or on() vector(0)",
+          "legendFormat": "Loki",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "组件常驻内存",
+      "gridPos": {
+        "x": 6,
+        "y": 25,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=~\"grafana|alertmanager|blackbox_exporter|loki\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Alertmanager 告警与通知",
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "sum(alertmanager_alerts{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
+          "legendFormat": "活跃告警",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(alertmanager_silences{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
+          "legendFormat": "活跃静默",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(alertmanager_notifications_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时通知",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(alertmanager_notifications_failed_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时失败",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Loki Compactor 与保留清理",
+      "gridPos": {
+        "x": 18,
+        "y": 25,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "min(loki_boltdb_shipper_compactor_running{job=\"loki\"}) or on() vector(0)",
+          "legendFormat": "Compactor",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{job=\"loki\"}) or on() vector(0)",
+          "legendFormat": "Marker 队列",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "((time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"}) / 60 and loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"} > 0) or on() vector(0)",
+          "legendFormat": "距保留成功",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job=\"loki\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时删除",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "异常",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "正常",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "id": 103,
       "type": "row",
       "title": "告警第二通道（GitHub Issue 同步）",
@@ -486,7 +936,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 30,
         "w": 24,
         "h": 1
       }
@@ -497,7 +947,7 @@
       "title": "Issue 同步健康",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 31,
         "w": 12,
         "h": 3
       },
@@ -626,7 +1076,7 @@
       "title": "Issue 同步动作（活跃/新建/更新/关闭）",
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 31,
         "w": 12,
         "h": 7
       },
@@ -693,7 +1143,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 38,
         "w": 24,
         "h": 1
       }
@@ -704,7 +1154,7 @@
       "title": "高频采集器距上次运行（分钟级任务）",
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 39,
         "w": 12,
         "h": 3
       },
@@ -803,7 +1253,7 @@
       "title": "低频任务距上次成功（小时/日级）",
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 39,
         "w": 12,
         "h": 3
       },
@@ -917,7 +1367,7 @@
       }
     }
   ],
-  "description": "监控系统自身的健康：抓取目标、Prometheus 引擎、日志管道、告警第二通道与各采集器新鲜度。",
+  "description": "监控系统自身的健康：抓取目标、Prometheus 引擎、日志管道、核心组件、告警通道与各采集器新鲜度。",
   "editable": false,
   "graphTooltip": 1,
   "templating": {

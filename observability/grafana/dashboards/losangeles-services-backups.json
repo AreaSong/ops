@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -17,6 +17,66 @@
   },
   "editable": false,
   "graphTooltip": 1,
+  "annotations": {
+    "list": [
+      {
+        "name": "本地备份完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(backup_set_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "本地备份完成",
+        "tagKeys": "backup"
+      },
+      {
+        "name": "R2 备份完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "expr": "changes(r2_backup_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "R2 备份完成",
+        "tagKeys": "backup"
+      },
+      {
+        "name": "R2 备份校验完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "purple",
+        "expr": "changes(backup_set_r2_verify_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "R2 备份校验完成",
+        "tagKeys": "backup"
+      },
+      {
+        "name": "恢复演练完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "AreaForge 恢复演练完成",
+        "tagKeys": "service"
+      }
+    ]
+  },
   "panels": [
     {
       "id": 100,

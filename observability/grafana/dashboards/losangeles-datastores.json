@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -34,7 +34,7 @@
     {
       "id": 50,
       "type": "stat",
-      "title": "PG up",
+      "title": "PostgreSQL 可用",
       "gridPos": {
         "x": 0,
         "y": 1,
@@ -44,7 +44,7 @@
       "targets": [
         {
           "expr": "min(up{job=\"postgres\",instance=~\"$instance\"}) or vector(0)",
-          "legendFormat": "PG up",
+          "legendFormat": "PostgreSQL 可用",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -96,7 +96,7 @@
     {
       "id": 51,
       "type": "stat",
-      "title": "Redis up",
+      "title": "Redis 可用",
       "gridPos": {
         "x": 4,
         "y": 1,
@@ -106,7 +106,7 @@
       "targets": [
         {
           "expr": "min(up{job=\"redis\",instance=~\"$instance\"}) or vector(0)",
-          "legendFormat": "Redis up",
+          "legendFormat": "Redis 可用",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -402,7 +402,7 @@
     {
       "id": 9,
       "type": "row",
-      "title": "PostgreSQL",
+      "title": "PostgreSQL 数据库",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -591,7 +591,7 @@
     {
       "id": 10,
       "type": "row",
-      "title": "Redis",
+      "title": "Redis 缓存",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -604,7 +604,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Redis up",
+      "title": "Redis 可用性趋势",
       "gridPos": {
         "x": 0,
         "y": 15,

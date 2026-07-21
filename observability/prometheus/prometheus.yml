@@ -21,6 +21,7 @@ scrape_configs:
           - prometheus:9090
         labels:
           instance: LosAngeles
+          service: prometheus
 
   - job_name: node
     static_configs:
@@ -28,6 +29,12 @@ scrape_configs:
           - host.docker.internal:9100
         labels:
           instance: LosAngeles
+    metric_relabel_configs:
+      - source_labels:
+          - service
+        regex: ^$
+        target_label: service
+        replacement: host
 
   - job_name: loki
     static_configs:
@@ -35,6 +42,7 @@ scrape_configs:
           - loki:3100
         labels:
           instance: LosAngeles
+          service: loki
 
   - job_name: promtail
     static_configs:
@@ -42,6 +50,31 @@ scrape_configs:
           - promtail:9080
         labels:
           instance: LosAngeles
+          service: promtail
+
+  - job_name: grafana
+    static_configs:
+      - targets:
+          - grafana:3000
+        labels:
+          instance: LosAngeles
+          service: grafana
+
+  - job_name: alertmanager
+    static_configs:
+      - targets:
+          - alertmanager:9093
+        labels:
+          instance: LosAngeles
+          service: alertmanager
+
+  - job_name: blackbox_exporter
+    static_configs:
+      - targets:
+          - blackbox-exporter:9115
+        labels:
+          instance: LosAngeles
+          service: blackbox-exporter
 
   - job_name: blackbox_https
     metrics_path: /probe
@@ -53,6 +86,7 @@ scrape_configs:
           - https://log.areasong.top/
         labels:
           instance: LosAngeles
+          service: grafana
     relabel_configs:
       - source_labels:
           - __address__

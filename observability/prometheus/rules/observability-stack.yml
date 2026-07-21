@@ -1,0 +1,120 @@
+groups:
+  - name: observability_component_alerts
+    rules:
+      - alert: GrafanaMetricsTargetDown
+        expr: up{job="grafana"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: grafana
+        annotations:
+          summary: "Grafana metrics endpoint is unavailable"
+          description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerMetricsTargetDown
+        expr: up{job="alertmanager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager metrics endpoint is unavailable"
+          description: "Prometheus cannot scrape Alertmanager; active alerts remain visible in Prometheus but notifications may not be delivered."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: BlackboxExporterMetricsTargetDown
+        expr: up{job="blackbox_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: blackbox-exporter
+        annotations:
+          summary: "Blackbox Exporter metrics endpoint is unavailable"
+          description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerConfigReloadFailed
+        expr: alertmanager_config_last_reload_successful{job="alertmanager"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager rejected its latest configuration reload"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerNotificationFailures
+        expr: sum by (integration) (increase(alertmanager_notifications_failed_total{job="alertmanager"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: alertmanager
+        annotations:
+          summary: "Alertmanager notification delivery failed: {{ $labels.integration }}"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: BlackboxExporterConfigReloadFailed
+        expr: blackbox_exporter_config_last_reload_successful{job="blackbox_exporter"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: blackbox-exporter
+        annotations:
+          summary: "Blackbox Exporter rejected its latest configuration reload"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+  - name: loki_compactor_alerts
+    rules:
+      - alert: LokiCompactorNotRunning
+        expr: loki_boltdb_shipper_compactor_running{job="loki"} != 1
+        for: 15m
+        labels:
+          severity: critical
+          service: loki
+        annotations:
+          summary: "Loki compactor is not active"
+          description: "The compactor has remained inactive beyond its startup stabilization window; retention and index compaction may be stalled."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: LokiRetentionApplyStalled
+        expr: |
+          (
+            up{job="loki"} == 1
+            unless on (job, instance)
+            loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job="loki"}
+          )
+          or
+          (
+            loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job="loki"} == 0
+            and on (job, instance)
+            time() - process_start_time_seconds{job="loki"} > 3600
+          )
+          or
+          (
+            loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job="loki"} > 0
+            and
+            time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job="loki"} > 3600
+          )
+        for: 30m
+        labels:
+          severity: critical
+          service: loki
+        annotations:
+          summary: "Loki retention has not completed successfully"
+          description: "Loki is up, but retention has not completed within the expected compaction interval and startup allowance."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: LokiRetentionMarkerProcessingStalled
+        expr: |
+          sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{job="loki"}) > 0
+          and on ()
+          sum(increase(loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job="loki"}[6h])) == 0
+        for: 3h
+        labels:
+          severity: critical
+          service: loki
+        annotations:
+          summary: "Loki retention marker queue is not draining"
+          description: "Deletion markers remained queued beyond the configured two-hour delete delay without any successful deletion."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

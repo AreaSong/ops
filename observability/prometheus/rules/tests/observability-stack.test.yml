@@ -1,0 +1,170 @@
+rule_files:
+  - ../observability-stack.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: component metrics targets down
+    interval: 1m
+    input_series:
+      - series: 'up{job="grafana",instance="LosAngeles",service="grafana"}'
+        values: '0+0x5'
+      - series: 'up{job="alertmanager",instance="LosAngeles",service="alertmanager"}'
+        values: '0+0x5'
+      - series: 'up{job="blackbox_exporter",instance="LosAngeles",service="blackbox-exporter"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: GrafanaMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: grafana
+              service: grafana
+              severity: critical
+            exp_annotations:
+              summary: "Grafana metrics endpoint is unavailable"
+              description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 3m
+        alertname: AlertmanagerMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: alertmanager
+              service: alertmanager
+              severity: critical
+            exp_annotations:
+              summary: "Alertmanager metrics endpoint is unavailable"
+              description: "Prometheus cannot scrape Alertmanager; active alerts remain visible in Prometheus but notifications may not be delivered."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 3m
+        alertname: BlackboxExporterMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: blackbox_exporter
+              service: blackbox-exporter
+              severity: critical
+            exp_annotations:
+              summary: "Blackbox Exporter metrics endpoint is unavailable"
+              description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+  - name: component reload and notification failures
+    interval: 1m
+    input_series:
+      - series: 'alertmanager_config_last_reload_successful{job="alertmanager",instance="LosAngeles",service="alertmanager"}'
+        values: '0+0x15'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="LosAngeles",service="alertmanager",integration="email",reason="serverError"}'
+        values: '0+0x5 1+0x10'
+      - series: 'blackbox_exporter_config_last_reload_successful{job="blackbox_exporter",instance="LosAngeles",service="blackbox-exporter"}'
+        values: '0+0x15'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AlertmanagerConfigReloadFailed
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: alertmanager
+              service: alertmanager
+              severity: warning
+            exp_annotations:
+              summary: "Alertmanager rejected its latest configuration reload"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 6m
+        alertname: AlertmanagerNotificationFailures
+        exp_alerts:
+          - exp_labels:
+              integration: email
+              service: alertmanager
+              severity: warning
+            exp_annotations:
+              summary: "Alertmanager notification delivery failed: email"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 6m
+        alertname: BlackboxExporterConfigReloadFailed
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: blackbox_exporter
+              service: blackbox-exporter
+              severity: warning
+            exp_annotations:
+              summary: "Blackbox Exporter rejected its latest configuration reload"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+  - name: loki compactor and retention failures
+    interval: 1m
+    input_series:
+      - series: 'up{job="loki",instance="LosAngeles",service="loki"}'
+        values: '1+0x200'
+      - series: 'process_start_time_seconds{job="loki",instance="LosAngeles",service="loki"}'
+        values: '0+0x200'
+      - series: 'loki_boltdb_shipper_compactor_running{job="loki",instance="LosAngeles",service="loki"}'
+        values: '0+0x200'
+      - series: 'loki_boltdb_shipper_retention_sweeper_marker_files_current{job="loki",instance="LosAngeles",service="loki",from="filesystem_2024-01-01"}'
+        values: '46+0x200'
+      - series: 'loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job="loki",instance="LosAngeles",service="loki",from="filesystem_2024-01-01"}'
+        values: '0+0x200'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: LokiCompactorNotRunning
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: loki
+              service: loki
+              severity: critical
+            exp_annotations:
+              summary: "Loki compactor is not active"
+              description: "The compactor has remained inactive beyond its startup stabilization window; retention and index compaction may be stalled."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 91m
+        alertname: LokiRetentionApplyStalled
+        exp_alerts:
+          - exp_labels:
+              instance: LosAngeles
+              job: loki
+              service: loki
+              severity: critical
+            exp_annotations:
+              summary: "Loki retention has not completed successfully"
+              description: "Loki is up, but retention has not completed within the expected compaction interval and startup allowance."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 181m
+        alertname: LokiRetentionMarkerProcessingStalled
+        exp_alerts:
+          - exp_labels:
+              service: loki
+              severity: critical
+            exp_annotations:
+              summary: "Loki retention marker queue is not draining"
+              description: "Deletion markers remained queued beyond the configured two-hour delete delay without any successful deletion."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+  - name: healthy loki retention remains quiet
+    interval: 1m
+    input_series:
+      - series: 'up{job="loki",instance="LosAngeles",service="loki"}'
+        values: '1+0x70'
+      - series: 'process_start_time_seconds{job="loki",instance="LosAngeles",service="loki"}'
+        values: '0+0x70'
+      - series: 'loki_boltdb_shipper_compactor_running{job="loki",instance="LosAngeles",service="loki"}'
+        values: '1+0x70'
+      - series: 'loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job="loki",instance="LosAngeles",service="loki"}'
+        values: '3000+60x70'
+      - series: 'loki_boltdb_shipper_retention_sweeper_marker_files_current{job="loki",instance="LosAngeles",service="loki",from="filesystem_2024-01-01"}'
+        values: '0+0x70'
+      - series: 'loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job="loki",instance="LosAngeles",service="loki",from="filesystem_2024-01-01"}'
+        values: '0+0x70'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: LokiCompactorNotRunning
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: LokiRetentionApplyStalled
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: LokiRetentionMarkerProcessingStalled
+        exp_alerts: []

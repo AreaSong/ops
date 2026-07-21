@@ -9,11 +9,43 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
     "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "应用部署与重建",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(docker_container_started_at_timestamp_seconds{service!=\"observability\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "部署/重建 {{service}} {{name}}",
+        "tagKeys": "service,name"
+      },
+      {
+        "name": "应用容器自动重启",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "increase(docker_container_restart_count{service!=\"observability\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "自动重启 {{service}} {{name}}",
+        "tagKeys": "service,name"
+      }
+    ]
   },
   "panels": [
     {

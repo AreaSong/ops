@@ -16,6 +16,8 @@ scrape_configs:
         labels:
           job: nginx
           host: LosAngeles
+          instance: LosAngeles
+          service: nginx
           __path__: /var/log/nginx/*.log
 
   - job_name: backup
@@ -25,6 +27,8 @@ scrape_configs:
         labels:
           job: backup
           host: LosAngeles
+          instance: LosAngeles
+          service: backup
           __path__: /var/log/backup/*.log
 
   - job_name: observability
@@ -34,6 +38,8 @@ scrape_configs:
         labels:
           job: observability
           host: LosAngeles
+          instance: LosAngeles
+          service: observability
           __path__: /var/log/observability/*.log
 
   - job_name: business_errors
@@ -58,6 +64,7 @@ scrape_configs:
         labels:
           job: business_errors
           host: LosAngeles
+          instance: LosAngeles
           __path__: /var/log/business-errors/*.log
 
   - job_name: syslog
@@ -67,6 +74,8 @@ scrape_configs:
         labels:
           job: syslog
           host: LosAngeles
+          instance: LosAngeles
+          service: host
           __path__: /var/log/syslog
 
   - job_name: fail2ban
@@ -76,6 +85,8 @@ scrape_configs:
         labels:
           job: fail2ban
           host: LosAngeles
+          instance: LosAngeles
+          service: fail2ban
           __path__: /var/log/fail2ban.log
 
   - job_name: fail2ban_enriched
@@ -85,6 +96,8 @@ scrape_configs:
         labels:
           job: fail2ban_enriched
           host: LosAngeles
+          instance: LosAngeles
+          service: fail2ban
           __path__: /var/log/security/fail2ban-enriched.log
 
   - job_name: auditd
@@ -97,6 +110,8 @@ scrape_configs:
         labels:
           job: auditd
           host: LosAngeles
+          instance: LosAngeles
+          service: auditd
           __path__: /var/log/audit/audit.log
 
   - job_name: xray_access
@@ -112,4 +127,6 @@ scrape_configs:
         labels:
           job: xray_access
           host: LosAngeles
+          instance: LosAngeles
+          service: x-ui
           __path__: /var/log/xray/*.log

@@ -134,6 +134,8 @@ services:
     security_opt: *security-options
     cap_drop: *cap-drop-all
     read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
     command:
       - -config.file=/etc/loki/loki.yml
     ports:
@@ -204,7 +206,8 @@ services:
     # host 网络才能采到主机网卡（ens3）指标；公网入站由 UFW 默认拒绝兜底
     network_mode: host
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9100/metrics"]
+      # 完整消费响应，避免 --spider 提前断开导致 exporter 持续记录 broken pipe。
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
       interval: 30s
       timeout: 5s
       retries: 3

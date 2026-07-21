@@ -8,6 +8,17 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+    correlations:
+      - targetUID: loki
+        label: 查看同服务日志
+        description: 按 Prometheus service 标签跳转到 Loki 日志
+        config:
+          type: query
+          field: Value
+          target:
+            expr: '{service="$${__field.labels.service}"}'
+            queryType: range
+            refId: A
 
   - name: Loki
     uid: loki
@@ -15,3 +26,13 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false
