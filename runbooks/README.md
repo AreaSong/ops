@@ -56,6 +56,7 @@
 | 第一轮单机生产收尾 | [records/losangeles-single-host-production-closure-20260706.md](records/losangeles-single-host-production-closure-20260706.md) |
 | Account Vault 发布与回滚 | [records/losangeles-account-vault-release.md](records/losangeles-account-vault-release.md) |
 | xray 流量审计 | [records/losangeles-xray-traffic-audit.md](records/losangeles-xray-traffic-audit.md) |
+| x-ui TCP/Nginx 调优 | [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md) |
 
 ### 恢复演练记录
 

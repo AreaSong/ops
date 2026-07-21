@@ -34,6 +34,11 @@
 - **容器日志上限必须写进 compose，不能依赖 daemon 默认值**——依赖隐式默认时，容器迁移/重建到其他环境会丢失限制，json-file 日志无限增长打满磁盘。新增容器统一显式声明 `json-file max-size=50m max-file=5`。
   → 详见 [records/losangeles-standards-09-c4-container-logging-limits-20260705.md](records/losangeles-standards-09-c4-container-logging-limits-20260705.md)
 
+## Nginx
+
+- **location 里 `include` 已含 `proxy_read_timeout` / `proxy_send_timeout` 的 snippet 后，不能再写同名指令想“覆盖”**——Nginx 同上下文重复指令会直接 `nginx -t` 失败（`directive is duplicate`），不会以后者为准。长连接（WebSocket / 反代隧道）需要更长超时时应去掉该 include，改为在 location 内联 headers + 目标超时，或单独维护不含超时的 snippet。
+  → 详见 [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md)
+
 ## 系统 / 启动链路
 
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。

@@ -54,3 +54,19 @@
       fs.file-max = 65535
     mode: "0644"
   notify: apply sysctl
+
+# LosAngeles 高延迟代理路径：有证据后再调（见 standards/09 §25.2）
+- name: Configure TCP tuning for high-latency paths
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/98-ops-tcp-tuning.conf
+    content: |
+      # High-latency / high-bandwidth proxy path (BDP-aware buffers)
+      net.core.rmem_max = 16777216
+      net.core.wmem_max = 16777216
+      net.ipv4.tcp_rmem = 4096 131072 16777216
+      net.ipv4.tcp_wmem = 4096 16384 16777216
+      net.ipv4.tcp_slow_start_after_idle = 0
+      net.ipv4.tcp_mtu_probing = 1
+      vm.swappiness = 10
+    mode: "0644"
+  notify: apply sysctl
