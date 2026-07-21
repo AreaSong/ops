@@ -1,7 +1,7 @@
 {
   "uid": "losangeles-service-overview",
   "title": "服务总览",
-  "description": "LosAngeles NOC 首页：高密度 KPI、服务健康表、短资源趋势；次要 SLO 可折叠。",
+  "description": "LosAngeles NOC 首页：KPI、容器健康/重启/OOM、服务健康表、短资源趋势。",
   "tags": [
     "LosAngeles",
     "overview",
@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -561,9 +561,9 @@
       }
     },
     {
-      "id": 101,
+      "id": 110,
       "type": "row",
-      "title": "服务健康",
+      "title": "容器运行态",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -574,12 +574,423 @@
       }
     },
     {
+      "id": 40,
+      "type": "stat",
+      "title": "非健康",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "count(docker_container_health_status{status!=\"healthy\"} == 1) or vector(0)",
+          "legendFormat": "非健康",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "有重启记录",
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "count(docker_container_restart_count > 0) or vector(0)",
+          "legendFormat": "有重启记录",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 42,
+      "type": "stat",
+      "title": "OOM",
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "count(docker_container_oom_killed == 1) or vector(0)",
+          "legendFormat": "OOM",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 43,
+      "type": "table",
+      "title": "需关注容器（重启/非健康/OOM）",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "docker_container_restart_count",
+          "format": "table",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "docker_container_health_status{status=\"healthy\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "docker_container_oom_killed",
+          "format": "table",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "name",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "__name__": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "instance": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "job": true,
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "status": true,
+              "status 1": true,
+              "status 2": true
+            },
+            "renameByName": {
+              "name": "容器",
+              "Value #A": "重启次数",
+              "Value #B": "健康(1=ok)",
+              "Value #C": "OOM"
+            }
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "filters": [
+              {
+                "fieldName": "重启次数",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              },
+              {
+                "fieldName": "健康(1=ok)",
+                "config": {
+                  "id": "lower",
+                  "options": {
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "fieldName": "OOM",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ],
+            "type": "include",
+            "match": "any"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "center",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "重启次数"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 3
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "OOM"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "重启次数",
+            "desc": true
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "服务健康",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "id": 10,
       "type": "table",
       "title": "服务健康总表",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 9,
         "w": 16,
         "h": 7
       },
@@ -776,7 +1187,7 @@
       "title": "备份集距今(h)",
       "gridPos": {
         "x": 16,
-        "y": 5,
+        "y": 9,
         "w": 4,
         "h": 3
       },
@@ -842,7 +1253,7 @@
       "title": "PG/Redis up",
       "gridPos": {
         "x": 20,
-        "y": 5,
+        "y": 9,
         "w": 4,
         "h": 3
       },
@@ -908,7 +1319,7 @@
       "title": "预期容器运行",
       "gridPos": {
         "x": 16,
-        "y": 8,
+        "y": 12,
         "w": 4,
         "h": 4
       },
@@ -974,7 +1385,7 @@
       "title": "严重漂移",
       "gridPos": {
         "x": 20,
-        "y": 8,
+        "y": 12,
         "w": 4,
         "h": 4
       },
@@ -1038,7 +1449,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 16,
         "w": 24,
         "h": 1
       }
@@ -1049,7 +1460,7 @@
       "title": "CPU %",
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 17,
         "w": 8,
         "h": 5
       },
@@ -1096,7 +1507,7 @@
       "title": "内存 %",
       "gridPos": {
         "x": 8,
-        "y": 13,
+        "y": 17,
         "w": 8,
         "h": 5
       },
@@ -1143,7 +1554,7 @@
       "title": "根盘 %",
       "gridPos": {
         "x": 16,
-        "y": 13,
+        "y": 17,
         "w": 8,
         "h": 5
       },
@@ -1387,7 +1798,7 @@
       ],
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 22,
         "w": 24,
         "h": 1
       }
