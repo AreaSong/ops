@@ -163,6 +163,11 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         ):
             self.assertIn(name, tasks)
             self.assertLess(task_names.index(name), activation)
+        checksum_command = tasks["Build the immutable generation checksum manifest"][
+            "ansible.builtin.shell"
+        ]["cmd"]
+        self.assertIn("! -name generation.sha256", checksum_command)
+        self.assertIn("! -name generation.sha256.tmp", checksum_command)
         for name in (
             "Install observability cron jobs",
             "Install Alertmanager GitHub Issue sync cron jobs",

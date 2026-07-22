@@ -459,7 +459,10 @@
         chdir: "{{ host_jobs_generation }}"
         cmd: |
           set -euo pipefail
-          find . -type f ! -name generation.sha256 -print0 \
+          find . -type f \
+            ! -name generation.sha256 \
+            ! -name generation.sha256.tmp \
+            -print0 \
             | sort -z \
             | xargs -0 sha256sum > generation.sha256.tmp
           chmod 0644 generation.sha256.tmp
