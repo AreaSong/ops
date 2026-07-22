@@ -3,7 +3,7 @@
 Local backup targets are stored under `/var/backups/ops/` and logs under `/var/log/backup/`.
 
 Scripts:
-- `backup-configs.sh`: backs up x-ui, nginx, ops repo, service config files.
+- `backup-configs.sh`: backs up application configuration plus systemd, cron, logrotate, Docker, SSH, auditd, Fail2ban, UFW and sysctl governance files. Each archive includes `backup-metadata/config-coverage.json`; missing required recovery entry points fail the job.
 - `backup-postgres.sh`: logical `pg_dumpall` backups for known Postgres containers.
 - `backup-redis.sh`: requests Redis BGSAVE, waits for completion, and archives a stable `dump.rdb` snapshot plus `users.acl` when present as root-only `redis-*.tar.gz`.
 - `backup-volumes.sh`: archives non-database application data volumes/bind mounts.
@@ -13,6 +13,12 @@ Scripts:
 - `verify-backup-set-r2.sh`: downloads the latest manifest and all selected artifacts from R2, verifies sizes, SHA-256, archive readability, exact required roles, and emits verification metrics.
 - `archive-compliance-logs.sh`: filters the previous UTC day of auditd, auth, Nginx, and daily-report data, uploads immutable-by-key parts through the compliance Worker, and invokes independent read-back verification.
 - `verify-compliance-log-archive.sh`: uses a separate read-only R2 credential to verify the newest archive and the complete manifest hash chain.
+- `migrate-legacy-root-crontab.py`: removes only the exact six legacy backup lines after `/etc/cron.d` deployment, preserves unrelated jobs and writes a root-only pre-migration copy.
+
+Scheduling:
+- All backup schedules live in `scripts/backup/cron/` and are installed through the immutable observability host-job generation. The root crontab is not an ongoing backup scheduler.
+- PostgreSQL, Redis, configs and volumes run at `02:10`, `02:30`, `03:00` and `03:30 UTC`; metrics, manifest and verified R2 sync follow at `03:45`, `04:00` and `04:15 UTC`.
+- Secret escrow paths listed as `external-secret-required` in the coverage manifest are deliberately excluded from the ordinary config archive and must be restored from the independent credential store.
 
 Retention:
 - Local backup files older than 7 days are deleted by each local backup script.

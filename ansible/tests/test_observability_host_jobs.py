@@ -8,6 +8,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = REPO_ROOT / "ansible" / "observability-host-jobs.yml"
+ROLLBACK_PLAYBOOK = REPO_ROOT / "ansible" / "observability-host-jobs-rollback.yml"
 
 
 class ObservabilityHostJobsTests(unittest.TestCase):
@@ -67,8 +68,14 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         for item in self.play["vars"]["compliance_archive_files"]:
             source = REPO_ROOT / "scripts" / "backup" / item["name"]
             self.assertTrue(source.is_file(), source)
+        for item in self.play["vars"]["backup_files"]:
+            source = REPO_ROOT / "scripts" / "backup" / item["name"]
+            self.assertTrue(source.is_file(), source)
         for cron_name in self.play["vars"]["cron_files"] + self.play["vars"]["alertmanager_github_cron_files"]:
             source = REPO_ROOT / "observability" / "cron" / cron_name
+            self.assertTrue(source.is_file(), source)
+        for cron_name in self.play["vars"]["backup_cron_files"] + self.play["vars"]["compliance_archive_cron_files"]:
+            source = REPO_ROOT / "scripts" / "backup" / "cron" / cron_name
             self.assertTrue(source.is_file(), source)
 
     def test_minute_collectors_prevent_overlapping_runs(self) -> None:
@@ -136,11 +143,57 @@ class ObservabilityHostJobsTests(unittest.TestCase):
                 for name in self.play["vars"]["alertmanager_github_cron_files"]
             ),
             *(REPO_ROOT / "scripts" / "backup" / "cron" / name for name in self.play["vars"]["compliance_archive_cron_files"]),
+            *(REPO_ROOT / "scripts" / "backup" / "cron" / name for name in self.play["vars"]["backup_cron_files"]),
         ]
         for path in cron_paths:
             content = path.read_text(encoding="utf-8")
             self.assertIn(current, content, path.name)
             self.assertNotIn("/opt/ops/observability/scripts/", content, path.name)
+
+    def test_generation_contains_cron_logrotate_and_checksums(self) -> None:
+        tasks = {task.get("name"): task for task in self.play["tasks"]}
+        task_names = list(tasks)
+        activation = task_names.index("Atomically activate the validated host-job generation")
+        for name in (
+            "Stage observability cron generation",
+            "Stage backup cron generation",
+            "Stage observability log rotation",
+            "Build the immutable generation checksum manifest",
+            "Verify the immutable generation checksum manifest",
+        ):
+            self.assertIn(name, tasks)
+            self.assertLess(task_names.index(name), activation)
+        for name in (
+            "Install observability cron jobs",
+            "Install Alertmanager GitHub Issue sync cron jobs",
+            "Install backup cron jobs",
+            "Install compliance archive cron job",
+            "Install validated observability log rotation",
+        ):
+            copy = tasks[name]["ansible.builtin.copy"]
+            self.assertEqual(copy["remote_src"], "{{ not ansible_check_mode }}")
+            self.assertIn("host_jobs_current", copy["src"])
+            self.assertIn("ansible_check_mode", copy["src"])
+
+    def test_transactional_rollback_playbook_matches_managed_cron(self) -> None:
+        rollback = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text(encoding="utf-8"))[0]
+        expected_observability = set(
+            self.play["vars"]["cron_files"] + self.play["vars"]["alertmanager_github_cron_files"]
+        )
+        expected_backup = set(
+            self.play["vars"]["backup_cron_files"] + self.play["vars"]["compliance_archive_cron_files"]
+        )
+        self.assertEqual(set(rollback["vars"]["observability_cron_files"]), expected_observability)
+        self.assertEqual(set(rollback["vars"]["backup_cron_files"]), expected_backup)
+        block = next(
+            task for task in rollback["tasks"]
+            if task.get("name") == "Atomically switch and install the rollback generation"
+        )
+        rescue_names = [task["name"] for task in block["rescue"]]
+        self.assertIn("Reactivate the original generation", rescue_names)
+        self.assertIn("Restore original observability cron files", rescue_names)
+        self.assertIn("Restore original backup cron files", rescue_names)
+        self.assertIn("Restore original logrotate configuration", rescue_names)
 
     def test_git_identity_checks_run_during_check_mode(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}

@@ -174,12 +174,12 @@ ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles
 ansible-playbook observability-host-jobs.yml --limit LosAngeles
 ```
 
-The playbook deploys all daily-audit, runtime, Docker, security, traffic, business-error,
-Cloudflare, Fail2ban and sub2api collector files; installs ten normal
-`/etc/cron.d/ops-*` jobs; optionally installs the two GitHub Issue jobs; installs the
-observability logrotate policy; and creates the textfile collector, business-error log,
-and persistent Promtail positions directories. Remote copies are backed up by Ansible
-before replacement.
+The playbook deploys all collector and backup entry points; installs version-controlled
+`/etc/cron.d/ops-*` jobs for observability, local backup, manifest and verified R2 sync;
+optionally installs the two GitHub Issue jobs; and installs the observability logrotate
+policy. Scripts, cron and logrotate are read from one commit-addressed generation with a
+SHA-256 manifest. The exact legacy backup lines are removed from root crontab only after
+the replacement cron files are installed, with a root-only pre-migration copy retained.
 
 Post-deployment validation:
 
@@ -245,29 +245,11 @@ routes have converged, the final gate is:
 test "$(prom_value 'sum(ops_config_drift)')" -eq 0
 ```
 
-The play output reports each remote Ansible `backup_file`. Save those paths with the
-deployment record. To roll back, first remove all managed cron files so no collector
-runs while files are being restored:
-
-```bash
-sudo rm -f /etc/cron.d/ops-{daily-ops-audit,docker-metrics,runtime-snapshot,business-error-log,cloudflare-ip-metrics,business-log-metrics,cloudflare-origin-cert-metrics,fail2ban-enriched,security-metrics,sub2api-capacity-metrics,alertmanager-github-issues,alertmanager-github-simulation}
-```
-
-For every replaced file, install the reported backup over its original destination.
-Collectors use their declared `0755` or `0644` mode; cron and logrotate files use
-`0644`:
-
-```bash
-sudo install -o root -g root -m 0755 "$COLLECTOR_BACKUP" /opt/ops/observability/scripts/write-docker-metrics.sh
-sudo install -o root -g root -m 0644 "$CRON_BACKUP" /etc/cron.d/ops-docker-metrics
-sudo install -o root -g root -m 0644 "$LOGROTATE_BACKUP" /etc/logrotate.d/ops-observability
-```
-
-`backup=none (new file)` means no previous destination existed. In that case, leave
-the cron removed and remove only the corresponding newly managed collector or
-logrotate file after confirming its path. Rollback does not delete generated reports,
-logs, or textfile metrics. Run the complete post-deployment validation block again
-after restoration.
+Rollback uses `ansible/observability-host-jobs-rollback.yml` with an explicit inactive
+40-character generation ID. It validates both target and rescue generations, switches
+`current` atomically, installs that generation's cron and logrotate files, and restores
+the original generation automatically if post-switch validation fails. Historical
+generations without `generation.sha256` and embedded cron are intentionally rejected.
 
 ## Operations
 

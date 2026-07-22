@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=UTC
+
+30 3 * * * root /var/lib/ops/observability-host-jobs/current/scripts/backup/backup-volumes.sh >>/var/log/backup/volumes.log 2>&1

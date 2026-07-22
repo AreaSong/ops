@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=UTC
+
+15 4 * * * root /var/lib/ops/observability-host-jobs/current/scripts/backup/sync-r2.sh >>/var/log/backup/r2.log 2>&1

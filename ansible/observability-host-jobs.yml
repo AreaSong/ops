@@ -31,6 +31,7 @@
       - { name: write-security-metrics.sh, mode: "0755" }
       - { name: write-sub2api-capacity-metrics.sh, mode: "0755" }
       - { name: write-xray-traffic-metrics.sh, mode: "0755" }
+      - { name: write-backup-metrics.sh, mode: "0755" }
       - { name: prune-docker-build-cache.sh, mode: "0755" }
     shell_collector_names:
       - write-daily-ops-audit.sh
@@ -40,6 +41,7 @@
       - write-security-metrics.sh
       - write-sub2api-capacity-metrics.sh
       - write-xray-traffic-metrics.sh
+      - write-backup-metrics.sh
       - prune-docker-build-cache.sh
     cron_files:
       - ops-daily-ops-audit
@@ -57,6 +59,34 @@
     alertmanager_github_cron_files:
       - ops-alertmanager-github-issues
       - ops-alertmanager-github-simulation
+    backup_files:
+      - { name: run-backup-job.sh, mode: "0755" }
+      - { name: backup-postgres.sh, mode: "0755" }
+      - { name: backup-redis.sh, mode: "0755" }
+      - { name: backup-configs.sh, mode: "0755" }
+      - { name: backup-volumes.sh, mode: "0755" }
+      - { name: backup_manifest.py, mode: "0755" }
+      - { name: create-backup-manifest.sh, mode: "0755" }
+      - { name: sync-r2.sh, mode: "0755" }
+      - { name: verify-backup-set-r2.sh, mode: "0755" }
+      - { name: migrate-legacy-root-crontab.py, mode: "0755" }
+    backup_shell_names:
+      - run-backup-job.sh
+      - backup-postgres.sh
+      - backup-redis.sh
+      - backup-configs.sh
+      - backup-volumes.sh
+      - create-backup-manifest.sh
+      - sync-r2.sh
+      - verify-backup-set-r2.sh
+    backup_cron_files:
+      - ops-backup-postgres
+      - ops-backup-redis
+      - ops-backup-configs
+      - ops-backup-volumes
+      - ops-backup-metrics
+      - ops-backup-manifest
+      - ops-backup-r2
     compliance_archive_files:
       - { name: compliance_log_archive.py, mode: "0755" }
       - { name: archive-compliance-logs.sh, mode: "0755" }
@@ -147,6 +177,8 @@
         - { path: "{{ host_jobs_root }}/generations", group: root, mode: "0755" }
         - { path: "{{ host_jobs_generation }}/observability/scripts", group: root, mode: "0755" }
         - { path: "{{ host_jobs_generation }}/scripts/backup", group: root, mode: "0755" }
+        - { path: "{{ host_jobs_generation }}/observability/cron", group: root, mode: "0755" }
+        - { path: "{{ host_jobs_generation }}/scripts/backup/cron", group: root, mode: "0755" }
         - { path: "{{ host_jobs_generation }}/logrotate", group: root, mode: "0755" }
       when: >-
         not (host_jobs_generation_already_active | bool) or item.path in [
@@ -177,6 +209,74 @@
       when:
         - not host_jobs_generation_already_active | bool
         - not ansible_check_mode
+
+    - name: Stage observability cron generation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        dest: "{{ host_jobs_generation }}/observability/cron/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cron_files + alertmanager_github_cron_files }}"
+      when: not host_jobs_generation_already_active | bool
+
+    - name: Stage core backup generation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/backup/{{ item.name }}"
+        dest: "{{ host_jobs_generation }}/scripts/backup/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop: "{{ backup_files }}"
+      when: not host_jobs_generation_already_active | bool
+
+    - name: Validate staged core backup shell syntax
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/bash
+          - -n
+          - "{{ host_jobs_generation }}/scripts/backup/{{ item }}"
+      loop: "{{ backup_shell_names }}"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Validate staged backup manifest entry point
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/scripts/backup/backup_manifest.py"
+          - --help
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Validate staged root crontab migration entry point
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/scripts/backup/migrate-legacy-root-crontab.py"
+          - --help
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Stage backup cron generation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/backup/cron/{{ item }}"
+        dest: "{{ host_jobs_generation }}/scripts/backup/cron/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ backup_cron_files + compliance_archive_cron_files }}"
+      when: not host_jobs_generation_already_active | bool
 
     - name: Validate staged daily audit Python imports
       ansible.builtin.command:
@@ -353,6 +453,29 @@
         - not ansible_check_mode
         - not host_jobs_generation_already_active | bool
 
+    - name: Build the immutable generation checksum manifest
+      ansible.builtin.shell:
+        executable: /bin/bash
+        chdir: "{{ host_jobs_generation }}"
+        cmd: |
+          set -euo pipefail
+          find . -type f ! -name generation.sha256 -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > generation.sha256.tmp
+          chmod 0644 generation.sha256.tmp
+          mv generation.sha256.tmp generation.sha256
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
+
+    - name: Verify the immutable generation checksum manifest
+      ansible.builtin.command:
+        argv: [/usr/bin/sha256sum, --check, generation.sha256]
+        chdir: "{{ host_jobs_generation }}"
+      changed_when: false
+      when: not ansible_check_mode
+
     - name: Create the next host-job generation pointer
       ansible.builtin.file:
         src: "generations/{{ host_jobs_release_id }}"
@@ -379,23 +502,31 @@
 
     - name: Install observability cron jobs
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        src: >-
+          {{ (playbook_dir ~ '/../observability/cron/' ~ item)
+             if ansible_check_mode
+             else (host_jobs_current ~ '/observability/cron/' ~ item) }}
         dest: "/etc/cron.d/{{ item }}"
         owner: root
         group: root
         mode: "0644"
         backup: true
+        remote_src: "{{ not ansible_check_mode }}"
       loop: "{{ cron_files }}"
       register: cron_copy_results
 
     - name: Install Alertmanager GitHub Issue sync cron jobs
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../observability/cron/{{ item }}"
+        src: >-
+          {{ (playbook_dir ~ '/../observability/cron/' ~ item)
+             if ansible_check_mode
+             else (host_jobs_current ~ '/observability/cron/' ~ item) }}
         dest: "/etc/cron.d/{{ item }}"
         owner: root
         group: root
         mode: "0644"
         backup: true
+        remote_src: "{{ not ansible_check_mode }}"
       loop: "{{ alertmanager_github_cron_files }}"
       register: alertmanager_github_cron_results
       when: alertmanager_github_issues_enabled | bool
@@ -415,13 +546,46 @@
 
     - name: Install validated observability log rotation
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../observability/logrotate/ops-observability"
+        src: >-
+          {{ (playbook_dir ~ '/../observability/logrotate/ops-observability')
+             if ansible_check_mode
+             else (host_jobs_current ~ '/logrotate/ops-observability') }}
         dest: /etc/logrotate.d/ops-observability
         owner: root
         group: root
         mode: "0644"
         backup: true
+        remote_src: "{{ not ansible_check_mode }}"
       register: logrotate_copy_result
+
+    - name: Install backup cron jobs
+      ansible.builtin.copy:
+        src: >-
+          {{ (playbook_dir ~ '/../scripts/backup/cron/' ~ item)
+             if ansible_check_mode
+             else (host_jobs_current ~ '/scripts/backup/cron/' ~ item) }}
+        dest: "/etc/cron.d/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+        backup: true
+        remote_src: "{{ not ansible_check_mode }}"
+      loop: "{{ backup_cron_files }}"
+      register: backup_cron_results
+
+    - name: Migrate exact legacy backup jobs out of root crontab
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_current }}/scripts/backup/migrate-legacy-root-crontab.py"
+          - --apply
+          - --backup-dir
+          - /var/backups/ops/configs
+          - --release-id
+          - "{{ host_jobs_release_id }}"
+      register: legacy_backup_cron_migration
+      changed_when: "'migrated_lines=' in legacy_backup_cron_migration.stdout"
+      when: not ansible_check_mode
 
     - name: Inspect active compliance archive scripts before installing its cron
       ansible.builtin.stat:
@@ -468,12 +632,16 @@
 
     - name: Install compliance archive cron job
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../scripts/backup/cron/{{ item }}"
+        src: >-
+          {{ (playbook_dir ~ '/../scripts/backup/cron/' ~ item)
+             if ansible_check_mode
+             else (host_jobs_current ~ '/scripts/backup/cron/' ~ item) }}
         dest: "/etc/cron.d/{{ item }}"
         owner: root
         group: root
         mode: "0644"
         backup: true
+        remote_src: "{{ not ansible_check_mode }}"
       loop: "{{ compliance_archive_cron_files }}"
       register: compliance_archive_cron_results
       when: compliance_archive_enabled | bool
@@ -504,6 +672,11 @@
     - name: Report logrotate backup path
       ansible.builtin.debug:
         msg: "ops-observability backup={{ logrotate_copy_result.backup_file | default('none (new file)') }}"
+
+    - name: Report backup cron backup paths
+      ansible.builtin.debug:
+        msg: "{{ item.item }} backup={{ item.backup_file | default('none (new file)') }}"
+      loop: "{{ backup_cron_results.results }}"
 
     - name: Report compliance archive cron backup paths
       ansible.builtin.debug:

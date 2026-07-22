@@ -72,9 +72,10 @@ ansible-playbook auditd.yml --limit LosAngeles
 
 ## LosAngeles 日报、日志审计和合规归档
 
-默认部署 11 个常规 host job 和 logrotate，覆盖日报、运行快照、Docker、安全、容量、
-Cloudflare IP/证书和脱敏业务日志；另有 2 个 GitHub Issue 同步/演练 cron，只有显式启用
-并配置 root-only Token 后才部署：
+默认部署常规 host job、完整备份链和 logrotate，覆盖日报、运行快照、Docker、安全、容量、
+Cloudflare IP/证书、脱敏业务日志、本地备份、manifest 与 R2 回验；另有 2 个 GitHub Issue
+同步/演练 cron，只有显式启用并配置 root-only Token 后才部署。generation 同时包含脚本、
+cron、logrotate 和 `generation.sha256`，安装文件只从已激活 generation 读取：
 
 ```bash
 ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles
@@ -91,8 +92,18 @@ ansible-playbook observability-host-jobs.yml --limit LosAngeles \
   -e compliance_archive_enabled=true
 ```
 
-回滚时将 `/var/lib/ops/observability-host-jobs/current` 原子切回上一不可变 generation，
-再核对受管 cron 指向 `current`；不要逐文件手改 `/etc/cron.d` 或运行脚本。
+正式回滚必须指定已存在且非当前的 40 位 generation。playbook 会先校验目标和当前
+generation 的 SHA-256、shell 与 logrotate，再原子切换并安装对应 cron；任一步失败会在
+`rescue` 中自动恢复原 generation、cron 和 logrotate：
+
+```bash
+ansible-playbook observability-host-jobs-rollback.yml --check --diff --limit LosAngeles \
+  -e host_jobs_rollback_release_id=<40位提交>
+ansible-playbook observability-host-jobs-rollback.yml --limit LosAngeles \
+  -e host_jobs_rollback_release_id=<40位提交>
+```
+
+不支持 `generation.sha256` 和 generation 内 cron 的历史版本不能作为事务式回滚目标。
 
 ## 注意事项
 
