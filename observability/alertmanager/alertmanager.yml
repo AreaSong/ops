@@ -178,6 +178,32 @@ route:
       group_interval: 10m
       repeat_interval: 6h
 
+inhibit_rules:
+  - source_matchers:
+      - alertname="BlackboxExporterMetricsTargetDown"
+    target_matchers:
+      - alertname=~"AppBlackboxTargetDown|BusinessBlackboxTargetDown|AppHttpProbeFailed|BusinessHttpProbeFailed"
+
+  - source_matchers:
+      - alertname=~"DockerMetricsStale|DockerMetricsCollectionFailed"
+    target_matchers:
+      - alertname=~"DockerContainer.*"
+
+  - source_matchers:
+      - alertname="SecurityMetricsStale"
+    target_matchers:
+      - alertname=~"Auditd.*|Ufw.*|Fail2ban.*|Ssh.*|Nginx.*"
+
+  - source_matchers:
+      - alertname="BusinessLogMetricsStale"
+    target_matchers:
+      - alertname=~"BusinessHttp.*|BusinessSlowRequestsHigh|BusinessLogParseErrorsHigh"
+
+  - source_matchers:
+      - alertname=~"LokiMetricsTargetDown|PromtailMetricsTargetDown"
+    target_matchers:
+      - alertname=~"AuditLogPipeline.*"
+
 receivers:
   - name: email-daily-audit
     email_configs:

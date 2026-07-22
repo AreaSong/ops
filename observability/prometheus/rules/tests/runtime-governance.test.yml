@@ -128,3 +128,63 @@ tests:
       - eval_time: 15s
         alertname: AccountVaultReleaseFailed
         exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: alertmanager_github_issue_sync_configured
+        values: '1+0x30'
+      - series: alertmanager_github_token_expiry_configured
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: AlertmanagerGitHubTokenExpiryMetadataMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              scope: alerting
+            exp_annotations:
+              summary: "GitHub Issue sync token expiry metadata is missing"
+              description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+  - interval: 1m
+    input_series:
+      - series: alertmanager_github_token_expiry_configured
+        values: '1+0x30'
+      - series: alertmanager_github_token_days_until_expiry
+        values: '10+0x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: AlertmanagerGitHubTokenExpiringWarning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              scope: alerting
+            exp_annotations:
+              summary: "GitHub Issue sync token expires within fourteen days"
+              description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 16m
+        alertname: AlertmanagerGitHubTokenExpiringCritical
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: alertmanager_github_token_expiry_configured
+        values: '1+0x30'
+      - series: alertmanager_github_token_days_until_expiry
+        values: '6+0x30'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: AlertmanagerGitHubTokenExpiringWarning
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: AlertmanagerGitHubTokenExpiringCritical
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              scope: alerting
+            exp_annotations:
+              summary: "GitHub Issue sync token expires within seven days"
+              description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ from typing import Any, Iterable
 MARKER_PREFIX = "<!-- areasong-alertmanager-critical:v1:"
 MARKER_SUFFIX = " -->"
 MANAGED_LABEL = "alertmanager-critical"
+ALERTMANAGER_API_WATCHDOG_FINGERPRINT = "areasong-alertmanager-api-watchdog-v1"
 SAFE_LABELS = ("alertname", "severity", "scope", "service", "instance", "job")
 REDACTIONS = (
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email]"),
@@ -42,6 +44,7 @@ class Config:
     alertmanager_url: str
     github_api_base: str
     metric_out: Path
+    token_expires_at: datetime.date | None = None
     timeout: float = 15.0
 
 
@@ -76,6 +79,23 @@ def simulation_alert() -> dict[str, Any]:
             "instance": "LosAngeles",
         },
         "annotations": {"summary": "Controlled monthly GitHub Issue failure and recovery simulation"},
+        "status": {"state": "active"},
+    }
+
+
+def alertmanager_api_watchdog() -> dict[str, Any]:
+    return {
+        "fingerprint": ALERTMANAGER_API_WATCHDOG_FINGERPRINT,
+        "labels": {
+            "alertname": "AlertmanagerApiUnavailableWatchdog",
+            "severity": "critical",
+            "scope": "alerting",
+            "service": "alertmanager",
+            "instance": "LosAngeles",
+        },
+        "annotations": {
+            "summary": "Alertmanager API is unavailable; managed alert reconciliation is degraded",
+        },
         "status": {"state": "active"},
     }
 
@@ -136,6 +156,11 @@ def load_config(args: argparse.Namespace) -> Config:
     repository = values.get("GITHUB_REPOSITORY", "AreaSong/ops")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise SyncError("GITHUB_REPOSITORY must use owner/name form")
+    token_expires_at_raw = values.get("GITHUB_TOKEN_EXPIRES_AT", "").strip()
+    try:
+        token_expires_at = datetime.date.fromisoformat(token_expires_at_raw) if token_expires_at_raw else None
+    except ValueError as error:
+        raise SyncError("GITHUB_TOKEN_EXPIRES_AT must use YYYY-MM-DD form") from error
     config = Config(
         enabled=values.get("ALERTMANAGER_GITHUB_ISSUES_ENABLED", "false").lower() == "true",
         token=values.get("GITHUB_TOKEN", ""),
@@ -143,6 +168,7 @@ def load_config(args: argparse.Namespace) -> Config:
         alertmanager_url=values.get("ALERTMANAGER_URL", "http://127.0.0.1:9093/api/v2/alerts"),
         github_api_base=values.get("GITHUB_API_BASE", "https://api.github.com").rstrip("/"),
         metric_out=Path(values.get("ALERTMANAGER_GITHUB_METRIC_OUT", "/var/lib/node_exporter/textfile_collector/alertmanager-github-issues.prom")),
+        token_expires_at=token_expires_at,
         timeout=float(values.get("ALERTMANAGER_HTTP_TIMEOUT_SECONDS", "15")),
     )
     if args.require_enabled and not config.enabled:
@@ -256,7 +282,13 @@ def issue_markers(issues: Iterable[dict[str, Any]]) -> dict[str, list[int]]:
     return result
 
 
-def sync_alerts(alerts: list[dict[str, Any]], github: GitHubIssueClient, observed_at: str) -> dict[str, int]:
+def sync_alerts(
+    alerts: list[dict[str, Any]],
+    github: GitHubIssueClient,
+    observed_at: str,
+    *,
+    close_stale: bool = True,
+) -> dict[str, int]:
     github.ensure_label()
     existing = issue_markers(github.open_issues())
     active_markers: set[str] = set()
@@ -276,18 +308,37 @@ def sync_alerts(alerts: list[dict[str, Any]], github: GitHubIssueClient, observe
             for duplicate in numbers[1:]:
                 github.close(duplicate)
                 closed += 1
-    for marker, numbers in existing.items():
-        if marker in active_markers:
-            continue
-        for number in numbers:
-            github.close(number)
-            closed += 1
+    if close_stale:
+        for marker, numbers in existing.items():
+            if marker in active_markers:
+                continue
+            for number in numbers:
+                github.close(number)
+                closed += 1
     return {"active": len(alerts), "created": created, "updated": updated, "closed": closed}
 
 
-def write_metrics(path: Path, configured: int, success: int, counts: dict[str, int]) -> None:
+def token_expiry_metrics(token_expires_at: datetime.date | None, now: float) -> tuple[int, int, float]:
+    if token_expires_at is None:
+        return 0, 0, 0.0
+    expiry = datetime.datetime.combine(token_expires_at, datetime.time.min, tzinfo=datetime.timezone.utc)
+    expiry_timestamp = int(expiry.timestamp())
+    return 1, expiry_timestamp, (expiry_timestamp - now) / 86400
+
+
+def write_metrics(
+    path: Path,
+    configured: int,
+    success: int,
+    counts: dict[str, int],
+    *,
+    alertmanager_available: int,
+    token_expires_at: datetime.date | None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    now = int(time.time())
+    now_float = time.time()
+    now = int(now_float)
+    expiry_configured, expiry_timestamp, days_until_expiry = token_expiry_metrics(token_expires_at, now_float)
     temporary = path.with_suffix(path.suffix + ".tmp")
     lines = [
         "# HELP alertmanager_github_issue_sync_configured Whether the managed GitHub Issue sync is configured.",
@@ -299,6 +350,18 @@ def write_metrics(path: Path, configured: int, success: int, counts: dict[str, i
         "# HELP alertmanager_github_issue_sync_success Whether the latest sync succeeded.",
         "# TYPE alertmanager_github_issue_sync_success gauge",
         f"alertmanager_github_issue_sync_success {success}",
+        "# HELP alertmanager_github_alertmanager_available Whether the Alertmanager API was available during the latest sync.",
+        "# TYPE alertmanager_github_alertmanager_available gauge",
+        f"alertmanager_github_alertmanager_available {alertmanager_available}",
+        "# HELP alertmanager_github_token_expiry_configured Whether GitHub token expiry metadata is configured.",
+        "# TYPE alertmanager_github_token_expiry_configured gauge",
+        f"alertmanager_github_token_expiry_configured {expiry_configured}",
+        "# HELP alertmanager_github_token_expiry_timestamp GitHub token expiry time as a Unix timestamp.",
+        "# TYPE alertmanager_github_token_expiry_timestamp gauge",
+        f"alertmanager_github_token_expiry_timestamp {expiry_timestamp}",
+        "# HELP alertmanager_github_token_days_until_expiry Days remaining until the GitHub token expires.",
+        "# TYPE alertmanager_github_token_days_until_expiry gauge",
+        f"alertmanager_github_token_days_until_expiry {days_until_expiry:.6f}",
     ]
     for key in ("active", "created", "updated", "closed"):
         lines.extend([f"# TYPE alertmanager_github_issue_sync_{key} gauge", f"alertmanager_github_issue_sync_{key} {counts.get(key, 0)}"])
@@ -319,20 +382,47 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     config: Config | None = None
+    alertmanager_available = 0
     try:
         config = load_config(args)
         if args.validate_only:
             print("alertmanager GitHub Issue sync configuration syntax: OK")
             return 0
         if not config.enabled:
-            write_metrics(config.metric_out, 0, 1, {})
+            write_metrics(
+                config.metric_out,
+                0,
+                1,
+                {},
+                alertmanager_available=0,
+                token_expires_at=config.token_expires_at,
+            )
             print("alertmanager GitHub Issue sync is disabled")
             return 0
-        alerts = AlertmanagerClient(config).active_alerts()
-        if args.simulation_mode == "failure":
-            alerts.append(simulation_alert())
-        counts = sync_alerts(alerts, GitHubIssueClient(config), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
-        write_metrics(config.metric_out, 1, 1, counts)
+        close_stale = True
+        try:
+            alerts = AlertmanagerClient(config).active_alerts()
+            alertmanager_available = 1
+            if args.simulation_mode == "failure":
+                alerts.append(simulation_alert())
+        except SyncError as error:
+            close_stale = False
+            alerts = [alertmanager_api_watchdog()]
+            print(f"WARNING: {error}; reconciling only the Alertmanager API watchdog", file=sys.stderr)
+        counts = sync_alerts(
+            alerts,
+            GitHubIssueClient(config),
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            close_stale=close_stale,
+        )
+        write_metrics(
+            config.metric_out,
+            1,
+            1,
+            counts,
+            alertmanager_available=alertmanager_available,
+            token_expires_at=config.token_expires_at,
+        )
         print(json.dumps(counts, sort_keys=True))
         return 0
     except (OSError, SyncError, KeyError, ValueError) as error:
@@ -344,7 +434,14 @@ def main() -> int:
                     "/var/lib/node_exporter/textfile_collector/alertmanager-github-issues.prom",
                 )
             )
-            write_metrics(metric_path, int(bool(config and config.enabled)), 0, {})
+            write_metrics(
+                metric_path,
+                int(bool(config and config.enabled)),
+                0,
+                {},
+                alertmanager_available=alertmanager_available,
+                token_expires_at=config.token_expires_at if config else None,
+            )
         except OSError:
             pass
         return 1

@@ -42,16 +42,95 @@ groups:
           service: alertmanager
         annotations:
           summary: "Alertmanager rejected its latest configuration reload"
+          description: "Alertmanager is still running with its previous configuration; validate and reload the intended configuration before relying on routing changes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerNotificationFailures
         expr: sum by (integration) (increase(alertmanager_notifications_failed_total{job="alertmanager"}[10m])) > 0
         for: 0m
         labels:
-          severity: warning
+          severity: critical
           service: alertmanager
         annotations:
           summary: "Alertmanager notification delivery failed: {{ $labels.integration }}"
+          description: "At least one notification failed in the last ten minutes; verify the receiver and the independent GitHub watchdog path."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful{job="prometheus"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: prometheus
+        annotations:
+          summary: "Prometheus rejected its latest configuration reload"
+          description: "Prometheus is still running with its previous configuration; validate rules and scrape configuration before reloading again."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: PrometheusWalCorruptionDetected
+        expr: sum(increase(prometheus_tsdb_wal_corruptions_total{job="prometheus"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: prometheus
+        annotations:
+          summary: "Prometheus detected WAL corruption"
+          description: "Prometheus reported a new write-ahead log corruption in the last fifteen minutes; preserve evidence and inspect TSDB recovery logs."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: PrometheusRuleEvaluationFailures
+        expr: sum(increase(prometheus_rule_evaluation_failures_total{job="prometheus"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: prometheus
+        annotations:
+          summary: "Prometheus rule evaluation failed"
+          description: "At least one recording or alerting rule evaluation failed in the last ten minutes; inspect the failing rule group before trusting derived signals."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: PrometheusNotificationsDropped
+        expr: sum(increase(prometheus_notifications_dropped_total{job="prometheus"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: prometheus
+        annotations:
+          summary: "Prometheus dropped alert notifications"
+          description: "Prometheus dropped at least one notification bound for Alertmanager in the last ten minutes; inspect queue capacity and Alertmanager connectivity."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: NodeTextfileScrapeError
+        expr: node_textfile_scrape_error{job="node"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: node-exporter
+        annotations:
+          summary: "Node Exporter cannot read one or more textfile metrics"
+          description: "A malformed or unreadable textfile collector file has hidden host-job metrics for at least five minutes; inspect collector logs and recent metric files."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: PromtailLogEntriesDropped
+        expr: sum(increase(promtail_dropped_entries_total{job="promtail"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: promtail
+        annotations:
+          summary: "Promtail dropped log entries"
+          description: "Promtail discarded one or more log entries in the last ten minutes; inspect rejection reasons, client retries, and Loki limits."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: LokiWalSamplesDiscarded
+        expr: sum(increase(loki_ingester_wal_discarded_samples_total{job="loki"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: loki
+        annotations:
+          summary: "Loki discarded WAL samples"
+          description: "Loki discarded one or more samples while replaying or writing its WAL in the last fifteen minutes; inspect ingester logs and storage health."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: BlackboxExporterConfigReloadFailed
@@ -62,6 +141,7 @@ groups:
           service: blackbox-exporter
         annotations:
           summary: "Blackbox Exporter rejected its latest configuration reload"
+          description: "Blackbox Exporter is still running with its previous configuration; validate modules before retrying the reload."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: loki_compactor_alerts

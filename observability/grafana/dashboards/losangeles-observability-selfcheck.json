@@ -949,7 +949,7 @@
         "x": 0,
         "y": 31,
         "w": 12,
-        "h": 3
+        "h": 7
       },
       "targets": [
         {
@@ -974,6 +974,24 @@
           "expr": "time() - alertmanager_github_issue_sync_last_success_timestamp",
           "legendFormat": "距上次同步",
           "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "alertmanager_github_alertmanager_available",
+          "legendFormat": "Alertmanager API",
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "alertmanager_github_token_days_until_expiry",
+          "legendFormat": "PAT 剩余天数",
+          "refId": "E",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1043,6 +1061,42 @@
                     {
                       "color": "red",
                       "value": 900
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "E"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "d"
+              },
+              {
+                "id": "mappings",
+                "value": []
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 7
+                    },
+                    {
+                      "color": "green",
+                      "value": 14
                     }
                   ]
                 }

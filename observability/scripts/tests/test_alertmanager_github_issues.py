@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import argparse
 import contextlib
+import datetime
 import io
 import sys
 import tempfile
@@ -90,6 +91,31 @@ class AlertmanagerGitHubIssueTests(unittest.TestCase):
         self.assertEqual(result["closed"], 1)
         self.assertEqual(github.closed, [11])
 
+    def test_degraded_reconciliation_does_not_close_existing_alert_issues(self) -> None:
+        existing_marker = MODULE.marker_for(self.alert)
+        watchdog = MODULE.alertmanager_api_watchdog()
+        github = FakeGitHub([{"number": 42, "body": existing_marker}])
+
+        result = MODULE.sync_alerts(
+            [watchdog],
+            github,
+            "2026-07-18T00:00:00Z",
+            close_stale=False,
+        )
+
+        self.assertEqual(result, {"active": 1, "created": 1, "updated": 0, "closed": 0})
+        self.assertEqual(github.closed, [])
+        self.assertIn(MODULE.ALERTMANAGER_API_WATCHDOG_FINGERPRINT, github.created[0][1])
+
+    def test_healthy_reconciliation_closes_the_watchdog(self) -> None:
+        marker = MODULE.marker_for(MODULE.alertmanager_api_watchdog())
+        github = FakeGitHub([{"number": 42, "body": marker}])
+
+        result = MODULE.sync_alerts([], github, "2026-07-18T00:05:00Z")
+
+        self.assertEqual(result["closed"], 1)
+        self.assertEqual(github.closed, [42])
+
     def test_simulation_alert_is_a_stable_managed_critical_alert(self) -> None:
         alert = MODULE.simulation_alert()
         self.assertEqual(alert["labels"]["severity"], "critical")
@@ -104,6 +130,15 @@ class AlertmanagerGitHubIssueTests(unittest.TestCase):
         )
         with self.assertRaises(MODULE.SyncError):
             MODULE.load_config(args)
+
+    def test_token_expiry_metrics_use_utc_midnight(self) -> None:
+        configured, timestamp, days = MODULE.token_expiry_metrics(
+            datetime.date(2026, 8, 19),
+            datetime.datetime(2026, 8, 5, tzinfo=datetime.timezone.utc).timestamp(),
+        )
+        self.assertEqual(configured, 1)
+        self.assertEqual(timestamp, 1787097600)
+        self.assertEqual(days, 14.0)
 
     def test_enabled_sync_failure_keeps_configured_metric_true(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -127,6 +162,36 @@ class AlertmanagerGitHubIssueTests(unittest.TestCase):
             content = metric.read_text(encoding="utf-8")
             self.assertIn("alertmanager_github_issue_sync_configured 1", content)
             self.assertIn("alertmanager_github_issue_sync_success 0", content)
+            self.assertIn("alertmanager_github_alertmanager_available 0", content)
+
+    def test_alertmanager_failure_creates_watchdog_and_returns_success(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            metric = Path(directory) / "sync.prom"
+            config = MODULE.Config(
+                enabled=True,
+                token="test-token",
+                repository="AreaSong/ops",
+                alertmanager_url="http://127.0.0.1:9093/api/v2/alerts",
+                github_api_base="https://api.github.test",
+                metric_out=metric,
+                token_expires_at=datetime.date(2026, 8, 19),
+            )
+            github = FakeGitHub([])
+            args = argparse.Namespace(config="", validate_only=False, require_enabled=False, simulation_mode="none")
+            with (
+                mock.patch.object(MODULE, "parse_args", return_value=args),
+                mock.patch.object(MODULE, "load_config", return_value=config),
+                mock.patch.object(MODULE.AlertmanagerClient, "active_alerts", side_effect=MODULE.SyncError("test failure")),
+                mock.patch.object(MODULE, "GitHubIssueClient", return_value=github),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(MODULE.main(), 0)
+            self.assertEqual(len(github.created), 1)
+            content = metric.read_text(encoding="utf-8")
+            self.assertIn("alertmanager_github_issue_sync_success 1", content)
+            self.assertIn("alertmanager_github_alertmanager_available 0", content)
+            self.assertIn("alertmanager_github_token_expiry_configured 1", content)
 
     def test_open_issue_listing_is_paginated(self) -> None:
         class FakeHttp:

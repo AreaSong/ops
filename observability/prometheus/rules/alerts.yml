@@ -916,3 +916,47 @@ groups:
           summary: "Alertmanager critical-alert GitHub Issue sync is stale"
           description: "The five-minute host job has not published a fresh sync result."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerGitHubTokenExpiryMetadataMissing
+        expr: |
+          alertmanager_github_issue_sync_configured == 1
+          and on ()
+          (absent(alertmanager_github_token_expiry_configured) or alertmanager_github_token_expiry_configured == 0)
+        for: 15m
+        labels:
+          severity: warning
+          scope: alerting
+        annotations:
+          summary: "GitHub Issue sync token expiry metadata is missing"
+          description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerGitHubTokenExpiringWarning
+        expr: |
+          alertmanager_github_token_expiry_configured == 1
+          and on ()
+          alertmanager_github_token_days_until_expiry >= 7
+          and on ()
+          alertmanager_github_token_days_until_expiry < 14
+        for: 15m
+        labels:
+          severity: warning
+          scope: alerting
+        annotations:
+          summary: "GitHub Issue sync token expires within fourteen days"
+          description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerGitHubTokenExpiringCritical
+        expr: |
+          alertmanager_github_token_expiry_configured == 1
+          and on ()
+          alertmanager_github_token_days_until_expiry < 7
+        for: 15m
+        labels:
+          severity: critical
+          scope: alerting
+        annotations:
+          summary: "GitHub Issue sync token expires within seven days"
+          description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
