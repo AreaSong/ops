@@ -428,7 +428,9 @@
         path: "{{ host_jobs_current }}/scripts/backup/{{ item.name }}"
       loop: "{{ compliance_archive_files }}"
       register: active_compliance_archive_scripts
-      when: compliance_archive_enabled | bool
+      when:
+        - compliance_archive_enabled | bool
+        - not ansible_check_mode
 
     - name: Require active compliance archive scripts before installing its cron
       ansible.builtin.assert:
@@ -441,7 +443,9 @@
           Refusing to install the compliance archive cron because the active generation
           is missing a validated script: {{ item.item.name }}
       loop: "{{ active_compliance_archive_scripts.results | default([]) }}"
-      when: compliance_archive_enabled | bool
+      when:
+        - compliance_archive_enabled | bool
+        - not ansible_check_mode
 
     - name: Remove the compliance archive activation gate while changing its deployment
       ansible.builtin.file:
