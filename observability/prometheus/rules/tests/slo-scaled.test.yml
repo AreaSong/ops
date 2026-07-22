@@ -1,14 +1,14 @@
 rule_files:
   - slo.yml
 
-evaluation_interval: 1m
+evaluation_interval: 15s
 
 tests:
   - name: complete scaled window preserves availability and budget
-    interval: 1m
+    interval: 15s
     input_series:
       - series: 'probe_success{scope="business",service="sub2api",journey="health",check="health-json"}'
-        values: '1+0x120'
+        values: '1+0x480'
     promql_expr_test:
       - expr: 'service:synthetic_availability:ratio_30d{service="sub2api",journey="health"}'
         eval_time: 2h
@@ -27,10 +27,10 @@ tests:
             value: 1
 
   - name: missing raw samples reduce scaled coverage
-    interval: 1m
+    interval: 15s
     input_series:
       - series: 'probe_success{scope="business",service="resume-jadeai",journey="public-home",check="resume-home"}'
-        values: '1+0x60 _x59'
+        values: '1+0x239 stale _x240'
     promql_expr_test:
       - expr: 'service:synthetic_availability:ratio_30d{service="resume-jadeai",journey="public-home"}'
         eval_time: 2h
@@ -41,19 +41,19 @@ tests:
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_slo_coverage:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
-            value: 0.55
+            value: 0.5
 
   - name: one failed minute exhausts the scaled 99.9 percent budget
-    interval: 1m
+    interval: 15s
     input_series:
       - series: 'probe_success{scope="business",service="account-vault",journey="login",check="login-page"}'
-        values: '1+0x118 0 stale'
+        values: '1+0x478 0 stale'
     promql_expr_test:
       - expr: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login"}'
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_availability:ratio_30d{service="account-vault",journey="login",slo="synthetic_availability",objective="0.999"}'
-            value: 0.9916666666666667
+            value: 0.9979166666666667
       - expr: 'service:synthetic_error_budget_remaining:ratio_30d{service="account-vault",journey="login"}'
         eval_time: 2h
         exp_samples:

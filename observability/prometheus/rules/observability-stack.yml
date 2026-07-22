@@ -5,9 +5,11 @@ groups:
         expr: up{job="grafana"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
           service: grafana
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Grafana metrics endpoint is unavailable"
           description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -16,9 +18,11 @@ groups:
         expr: up{job="alertmanager"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
           service: alertmanager
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager metrics endpoint is unavailable"
           description: "Prometheus cannot scrape Alertmanager; active alerts remain visible in Prometheus but notifications may not be delivered."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -27,9 +31,11 @@ groups:
         expr: up{job="blackbox_exporter"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
           service: blackbox-exporter
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Blackbox Exporter metrics endpoint is unavailable"
           description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -38,9 +44,11 @@ groups:
         expr: alertmanager_config_last_reload_successful{job="alertmanager"} == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           service: alertmanager
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager rejected its latest configuration reload"
           description: "Alertmanager is still running with its previous configuration; validate and reload the intended configuration before relying on routing changes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -49,9 +57,11 @@ groups:
         expr: sum by (integration) (increase(alertmanager_notifications_failed_total{job="alertmanager"}[10m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
           service: alertmanager
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager notification delivery failed: {{ $labels.integration }}"
           description: "At least one notification failed in the last ten minutes; verify the receiver and the independent GitHub watchdog path."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -60,9 +70,11 @@ groups:
         expr: prometheus_config_last_reload_successful{job="prometheus"} == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: critical
           service: prometheus
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Prometheus rejected its latest configuration reload"
           description: "Prometheus is still running with its previous configuration; validate rules and scrape configuration before reloading again."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -71,9 +83,11 @@ groups:
         expr: sum(increase(prometheus_tsdb_wal_corruptions_total{job="prometheus"}[15m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
           service: prometheus
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Prometheus detected WAL corruption"
           description: "Prometheus reported a new write-ahead log corruption in the last fifteen minutes; preserve evidence and inspect TSDB recovery logs."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -82,9 +96,11 @@ groups:
         expr: sum(increase(prometheus_rule_evaluation_failures_total{job="prometheus"}[10m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: warning
           service: prometheus
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Prometheus rule evaluation failed"
           description: "At least one recording or alerting rule evaluation failed in the last ten minutes; inspect the failing rule group before trusting derived signals."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -93,9 +109,11 @@ groups:
         expr: sum(increase(prometheus_notifications_dropped_total{job="prometheus"}[10m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
           service: prometheus
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Prometheus dropped alert notifications"
           description: "Prometheus dropped at least one notification bound for Alertmanager in the last ten minutes; inspect queue capacity and Alertmanager connectivity."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -104,9 +122,11 @@ groups:
         expr: node_textfile_scrape_error{job="node"} == 1
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           service: node-exporter
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Node Exporter cannot read one or more textfile metrics"
           description: "A malformed or unreadable textfile collector file has hidden host-job metrics for at least five minutes; inspect collector logs and recent metric files."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -115,9 +135,11 @@ groups:
         expr: sum(increase(promtail_dropped_entries_total{job="promtail"}[10m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: warning
           service: promtail
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Promtail dropped log entries"
           description: "Promtail discarded one or more log entries in the last ten minutes; inspect rejection reasons, client retries, and Loki limits."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -126,9 +148,11 @@ groups:
         expr: sum(increase(loki_ingester_wal_discarded_samples_total{job="loki"}[15m])) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
           service: loki
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Loki discarded WAL samples"
           description: "Loki discarded one or more samples while replaying or writing its WAL in the last fifteen minutes; inspect ingester logs and storage health."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -137,9 +161,11 @@ groups:
         expr: blackbox_exporter_config_last_reload_successful{job="blackbox_exporter"} == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           service: blackbox-exporter
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Blackbox Exporter rejected its latest configuration reload"
           description: "Blackbox Exporter is still running with its previous configuration; validate modules before retrying the reload."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -150,9 +176,11 @@ groups:
         expr: loki_boltdb_shipper_compactor_running{job="loki"} != 1
         for: 15m
         labels:
+          owner: areasong-ops
           severity: critical
           service: loki
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Loki compactor is not active"
           description: "The compactor has remained inactive beyond its startup stabilization window; retention and index compaction may be stalled."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -178,9 +206,11 @@ groups:
           )
         for: 30m
         labels:
+          owner: areasong-ops
           severity: critical
           service: loki
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Loki retention has not completed successfully"
           description: "Loki is up, but retention has not completed within the expected compaction interval and startup allowance."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -192,9 +222,11 @@ groups:
           sum(increase(loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job="loki"}[6h])) == 0
         for: 3h
         labels:
+          owner: areasong-ops
           severity: critical
           service: loki
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Loki retention marker queue is not draining"
           description: "Deletion markers remained queued beyond the configured two-hour delete delay without any successful deletion."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

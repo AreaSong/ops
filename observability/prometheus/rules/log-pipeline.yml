@@ -5,8 +5,10 @@ groups:
         expr: up{job="loki"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Loki is unavailable to Prometheus"
           description: "Log queries and Promtail delivery cannot be trusted until Loki recovers."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -15,8 +17,10 @@ groups:
         expr: up{job="promtail"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Promtail is unavailable to Prometheus"
           description: "Host log delivery to Loki is unavailable or its metrics endpoint cannot be scraped."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -25,8 +29,10 @@ groups:
         expr: audit_log_pipeline_check_success == 0
         for: 10m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "auditd events are not reaching Loki"
           description: "The fixed non-sensitive audit probe could not be emitted, queried, or observed within five minutes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -35,8 +41,10 @@ groups:
         expr: absent(audit_log_pipeline_last_event_timestamp_seconds) or time() - audit_log_pipeline_last_event_timestamp_seconds > 300 or time() - audit_log_pipeline_last_event_timestamp_seconds < 0
         for: 10m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "The auditd-to-Loki pipeline is stale"
           description: "No recent fixed audit pipeline probe is visible in Loki. Check auditd, file permissions, Promtail positions, and Loki ingestion."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

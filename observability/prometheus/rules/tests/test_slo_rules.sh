@@ -10,11 +10,15 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 chmod 0755 "$WORK_DIR"
 
 grep -Fq 'service:synthetic_journey_success:ratio[30d]' "$RULE_FILE"
-grep -Fq '/ 43200' "$RULE_FILE"
+grep -Fq '/ 172800' "$RULE_FILE"
+
+docker run --rm --entrypoint /bin/promtool \
+  -v "$SCRIPT_DIR/..:/rules:ro" \
+  "$IMAGE" test rules /rules/tests/slo.test.yml
 
 sed \
   -e 's/\[30d\]/[2h]/g' \
-  -e 's#/ 43200#/ 120#' \
+  -e 's#/ 172800#/ 480#' \
   "$RULE_FILE" >"$WORK_DIR/slo.yml"
 cp "$SCRIPT_DIR/slo-scaled.test.yml" "$WORK_DIR/slo.test.yml"
 

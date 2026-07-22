@@ -5,8 +5,11 @@ groups:
         expr: up{job="node"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Host down: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
@@ -14,8 +17,11 @@ groups:
         expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) * 100 > 80
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Disk usage high on {{ $labels.instance }} {{ $labels.mountpoint }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
@@ -23,8 +29,11 @@ groups:
         expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}) * 100 > 90
         for: 5m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Disk usage critical on {{ $labels.instance }} {{ $labels.mountpoint }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
@@ -32,8 +41,11 @@ groups:
         expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Memory usage high on {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
@@ -41,8 +53,11 @@ groups:
         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "CPU usage high on {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
@@ -52,9 +67,11 @@ groups:
         expr: probe_success{job="blackbox_grafana_internal"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
           service: grafana
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Grafana internal readiness probe failed"
           description: "The local Grafana API health endpoint is unavailable independently of Cloudflare Access."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -63,8 +80,11 @@ groups:
         expr: probe_success{job="blackbox_https"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "HTTPS probe failed: {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
 
@@ -72,8 +92,11 @@ groups:
         expr: probe_ssl_earliest_cert_expiry{job="blackbox_https"} - time() < 86400 * 30
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "TLS certificate expires within 30 days: {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-30d&to=now"
 
@@ -81,8 +104,11 @@ groups:
         expr: probe_ssl_earliest_cert_expiry{job="blackbox_https"} - time() < 86400 * 7
         for: 30m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "TLS certificate expires within 7 days: {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-30d&to=now"
 
@@ -92,8 +118,11 @@ groups:
         expr: probe_success{job="blackbox_app_https"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Application HTTP probe failed: {{ $labels.service }} {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -101,8 +130,11 @@ groups:
         expr: up{job="blackbox_app_https"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Application blackbox scrape target down: {{ $labels.service }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -110,8 +142,11 @@ groups:
         expr: probe_duration_seconds{job="blackbox_app_https"} > 2
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Application HTTP probe is slow: {{ $labels.service }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -119,8 +154,11 @@ groups:
         expr: probe_ssl_earliest_cert_expiry{job="blackbox_app_https"} - time() < 86400 * 30
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Application TLS certificate expires within 30 days: {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-30d&to=now"
 
@@ -130,8 +168,11 @@ groups:
         expr: probe_success{scope="business"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business probe failed: {{ $labels.service }} {{ $labels.check }} {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -139,8 +180,11 @@ groups:
         expr: up{scope="business"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business blackbox scrape target down: {{ $labels.service }} {{ $labels.check }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -148,8 +192,11 @@ groups:
         expr: probe_duration_seconds{scope="business"} > 3
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business probe is slow: {{ $labels.service }} {{ $labels.check }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
@@ -157,8 +204,11 @@ groups:
         expr: probe_ssl_earliest_cert_expiry{scope="business"} - time() < 86400 * 30
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business endpoint TLS certificate expires within 30 days: {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-30d&to=now"
 
@@ -168,16 +218,21 @@ groups:
         expr: absent(backup_last_success_timestamp)
         for: 10m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Backup freshness metrics are missing"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupFreshnessWarning
         expr: time() - backup_last_success_timestamp > 20 * 3600 and time() - backup_last_success_timestamp <= 24 * 3600
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Backup approaching RPO limit: {{ $labels.backup }}"
           description: "The latest backup is older than 20 hours and has less than four hours remaining before the 24-hour RPO is breached."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -185,8 +240,10 @@ groups:
       - alert: BackupStale
         expr: time() - backup_last_success_timestamp > 24 * 3600
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Backup stale: {{ $labels.backup }}"
           description: "The latest backup has breached the 24-hour RPO."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -195,8 +252,10 @@ groups:
         expr: absent(backup_job_last_attempt_timestamp)
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Backup execution metrics are missing"
           description: "The guarded backup runner has not published attempt, result, and duration metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -205,8 +264,10 @@ groups:
         expr: backup_job_last_result == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Latest backup job failed: {{ $labels.backup_job }}"
           description: "Inspect the guarded backup job result and logs before the next RPO boundary."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -215,8 +276,10 @@ groups:
         expr: absent(r2_backup_last_success_timestamp)
         for: 10m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "R2 backup sync metrics are missing"
           description: "The off-host backup sync has not published a success timestamp."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -224,8 +287,10 @@ groups:
       - alert: R2BackupFreshnessWarning
         expr: time() - r2_backup_last_success_timestamp > 20 * 3600 and time() - r2_backup_last_success_timestamp <= 24 * 3600
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "R2 backup sync is approaching the RPO limit"
           description: "The latest successful R2 sync is older than 20 hours."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -233,8 +298,10 @@ groups:
       - alert: R2BackupStale
         expr: time() - r2_backup_last_success_timestamp > 24 * 3600
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "R2 backup stale"
           description: "The off-host backup sync has breached the 24-hour RPO."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -245,8 +312,11 @@ groups:
         expr: absent(docker_metrics_last_run_timestamp) or time() - docker_metrics_last_run_timestamp > 900
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker runtime metrics are stale"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
@@ -254,8 +324,11 @@ groups:
         expr: docker_metrics_check_success == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker runtime metrics collection failed"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
@@ -263,8 +336,11 @@ groups:
         expr: docker_container_running == 0 and on() docker_metrics_check_success == 1
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker container down: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -272,8 +348,11 @@ groups:
         expr: docker_container_health_status{status="unhealthy"} == 1
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker health check is unhealthy: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -281,8 +360,11 @@ groups:
         expr: docker_container_memory_usage_ratio > 0.85 and docker_container_memory_usage_ratio <= 0.95
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker container memory usage is high: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -290,8 +372,11 @@ groups:
         expr: docker_container_memory_usage_ratio > 0.95
         for: 5m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker container memory usage is critical: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -299,8 +384,11 @@ groups:
         expr: docker_container_pids_usage_ratio > 0.8
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker container PID usage is high: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -308,8 +396,11 @@ groups:
         expr: docker_container_oom_killed == 1
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Docker container reports OOMKilled: {{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
@@ -319,8 +410,11 @@ groups:
         expr: up{job="postgres"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Postgres exporter down: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -328,8 +422,11 @@ groups:
         expr: (sum by(instance) (pg_stat_activity_count) / max by(instance) (pg_settings_max_connections)) * 100 > 80
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Postgres connection usage high: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -337,8 +434,11 @@ groups:
         expr: increase(pg_stat_database_deadlocks[15m]) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Postgres deadlocks detected: {{ $labels.instance }} {{ $labels.datname }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -346,8 +446,11 @@ groups:
         expr: up{job="redis"} == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Redis exporter down: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -355,8 +458,11 @@ groups:
         expr: redis_memory_max_bytes > 0 and (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 80
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Redis memory usage high: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -364,8 +470,11 @@ groups:
         expr: increase(redis_rejected_connections_total[15m]) > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Redis rejected connections detected: {{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
@@ -375,8 +484,11 @@ groups:
         expr: absent(security_metrics_last_success_timestamp) or time() - security_metrics_last_success_timestamp > 300
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Security textfile metrics are stale"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -384,8 +496,11 @@ groups:
         expr: ufw_enabled == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "UFW is not active"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -393,8 +508,11 @@ groups:
         expr: ufw_status_check_success == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "UFW status check failed"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -402,8 +520,10 @@ groups:
         expr: auditd_service_active == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "auditd is not active"
           description: "System command and critical configuration audit logging is unavailable."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
@@ -413,8 +533,11 @@ groups:
         expr: auditd_check_success == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "auditd status or rule check failed"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -422,8 +545,10 @@ groups:
         expr: auditd_kernel_enabled == 0
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "The kernel audit subsystem is disabled"
           description: "auditd may be running, but the kernel is not accepting audit rules or events."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
@@ -432,8 +557,10 @@ groups:
         expr: auditd_rules_loaded == 0 or auditd_required_rule_keys_present != auditd_required_rule_keys_expected
         for: 5m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "auditd managed baseline rules are incomplete"
           description: "Compare auditd_required_rule_keys_present with the expected count and inspect auditctl -l."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
@@ -442,8 +569,11 @@ groups:
         expr: auditd_lost_events > 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "The kernel audit subsystem reports lost events"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -451,8 +581,11 @@ groups:
         expr: auditd_backlog_limit > 0 and auditd_backlog / auditd_backlog_limit > 0.8
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "The kernel audit backlog is above 80 percent"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -460,8 +593,11 @@ groups:
         expr: fail2ban_check_success{jail="sshd"} == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Fail2ban sshd status check failed"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
@@ -469,8 +605,10 @@ groups:
         expr: ssh_failed_login_last_24h > 50
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "SSH failed logins are high over the last 24 hours"
           description: "Check whether the increase is normal internet scanning or targeted login attempts."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
@@ -480,8 +618,10 @@ groups:
         expr: ssh_invalid_user_last_24h > 2000
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "SSH invalid user probes are high over the last 24 hours"
           description: "Usually caused by automated SSH scanning. Check the security dashboard for source IP patterns."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
@@ -491,8 +631,10 @@ groups:
         expr: fail2ban_currently_banned{jail="sshd"} > 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Fail2ban sshd currently has banned addresses"
           description: "Fail2ban is actively blocking SSH sources. Check the enriched Fail2ban panel for IP, country, ASN, BGP prefix and network organization."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
@@ -502,8 +644,10 @@ groups:
         expr: nginx_http_requests_last_5m{status_class="5xx"} > 20
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Nginx 5xx responses are high"
           description: "Check Nginx errors and upstream application health before deciding whether this is external traffic or service failure."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
@@ -513,12 +657,35 @@ groups:
         expr: nginx_http_requests_last_5m{status_class="4xx"} > 200
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Nginx 4xx responses are high"
           description: "High 4xx volume is often scanners or invalid paths. Check Nginx logs for source and request patterns."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 4[0-9][0-9] \""
+
+  - name: business_golden_signal_recording
+    interval: 1m
+    rules:
+      - record: service:business_http_requests:sum_5m
+        expr: sum by (service) (business_http_requests_last_5m)
+
+      - record: service:business_http_4xx:ratio_5m
+        expr: >-
+          sum by (service) (business_http_4xx_last_5m)
+          / clamp_min(sum by (service) (business_http_requests_last_5m), 1)
+
+      - record: service:business_http_5xx:ratio_5m
+        expr: >-
+          sum by (service) (business_http_5xx_last_5m)
+          / clamp_min(sum by (service) (business_http_requests_last_5m), 1)
+
+      - record: service:business_http_slow:ratio_5m
+        expr: >-
+          sum by (service) (business_http_slow_requests_last_5m{threshold="2s"})
+          / clamp_min(sum by (service) (business_http_requests_last_5m), 1)
 
   - name: business_log_alerts
     rules:
@@ -526,8 +693,10 @@ groups:
         expr: absent(business_log_metrics_last_success_timestamp) or time() - business_log_metrics_last_success_timestamp > 300
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business log textfile metrics are stale"
           description: "The Nginx business log metrics script has not produced fresh textfile metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
@@ -537,8 +706,10 @@ groups:
         expr: business_http_5xx_last_5m > 5
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business HTTP 5xx responses are high: {{ $labels.service }}"
           description: "The service has more than 5 HTTP 5xx responses in the latest 5-minute Nginx business log window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
@@ -548,8 +719,10 @@ groups:
         expr: business_http_4xx_last_5m > 80
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business HTTP 4xx responses are high: {{ $labels.service }}"
           description: "The service has more than 80 HTTP 4xx responses in the latest 5-minute Nginx business log window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
@@ -559,8 +732,10 @@ groups:
         expr: business_http_slow_requests_last_5m{threshold="2s"} > 10
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business HTTP slow requests are high: {{ $labels.service }}"
           description: "The service has more than 10 non-streaming requests with Nginx request_time >= 2s in the latest 5-minute window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
@@ -570,8 +745,10 @@ groups:
         expr: business_log_parse_errors_last_5m > 20
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business log parse errors are high"
           description: "The business log metrics parser is seeing unexpected enhanced Nginx access log lines."
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
@@ -582,8 +759,10 @@ groups:
         expr: absent(daily_ops_audit_last_success_timestamp) or time() - daily_ops_audit_last_success_timestamp > 28 * 3600
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Daily operations audit is missing or stale"
           description: "The previous UTC day audit should be generated by 00:20 UTC."
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
@@ -592,8 +771,10 @@ groups:
         expr: daily_ops_audit_findings{severity="critical"} > 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Daily operations audit contains critical findings"
           description: "Review the daily audit email and dashboard before changing production."
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
@@ -602,8 +783,11 @@ groups:
         expr: daily_ops_audit_data_source_failures > 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Daily operations audit could not read all data sources"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
@@ -611,8 +795,11 @@ groups:
         expr: daily_ops_audit_delivery{state="attempted"} == 1 and on() daily_ops_audit_delivery{state="accepted"} == 0
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Daily operations audit email was not accepted by Alertmanager"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
@@ -622,8 +809,10 @@ groups:
         expr: absent(ops_runtime_snapshot_last_success_timestamp) or time() - ops_runtime_snapshot_last_success_timestamp > 180
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "LosAngeles runtime asset snapshot is stale"
           description: "The sanitized service, listener, container, and drift snapshot has not completed in three minutes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
@@ -632,8 +821,10 @@ groups:
         expr: ops_runtime_snapshot_check_success == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "LosAngeles runtime asset snapshot is incomplete"
           description: "At least one inventory, systemd, listener, Docker, or drift collector failed."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
@@ -642,8 +833,10 @@ groups:
         expr: ops_config_drift{severity="critical"} == 1
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Security-critical configuration drift: {{ $labels.service_id }} {{ $labels.hostname }}"
           description: "A Cloudflare-protected Nginx route is missing its expected backend, real-IP trust chain, or origin allowlist."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
@@ -652,8 +845,10 @@ groups:
         expr: ops_config_drift{severity="warning"} == 1
         for: 30m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Controlled configuration drift: {{ $labels.service_id }}"
           description: "The runtime Compose file differs from its Git-controlled recovery copy."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
@@ -662,8 +857,10 @@ groups:
         expr: absent(business_error_log_last_success_timestamp) or time() - business_error_log_last_success_timestamp > 180
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Sanitized business error log collector is stale"
           description: "The collector for resume, Account Vault, sub2api, and AreaForge has not completed in three minutes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
@@ -672,8 +869,10 @@ groups:
         expr: business_error_log_check_success == 0 or business_error_log_source_failures > 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Sanitized business error log collector cannot read every source"
           description: "Check the configured Docker container names and collector permissions."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
@@ -682,8 +881,10 @@ groups:
         expr: business_error_log_events_last_run > 20
         for: 0m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Business warning/error events increased sharply"
           description: "More than twenty sanitized warning/error events were recorded in one collector run."
           loki_query: "{job=\"business_errors\", host=\"LosAngeles\"}"
@@ -695,8 +896,10 @@ groups:
         expr: absent(cloudflare_ip_ranges_last_run_timestamp) or time() - cloudflare_ip_ranges_last_run_timestamp > 36 * 3600
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare IP range comparison is stale"
           description: "The daily comparison with Cloudflare's official IPv4 and IPv6 lists has not completed."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
@@ -705,8 +908,10 @@ groups:
         expr: cloudflare_ip_ranges_check_success == 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare IP range comparison failed"
           description: "The official list could not be fetched or a managed CIDR file is invalid."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
@@ -715,8 +920,10 @@ groups:
         expr: cloudflare_ip_ranges_match == 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Managed Cloudflare {{ $labels.family }} ranges differ from the official list"
           description: "Review the official change, update the Git-managed CIDRs, run nginx -t, and reload only after approval."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
@@ -725,8 +932,10 @@ groups:
         expr: absent(cloudflare_origin_cert_metrics_last_run_timestamp) or time() - cloudflare_origin_cert_metrics_last_run_timestamp > 3 * 3600
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate metrics are stale"
           description: "The local Cloudflare Origin certificate metrics script has not produced fresh textfile metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -736,8 +945,10 @@ groups:
         expr: cloudflare_origin_cert_check_success == 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate check failed: {{ $labels.cert }}"
           description: "The local Cloudflare Origin certificate file cannot be read or parsed. Check the certificate path and permissions."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -746,8 +957,10 @@ groups:
         expr: cloudflare_origin_cert_days_until_expiry < 180 and cloudflare_origin_cert_days_until_expiry >= 90
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate expires within 180 days: {{ $labels.cert }}"
           description: "Start planning renewal. This is the first long-range reminder for the Origin Certificate rotation window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -756,8 +969,10 @@ groups:
         expr: cloudflare_origin_cert_days_until_expiry < 90 and cloudflare_origin_cert_days_until_expiry >= 30
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate expires within 90 days: {{ $labels.cert }}"
           description: "Prepare the new Origin Certificate and schedule a low-risk rotation window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -766,8 +981,10 @@ groups:
         expr: cloudflare_origin_cert_days_until_expiry < 30 and cloudflare_origin_cert_days_until_expiry >= 7
         for: 1h
         labels:
+          owner: areasong-ops
           severity: warning
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate expires within 30 days: {{ $labels.cert }}"
           description: "Rotate the Origin Certificate soon and validate Cloudflare Full strict back-to-origin TLS."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -776,8 +993,10 @@ groups:
         expr: cloudflare_origin_cert_days_until_expiry < 7
         for: 30m
         labels:
+          owner: areasong-ops
           severity: critical
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Cloudflare Origin certificate expires within 7 days: {{ $labels.cert }}"
           description: "Rotate the Origin Certificate immediately to avoid Cloudflare Full strict origin TLS failure."
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
@@ -788,10 +1007,12 @@ groups:
         expr: absent(sub2api_capacity_metrics_last_run_timestamp) or time() - sub2api_capacity_metrics_last_run_timestamp > 660
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: business
           service: sub2api
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "sub2api capacity symptom metrics are stale"
           description: "The Docker log symptom collector missed its five-minute cadence for more than one full cycle (11 minutes)."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
@@ -800,10 +1021,12 @@ groups:
         expr: sub2api_log_check_success == 0
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: business
           service: sub2api
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "sub2api Docker log symptom check failed"
           description: "Check that the sub2api container exists and the collector can read Docker logs."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-capacity?orgId=1&from=now-6h&to=now"
@@ -812,10 +1035,12 @@ groups:
         expr: sub2api_no_available_account_events_last_5m > 0 and sub2api_no_available_account_events_last_5m < 10
         for: 2m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: business
           service: sub2api
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "sub2api has no available account events"
           description: "The application reported {{ $value }} no-available-account events in the latest five-minute window."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
@@ -824,10 +1049,12 @@ groups:
         expr: sub2api_no_available_account_events_last_5m >= 10
         for: 2m
         labels:
+          owner: areasong-ops
           severity: critical
           scope: business
           service: sub2api
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "sub2api account pool is unavailable at high frequency"
           description: "At least ten no-available-account events were observed in the latest five-minute window."
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
@@ -838,10 +1065,12 @@ groups:
         expr: absent(xray_traffic_metrics_last_run_timestamp) or time() - xray_traffic_metrics_last_run_timestamp > 300
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: business
           service: x-ui
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "xray traffic audit metrics are stale"
           description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
           grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
@@ -850,10 +1079,12 @@ groups:
         expr: xray_traffic_metrics_check_success == 0
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: business
           service: x-ui
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "xray statsquery API is failing"
           description: "The collector cannot read outbound traffic counters from the xray API on 127.0.0.1:62789."
           grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
@@ -864,10 +1095,12 @@ groups:
         expr: absent(account_vault_release_last_success)
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: deployment
           service: account-vault
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Account Vault release evidence metric is missing"
           description: "Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
@@ -876,10 +1109,12 @@ groups:
         expr: account_vault_release_last_success == 0
         for: 0m
         labels:
+          owner: areasong-ops
           severity: critical
           scope: deployment
           service: account-vault
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "The latest Account Vault release action failed"
           description: "Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
@@ -888,9 +1123,11 @@ groups:
         expr: absent(alertmanager_github_issue_sync_configured) or alertmanager_github_issue_sync_configured == 0
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager critical-alert GitHub Issue sync is disabled"
           description: "Provision the root-only GitHub token configuration or explicitly document a temporary risk acceptance."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -899,9 +1136,11 @@ groups:
         expr: alertmanager_github_issue_sync_success == 0
         for: 10m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager critical-alert GitHub Issue sync failed"
           description: "Check local Alertmanager access, the fine-grained GitHub token, repository scope, and the sync log."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -910,9 +1149,11 @@ groups:
         expr: alertmanager_github_issue_sync_configured == 1 and time() - alertmanager_github_issue_sync_last_success_timestamp > 900
         for: 5m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Alertmanager critical-alert GitHub Issue sync is stale"
           description: "The five-minute host job has not published a fresh sync result."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -924,9 +1165,11 @@ groups:
           (absent(alertmanager_github_token_expiry_configured) or alertmanager_github_token_expiry_configured == 0)
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "GitHub Issue sync token expiry metadata is missing"
           description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -940,9 +1183,11 @@ groups:
           alertmanager_github_token_days_until_expiry < 14
         for: 15m
         labels:
+          owner: areasong-ops
           severity: warning
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "GitHub Issue sync token expires within fourteen days"
           description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -954,9 +1199,11 @@ groups:
           alertmanager_github_token_days_until_expiry < 7
         for: 15m
         labels:
+          owner: areasong-ops
           severity: critical
           scope: alerting
         annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "GitHub Issue sync token expires within seven days"
           description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

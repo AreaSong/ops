@@ -12,16 +12,21 @@ tests:
         alertname: BackupMetricsMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Backup freshness metrics are missing"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 11m
         alertname: BackupJobMetricsMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Backup execution metrics are missing"
               description: "The guarded backup runner has not published attempt, result, and duration metrics."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -29,8 +34,10 @@ tests:
         alertname: R2BackupMetricsMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "R2 backup sync metrics are missing"
               description: "The off-host backup sync has not published a success timestamp."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -38,16 +45,22 @@ tests:
         alertname: BackupSetManifestMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete backup set manifest is missing"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 11m
         alertname: R2BackupSetVerificationMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete R2 backup set verification is missing"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
@@ -71,9 +84,11 @@ tests:
         alertname: BackupFreshnessWarning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               backup: redis
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Backup approaching RPO limit: redis"
               description: "The latest backup is older than 20 hours and has less than four hours remaining before the 24-hour RPO is breached."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -81,8 +96,10 @@ tests:
         alertname: R2BackupFreshnessWarning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "R2 backup sync is approaching the RPO limit"
               description: "The latest successful R2 sync is older than 20 hours."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -90,16 +107,22 @@ tests:
         alertname: BackupSetManifestFreshnessWarning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete backup set is approaching the RPO limit"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 21h
         alertname: R2BackupSetVerificationFreshnessWarning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete R2 backup verification is approaching the RPO limit"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
@@ -119,9 +142,11 @@ tests:
         alertname: BackupStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               backup: redis
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Backup stale: redis"
               description: "The latest backup has breached the 24-hour RPO."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -129,8 +154,10 @@ tests:
         alertname: R2BackupStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "R2 backup stale"
               description: "The off-host backup sync has breached the 24-hour RPO."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -138,16 +165,22 @@ tests:
         alertname: BackupSetManifestStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete backup set has breached the 24-hour RPO"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 25h
         alertname: R2BackupSetVerificationStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Complete R2 backup verification has breached the 24-hour RPO"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 25h
@@ -166,9 +199,11 @@ tests:
         alertname: BackupJobFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               backup_job: redis
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Latest backup job failed: redis"
               description: "Inspect the guarded backup job result and logs before the next RPO boundary."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"

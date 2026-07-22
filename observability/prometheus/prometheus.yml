@@ -86,7 +86,7 @@ scrape_configs:
           - https://log.areasong.top/
         labels:
           instance: LosAngeles
-          service: grafana
+          service: x-ui
     relabel_configs:
       - source_labels:
           - __address__

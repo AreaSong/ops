@@ -9,11 +9,69 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
     "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "SLO 服务",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(service:synthetic_journey_success:ratio, service)",
+        "definition": "label_values(service:synthetic_journey_success:ratio, service)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "sub2api"
+          ],
+          "value": [
+            "sub2api"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "journey",
+        "label": "SLO 链路",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(service:synthetic_journey_success:ratio{service=~\"$service\"}, journey)",
+        "definition": "label_values(service:synthetic_journey_success:ratio{service=~\"$service\"}, journey)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 0
+      }
+    ]
   },
   "panels": [
     {
@@ -41,7 +99,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_availability:ratio_30d{service=\"sub2api\"}[2h])",
+          "expr": "last_over_time(service:synthetic_availability:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -105,7 +163,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\"}[2h])",
+          "expr": "last_over_time(service:synthetic_slo_coverage:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -169,7 +227,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_error_budget_remaining:ratio_30d{service=\"sub2api\"}[2h])",
+          "expr": "last_over_time(service:synthetic_error_budget_remaining:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -233,7 +291,7 @@
       },
       "targets": [
         {
-          "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\"}",
+          "expr": "service:synthetic_burn_rate:ratio_5m{service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -308,7 +366,7 @@
       },
       "targets": [
         {
-          "expr": "probe_success{scope=\"business\",service=\"sub2api\"}",
+          "expr": "probe_success{scope=\"business\",service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} / {{check}}",
           "refId": "A",
           "datasource": {
@@ -348,7 +406,7 @@
       },
       "targets": [
         {
-          "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\"}",
+          "expr": "service:synthetic_burn_rate:ratio_5m{service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} 5m",
           "refId": "A",
           "datasource": {
@@ -357,7 +415,7 @@
           }
         },
         {
-          "expr": "service:synthetic_burn_rate:ratio_1h{service=\"sub2api\"}",
+          "expr": "service:synthetic_burn_rate:ratio_1h{service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} 1h",
           "refId": "B",
           "datasource": {
@@ -366,7 +424,7 @@
           }
         },
         {
-          "expr": "service:synthetic_burn_rate:ratio_6h{service=\"sub2api\"}",
+          "expr": "service:synthetic_burn_rate:ratio_6h{service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} 6h",
           "refId": "C",
           "datasource": {
@@ -524,7 +582,7 @@
       },
       "targets": [
         {
-          "expr": "probe_duration_seconds{scope=\"business\",service=\"sub2api\"}",
+          "expr": "probe_duration_seconds{scope=\"business\",service=~\"$service\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} / {{check}}",
           "refId": "A",
           "datasource": {

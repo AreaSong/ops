@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -334,7 +334,7 @@
     {
       "id": 13,
       "type": "row",
-      "title": "真实业务流量",
+      "title": "业务黄金信号",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -347,7 +347,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "业务请求量（按服务与状态码）",
+      "title": "近 5 分钟请求量（按服务）",
       "gridPos": {
         "x": 0,
         "y": 25,
@@ -356,8 +356,8 @@
       },
       "targets": [
         {
-          "expr": "business_http_requests_last_5m",
-          "legendFormat": "{{service}} {{status_class}}",
+          "expr": "service:business_http_requests:sum_5m",
+          "legendFormat": "{{service}}",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -387,7 +387,7 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "业务错误请求（4xx / 5xx）",
+      "title": "业务错误比例（4xx / 5xx）",
       "gridPos": {
         "x": 0,
         "y": 33,
@@ -396,7 +396,7 @@
       },
       "targets": [
         {
-          "expr": "business_http_4xx_last_5m",
+          "expr": "service:business_http_4xx:ratio_5m",
           "legendFormat": "{{service}} 4xx",
           "refId": "A",
           "datasource": {
@@ -405,7 +405,7 @@
           }
         },
         {
-          "expr": "business_http_5xx_last_5m",
+          "expr": "service:business_http_5xx:ratio_5m",
           "legendFormat": "{{service}} 5xx",
           "refId": "B",
           "datasource": {
@@ -416,7 +416,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       },
@@ -436,7 +438,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "慢请求（≥ 2 秒）",
+      "title": "慢请求比例（≥ 2 秒）",
       "gridPos": {
         "x": 12,
         "y": 33,
@@ -445,7 +447,7 @@
       },
       "targets": [
         {
-          "expr": "business_http_slow_requests_last_5m{threshold=\"2s\"}",
+          "expr": "service:business_http_slow:ratio_5m",
           "legendFormat": "{{service}}",
           "refId": "A",
           "datasource": {
@@ -456,7 +458,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       },
@@ -474,7 +478,7 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "最大请求耗时",
+      "title": "最大请求耗时（非分位数）",
       "gridPos": {
         "x": 0,
         "y": 41,

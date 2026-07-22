@@ -11,8 +11,10 @@ tests:
         alertname: ComplianceLogArchiveNotConfigured
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Compliance log archive is not configured"
               description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -27,10 +29,12 @@ tests:
         alertname: ComplianceLogArchiveStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: losangeles
               job: node-exporter
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Immutable compliance log archive verification is stale"
               description: "The daily audit/auth/Nginx archive has not completed its independent remote read-back within 36 hours."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -38,10 +42,12 @@ tests:
         alertname: ComplianceLogArchiveDayGap
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: losangeles
               job: node-exporter
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Compliance log archive is missing a recent UTC day"
               description: "The newest verified archive does not cover the previous complete UTC day."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -49,10 +55,12 @@ tests:
         alertname: ComplianceLogArchiveChainIncomplete
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: losangeles
               job: node-exporter
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Compliance log archive hash chain or append-only gateway is not verified"
               description: "Do not treat the remote compliance archive as complete until the manifest chain and gateway verification recover."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
@@ -67,10 +75,12 @@ tests:
         alertname: ComplianceLogArchiveNotConfigured
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: losangeles
               job: node-exporter
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Compliance log archive is not configured"
               description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"

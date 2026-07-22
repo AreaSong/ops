@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
+
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +97,82 @@ class DashboardContractTests(unittest.TestCase):
                     coordinate = (x, y)
                     self.assertNotIn(coordinate, occupied, panel["title"])
                     occupied.add(coordinate)
+
+    def test_slo_dashboard_filters_generic_panels_by_service_and_journey(self) -> None:
+        dashboard = json.loads(
+            (DASHBOARD_DIR / "sub2api-slo-capacity.json").read_text(encoding="utf-8")
+        )
+        variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+        self.assertEqual(set(variables), {"service", "journey"})
+        self.assertIn('service=~"$service"', variables["journey"]["query"])
+
+        generic_panel_ids = {1, 2, 3, 4, 5, 6, 9}
+        for panel in dashboard["panels"]:
+            if panel["id"] not in generic_panel_ids:
+                continue
+            for target in panel.get("targets", []):
+                self.assertIn('service=~"$service"', target["expr"], panel["title"])
+                self.assertIn('journey=~"$journey"', target["expr"], panel["title"])
+
+    def test_business_dashboard_uses_golden_signal_recordings(self) -> None:
+        dashboard = json.loads(
+            (DASHBOARD_DIR / "losangeles-app-health.json").read_text(encoding="utf-8")
+        )
+        expressions = {
+            target["expr"]
+            for panel in dashboard["panels"]
+            for target in panel.get("targets", [])
+            if "expr" in target
+        }
+        self.assertTrue(
+            {
+                "service:business_http_requests:sum_5m",
+                "service:business_http_4xx:ratio_5m",
+                "service:business_http_5xx:ratio_5m",
+                "service:business_http_slow:ratio_5m",
+            }.issubset(expressions)
+        )
+
+    def test_xray_email_is_parsed_at_query_time_not_indexed_in_loki(self) -> None:
+        promtail = yaml.safe_load(
+            (REPO_ROOT / "observability" / "promtail" / "promtail-config.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        xray = next(item for item in promtail["scrape_configs"] if item["job_name"] == "xray_access")
+        labels_stage = next(stage["labels"] for stage in xray["pipeline_stages"] if "labels" in stage)
+        self.assertNotIn("email", labels_stage)
+
+        dashboard = json.loads(
+            (DASHBOARD_DIR / "losangeles-xray-traffic-audit.json").read_text(encoding="utf-8")
+        )
+        email_variable = next(item for item in dashboard["templating"]["list"] if item["name"] == "email")
+        self.assertEqual(email_variable["datasource"]["uid"], "prometheus")
+        self.assertEqual(email_variable["query"], "label_values(xray_user_traffic_bytes_total, email)")
+        for panel in dashboard["panels"]:
+            for target in panel.get("targets", []):
+                expression = target.get("expr", "")
+                self.assertIsNone(
+                    re.search(r'\{[^}]*job="xray_access"[^}]*email=~', expression),
+                    panel["title"],
+                )
+
+    def test_service_label_contract_maps_business_logs_and_xui_probe(self) -> None:
+        prometheus = yaml.safe_load(
+            (REPO_ROOT / "observability" / "prometheus" / "prometheus.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        blackbox_https = next(
+            item for item in prometheus["scrape_configs"] if item["job_name"] == "blackbox_https"
+        )
+        self.assertEqual(blackbox_https["static_configs"][0]["labels"]["service"], "x-ui")
+
+        promtail_text = (
+            REPO_ROOT / "observability" / "promtail" / "promtail-config.yml"
+        ).read_text(encoding="utf-8")
+        for service in ("resume-jadeai", "account-vault", "sub2api", "areaforge"):
+            self.assertIn(f"replace: '{service}'", promtail_text)
 
 
 if __name__ == "__main__":

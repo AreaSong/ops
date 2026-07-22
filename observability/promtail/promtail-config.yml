@@ -10,6 +10,30 @@ clients:
 
 scrape_configs:
   - job_name: nginx
+    pipeline_stages:
+      - match:
+          selector: '{filename="/var/log/nginx/ops-business-access.log"}'
+          stages:
+            - regex:
+                expression: 'host="(?P<service>resume\.areasong\.top|sorryiossearch\.areasong\.top|cpa\.areasong\.top|forge\.areasong\.top)"'
+            - replace:
+                source: service
+                expression: 'resume\.areasong\.top'
+                replace: 'resume-jadeai'
+            - replace:
+                source: service
+                expression: 'sorryiossearch\.areasong\.top'
+                replace: 'account-vault'
+            - replace:
+                source: service
+                expression: 'cpa\.areasong\.top'
+                replace: 'sub2api'
+            - replace:
+                source: service
+                expression: 'forge\.areasong\.top'
+                replace: 'areaforge'
+            - labels:
+                service:
     static_configs:
       - targets:
           - localhost
@@ -120,7 +144,6 @@ scrape_configs:
           expression: '\[(?P<inbound>[^\s\]]+) (?:->|>>) (?P<outbound>[^\s\]]+)\] email: (?P<email>\S+)'
       - labels:
           outbound:
-          email:
     static_configs:
       - targets:
           - localhost

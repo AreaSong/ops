@@ -4,6 +4,44 @@ rule_files:
 evaluation_interval: 15s
 
 tests:
+  - interval: 1m
+    input_series:
+      - series: 'business_http_requests_last_5m{service="sub2api",status_class="2xx"}'
+        values: '89+0x2'
+      - series: 'business_http_requests_last_5m{service="sub2api",status_class="3xx"}'
+        values: '1+0x2'
+      - series: 'business_http_requests_last_5m{service="sub2api",status_class="4xx"}'
+        values: '8+0x2'
+      - series: 'business_http_requests_last_5m{service="sub2api",status_class="5xx"}'
+        values: '2+0x2'
+      - series: 'business_http_4xx_last_5m{service="sub2api"}'
+        values: '8+0x2'
+      - series: 'business_http_5xx_last_5m{service="sub2api"}'
+        values: '2+0x2'
+      - series: 'business_http_slow_requests_last_5m{service="sub2api",threshold="2s"}'
+        values: '5+0x2'
+    promql_expr_test:
+      - expr: 'service:business_http_requests:sum_5m{service="sub2api"}'
+        eval_time: 1m
+        exp_samples:
+          - labels: 'service:business_http_requests:sum_5m{service="sub2api"}'
+            value: 100
+      - expr: 'service:business_http_4xx:ratio_5m{service="sub2api"}'
+        eval_time: 1m
+        exp_samples:
+          - labels: 'service:business_http_4xx:ratio_5m{service="sub2api"}'
+            value: 0.08
+      - expr: 'service:business_http_5xx:ratio_5m{service="sub2api"}'
+        eval_time: 1m
+        exp_samples:
+          - labels: 'service:business_http_5xx:ratio_5m{service="sub2api"}'
+            value: 0.02
+      - expr: 'service:business_http_slow:ratio_5m{service="sub2api"}'
+        eval_time: 1m
+        exp_samples:
+          - labels: 'service:business_http_slow:ratio_5m{service="sub2api"}'
+            value: 0.05
+
   - interval: 15s
     input_series: []
     alert_rule_test:
@@ -11,10 +49,12 @@ tests:
         alertname: AccountVaultReleaseMetricsMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: deployment
               service: account-vault
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: Account Vault release evidence metric is missing
               description: Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom.
               grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
@@ -28,8 +68,10 @@ tests:
         alertname: BusinessErrorEventsBurst
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: Business warning/error events increased sharply
               description: More than twenty sanitized warning/error events were recorded in one collector run.
               loki_query: '{job="business_errors", host="LosAngeles"}'
@@ -46,10 +88,12 @@ tests:
         alertname: XrayTrafficMetricsStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: business
               service: x-ui
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "xray traffic audit metrics are stale"
               description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
@@ -64,10 +108,12 @@ tests:
         alertname: XrayTrafficMetricsStale
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: business
               service: x-ui
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "xray traffic audit metrics are stale"
               description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
@@ -91,10 +137,12 @@ tests:
         alertname: XrayTrafficStatsQueryFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: business
               service: x-ui
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "xray statsquery API is failing"
               description: "The collector cannot read outbound traffic counters from the xray API on 127.0.0.1:62789."
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
@@ -117,11 +165,13 @@ tests:
         alertname: AccountVaultReleaseFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               action: deploy
               severity: critical
               scope: deployment
               service: account-vault
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: The latest Account Vault release action failed
               description: Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying.
               grafana_url: https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now
@@ -140,9 +190,11 @@ tests:
         alertname: AlertmanagerGitHubTokenExpiryMetadataMissing
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: alerting
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "GitHub Issue sync token expiry metadata is missing"
               description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -158,9 +210,11 @@ tests:
         alertname: AlertmanagerGitHubTokenExpiringWarning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: warning
               scope: alerting
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "GitHub Issue sync token expires within fourteen days"
               description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -182,9 +236,11 @@ tests:
         alertname: AlertmanagerGitHubTokenExpiringCritical
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               severity: critical
               scope: alerting
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "GitHub Issue sync token expires within seven days"
               description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

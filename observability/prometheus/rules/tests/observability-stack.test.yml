@@ -18,11 +18,13 @@ tests:
         alertname: GrafanaMetricsTargetDown
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: grafana
               service: grafana
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Grafana metrics endpoint is unavailable"
               description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -30,11 +32,13 @@ tests:
         alertname: AlertmanagerMetricsTargetDown
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: alertmanager
               service: alertmanager
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Alertmanager metrics endpoint is unavailable"
               description: "Prometheus cannot scrape Alertmanager; active alerts remain visible in Prometheus but notifications may not be delivered."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -42,11 +46,13 @@ tests:
         alertname: BlackboxExporterMetricsTargetDown
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: blackbox_exporter
               service: blackbox-exporter
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Blackbox Exporter metrics endpoint is unavailable"
               description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -79,11 +85,13 @@ tests:
         alertname: AlertmanagerConfigReloadFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: alertmanager
               service: alertmanager
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Alertmanager rejected its latest configuration reload"
               description: "Alertmanager is still running with its previous configuration; validate and reload the intended configuration before relying on routing changes."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -91,10 +99,12 @@ tests:
         alertname: AlertmanagerNotificationFailures
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               integration: email
               service: alertmanager
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Alertmanager notification delivery failed: email"
               description: "At least one notification failed in the last ten minutes; verify the receiver and the independent GitHub watchdog path."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -102,11 +112,13 @@ tests:
         alertname: BlackboxExporterConfigReloadFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: blackbox_exporter
               service: blackbox-exporter
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Blackbox Exporter rejected its latest configuration reload"
               description: "Blackbox Exporter is still running with its previous configuration; validate modules before retrying the reload."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -114,11 +126,13 @@ tests:
         alertname: PrometheusConfigReloadFailed
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: prometheus
               service: prometheus
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Prometheus rejected its latest configuration reload"
               description: "Prometheus is still running with its previous configuration; validate rules and scrape configuration before reloading again."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -126,9 +140,11 @@ tests:
         alertname: PrometheusWalCorruptionDetected
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: prometheus
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Prometheus detected WAL corruption"
               description: "Prometheus reported a new write-ahead log corruption in the last fifteen minutes; preserve evidence and inspect TSDB recovery logs."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -136,9 +152,11 @@ tests:
         alertname: PrometheusRuleEvaluationFailures
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: prometheus
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Prometheus rule evaluation failed"
               description: "At least one recording or alerting rule evaluation failed in the last ten minutes; inspect the failing rule group before trusting derived signals."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -146,9 +164,11 @@ tests:
         alertname: PrometheusNotificationsDropped
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: prometheus
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Prometheus dropped alert notifications"
               description: "Prometheus dropped at least one notification bound for Alertmanager in the last ten minutes; inspect queue capacity and Alertmanager connectivity."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -156,11 +176,13 @@ tests:
         alertname: NodeTextfileScrapeError
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: node
               service: node-exporter
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Node Exporter cannot read one or more textfile metrics"
               description: "A malformed or unreadable textfile collector file has hidden host-job metrics for at least five minutes; inspect collector logs and recent metric files."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -168,9 +190,11 @@ tests:
         alertname: PromtailLogEntriesDropped
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: promtail
               severity: warning
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Promtail dropped log entries"
               description: "Promtail discarded one or more log entries in the last ten minutes; inspect rejection reasons, client retries, and Loki limits."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -178,9 +202,11 @@ tests:
         alertname: LokiWalSamplesDiscarded
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: loki
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Loki discarded WAL samples"
               description: "Loki discarded one or more samples while replaying or writing its WAL in the last fifteen minutes; inspect ingester logs and storage health."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -203,11 +229,13 @@ tests:
         alertname: LokiCompactorNotRunning
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: loki
               service: loki
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Loki compactor is not active"
               description: "The compactor has remained inactive beyond its startup stabilization window; retention and index compaction may be stalled."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -215,11 +243,13 @@ tests:
         alertname: LokiRetentionApplyStalled
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               instance: LosAngeles
               job: loki
               service: loki
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Loki retention has not completed successfully"
               description: "Loki is up, but retention has not completed within the expected compaction interval and startup allowance."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
@@ -227,9 +257,11 @@ tests:
         alertname: LokiRetentionMarkerProcessingStalled
         exp_alerts:
           - exp_labels:
+              owner: areasong-ops
               service: loki
               severity: critical
             exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Loki retention marker queue is not draining"
               description: "Deletion markers remained queued beyond the configured two-hour delete delay without any successful deletion."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
