@@ -252,11 +252,11 @@
               },
               {
                 "color": "orange",
-                "value": 36
+                "value": 20
               },
               {
                 "color": "red",
-                "value": 48
+                "value": 24
               }
             ]
           },
@@ -318,11 +318,11 @@
               },
               {
                 "color": "orange",
-                "value": 36
+                "value": 20
               },
               {
                 "color": "red",
-                "value": 48
+                "value": 24
               }
             ]
           },
@@ -384,11 +384,11 @@
               },
               {
                 "color": "orange",
-                "value": 24
+                "value": 20
               },
               {
                 "color": "red",
-                "value": 36
+                "value": 24
               }
             ]
           },
@@ -450,11 +450,11 @@
               },
               {
                 "color": "orange",
-                "value": 36
+                "value": 20
               },
               {
                 "color": "red",
-                "value": 48
+                "value": 24
               }
             ]
           },
@@ -959,9 +959,9 @@
       }
     },
     {
-      "id": 70,
+      "id": 80,
       "type": "row",
-      "title": "恢复演练与合规",
+      "title": "备份任务执行",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -972,12 +972,132 @@
       }
     },
     {
+      "id": 81,
+      "type": "stat",
+      "title": "任务结果",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "backup_job_last_result",
+          "legendFormat": "{{backup_job}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 82,
+      "type": "timeseries",
+      "title": "任务耗时",
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "backup_job_last_duration_seconds",
+          "legendFormat": "{{backup_job}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 70,
+      "type": "row",
+      "title": "恢复演练与合规",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "id": 71,
       "type": "stat",
       "title": "演练距今(天)",
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 29,
         "w": 4,
         "h": 3
       },
@@ -1043,7 +1163,7 @@
       "title": "演练耗时",
       "gridPos": {
         "x": 4,
-        "y": 23,
+        "y": 29,
         "w": 4,
         "h": 3
       },
@@ -1101,7 +1221,7 @@
       "title": "演练库大小",
       "gridPos": {
         "x": 8,
-        "y": 23,
+        "y": 29,
         "w": 4,
         "h": 3
       },
@@ -1159,7 +1279,7 @@
       "title": "public 表",
       "gridPos": {
         "x": 12,
-        "y": 23,
+        "y": 29,
         "w": 3,
         "h": 3
       },
@@ -1217,7 +1337,7 @@
       "title": "user 表",
       "gridPos": {
         "x": 15,
-        "y": 23,
+        "y": 29,
         "w": 3,
         "h": 3
       },
@@ -1275,13 +1395,13 @@
       "title": "合规归档启用",
       "gridPos": {
         "x": 18,
-        "y": 23,
+        "y": 29,
         "w": 3,
         "h": 3
       },
       "targets": [
         {
-          "expr": "compliance_log_archive_enabled or vector(0)",
+          "expr": "compliance_log_archive_configured or vector(0)",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -1337,7 +1457,7 @@
       "title": "合规归档距今(h)",
       "gridPos": {
         "x": 21,
-        "y": 23,
+        "y": 29,
         "w": 3,
         "h": 3
       },

@@ -1,13 +1,29 @@
 groups:
   - name: backup_integrity_alerts
     rules:
-      - alert: BackupSetManifestStale
-        expr: absent(backup_set_last_success_timestamp) or time() - backup_set_last_success_timestamp > 30 * 3600
-        for: 30m
+      - alert: BackupSetManifestMissing
+        expr: absent(backup_set_last_success_timestamp)
+        for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Complete backup set manifest is missing or stale"
+          summary: "Complete backup set manifest is missing"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: BackupSetManifestFreshnessWarning
+        expr: time() - backup_set_last_success_timestamp > 20 * 3600 and time() - backup_set_last_success_timestamp <= 24 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "Complete backup set is approaching the RPO limit"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: BackupSetManifestStale
+        expr: time() - backup_set_last_success_timestamp > 24 * 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "Complete backup set has breached the 24-hour RPO"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupSetManifestInvalid
@@ -19,13 +35,29 @@ groups:
           summary: "Latest backup set is incomplete or spans too much time"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
-      - alert: R2BackupSetVerificationStale
-        expr: absent(backup_set_r2_verify_last_success_timestamp) or time() - backup_set_r2_verify_last_success_timestamp > 36 * 3600
-        for: 30m
+      - alert: R2BackupSetVerificationMissing
+        expr: absent(backup_set_r2_verify_last_success_timestamp)
+        for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Complete R2 backup set verification is missing or stale"
+          summary: "Complete R2 backup set verification is missing"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: R2BackupSetVerificationFreshnessWarning
+        expr: time() - backup_set_r2_verify_last_success_timestamp > 20 * 3600 and time() - backup_set_r2_verify_last_success_timestamp <= 24 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "Complete R2 backup verification is approaching the RPO limit"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: R2BackupSetVerificationStale
+        expr: time() - backup_set_r2_verify_last_success_timestamp > 24 * 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "Complete R2 backup verification has breached the 24-hour RPO"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupSetVerificationIncomplete

@@ -62,6 +62,39 @@ class DashboardContractTests(unittest.TestCase):
             }.issubset(titles)
         )
 
+    def test_backup_dashboard_matches_rpo_and_guarded_job_metrics(self) -> None:
+        path = DASHBOARD_DIR / "losangeles-services-backups.json"
+        dashboard = json.loads(path.read_text(encoding="utf-8"))
+        panels = dashboard["panels"]
+        panel_ids = [panel["id"] for panel in panels]
+        self.assertEqual(len(panel_ids), len(set(panel_ids)))
+        by_title = {panel["title"]: panel for panel in panels}
+        self.assertIn("任务结果", by_title)
+        self.assertIn("任务耗时", by_title)
+        self.assertEqual(by_title["任务结果"]["targets"][0]["expr"], "backup_job_last_result")
+        self.assertEqual(
+            by_title["任务耗时"]["targets"][0]["expr"],
+            "backup_job_last_duration_seconds",
+        )
+        for title in ("备份最旧(h)", "备份集(h)", "R2 同步(h)", "R2 校验(h)"):
+            values = [
+                step["value"]
+                for step in by_title[title]["fieldConfig"]["defaults"]["thresholds"]["steps"]
+                if step["value"] is not None
+            ]
+            self.assertEqual(values, [20, 24], title)
+        compliance_expr = by_title["合规归档启用"]["targets"][0]["expr"]
+        self.assertEqual(compliance_expr, "compliance_log_archive_configured or vector(0)")
+
+        occupied: set[tuple[int, int]] = set()
+        for panel in panels:
+            position = panel["gridPos"]
+            for x in range(position["x"], position["x"] + position["w"]):
+                for y in range(position["y"], position["y"] + position["h"]):
+                    coordinate = (x, y)
+                    self.assertNotIn(coordinate, occupied, panel["title"])
+                    occupied.add(coordinate)
+
 
 if __name__ == "__main__":
     unittest.main()

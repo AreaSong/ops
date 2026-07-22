@@ -173,22 +173,70 @@ groups:
           summary: "Backup freshness metrics are missing"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
+      - alert: BackupFreshnessWarning
+        expr: time() - backup_last_success_timestamp > 20 * 3600 and time() - backup_last_success_timestamp <= 24 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup approaching RPO limit: {{ $labels.backup }}"
+          description: "The latest backup is older than 20 hours and has less than four hours remaining before the 24-hour RPO is breached."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
       - alert: BackupStale
-        expr: time() - backup_last_success_timestamp > 30 * 3600
-        for: 10m
+        expr: time() - backup_last_success_timestamp > 24 * 3600
         labels:
           severity: critical
         annotations:
           summary: "Backup stale: {{ $labels.backup }}"
+          description: "The latest backup has breached the 24-hour RPO."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
-      - alert: R2BackupStale
-        expr: absent(r2_backup_last_success_timestamp) or time() - r2_backup_last_success_timestamp > 36 * 3600
+      - alert: BackupJobMetricsMissing
+        expr: absent(backup_job_last_attempt_timestamp)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup execution metrics are missing"
+          description: "The guarded backup runner has not published attempt, result, and duration metrics."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: BackupJobFailed
+        expr: backup_job_last_result == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latest backup job failed: {{ $labels.backup_job }}"
+          description: "Inspect the guarded backup job result and logs before the next RPO boundary."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: R2BackupMetricsMissing
+        expr: absent(r2_backup_last_success_timestamp)
         for: 10m
         labels:
           severity: critical
         annotations:
+          summary: "R2 backup sync metrics are missing"
+          description: "The off-host backup sync has not published a success timestamp."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: R2BackupFreshnessWarning
+        expr: time() - r2_backup_last_success_timestamp > 20 * 3600 and time() - r2_backup_last_success_timestamp <= 24 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "R2 backup sync is approaching the RPO limit"
+          description: "The latest successful R2 sync is older than 20 hours."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+      - alert: R2BackupStale
+        expr: time() - r2_backup_last_success_timestamp > 24 * 3600
+        labels:
+          severity: critical
+        annotations:
           summary: "R2 backup stale"
+          description: "The off-host backup sync has breached the 24-hour RPO."
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
   - name: docker_alerts

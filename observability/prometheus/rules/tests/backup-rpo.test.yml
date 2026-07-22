@@ -1,0 +1,174 @@
+rule_files:
+  - /rules/alerts.yml
+  - /rules/backup-integrity.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: missing backup pipeline metrics alert independently
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: BackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Backup freshness metrics are missing"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 11m
+        alertname: BackupJobMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Backup execution metrics are missing"
+              description: "The guarded backup runner has not published attempt, result, and duration metrics."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 11m
+        alertname: R2BackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "R2 backup sync metrics are missing"
+              description: "The off-host backup sync has not published a success timestamp."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 11m
+        alertname: BackupSetManifestMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Complete backup set manifest is missing"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 11m
+        alertname: R2BackupSetVerificationMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Complete R2 backup set verification is missing"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+  - name: twenty one hour backup age warns before RPO breach
+    interval: 1h
+    input_series:
+      - series: 'backup_last_success_timestamp{backup="redis"}'
+        values: '0+0x26'
+      - series: r2_backup_last_success_timestamp
+        values: '0+0x26'
+      - series: backup_set_last_success_timestamp
+        values: '0+0x26'
+      - series: backup_set_r2_verify_last_success_timestamp
+        values: '0+0x26'
+      - series: 'backup_job_last_attempt_timestamp{backup_job="redis"}'
+        values: '0+3600x26'
+      - series: 'backup_job_last_result{backup_job="redis"}'
+        values: '1+0x26'
+    alert_rule_test:
+      - eval_time: 21h
+        alertname: BackupFreshnessWarning
+        exp_alerts:
+          - exp_labels:
+              backup: redis
+              severity: warning
+            exp_annotations:
+              summary: "Backup approaching RPO limit: redis"
+              description: "The latest backup is older than 20 hours and has less than four hours remaining before the 24-hour RPO is breached."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 21h
+        alertname: R2BackupFreshnessWarning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "R2 backup sync is approaching the RPO limit"
+              description: "The latest successful R2 sync is older than 20 hours."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 21h
+        alertname: BackupSetManifestFreshnessWarning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Complete backup set is approaching the RPO limit"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 21h
+        alertname: R2BackupSetVerificationFreshnessWarning
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Complete R2 backup verification is approaching the RPO limit"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
+  - name: twenty five hour backup age is critical without extra delay
+    interval: 1h
+    input_series:
+      - series: 'backup_last_success_timestamp{backup="redis"}'
+        values: '0+0x26'
+      - series: r2_backup_last_success_timestamp
+        values: '0+0x26'
+      - series: backup_set_last_success_timestamp
+        values: '0+0x26'
+      - series: backup_set_r2_verify_last_success_timestamp
+        values: '0+0x26'
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels:
+              backup: redis
+              severity: critical
+            exp_annotations:
+              summary: "Backup stale: redis"
+              description: "The latest backup has breached the 24-hour RPO."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 25h
+        alertname: R2BackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "R2 backup stale"
+              description: "The off-host backup sync has breached the 24-hour RPO."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 25h
+        alertname: BackupSetManifestStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Complete backup set has breached the 24-hour RPO"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 25h
+        alertname: R2BackupSetVerificationStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Complete R2 backup verification has breached the 24-hour RPO"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+      - eval_time: 25h
+        alertname: BackupFreshnessWarning
+        exp_alerts: []
+
+  - name: latest failed guarded job alerts after five minutes
+    interval: 1m
+    input_series:
+      - series: 'backup_job_last_attempt_timestamp{backup_job="redis"}'
+        values: '0+60x10'
+      - series: 'backup_job_last_result{backup_job="redis"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: BackupJobFailed
+        exp_alerts:
+          - exp_labels:
+              backup_job: redis
+              severity: warning
+            exp_annotations:
+              summary: "Latest backup job failed: redis"
+              description: "Inspect the guarded backup job result and logs before the next RPO boundary."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"

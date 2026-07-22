@@ -13,4 +13,8 @@ docker run --rm --entrypoint /bin/promtool \
   -v "$RULES_DIR:/rules:ro" \
   "$IMAGE" test rules /rules/tests/backup-integrity.test.yml
 
+docker run --rm --entrypoint /bin/promtool \
+  -v "$RULES_DIR:/rules:ro" \
+  "$IMAGE" test rules /rules/tests/backup-rpo.test.yml
+
 echo "backup integrity rules: PASS"
