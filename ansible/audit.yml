@@ -88,17 +88,22 @@
         fail_msg: "auditd baseline key is missing: {{ item }}"
       loop: "{{ auditd_required_keys }}"
 
-    - name: Check node_exporter is running
-      ansible.builtin.systemd:
-        name: node_exporter
+    - name: Check Compose-managed node-exporter is running
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' }}"
+          - node-exporter
       register: ne_status
-      check_mode: true
+      changed_when: false
       failed_when: false
 
-    - name: Report node_exporter not running
+    - name: Report node-exporter not running or unhealthy
       ansible.builtin.debug:
-        msg: "FAIL: node_exporter is not active"
-      when: ne_status.status is not defined or ne_status.status.ActiveState != "active"
+        msg: "FAIL: Compose-managed node-exporter is not running and healthy"
+      when: ne_status.rc != 0 or ne_status.stdout != "running healthy"
 
     - name: Check disk usage
       ansible.builtin.shell: df --output=pcent,target / | tail -n +2 | awk '$1+0 > 85 {print}'

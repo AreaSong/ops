@@ -21,6 +21,7 @@ REGISTRY_AUTH_ROOT="${ACCOUNT_VAULT_REGISTRY_AUTH_ROOT:-/var/tmp}"
 # shellcheck disable=SC2034 # Consumed by the sourced release-state library.
 METRIC_OUT="${ACCOUNT_VAULT_RELEASE_METRIC_OUT:-/var/lib/node_exporter/textfile_collector/account-vault-release.prom}"
 ROLE_PERMISSION_HELPER="${ACCOUNT_VAULT_ROLE_PERMISSION_HELPER:-/opt/ops/scripts/deploy/account-vault-role-permissions.sh}"
+PRODUCTION_IMAGE_MANIFEST="${ACCOUNT_VAULT_PRODUCTION_IMAGE_MANIFEST:-/opt/ops/services/account-vault/production-images.txt}"
 LOCK_FILE="${ACCOUNT_VAULT_RELEASE_LOCK_FILE:-/run/lock/account-vault-release.lock}"
 MAX_BACKUP_AGE_MINUTES="${ACCOUNT_VAULT_MAX_BACKUP_AGE_MINUTES:-1800}"
 MAX_R2_AGE_SECONDS="${ACCOUNT_VAULT_MAX_R2_AGE_SECONDS:-129600}"
@@ -151,6 +152,13 @@ require_change_approval() {
     [[ "$ROLE_GRANTS_CHANGE_ID" =~ ^[A-Za-z0-9._-]{3,80}$ ]] || \
       fail "a separate --role-grants-change-id value is required"
   fi
+}
+
+require_scheduled_scan_coverage() {
+  [ -r "$PRODUCTION_IMAGE_MANIFEST" ] || \
+    fail "production image scan manifest is missing: $PRODUCTION_IMAGE_MANIFEST"
+  grep -Fqx "$ACTIVE_IMAGE" "$PRODUCTION_IMAGE_MANIFEST" || \
+    fail "release image is not registered for the scheduled Trivy scan"
 }
 
 require_release_attestation() {
@@ -484,6 +492,7 @@ on_signal() {
 
 deploy_release() {
   require_change_approval
+  require_scheduled_scan_coverage
   require_release_window
   validate_release_environment
   require_release_evidence

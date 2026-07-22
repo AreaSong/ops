@@ -10,6 +10,7 @@
   ansible.builtin.get_url:
     url: "https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz"
     dest: /tmp/node_exporter.tar.gz
+    checksum: "sha256:6809dd0b3ec45fd6e992c19071d6b5253aed3ead7bf0686885a51d85c6643c66"
     mode: "0644"
 
 - name: Extract node_exporter

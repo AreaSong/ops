@@ -5,4 +5,3 @@
   roles:
     - common
     - security
-    - node_exporter

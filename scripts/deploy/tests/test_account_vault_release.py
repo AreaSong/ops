@@ -36,6 +36,7 @@ class AccountVaultReleaseTests(unittest.TestCase):
         self.r2_state = self.root / "state-input" / "backup-set-r2-verify.state"
         self.backup_manifest_tool = self.root / "backup_manifest.py"
         self.release_evidence = self.root / "published-release-manifest.json"
+        self.production_image_manifest = self.root / "production-images.txt"
         self.attestation_verifier = self.fake_bin / "verify-attestation"
         self.github_token = self.root / "github-read-token"
         self.registry_auth_root = self.root / "registry-auth"
@@ -134,6 +135,7 @@ raise SystemExit(2)
             encoding="utf-8",
         )
         self.release_evidence.chmod(0o600)
+        self.production_image_manifest.write_text(RELEASE_IMAGE + "\n", encoding="utf-8")
         self._write_fake_commands()
 
     def tearDown(self) -> None:
@@ -221,6 +223,7 @@ fi
                 "ACCOUNT_VAULT_GITHUB_TOKEN_FILE": str(self.github_token),
                 "ACCOUNT_VAULT_REGISTRY_AUTH_ROOT": str(self.registry_auth_root),
                 "ACCOUNT_VAULT_ROLE_PERMISSION_HELPER": str(ROLE_PERMISSION_HELPER),
+                "ACCOUNT_VAULT_PRODUCTION_IMAGE_MANIFEST": str(self.production_image_manifest),
                 "ACCOUNT_VAULT_RELEASE_METRIC_OUT": str(self.release_metric),
                 "ACCOUNT_VAULT_RELEASE_LOCK_FILE": str(self.root / "run" / "release.lock"),
                 "ACCOUNT_VAULT_RELEASE_BACKUP_DIR": str(self.root / "manual"),
@@ -285,6 +288,24 @@ fi
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("approval flag for deploy", result.stderr)
+
+    def test_deploy_rejects_image_missing_from_scheduled_scan_manifest(self) -> None:
+        self.production_image_manifest.write_text(PREVIOUS_IMAGE + "\n", encoding="utf-8")
+        result = self._run(
+            "deploy",
+            RELEASE_IMAGE,
+            "--evidence",
+            str(self.release_evidence),
+            "--approve-migration",
+            "--approve-role-grants",
+            "--role-grants-change-id",
+            "test-role-grants-scan",
+            "--change-id",
+            "test-scan",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not registered for the scheduled Trivy scan", result.stderr)
+        self.assertFalse(self.docker_log.exists())
 
     def test_deploy_runs_migration_and_records_content_addressed_state(self) -> None:
         result = self._run(

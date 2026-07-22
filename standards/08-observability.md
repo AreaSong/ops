@@ -19,7 +19,7 @@
 ### node_exporter（所有服务器）
 
 - 端口：9100（仅内网访问）
-- 由 Ansible 基线剧本统一安装
+- LosAngeles 由 `observability/docker-compose.yml` 管理；不得同时启用 systemd 实例竞争 9100 端口
 - 采集：CPU、内存、磁盘、网络、文件系统
 
 ### 应用指标（按需）
@@ -84,7 +84,7 @@
 
 ## 新服务接入检查清单
 
-- [ ] node_exporter 运行正常（基线剧本已安装）
+- [ ] node_exporter 容器运行正常且 Prometheus `up{job="node"}` 为 1
 - [ ] promtail 采集该服务日志
 - [ ] 应用 exporter 已部署（如有）
 - [ ] Grafana 中可看到该服务数据

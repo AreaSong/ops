@@ -17,7 +17,7 @@ ansible/
 └── roles/
     ├── common/           # 通用配置（时区、NTP、目录）
     ├── security/         # 安全基线（SSH、防火墙、fail2ban）
-    └── node_exporter/    # 监控采集端
+    └── node_exporter/    # 旧 systemd 安装角色，仅保留校验过的迁移参考
 ```
 
 ## 前置条件
@@ -31,6 +31,9 @@ python3 scripts/generate-ansible-inventory.py
 ```
 
 ## 基线部署
+
+node-exporter 由 `observability/docker-compose.yml` 单点管理，基线剧本不再安装与
+Compose 竞争 9100 端口的 systemd 实例。
 
 ```bash
 # 预演（不实际执行）

@@ -51,8 +51,22 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch", content)
         self.assertRegex(content, r"aquasec/trivy:[0-9][^@\s]*@sha256:[0-9a-f]{64}")
         self.assertIn("--ignore-unfixed", content)
-        for source in ("observability/docker-compose.yml", "services/*/compose.yml"):
+        for source in (
+            "observability/docker-compose.yml",
+            "services/*/compose.yml",
+            "services/*/production-images.txt",
+        ):
             self.assertIn(source, content)
+
+        account_vault_images = (
+            REPO_ROOT / "services" / "account-vault" / "production-images.txt"
+        ).read_text(encoding="utf-8").splitlines()
+        self.assertGreater(len(account_vault_images), 0)
+        for image in account_vault_images:
+            self.assertRegex(
+                image,
+                r"^ghcr\.io/areasong/sorryiossearch@sha256:[0-9a-f]{64}$",
+            )
 
     def test_monthly_external_simulation_has_a_separate_concurrency_group(self) -> None:
         content = (WORKFLOW_ROOT / "external-uptime.yml").read_text(encoding="utf-8")
