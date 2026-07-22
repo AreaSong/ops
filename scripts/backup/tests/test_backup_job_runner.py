@@ -81,22 +81,22 @@ raise SystemExit(result.returncode)
         result = self._run("postgres")
         self.assertEqual(result.returncode, 0, result.stderr)
         metric = (self.metrics / "backup-job-postgres.prom").read_text(encoding="utf-8")
-        self.assertIn('backup_job_last_result{job="postgres"} 1', metric)
-        self.assertIn('backup_job_last_attempt_timestamp{job="postgres"}', metric)
-        self.assertIn('backup_job_last_duration_seconds{job="postgres"}', metric)
+        self.assertIn('backup_job_last_result{backup_job="postgres"} 1', metric)
+        self.assertIn('backup_job_last_attempt_timestamp{backup_job="postgres"}', metric)
+        self.assertIn('backup_job_last_duration_seconds{backup_job="postgres"}', metric)
 
         self._script("postgres", "exit 9")
         result = self._run("postgres")
         self.assertEqual(result.returncode, 9)
         metric = (self.metrics / "backup-job-postgres.prom").read_text(encoding="utf-8")
-        self.assertIn('backup_job_last_result{job="postgres"} 0', metric)
+        self.assertIn('backup_job_last_result{backup_job="postgres"} 0', metric)
 
     def test_timeout_is_a_failed_attempt(self) -> None:
         self._script("redis", "sleep 3")
         result = self._run("redis", BACKUP_JOB_TIMEOUT_SECONDS="1")
         self.assertEqual(result.returncode, 124)
         metric = (self.metrics / "backup-job-redis.prom").read_text(encoding="utf-8")
-        self.assertIn('backup_job_last_result{job="redis"} 0', metric)
+        self.assertIn('backup_job_last_result{backup_job="redis"} 0', metric)
 
     def test_invalid_job_does_not_publish_metrics(self) -> None:
         result = self._run("unknown")

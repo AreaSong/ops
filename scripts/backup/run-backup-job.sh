@@ -44,13 +44,13 @@ trap 'rm -f -- "${tmp_metric:-}"' EXIT
 {
   printf '# HELP backup_job_last_attempt_timestamp Unix timestamp of the latest backup job attempt.\n'
   printf '# TYPE backup_job_last_attempt_timestamp gauge\n'
-  printf 'backup_job_last_attempt_timestamp{job="%s"} %s\n' "$job" "$started_at"
+  printf 'backup_job_last_attempt_timestamp{backup_job="%s"} %s\n' "$job" "$started_at"
   printf '# HELP backup_job_last_result Whether the latest backup job attempt succeeded.\n'
   printf '# TYPE backup_job_last_result gauge\n'
-  printf 'backup_job_last_result{job="%s"} %s\n' "$job" "$result"
+  printf 'backup_job_last_result{backup_job="%s"} %s\n' "$job" "$result"
   printf '# HELP backup_job_last_duration_seconds Duration of the latest backup job attempt.\n'
   printf '# TYPE backup_job_last_duration_seconds gauge\n'
-  printf 'backup_job_last_duration_seconds{job="%s"} %s\n' "$job" "$duration"
+  printf 'backup_job_last_duration_seconds{backup_job="%s"} %s\n' "$job" "$duration"
 } >"$tmp_metric"
 chmod 0644 "$tmp_metric"
 mv -f -- "$tmp_metric" "$METRIC_DIR/backup-job-${job}.prom"
