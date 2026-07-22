@@ -35,15 +35,20 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api@sha256:b12017d69050ba83e2a3dfa1fd342c25720912937aee5043d5793c6cce0a459e
+    image: weishaw/sub2api@sha256:469790e0389bf31379978687149280a4e135393ad98a9a401951b6be9b1df444
     container_name: sub2api
     restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
     mem_limit: 512m
     memswap_limit: 768m
     cpus: "1.00"
     pids_limit: 512
     logging: *json-log-options
     security_opt: *security-options
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     ulimits:
       nofile:
         soft: 100000
@@ -69,6 +74,8 @@ services:
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
       - RUN_MODE=${RUN_MODE:-standard}
+      - HOME=/tmp
+      - TMPDIR=/tmp
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -148,14 +155,17 @@ services:
       # =======================================================================
       # Security Configuration (URL Allowlist)
       # =======================================================================
-      # Enable URL allowlist validation (false to skip allowlist checks)
-      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      # Enabled by default; production must enumerate every permitted upstream host.
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-true}
       # Allow insecure HTTP URLs when allowlist is disabled (default: false, requires https)
       - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
       # Allow private IP addresses for upstream/pricing/CRS (for internal deployments)
       - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
-      # Upstream hosts whitelist (comma-separated, only used when enabled=true)
-      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
+      # Comma-separated. Keep the production value in the root-only .env file.
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:?SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS is required}
+      - SECURITY_URL_ALLOWLIST_PRICING_HOSTS=${SECURITY_URL_ALLOWLIST_PRICING_HOSTS:-raw.githubusercontent.com}
+      # Empty by default: CRS sync fails closed until its server is explicitly allowed.
+      - SECURITY_URL_ALLOWLIST_CRS_HOSTS=${SECURITY_URL_ALLOWLIST_CRS_HOSTS:-}
 
       # =======================================================================
       # Update Configuration (在线更新配置)
@@ -221,12 +231,17 @@ services:
     image: redis:8-alpine@sha256:c5e375abb885e6b2021c0377879e4890bf76f9065b8922ffc113f2b226b9fc17
     container_name: sub2api-redis
     restart: unless-stopped
+    user: "999:1000"
+    read_only: true
+    cap_drop: [ALL]
     mem_limit: 128m
     memswap_limit: 192m
     cpus: "0.50"
     pids_limit: 256
     logging: *json-log-options
     security_opt: *security-options
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     ulimits:
       nofile:
         soft: 100000
@@ -235,7 +250,7 @@ services:
       # Local directory mapping for easy migration
       - /var/lib/sub2api/redis_data:/data
     command: >
-      sh -c 'exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --maxmemory 512mb --maxmemory-policy noeviction --aclfile /data/users.acl --requirepass "$$REDISCLI_AUTH"'
+      sh -c 'exec redis-server --save 60 1 --appendonly yes --appendfsync everysec --maxmemory 64mb --maxmemory-policy noeviction --aclfile /data/users.acl --requirepass "$$REDISCLI_AUTH"'
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)

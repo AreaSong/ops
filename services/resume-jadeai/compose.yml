@@ -13,18 +13,28 @@ services:
   app:
     image: twwch/jadeai@sha256:7c714e104d6110aaafa135a6936af3735398c83c479549b467d22fc9c0ab5917
     restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
     mem_limit: 384m
     memswap_limit: 512m
     cpus: "1.00"
     pids_limit: 768
     logging: *json-log-options
     security_opt: *security-options
+    shm_size: 128m
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
     ports:
       - "127.0.0.1:2082:3000"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
       - CHROME_PATH=/usr/bin/chromium-browser
+      - HOME=/tmp
+      - TMPDIR=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
+      - XDG_CONFIG_HOME=/tmp/.config
       - PORT=3000
       - HOSTNAME=0.0.0.0
     volumes:
