@@ -18,6 +18,10 @@ class BaselineControlTests(unittest.TestCase):
         self.assertEqual(config["defaults"]["host_key_checking"], "True")
         self.assertIn("StrictHostKeyChecking=yes", config["ssh_connection"]["ssh_args"])
         self.assertIn("UserKnownHostsFile=known_hosts", config["ssh_connection"]["ssh_args"])
+        self.assertIn(
+            "/var/lib/ops/ansible-collections",
+            config["defaults"]["collections_paths"],
+        )
 
         entries = [
             line
@@ -41,6 +45,20 @@ class BaselineControlTests(unittest.TestCase):
             download["ansible.builtin.get_url"]["checksum"],
             "sha256:6809dd0b3ec45fd6e992c19071d6b5253aed3ead7bf0686885a51d85c6643c66",
         )
+
+    def test_community_collection_is_versioned_and_checksum_verified(self) -> None:
+        requirements = yaml.safe_load(
+            (ANSIBLE_ROOT / "requirements.yml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            requirements["collections"],
+            [{"name": "community.general", "version": "10.7.9"}],
+        )
+        installer = (ANSIBLE_ROOT / "install-collections.sh").read_text(encoding="utf-8")
+        self.assertIn('VERSION="10.7.9"', installer)
+        self.assertRegex(installer, r'SHA256="[0-9a-f]{64}"')
+        self.assertIn("sha256sum --check --status", installer)
+        self.assertNotIn("curl |", installer)
 
 
 if __name__ == "__main__":

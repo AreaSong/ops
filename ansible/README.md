@@ -23,8 +23,14 @@ ansible/
 ## 前置条件
 
 1. 本机安装 Ansible >= 2.14
-2. SSH 密钥已配置到目标服务器
-3. 生成 inventory：
+2. 安装经过 SHA-256 校验的固定 Ansible collection：
+
+```bash
+sudo ./install-collections.sh
+```
+
+3. SSH 密钥已配置到目标服务器
+4. 生成 inventory：
 
 ```bash
 python3 scripts/generate-ansible-inventory.py
