@@ -2,6 +2,10 @@
 set -euo pipefail
 
 umask 077
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${OPS_BACKUP_JOB_WRAPPED:-0}" != 1 ]; then
+  exec "$SCRIPT_DIR/run-backup-job.sh" volumes "$@"
+fi
 
 BACKUP_ROOT="/var/backups/ops/volumes"
 TS="$(date +%Y%m%d-%H%M%S)"

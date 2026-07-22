@@ -20,8 +20,9 @@ class BaselineControlTests(unittest.TestCase):
         self.assertIn("UserKnownHostsFile=known_hosts", config["ssh_connection"]["ssh_args"])
         self.assertIn(
             "/var/lib/ops/ansible-collections",
-            config["defaults"]["collections_paths"],
+            config["defaults"]["collections_path"],
         )
+        self.assertNotIn("fact_caching", config["defaults"])
 
         entries = [
             line
