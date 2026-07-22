@@ -46,6 +46,16 @@ groups:
           summary: "AreaForge isolated restore drill is missing or older than 35 days"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
+      - alert: ComplianceLogArchiveNotConfigured
+        expr: absent(compliance_log_archive_configured) or compliance_log_archive_configured != 1
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Compliance log archive is not configured"
+          description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
       - alert: ComplianceLogArchiveStale
         expr: compliance_log_archive_configured == 1 and on() (absent(compliance_log_archive_last_success_timestamp) or time() - compliance_log_archive_last_success_timestamp > 36 * 3600)
         for: 30m

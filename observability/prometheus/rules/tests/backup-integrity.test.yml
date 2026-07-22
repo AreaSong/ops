@@ -4,6 +4,19 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
+  - name: missing archive activation gate is critical
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: ComplianceLogArchiveNotConfigured
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Compliance log archive is not configured"
+              description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
+
   - name: configured archive reports missing verification metrics
     interval: 1m
     input_series:
@@ -44,12 +57,23 @@ tests:
               description: "Do not treat the remote compliance archive as complete until the manifest chain and gateway verification recover."
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
-  - name: disabled archive does not emit archive alerts
+  - name: disabled archive emits configuration alert but not freshness alerts
     interval: 1m
     input_series:
       - series: 'compliance_log_archive_configured{instance="losangeles",job="node-exporter"}'
         values: '0+0x60'
     alert_rule_test:
+      - eval_time: 16m
+        alertname: ComplianceLogArchiveNotConfigured
+        exp_alerts:
+          - exp_labels:
+              instance: losangeles
+              job: node-exporter
+              severity: critical
+            exp_annotations:
+              summary: "Compliance log archive is not configured"
+              description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 31m
         alertname: ComplianceLogArchiveStale
         exp_alerts: []

@@ -16,6 +16,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         self.play = plays[0]
 
     def test_all_host_jobs_are_managed(self) -> None:
+        self.assertTrue(self.play["vars"]["compliance_archive_enabled"])
         self.assertEqual(
             set(self.play["vars"]["cron_files"]),
             {
@@ -51,6 +52,9 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             task_names,
         )
         self.assertGreater(task_names.index(activation_task), task_names.index(cron_task))
+        active_script_gate = "Require active compliance archive scripts before installing its cron"
+        self.assertIn(active_script_gate, task_names)
+        self.assertLess(task_names.index(active_script_gate), task_names.index(cron_task))
         self.assertLess(
             task_names.index("Require a root-only Alertmanager GitHub Issue sync credential"),
             task_names.index("Install Alertmanager GitHub Issue sync cron jobs"),

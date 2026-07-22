@@ -4,7 +4,9 @@
   become: true
   gather_facts: false
   vars:
-    compliance_archive_enabled: false
+    # LosAngeles 的 Worker、追加式写入 token 和独立只读回验 token 已就绪。
+    # 生产默认保持开启，避免未显式传参的重复部署静默移除归档任务与告警 gate。
+    compliance_archive_enabled: true
     # 2026-07-20 起生产默认启用（/etc/ops/alertmanager-github.env 已配 PAT）；临时停用需显式 -e alertmanager_github_issues_enabled=false
     alertmanager_github_issues_enabled: true
     host_jobs_release_id: ""
@@ -420,6 +422,26 @@
         mode: "0644"
         backup: true
       register: logrotate_copy_result
+
+    - name: Inspect active compliance archive scripts before installing its cron
+      ansible.builtin.stat:
+        path: "{{ host_jobs_current }}/scripts/backup/{{ item.name }}"
+      loop: "{{ compliance_archive_files }}"
+      register: active_compliance_archive_scripts
+      when: compliance_archive_enabled | bool
+
+    - name: Require active compliance archive scripts before installing its cron
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+          - item.stat.pw_name == 'root'
+          - item.stat.mode == item.item.mode
+        fail_msg: >-
+          Refusing to install the compliance archive cron because the active generation
+          is missing a validated script: {{ item.item.name }}
+      loop: "{{ active_compliance_archive_scripts.results | default([]) }}"
+      when: compliance_archive_enabled | bool
 
     - name: Remove the compliance archive activation gate while changing its deployment
       ansible.builtin.file:
