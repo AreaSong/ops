@@ -9,8 +9,9 @@
 
 同一 journey 包含多个探针时取最差值：任一步失败即视为该 journey 失败。
 规则部署后需要积累自身的 1 分钟 recording series；Dashboard 的 coverage
-达到 95% 前，不触发 30 天预算低或预算耗尽告警。
-30 天 availability、coverage 和 budget 每小时重算，短窗口 burn rate 每分钟重算。
+达到 95% 前，可用性显示“预热中”、错误预算显示“尚未生效”，且不触发 30 天
+预算低或预算耗尽告警。30 天 availability、coverage 和 budget 每分钟重算，
+短窗口 burn rate 按 15 秒 recording interval 更新。
 Prometheus 对刚缺失的原始探针样本有默认约 5 分钟 lookback 宽限；独立的
 Blackbox target-down 告警负责更快识别采集失败，coverage 用于反映长期数据完整性。
 

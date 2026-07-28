@@ -165,6 +165,44 @@ the textfile collector.
 
 See `runbooks/playbooks/sub2api-slo-capacity.md` for objectives, warm-up behavior, and response.
 
+## Grafana investigation and alert handling
+
+Prometheus is the only alert-rule source. The provisioned Alertmanager datasource is
+read-only from Grafana's rule-management perspective
+(`handleGrafanaManagedAlerts: false`): use Grafana to inspect and filter the existing
+Prometheus alerts, and use Alertmanager for notification routing and silences. Do not
+create a duplicate Grafana-managed copy of a Prometheus rule.
+
+Operational entry points are available from every provisioned dashboard:
+
+- **活动告警** opens `/alerting/list` for label and state filtering.
+- **静默管理** opens `/alerting/silences` for time-bounded maintenance silences.
+- **返回服务总览** preserves the current time range and returns to the NOC home.
+- The service overview also links to the independent GitHub Actions external-uptime run.
+
+Every silence must use the narrowest practical matchers and include an owner, reason,
+and expiry. Prefer a one-hour, four-hour, or approved maintenance-window duration;
+never create a permanent silence. Do not silence shared collector, notification-path,
+or backup-integrity root-cause alerts merely to hide their downstream symptoms.
+
+Prometheus Explore correlations use only label contracts that exist on both sides:
+
+- `service` opens the matching Loki service stream.
+- Docker metric label `name` opens the matching sanitized
+  `{job="business_errors", container="..."}` stream when that business container is
+  covered by the sanitizer.
+
+Prometheus `job` and `instance` are intentionally not treated as Loki correlation keys:
+their values have different meanings in the two systems. Deployment, container restart,
+backup, restore-drill, and configuration-drift annotations provide the change timeline
+on the dashboards that own those domains.
+
+Dashboard refresh intervals follow source cost and operational urgency: one minute for
+service, application, host, datastore, observability, and Sub2API SLO views; five minutes
+for daily audit, service/backup, security, and traffic views; ten minutes for asset and
+TLS/Cloudflare governance. Raw logs and low-frequency diagnostics are collapsed by
+default so opening a dashboard does not immediately execute every expensive query.
+
 Managed host-job deployment:
 
 ```bash
