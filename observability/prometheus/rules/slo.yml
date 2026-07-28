@@ -51,7 +51,7 @@ groups:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Synthetic SLO fast burn: {{ $labels.service }} / {{ $labels.journey }}"
           description: "The 99.9% availability error budget is burning above 14.4x in both the 5-minute and 1-hour windows."
-          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now&var-service={{ $labels.service }}&var-journey={{ $labels.journey }}"
+          grafana_url: '{{ if eq $labels.service "sub2api" }}https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now&var-journey={{ $labels.journey }}{{ else }}https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now{{ end }}'
 
       - alert: SyntheticSloSlowBurnWarning
         expr: >-
@@ -68,7 +68,7 @@ groups:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Synthetic SLO sustained burn: {{ $labels.service }} / {{ $labels.journey }}"
           description: "The 99.9% availability error budget is burning above 6x in both the 30-minute and 6-hour windows."
-          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-24h&to=now&var-service={{ $labels.service }}&var-journey={{ $labels.journey }}"
+          grafana_url: '{{ if eq $labels.service "sub2api" }}https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-24h&to=now&var-journey={{ $labels.journey }}{{ else }}https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-24h&to=now{{ end }}'
 
       - alert: SyntheticSloBudgetLow
         expr: >-
@@ -86,7 +86,7 @@ groups:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Synthetic SLO error budget below 25%: {{ $labels.service }} / {{ $labels.journey }}"
           description: "At least 95% of the 30-day observation window is present and less than one quarter of the error budget remains."
-          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now&var-service={{ $labels.service }}&var-journey={{ $labels.journey }}"
+          grafana_url: '{{ if eq $labels.service "sub2api" }}https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now&var-journey={{ $labels.journey }}{{ else }}https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-30d&to=now{{ end }}'
 
       - alert: SyntheticSloBudgetExhausted
         expr: >-
@@ -103,4 +103,4 @@ groups:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
           summary: "Synthetic SLO error budget exhausted: {{ $labels.service }} / {{ $labels.journey }}"
           description: "At least 95% of the 30-day observation window is present and the 99.9% availability error budget is exhausted."
-          grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now&var-service={{ $labels.service }}&var-journey={{ $labels.journey }}"
+          grafana_url: '{{ if eq $labels.service "sub2api" }}https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-30d&to=now&var-journey={{ $labels.journey }}{{ else }}https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-30d&to=now{{ end }}'

@@ -4,7 +4,7 @@
   "uid": "losangeles-server-asset-runtime",
   "version": 4,
   "timezone": "browser",
-  "refresh": "30s",
+  "refresh": "10m",
   "tags": [
     "LosAngeles",
     "asset",
@@ -20,7 +20,6 @@
       "type": "row",
       "title": "运行概览",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -125,7 +124,14 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -261,7 +267,7 @@
       "title": "CPU 与内存使用率",
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 4,
         "w": 12,
         "h": 7
       },
@@ -310,7 +316,7 @@
       "title": "根文件系统使用率",
       "gridPos": {
         "x": 12,
-        "y": 6,
+        "y": 4,
         "w": 12,
         "h": 7
       },
@@ -349,10 +355,9 @@
       "type": "row",
       "title": "服务与网络资产",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 11,
         "w": 24,
         "h": 1
       }
@@ -363,7 +368,7 @@
       "title": "服务目录",
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 12,
         "w": 12,
         "h": 10
       },
@@ -438,7 +443,7 @@
       "title": "域名、Nginx 与后端",
       "gridPos": {
         "x": 12,
-        "y": 14,
+        "y": 12,
         "w": 12,
         "h": 10
       },
@@ -514,7 +519,7 @@
       "title": "声明的主机端口",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 22,
         "w": 12,
         "h": 10
       },
@@ -588,7 +593,7 @@
       "title": "实际监听端口",
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 22,
         "w": 12,
         "h": 10
       },
@@ -660,10 +665,9 @@
       "type": "row",
       "title": "容器与配置治理",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 32,
         "w": 24,
         "h": 1
       }
@@ -674,7 +678,7 @@
       "title": "容器运行时与镜像来源",
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 33,
         "w": 24,
         "h": 12
       },
@@ -750,7 +754,7 @@
       "title": "容器安全状态",
       "gridPos": {
         "x": 0,
-        "y": 47,
+        "y": 45,
         "w": 12,
         "h": 11
       },
@@ -824,7 +828,7 @@
       "title": "配置漂移明细",
       "gridPos": {
         "x": 12,
-        "y": 47,
+        "y": 45,
         "w": 12,
         "h": 11
       },
@@ -893,637 +897,509 @@
       }
     },
     {
-      "id": 14,
-      "type": "logs",
-      "title": "已脱敏业务警告与错误",
+      "id": 31,
+      "type": "row",
+      "title": "已脱敏业务日志（按需）",
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 56,
         "w": 24,
-        "h": 8
+        "h": 1
       },
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "targets": [
+      "collapsed": true,
+      "panels": [
         {
-          "expr": "{job=\"business_errors\",host=\"LosAngeles\"}",
-          "refId": "A",
-          "queryType": "range",
+          "id": 14,
+          "type": "logs",
+          "title": "已脱敏业务警告与错误",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 8
+          },
           "datasource": {
             "type": "loki",
             "uid": "loki"
+          },
+          "targets": [
+            {
+              "expr": "{job=\"business_errors\",host=\"LosAngeles\"}",
+              "refId": "A",
+              "queryType": "range",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              }
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": true,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "sortOrder": "Descending",
+            "dedupStrategy": "none"
+          },
+          "fieldConfig": {
+            "defaults": {}
           }
         }
-      ],
-      "options": {
-        "showTime": true,
-        "showLabels": true,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": false,
-        "enableLogDetails": true,
-        "sortOrder": "Descending",
-        "dedupStrategy": "none"
-      },
-      "fieldConfig": {
-        "defaults": {}
-      }
+      ]
     },
     {
       "id": 24,
       "type": "row",
-      "title": "发布状态",
-      "collapsed": false,
-      "panels": [],
-      "gridPos": {
-        "x": 0,
-        "y": 69,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "id": 15,
-      "type": "stat",
-      "title": "Account Vault 发布状态",
-      "gridPos": {
-        "x": 0,
-        "y": 70,
-        "w": 6,
-        "h": 3
-      },
-      "targets": [
+      "title": "发布状态（按需）",
+      "collapsed": true,
+      "panels": [
         {
-          "expr": "account_vault_release_last_success",
-          "refId": "A",
+          "id": 15,
+          "type": "stat",
+          "title": "Account Vault 发布状态",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 3
+          },
+          "targets": [
+            {
+              "expr": "account_vault_release_last_success",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "异常",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "正常",
+                      "color": "green"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "mappings": [
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "Account Vault 发布距今",
+          "gridPos": {
+            "x": 6,
+            "y": 0,
+            "w": 6,
+            "h": 3
+          },
+          "targets": [
             {
-              "type": "value",
+              "expr": "time() - account_vault_release_last_attempt_timestamp",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 17,
+          "type": "table",
+          "title": "Account Vault 发布镜像",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 5
+          },
+          "targets": [
+            {
+              "expr": "account_vault_release_info",
+              "format": "table",
+              "instant": true,
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "transformations": [
+            {
+              "id": "labelsToFields",
               "options": {
-                "0": {
-                  "text": "异常",
-                  "color": "red"
+                "mode": "columns"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "instance": true,
+                  "Value": true,
+                  "job": true,
+                  "__name__": true,
+                  "Time": true
                 },
-                "1": {
-                  "text": "正常",
-                  "color": "green"
+                "indexByName": {},
+                "renameByName": {
+                  "action": "发布动作",
+                  "image_ref": "发布镜像"
                 }
               }
             }
           ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 16,
-      "type": "stat",
-      "title": "Account Vault 发布距今",
-      "gridPos": {
-        "x": 6,
-        "y": 70,
-        "w": 6,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "time() - account_vault_release_last_attempt_timestamp",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 17,
-      "type": "table",
-      "title": "Account Vault 发布镜像",
-      "gridPos": {
-        "x": 12,
-        "y": 70,
-        "w": 12,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "account_vault_release_info",
-          "format": "table",
-          "instant": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "instance": true,
-              "Value": true,
-              "job": true,
-              "__name__": true,
-              "Time": true
-            },
-            "indexByName": {},
-            "renameByName": {
-              "action": "发布动作",
-              "image_ref": "发布镜像"
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "footer": {
-          "show": false
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 25,
-      "type": "row",
-      "title": "Cloudflare 清单",
-      "collapsed": false,
-      "panels": [],
-      "gridPos": {
-        "x": 0,
-        "y": 75,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "id": 18,
-      "type": "stat",
-      "title": "Cloudflare IP 清单检查",
-      "gridPos": {
-        "x": 0,
-        "y": 76,
-        "w": 6,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "cloudflare_ip_ranges_check_success",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "异常",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "正常",
-                  "color": "green"
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
                 }
               }
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 19,
-      "type": "stat",
-      "title": "Cloudflare IP 检查距今",
-      "gridPos": {
-        "x": 6,
-        "y": 76,
-        "w": 6,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 86400
-              },
-              {
-                "color": "red",
-                "value": 129600
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 20,
-      "type": "table",
-      "title": "Cloudflare 托管与官方 CIDR",
-      "gridPos": {
-        "x": 12,
-        "y": 76,
-        "w": 12,
-        "h": 7
-      },
-      "targets": [
-        {
-          "expr": "cloudflare_ip_ranges_match",
-          "format": "table",
-          "instant": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "instance": true,
-              "job": true,
-              "__name__": true,
-              "Time": true
             },
-            "indexByName": {},
-            "renameByName": {
-              "Value": "一致状态"
+            "overrides": []
+          },
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true,
+            "footer": {
+              "show": false
             }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
           }
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "footer": {
-          "show": false
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "id": 26,
       "type": "row",
-      "title": "Docker 存储与构建缓存",
-      "collapsed": false,
-      "panels": [],
-      "gridPos": {
-        "x": 0,
-        "y": 83,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "id": 27,
-      "type": "stat",
-      "title": "BuildKit 缓存总量",
-      "gridPos": {
-        "x": 0,
-        "y": 84,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
+      "title": "Docker 存储与构建缓存（按需）",
+      "collapsed": true,
+      "panels": [
         {
-          "expr": "docker_storage_size_bytes{type=\"build_cache\"} or on() vector(0)",
-          "refId": "A",
+          "id": 27,
+          "type": "stat",
+          "title": "BuildKit 缓存总量",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "docker_storage_size_bytes{type=\"build_cache\"} or on() vector(0)",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 10737418240
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 28,
+          "type": "stat",
+          "title": "BuildKit 可回收量",
+          "gridPos": {
+            "x": 6,
+            "y": 0,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "docker_storage_reclaimable_bytes{type=\"build_cache\"} or on() vector(0)",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 5368709120
+                  },
+                  {
+                    "color": "red",
+                    "value": 10737418240
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 29,
+          "type": "stat",
+          "title": "BuildKit 清理距今",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "time() - docker_build_cache_prune_last_success_timestamp",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 604800
+                  },
+                  {
+                    "color": "red",
+                    "value": 691200
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 30,
+          "type": "stat",
+          "title": "最近回收量",
+          "gridPos": {
+            "x": 18,
+            "y": 0,
+            "w": 6,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "docker_build_cache_prune_reclaimed_bytes",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           }
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 10737418240 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "datasource": { "type": "prometheus", "uid": "prometheus" }
-    },
-    {
-      "id": 28,
-      "type": "stat",
-      "title": "BuildKit 可回收量",
       "gridPos": {
-        "x": 6,
-        "y": 84,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "docker_storage_reclaimable_bytes{type=\"build_cache\"} or on() vector(0)",
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 5368709120 },
-              { "color": "red", "value": 10737418240 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "datasource": { "type": "prometheus", "uid": "prometheus" }
-    },
-    {
-      "id": 29,
-      "type": "stat",
-      "title": "BuildKit 清理距今",
-      "gridPos": {
-        "x": 12,
-        "y": 84,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "time() - docker_build_cache_prune_last_success_timestamp",
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 604800 },
-              { "color": "red", "value": 691200 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "datasource": { "type": "prometheus", "uid": "prometheus" }
-    },
-    {
-      "id": 30,
-      "type": "stat",
-      "title": "最近回收量",
-      "gridPos": {
-        "x": 18,
-        "y": 84,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "docker_build_cache_prune_reclaimed_bytes",
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "datasource": { "type": "prometheus", "uid": "prometheus" }
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      }
     }
   ],
   "description": "服务、域名、端口、容器、配置漂移、发布状态和 Docker 存储的资产视图。",
@@ -1541,6 +1417,54 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "配置漂移状态变化",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "changes(ops_config_drift[2m]) != 0",
+        "step": "60s",
+        "titleFormat": "配置漂移状态变化 {{name}}",
+        "tagKeys": "name,severity"
+      }
+    ]
+  }
 }

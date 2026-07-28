@@ -1,6 +1,6 @@
 {
   "uid": "losangeles-certificates-cloudflare",
-  "title": "证书与 Cloudflare",
+  "title": "TLS 与 Cloudflare 治理",
   "tags": [
     "LosAngeles",
     "certificates",
@@ -9,7 +9,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 2,
-  "refresh": "1m",
+  "refresh": "10m",
   "time": {
     "from": "now-30d",
     "to": "now"
@@ -20,7 +20,6 @@
       "type": "row",
       "title": "证书状态",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -72,7 +71,14 @@
                 "value": 180
               }
             ]
-          }
+          },
+          "links": [
+            {
+              "title": "查看服务与证书告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -192,7 +198,24 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 7200
+              },
+              {
+                "color": "red",
+                "value": 10800
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -218,12 +241,11 @@
     {
       "id": 7,
       "type": "row",
-      "title": "到期趋势",
+      "title": "证书到期趋势",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 4,
         "w": 24,
         "h": 1
       }
@@ -234,7 +256,7 @@
       "title": "源站证书到期趋势",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 5,
         "w": 12,
         "h": 5
       },
@@ -272,7 +294,7 @@
       "title": "公开 TLS 证书剩余天数",
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 5,
         "w": 12,
         "h": 5
       },
@@ -303,6 +325,221 @@
         "type": "prometheus",
         "uid": "prometheus"
       }
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Cloudflare 代理 IP 治理",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Cloudflare IP 清单检查",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "cloudflare_ip_ranges_check_success",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Cloudflare IP 检查距今",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 86400
+              },
+              {
+                "color": "red",
+                "value": 129600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "Cloudflare 托管与官方 CIDR",
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "cloudflare_ip_ranges_match",
+          "format": "table",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "instance": true,
+              "job": true,
+              "__name__": true,
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value": "一致状态"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     }
   ],
   "description": "源站证书、公开 TLS 证书和 Cloudflare 相关检查。",
@@ -320,6 +557,54 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Cloudflare IP 清单刷新",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(cloudflare_ip_ranges_last_run_timestamp[20m]) > 0",
+        "step": "10m",
+        "titleFormat": "Cloudflare IP 清单已刷新",
+        "tagKeys": "service"
+      }
+    ]
+  }
 }

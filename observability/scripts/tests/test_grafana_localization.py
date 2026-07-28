@@ -29,13 +29,13 @@ HAN_RE = re.compile(r"[\u4e00-\u9fff]")
 
 EXPECTED_TITLES = {
     "应用与业务健康",
-    "证书与 Cloudflare",
+    "TLS 与 Cloudflare 治理",
     "每日运维审计",
     "数据库与缓存",
     "主机资源总览",
     "安全态势总览",
     "资产与运行配置",
-    "服务与备份",
+    "服务运行与备份",
     "Sub2API SLO 与容量",
     "流量审计",
     "服务总览",

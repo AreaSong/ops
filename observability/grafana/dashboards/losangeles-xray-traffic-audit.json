@@ -10,7 +10,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 3,
-  "refresh": "30s",
+  "refresh": "5m",
   "time": {
     "from": "now-24h",
     "to": "now"
@@ -21,7 +21,6 @@
       "type": "row",
       "title": "字节流量（按服务分类）",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -115,8 +114,8 @@
       "title": "本时段流量（按分类与方向）",
       "gridPos": {
         "x": 0,
-        "y": 9,
-        "w": 16,
+        "y": 6,
+        "w": 12,
         "h": 8
       },
       "targets": [
@@ -169,9 +168,9 @@
       "type": "stat",
       "title": "审计采集新鲜度（分钟）",
       "gridPos": {
-        "x": 16,
-        "y": 9,
-        "w": 4,
+        "x": 12,
+        "y": 6,
+        "w": 6,
         "h": 8
       },
       "targets": [
@@ -227,9 +226,9 @@
       "type": "stat",
       "title": "采集健康状态",
       "gridPos": {
-        "x": 20,
-        "y": 9,
-        "w": 4,
+        "x": 18,
+        "y": 6,
+        "w": 6,
         "h": 8
       },
       "targets": [
@@ -272,6 +271,13 @@
                 }
               }
             }
+          ],
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
           ]
         },
         "overrides": []
@@ -298,54 +304,55 @@
     {
       "id": 7,
       "type": "row",
-      "title": "访问目的地（完整清单）",
-      "collapsed": false,
-      "panels": [],
-      "gridPos": {
-        "x": 0,
-        "y": 17,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "id": 8,
-      "type": "logs",
-      "title": "最近访问记录（域名 / 用户 / 出站分类）",
-      "description": "Xray access log lines: source, accepted destination domain:port, inbound, outbound tag and client email.",
-      "gridPos": {
-        "x": 0,
-        "y": 18,
-        "w": 24,
-        "h": 8
-      },
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "targets": [
+      "title": "访问目的地原始日志（按需）",
+      "collapsed": true,
+      "panels": [
         {
+          "id": 8,
+          "type": "logs",
+          "title": "最近访问记录（域名 / 用户 / 出站分类）",
+          "description": "Xray access log lines: source, accepted destination domain:port, inbound, outbound tag and client email.",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 8
+          },
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\"} | regexp `email: (?P<email>\\S+)` | email=~\"$email\"",
-          "queryType": "range",
-          "refId": "A"
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{job=\"xray_access\", host=\"LosAngeles\", outbound=~\"$outbound\"} | regexp `email: (?P<email>\\S+)` | email=~\"$email\"",
+              "queryType": "range",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {}
+          }
         }
       ],
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "fieldConfig": {
-        "defaults": {}
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
       }
     },
     {
@@ -353,10 +360,9 @@
       "type": "row",
       "title": "访问频次统计",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 15,
         "w": 24,
         "h": 1
       }
@@ -368,7 +374,7 @@
       "description": "Connection acceptance rate per outbound tag, derived from Xray access log volume in Loki.",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 16,
         "w": 24,
         "h": 5
       },
@@ -414,7 +420,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 21,
         "w": 24,
         "h": 10
       },
@@ -470,10 +476,9 @@
       "type": "row",
       "title": "用户维度",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 31,
         "w": 24,
         "h": 1
       }
@@ -485,9 +490,9 @@
       "description": "Per-user uplink/downlink byte rate from xray user>>>traffic counters.",
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 32,
         "w": 12,
-        "h": 5
+        "h": 7
       },
       "targets": [
         {
@@ -535,9 +540,9 @@
       "description": "increase() over the selected range, robust to xray restarts.",
       "gridPos": {
         "x": 12,
-        "y": 51,
+        "y": 32,
         "w": 12,
-        "h": 8
+        "h": 7
       },
       "targets": [
         {
@@ -626,7 +631,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 39,
         "w": 24,
         "h": 9
       },
@@ -768,6 +773,36 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
   ]
 }

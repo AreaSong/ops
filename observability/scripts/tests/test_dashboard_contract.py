@@ -7,16 +7,187 @@ from pathlib import Path
 
 import yaml
 
+from observability.scripts import business_error_log, docker_metrics
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DASHBOARD_PATH = REPO_ROOT / "observability" / "grafana" / "dashboards" / "losangeles-server-asset-runtime.json"
 DASHBOARD_DIR = REPO_ROOT / "observability" / "grafana" / "dashboards"
+ALLOWED_PANEL_WIDTHS = {4, 6, 8, 12, 24}
+
+
+def load_dashboard(filename: str) -> dict:
+    return json.loads((DASHBOARD_DIR / filename).read_text(encoding="utf-8"))
+
+
+def walk_panels(panels: list[dict]):
+    for panel in panels:
+        yield panel
+        yield from walk_panels(panel.get("panels", []))
+
+
+def assert_no_overlap(test: unittest.TestCase, panels: list[dict], context: str) -> None:
+    occupied: set[tuple[int, int]] = set()
+    for panel in panels:
+        position = panel["gridPos"]
+        test.assertIn(position["w"], ALLOWED_PANEL_WIDTHS, f"{context}: {panel['title']}")
+        test.assertGreaterEqual(position["x"], 0, f"{context}: {panel['title']}")
+        test.assertLessEqual(
+            position["x"] + position["w"],
+            24,
+            f"{context}: {panel['title']}",
+        )
+        for x in range(position["x"], position["x"] + position["w"]):
+            for y in range(position["y"], position["y"] + position["h"]):
+                coordinate = (x, y)
+                test.assertNotIn(coordinate, occupied, f"{context}: {panel['title']}")
+                occupied.add(coordinate)
+        if panel.get("panels"):
+            assert_no_overlap(test, panel["panels"], f"{context} / {panel['title']}")
 
 
 class DashboardContractTests(unittest.TestCase):
-    def test_panel_ids_are_unique_and_cloudflare_metrics_are_visible(self) -> None:
+    def test_prometheus_to_loki_correlations_use_real_shared_labels(self) -> None:
+        datasources = yaml.safe_load(
+            (
+                REPO_ROOT
+                / "observability"
+                / "grafana"
+                / "provisioning"
+                / "datasources"
+                / "datasources.yml"
+            ).read_text(encoding="utf-8")
+        )
+        prometheus = next(item for item in datasources["datasources"] if item["uid"] == "prometheus")
+        expressions = {
+            correlation["config"]["target"]["expr"]
+            for correlation in prometheus["correlations"]
+        }
+        self.assertEqual(
+            expressions,
+            {
+                '{service="$${__field.labels.service}"}',
+                '{job="business_errors",container="$${__field.labels.name}"}',
+            },
+        )
+
+    def test_global_dashboard_layout_refresh_and_navigation_contract(self) -> None:
+        expected_refresh = {
+            "losangeles-app-health.json": "1m",
+            "losangeles-certificates-cloudflare.json": "10m",
+            "losangeles-daily-audit.json": "5m",
+            "losangeles-datastores.json": "1m",
+            "losangeles-host-overview.json": "1m",
+            "losangeles-observability-selfcheck.json": "1m",
+            "losangeles-security-overview.json": "5m",
+            "losangeles-server-asset-runtime.json": "10m",
+            "losangeles-service-overview.json": "1m",
+            "losangeles-services-backups.json": "5m",
+            "losangeles-xray-traffic-audit.json": "5m",
+            "sub2api-slo-capacity.json": "1m",
+        }
+        self.assertEqual(
+            {path.name for path in DASHBOARD_DIR.glob("*.json")},
+            set(expected_refresh),
+        )
+        for filename, refresh in expected_refresh.items():
+            with self.subTest(filename=filename):
+                dashboard = load_dashboard(filename)
+                self.assertEqual(dashboard["refresh"], refresh)
+                panel_ids = [panel["id"] for panel in walk_panels(dashboard["panels"])]
+                self.assertEqual(len(panel_ids), len(set(panel_ids)), dashboard["title"])
+                assert_no_overlap(self, dashboard["panels"], dashboard["title"])
+
+                first_row = min(
+                    (panel for panel in dashboard["panels"] if panel["type"] == "row"),
+                    key=lambda panel: panel["gridPos"]["y"],
+                )
+                later_rows = [
+                    panel["gridPos"]["y"]
+                    for panel in dashboard["panels"]
+                    if panel["type"] == "row"
+                    and panel["gridPos"]["y"] > first_row["gridPos"]["y"]
+                ]
+                first_section_end = min(later_rows) if later_rows else 10**9
+                first_section_stats = [
+                    panel
+                    for panel in dashboard["panels"]
+                    if panel["type"] == "stat"
+                    and first_row["gridPos"]["y"] < panel["gridPos"]["y"] < first_section_end
+                ]
+                self.assertLessEqual(len(first_section_stats), 6, dashboard["title"])
+
+                links = dashboard["links"]
+                self.assertTrue(
+                    dashboard["uid"] == "losangeles-service-overview"
+                    or any(
+                        link.get("type") == "link"
+                        and "losangeles-service-overview" in link.get("url", "")
+                        for link in links
+                    ),
+                    dashboard["title"],
+                )
+                self.assertTrue(
+                    any(
+                        link.get("type") == "link"
+                        and "/alerting/list" in link.get("url", "")
+                        for link in links
+                    ),
+                    dashboard["title"],
+                )
+
+    def test_state_timelines_and_key_data_links_are_actionable(self) -> None:
+        expected_timelines = {
+            "losangeles-app-health.json": "应用与业务探测状态",
+            "losangeles-observability-selfcheck.json": "组件抓取状态",
+            "losangeles-service-overview.json": "探测状态",
+            "sub2api-slo-capacity.json": "业务链路探测状态",
+        }
+        for filename, title in expected_timelines.items():
+            dashboard = load_dashboard(filename)
+            panel = next(panel for panel in walk_panels(dashboard["panels"]) if panel["title"] == title)
+            self.assertEqual(panel["type"], "state-timeline", title)
+            for target in panel["targets"]:
+                self.assertFalse(target.get("instant", False), title)
+                self.assertNotIn("vector(0)", target["expr"], title)
+
+        observability = load_dashboard("losangeles-observability-selfcheck.json")
+        component_state = next(
+            panel
+            for panel in walk_panels(observability["panels"])
+            if panel["title"] == "组件抓取状态"
+        )
+        self.assertEqual(
+            {target["expr"] for target in component_state["targets"]},
+            {
+                'min(up{job="prometheus"})',
+                'min(up{job="grafana"})',
+                'min(up{job="loki"})',
+                'min(up{job="promtail"})',
+                'min(up{job="alertmanager"})',
+                'min(up{job="blackbox_exporter"})',
+            },
+        )
+        self.assertEqual(component_state["gridPos"], {"x": 0, "y": 1, "w": 12, "h": 5})
+
+        overview = load_dashboard("losangeles-service-overview.json")
+        by_title = {panel["title"]: panel for panel in walk_panels(overview["panels"])}
+        for title in ("探测异常", "Firing 告警", "停摆容器", "备份最旧(h)", "最低错误预算"):
+            links = by_title[title]["fieldConfig"]["defaults"].get("links", [])
+            self.assertTrue(links, title)
+            self.assertTrue(any("${__url_time_range}" in link["url"] for link in links), title)
+        budget_link = by_title["最低错误预算"]["fieldConfig"]["defaults"]["links"][0]
+        self.assertIn("viewPanel=31", budget_link["url"])
+        self.assertNotIn("sub2api-slo-capacity", budget_link["url"])
+
+        external_links = overview["links"]
+        self.assertTrue(
+            any("external-uptime.yml" in link.get("url", "") for link in external_links)
+        )
+
+    def test_panel_ids_are_unique_and_docker_cache_metrics_are_visible(self) -> None:
         dashboard = json.loads(DASHBOARD_PATH.read_text(encoding="utf-8"))
-        panels = dashboard["panels"]
+        panels = list(walk_panels(dashboard["panels"]))
         panel_ids = [panel["id"] for panel in panels]
         self.assertEqual(len(panel_ids), len(set(panel_ids)))
 
@@ -26,9 +197,6 @@ class DashboardContractTests(unittest.TestCase):
             for target in panel.get("targets", [])
             if "expr" in target
         }
-        self.assertIn("cloudflare_ip_ranges_check_success", expressions)
-        self.assertIn("time() - cloudflare_ip_ranges_last_run_timestamp", expressions)
-        self.assertIn("cloudflare_ip_ranges_match", expressions)
         self.assertIn('docker_storage_size_bytes{type="build_cache"} or on() vector(0)', expressions)
         self.assertIn(
             'docker_storage_reclaimable_bytes{type="build_cache"} or on() vector(0)',
@@ -49,6 +217,17 @@ class DashboardContractTests(unittest.TestCase):
                 "changes(backup_set_r2_verify_last_success_timestamp[5m]) > 0",
                 "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
             },
+            "sub2api-slo-capacity.json": {
+                'changes(docker_container_started_at_timestamp_seconds{service="sub2api"}[75s]) > 0',
+                'increase(docker_container_restart_count{service="sub2api"}[75s]) > 0',
+            },
+            "losangeles-datastores.json": {
+                "changes(backup_set_last_success_timestamp[5m]) > 0",
+                "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+            },
+            "losangeles-server-asset-runtime.json": {
+                "changes(ops_config_drift[2m]) != 0",
+            },
         }
         for filename, queries in expected_queries.items():
             with self.subTest(filename=filename):
@@ -59,7 +238,7 @@ class DashboardContractTests(unittest.TestCase):
     def test_observability_components_have_dedicated_panels(self) -> None:
         path = DASHBOARD_DIR / "losangeles-observability-selfcheck.json"
         dashboard = json.loads(path.read_text(encoding="utf-8"))
-        panels = dashboard["panels"]
+        panels = list(walk_panels(dashboard["panels"]))
         panel_ids = [panel["id"] for panel in panels]
         self.assertEqual(len(panel_ids), len(set(panel_ids)))
         titles = {panel["title"] for panel in panels}
@@ -69,13 +248,50 @@ class DashboardContractTests(unittest.TestCase):
                 "组件常驻内存",
                 "Alertmanager 告警与通知",
                 "Loki Compactor 与保留清理",
+                "Grafana 数据源请求 5xx",
+                "Grafana 插件请求 P95",
             }.issubset(titles)
+        )
+
+    def test_cloudflare_governance_is_owned_by_tls_dashboard(self) -> None:
+        asset = load_dashboard("losangeles-server-asset-runtime.json")
+        tls = load_dashboard("losangeles-certificates-cloudflare.json")
+        self.assertEqual(tls["title"], "TLS 与 Cloudflare 治理")
+        asset_expressions = {
+            target.get("expr", "")
+            for panel in walk_panels(asset["panels"])
+            for target in panel.get("targets", [])
+        }
+        tls_expressions = {
+            target.get("expr", "")
+            for panel in walk_panels(tls["panels"])
+            for target in panel.get("targets", [])
+        }
+        for expression in (
+            "cloudflare_ip_ranges_check_success",
+            "time() - cloudflare_ip_ranges_last_run_timestamp",
+            "cloudflare_ip_ranges_match",
+        ):
+            self.assertNotIn(expression, asset_expressions)
+            self.assertIn(expression, tls_expressions)
+        tls_by_title = {panel["title"]: panel for panel in walk_panels(tls["panels"])}
+        self.assertEqual(
+            tls_by_title["Cloudflare IP 清单检查"]["gridPos"],
+            {"x": 0, "y": 11, "w": 12, "h": 3},
+        )
+        self.assertEqual(
+            tls_by_title["Cloudflare IP 检查距今"]["gridPos"],
+            {"x": 0, "y": 14, "w": 12, "h": 3},
+        )
+        self.assertEqual(
+            tls_by_title["Cloudflare 托管与官方 CIDR"]["gridPos"],
+            {"x": 12, "y": 11, "w": 12, "h": 6},
         )
 
     def test_backup_dashboard_matches_rpo_and_guarded_job_metrics(self) -> None:
         path = DASHBOARD_DIR / "losangeles-services-backups.json"
         dashboard = json.loads(path.read_text(encoding="utf-8"))
-        panels = dashboard["panels"]
+        panels = list(walk_panels(dashboard["panels"]))
         panel_ids = [panel["id"] for panel in panels]
         self.assertEqual(len(panel_ids), len(set(panel_ids)))
         by_title = {panel["title"]: panel for panel in panels}
@@ -99,20 +315,62 @@ class DashboardContractTests(unittest.TestCase):
             by_title["用户表"]["targets"][0]["expr"],
             "areaforge_restore_drill_user_tables",
         )
-
-        occupied: set[tuple[int, int]] = set()
-        for panel in panels:
-            position = panel["gridPos"]
-            for x in range(position["x"], position["x"] + position["w"]):
-                for y in range(position["y"], position["y"] + position["h"]):
-                    coordinate = (x, y)
-                    self.assertNotIn(coordinate, occupied, panel["title"])
-                    occupied.add(coordinate)
+        self.assertEqual(
+            by_title["演练来源"]["targets"][0]["expr"],
+            "areaforge_restore_drill_last_success_timestamp",
+        )
 
     def test_service_overview_handles_normal_and_not_applicable_states(self) -> None:
         path = DASHBOARD_DIR / "losangeles-service-overview.json"
         dashboard = json.loads(path.read_text(encoding="utf-8"))
         by_title = {panel["title"]: panel for panel in dashboard["panels"]}
+
+        missing_telemetry_panels = {
+            "探测异常": {
+                "expression": (
+                    'count((min by (service) (probe_success{service!=""}) == 0) or '
+                    '(min by (service) (up{job=~"blackbox_.*",job!="blackbox_exporter",'
+                    'service!=""}) == 0)) or on() '
+                    '(absent(up{job=~"blackbox_.*",job!="blackbox_exporter",service!=""}) * -1) '
+                    "or vector(0)"
+                ),
+                "missing_text": "探测数据缺失",
+            },
+            "停摆容器": {
+                "expression": (
+                    "(count(docker_container_running == 0) and on() "
+                    "(min(docker_metrics_check_success) == 1) and on() "
+                    "(time() - max(docker_metrics_last_run_timestamp) <= 900)) or on() "
+                    "((min(docker_metrics_check_success) == 0) * 0 - 1) or on() "
+                    "((time() - max(docker_metrics_last_run_timestamp) > 900) * 0 - 1) or on() "
+                    "(absent(docker_metrics_check_success) * -1) or on() "
+                    "(absent(docker_metrics_last_run_timestamp) * -1) or vector(0)"
+                ),
+                "missing_text": "Docker 采集缺失",
+            },
+        }
+        for title, expected in missing_telemetry_panels.items():
+            panel = by_title[title]
+            self.assertEqual(panel["targets"][0]["expr"], expected["expression"])
+            self.assertEqual(
+                panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["-1"]["text"],
+                expected["missing_text"],
+            )
+            self.assertEqual(
+                panel["fieldConfig"]["defaults"]["thresholds"]["steps"],
+                [
+                    {"color": "red", "value": None},
+                    {"color": "green", "value": 0},
+                    {"color": "red", "value": 1},
+                ],
+            )
+
+        self.assertEqual(
+            by_title["观测链路异常"]["targets"][0]["expr"],
+            "clamp_min(6 - count(min by (job) "
+            '(up{job=~"prometheus|grafana|loki|promtail|alertmanager|blackbox_exporter"}) '
+            "== 1), 0) or vector(6)",
+        )
 
         containers = by_title["容器运行状态（重启/健康/OOM）"]
         self.assertNotIn(
@@ -138,21 +396,53 @@ class DashboardContractTests(unittest.TestCase):
         self.assertEqual(mapping[0]["options"]["match"], "null")
         self.assertEqual(mapping[0]["options"]["result"]["text"], "N/A")
 
-    def test_slo_dashboard_filters_generic_panels_by_service_and_journey(self) -> None:
+    def test_slo_dashboard_is_sub2api_scoped_and_gates_immature_long_window_data(self) -> None:
         dashboard = json.loads(
             (DASHBOARD_DIR / "sub2api-slo-capacity.json").read_text(encoding="utf-8")
         )
         variables = {item["name"]: item for item in dashboard["templating"]["list"]}
-        self.assertEqual(set(variables), {"service", "journey"})
-        self.assertIn('service=~"$service"', variables["journey"]["query"])
+        self.assertEqual(set(variables), {"journey"})
+        self.assertIn('service="sub2api"', variables["journey"]["query"])
 
         generic_panel_ids = {1, 2, 3, 4, 5, 6, 9}
-        for panel in dashboard["panels"]:
+        for panel in walk_panels(dashboard["panels"]):
             if panel["id"] not in generic_panel_ids:
                 continue
             for target in panel.get("targets", []):
-                self.assertIn('service=~"$service"', target["expr"], panel["title"])
+                self.assertIn('service="sub2api"', target["expr"], panel["title"])
                 self.assertIn('journey=~"$journey"', target["expr"], panel["title"])
+
+        by_title = {panel["title"]: panel for panel in walk_panels(dashboard["panels"])}
+        availability = by_title["30 天合成可用性"]
+        budget = by_title["30 天错误预算剩余"]
+        for panel in (availability, budget):
+            self.assertIn("service:synthetic_slo_coverage:ratio_30d", panel["targets"][0]["expr"])
+            self.assertIn(">= 0.95", panel["targets"][0]["expr"])
+        self.assertEqual(availability["fieldConfig"]["defaults"]["noValue"], "预热中")
+        self.assertEqual(budget["fieldConfig"]["defaults"]["noValue"], "尚未生效")
+
+        burn_expressions = {target["expr"] for target in by_title["合成 SLO 燃烧窗口"]["targets"]}
+        self.assertTrue(any("ratio_30m" in expression for expression in burn_expressions))
+        capacity_row = next(panel for panel in dashboard["panels"] if panel["title"] == "依赖与容量")
+        self.assertTrue(capacity_row["collapsed"])
+        self.assertEqual({panel["id"] for panel in capacity_row["panels"]}, {8, 9, 10, 11})
+
+    def test_raw_log_diagnostics_are_collapsed(self) -> None:
+        expected = {
+            "losangeles-daily-audit.json": {11},
+            "losangeles-security-overview.json": {7, 8, 13},
+            "losangeles-server-asset-runtime.json": {14},
+            "losangeles-xray-traffic-audit.json": {8},
+        }
+        for filename, panel_ids in expected.items():
+            dashboard = load_dashboard(filename)
+            collapsed_ids = {
+                child["id"]
+                for panel in dashboard["panels"]
+                if panel["type"] == "row" and panel.get("collapsed")
+                for child in panel.get("panels", [])
+            }
+            self.assertTrue(panel_ids.issubset(collapsed_ids), filename)
 
     def test_business_dashboard_uses_golden_signal_recordings(self) -> None:
         dashboard = json.loads(
@@ -209,7 +499,18 @@ class DashboardContractTests(unittest.TestCase):
         self.assertEqual(blackbox_https["static_configs"][0]["labels"]["service"], "x-ui")
 
         node = next(item for item in prometheus["scrape_configs"] if item["job_name"] == "node")
-        self.assertEqual(node["static_configs"][0]["labels"]["service"], "host")
+        self.assertNotIn("service", node["static_configs"][0]["labels"])
+        self.assertEqual(
+            node["metric_relabel_configs"],
+            [
+                {
+                    "source_labels": ["service"],
+                    "regex": "^$",
+                    "target_label": "service",
+                    "replacement": "host",
+                }
+            ],
+        )
 
         promtail = yaml.safe_load(
             (
@@ -233,6 +534,23 @@ class DashboardContractTests(unittest.TestCase):
             expression = re.compile(replacements[service])
             self.assertGreater(expression.groups, 0, service)
             self.assertIsNotNone(expression.fullmatch(domain), service)
+
+        business_errors = next(
+            item for item in promtail["scrape_configs"] if item["job_name"] == "business_errors"
+        )
+        json_stage = next(
+            stage["json"] for stage in business_errors["pipeline_stages"] if "json" in stage
+        )
+        labels_stage = next(
+            stage["labels"] for stage in business_errors["pipeline_stages"] if "labels" in stage
+        )
+        self.assertEqual(json_stage["expressions"]["container"], "container")
+        self.assertIn("container", labels_stage)
+        self.assertTrue(
+            set(business_error_log.DEFAULT_SOURCES.values()).issubset(
+                set(docker_metrics.DEFAULT_CONTAINERS)
+            )
+        )
 
 
 if __name__ == "__main__":

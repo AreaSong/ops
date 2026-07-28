@@ -20,7 +20,6 @@
       "type": "row",
       "title": "日报概览",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -198,10 +197,9 @@
       "type": "row",
       "title": "流量与请求",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 4,
         "w": 24,
         "h": 1
       }
@@ -212,8 +210,8 @@
       "title": "最高错误率",
       "gridPos": {
         "x": 0,
-        "y": 8,
-        "w": 5,
+        "y": 5,
+        "w": 4,
         "h": 3
       },
       "targets": [
@@ -277,9 +275,9 @@
       "type": "stat",
       "title": "慢请求合计",
       "gridPos": {
-        "x": 5,
-        "y": 8,
-        "w": 5,
+        "x": 4,
+        "y": 5,
+        "w": 4,
         "h": 3
       },
       "targets": [
@@ -343,9 +341,9 @@
       "type": "stat",
       "title": "独立客户端",
       "gridPos": {
-        "x": 10,
-        "y": 8,
-        "w": 5,
+        "x": 8,
+        "y": 5,
+        "w": 4,
         "h": 3
       },
       "targets": [
@@ -401,9 +399,9 @@
       "type": "stat",
       "title": "响应流量",
       "gridPos": {
-        "x": 15,
-        "y": 8,
-        "w": 5,
+        "x": 12,
+        "y": 5,
+        "w": 6,
         "h": 3
       },
       "targets": [
@@ -459,9 +457,9 @@
       "type": "stat",
       "title": "日志问题",
       "gridPos": {
-        "x": 20,
-        "y": 8,
-        "w": 4,
+        "x": 18,
+        "y": 5,
+        "w": 6,
         "h": 3
       },
       "targets": [
@@ -526,7 +524,7 @@
       "title": "各服务 HTTP 质量",
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 8,
         "w": 24,
         "h": 6
       },
@@ -703,7 +701,7 @@
       "title": "每日主机网络流量",
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 14,
         "w": 12,
         "h": 5
       },
@@ -770,7 +768,7 @@
       "title": "每日 HTTP 请求量",
       "gridPos": {
         "x": 12,
-        "y": 17,
+        "y": 14,
         "w": 12,
         "h": 5
       },
@@ -814,7 +812,7 @@
       "title": "每日错误请求（4xx / 5xx）",
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 19,
         "w": 12,
         "h": 5
       },
@@ -858,7 +856,7 @@
       "title": "每日请求延迟分位数",
       "gridPos": {
         "x": 12,
-        "y": 25,
+        "y": 19,
         "w": 12,
         "h": 5
       },
@@ -901,10 +899,9 @@
       "type": "row",
       "title": "安全与备份",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 24,
         "w": 24,
         "h": 1
       }
@@ -915,7 +912,7 @@
       "title": "每日安全事件",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 25,
         "w": 12,
         "h": 5
       },
@@ -1044,7 +1041,7 @@
       "title": "备份与容器异常",
       "gridPos": {
         "x": 12,
-        "y": 34,
+        "y": 25,
         "w": 12,
         "h": 5
       },
@@ -1260,12 +1257,11 @@
     {
       "id": 15,
       "type": "row",
-      "title": "资源与任务",
+      "title": "资源峰值",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 30,
         "w": 24,
         "h": 1
       }
@@ -1276,7 +1272,7 @@
       "title": "主机资源每日峰值",
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 31,
         "w": 24,
         "h": 5
       },
@@ -1333,42 +1329,56 @@
       }
     },
     {
-      "id": 11,
-      "type": "logs",
-      "title": "日报任务日志",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "id": 16,
+      "type": "row",
+      "title": "日报任务日志（按需）",
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 36,
         "w": 24,
-        "h": 8
+        "h": 1
       },
-      "targets": [
+      "collapsed": true,
+      "panels": [
         {
+          "id": 11,
+          "type": "logs",
+          "title": "日报任务日志",
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"observability\", host=\"LosAngeles\"}",
-          "refId": "A"
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 8
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "expr": "{job=\"observability\", host=\"LosAngeles\"}",
+              "refId": "A"
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyLogMessage": false,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "fieldConfig": {
+            "defaults": {}
+          }
         }
-      ],
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "fieldConfig": {
-        "defaults": {}
-      }
+      ]
     }
   ],
   "description": "每日主机、请求、安全、备份与审计任务的汇总视图。",
@@ -1386,6 +1396,68 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "备份完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(backup_set_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "备份完成",
+        "tagKeys": "service"
+      },
+      {
+        "name": "恢复演练完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "expr": "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "恢复演练完成",
+        "tagKeys": "source"
+      }
+    ]
+  }
 }

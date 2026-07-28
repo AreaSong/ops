@@ -9,7 +9,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 3,
-  "refresh": "30s",
+  "refresh": "1m",
   "time": {
     "from": "now-6h",
     "to": "now"
@@ -73,7 +73,14 @@
           },
           "color": {
             "mode": "thresholds"
-          }
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -139,7 +146,14 @@
           },
           "color": {
             "mode": "thresholds"
-          }
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -205,7 +219,14 @@
           },
           "color": {
             "mode": "thresholds"
-          }
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -728,6 +749,36 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
   ]
 }

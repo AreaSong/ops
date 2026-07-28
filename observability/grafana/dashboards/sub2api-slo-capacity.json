@@ -10,40 +10,13 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 4,
-  "refresh": "30s",
+  "refresh": "1m",
   "time": {
     "from": "now-24h",
     "to": "now"
   },
   "templating": {
     "list": [
-      {
-        "name": "service",
-        "label": "SLO 服务",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "query": "label_values(service:synthetic_journey_success:ratio, service)",
-        "definition": "label_values(service:synthetic_journey_success:ratio, service)",
-        "refresh": 2,
-        "sort": 1,
-        "multi": true,
-        "includeAll": true,
-        "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": [
-            "sub2api"
-          ],
-          "value": [
-            "sub2api"
-          ]
-        },
-        "options": [],
-        "hide": 0
-      },
       {
         "name": "journey",
         "label": "SLO 链路",
@@ -52,8 +25,8 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "query": "label_values(service:synthetic_journey_success:ratio{service=~\"$service\"}, journey)",
-        "definition": "label_values(service:synthetic_journey_success:ratio{service=~\"$service\"}, journey)",
+        "query": "label_values(service:synthetic_journey_success:ratio{service=\"sub2api\"}, journey)",
+        "definition": "label_values(service:synthetic_journey_success:ratio{service=\"sub2api\"}, journey)",
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -79,7 +52,6 @@
       "type": "row",
       "title": "SLO 概览",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -99,7 +71,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_availability:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
+          "expr": "last_over_time(service:synthetic_availability:ratio_30d{service=\"sub2api\",journey=~\"$journey\"}[2h]) and on(service, journey) (last_over_time(service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\",journey=~\"$journey\"}[2h]) >= 0.95)",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -129,7 +101,15 @@
                 "value": 0.999
               }
             ]
-          }
+          },
+          "noValue": "预热中",
+          "links": [
+            {
+              "title": "查看 SLO 告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -163,7 +143,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_slo_coverage:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
+          "expr": "last_over_time(service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\",journey=~\"$journey\"}[2h])",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -193,7 +173,8 @@
                 "value": 0.95
               }
             ]
-          }
+          },
+          "noValue": "无数据"
         },
         "overrides": []
       },
@@ -227,7 +208,7 @@
       },
       "targets": [
         {
-          "expr": "last_over_time(service:synthetic_error_budget_remaining:ratio_30d{service=~\"$service\",journey=~\"$journey\"}[2h])",
+          "expr": "last_over_time(service:synthetic_error_budget_remaining:ratio_30d{service=\"sub2api\",journey=~\"$journey\"}[2h]) and on(service, journey) (last_over_time(service:synthetic_slo_coverage:ratio_30d{service=\"sub2api\",journey=~\"$journey\"}[2h]) >= 0.95)",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -257,7 +238,15 @@
                 "value": 0.5
               }
             ]
-          }
+          },
+          "noValue": "尚未生效",
+          "links": [
+            {
+              "title": "查看 SLO 告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -291,7 +280,7 @@
       },
       "targets": [
         {
-          "expr": "service:synthetic_burn_rate:ratio_5m{service=~\"$service\",journey=~\"$journey\"}",
+          "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}}",
           "refId": "A",
           "datasource": {
@@ -346,27 +335,26 @@
       "type": "row",
       "title": "业务链路",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 4,
         "w": 24,
         "h": 1
       }
     },
     {
       "id": 5,
-      "type": "timeseries",
+      "type": "state-timeline",
       "title": "业务链路探测状态",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 5,
         "w": 12,
-        "h": 5
+        "h": 6
       },
       "targets": [
         {
-          "expr": "probe_success{scope=\"business\",service=~\"$service\",journey=~\"$journey\"}",
+          "expr": "probe_success{scope=\"business\",service=\"sub2api\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} / {{check}}",
           "refId": "A",
           "datasource": {
@@ -379,14 +367,56 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "max": 1
+          "max": 1,
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "options": {
+        "alignValue": "left",
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       },
       "datasource": {
@@ -400,13 +430,13 @@
       "title": "合成 SLO 燃烧窗口",
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 5,
         "w": 12,
-        "h": 5
+        "h": 6
       },
       "targets": [
         {
-          "expr": "service:synthetic_burn_rate:ratio_5m{service=~\"$service\",journey=~\"$journey\"}",
+          "expr": "service:synthetic_burn_rate:ratio_5m{service=\"sub2api\",journey=~\"$journey\"}",
           "legendFormat": "{{journey}} 5m",
           "refId": "A",
           "datasource": {
@@ -415,8 +445,8 @@
           }
         },
         {
-          "expr": "service:synthetic_burn_rate:ratio_1h{service=~\"$service\",journey=~\"$journey\"}",
-          "legendFormat": "{{journey}} 1h",
+          "expr": "service:synthetic_burn_rate:ratio_30m{service=\"sub2api\",journey=~\"$journey\"}",
+          "legendFormat": "{{journey}} 30m",
           "refId": "B",
           "datasource": {
             "type": "prometheus",
@@ -424,9 +454,18 @@
           }
         },
         {
-          "expr": "service:synthetic_burn_rate:ratio_6h{service=~\"$service\",journey=~\"$journey\"}",
-          "legendFormat": "{{journey}} 6h",
+          "expr": "service:synthetic_burn_rate:ratio_1h{service=\"sub2api\",journey=~\"$journey\"}",
+          "legendFormat": "{{journey}} 1h",
           "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "service:synthetic_burn_rate:ratio_6h{service=\"sub2api\",journey=~\"$journey\"}",
+          "legendFormat": "{{journey}} 6h",
+          "refId": "D",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -457,7 +496,7 @@
       "title": "Sub2API 业务症状",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 11,
         "w": 24,
         "h": 5
       },
@@ -493,7 +532,14 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "min": 0
+          "min": 0,
+          "links": [
+            {
+              "title": "进入应用健康",
+              "url": "/d/losangeles-app-health/losangeles-app-health?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": []
       },
@@ -512,206 +558,228 @@
       "id": 14,
       "type": "row",
       "title": "依赖与容量",
-      "collapsed": false,
-      "panels": [],
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "PostgreSQL 与 Redis 饱和度",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 5
+          },
+          "targets": [
+            {
+              "expr": "sum by (instance) (pg_stat_activity_count{service=\"sub2api\"}) / clamp_min(max by (instance) (pg_settings_max_connections{service=\"sub2api\"}), 1)",
+              "legendFormat": "PostgreSQL 连接 {{instance}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "redis_memory_used_bytes{service=\"sub2api\"} / clamp_min(redis_memory_max_bytes{service=\"sub2api\"}, 1)",
+              "legendFormat": "Redis 内存 {{instance}}",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "links": [
+                {
+                  "title": "进入数据库与缓存",
+                  "url": "/d/losangeles-datastores/losangeles-datastores?${__url_time_range}",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "探测延迟",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 5
+          },
+          "targets": [
+            {
+              "expr": "probe_duration_seconds{scope=\"business\",service=\"sub2api\",journey=~\"$journey\"}",
+              "legendFormat": "{{journey}} / {{check}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "依赖错误",
+          "gridPos": {
+            "x": 0,
+            "y": 5,
+            "w": 12,
+            "h": 5
+          },
+          "targets": [
+            {
+              "expr": "increase(pg_stat_database_deadlocks{service=\"sub2api\"}[5m])",
+              "legendFormat": "PostgreSQL 死锁 {{instance}}",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "increase(redis_rejected_connections_total{service=\"sub2api\"}[5m])",
+              "legendFormat": "Redis 拒绝连接 {{instance}}",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "links": [
+                {
+                  "title": "进入数据库与缓存",
+                  "url": "/d/losangeles-datastores/losangeles-datastores?${__url_time_range}",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Sub2API 容器饱和度",
+          "gridPos": {
+            "x": 12,
+            "y": 5,
+            "w": 12,
+            "h": 5
+          },
+          "targets": [
+            {
+              "expr": "docker_container_cpu_limit_usage_ratio{name=\"sub2api\"}",
+              "legendFormat": "CPU / 限额",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "docker_container_memory_usage_ratio{name=\"sub2api\"}",
+              "legendFormat": "内存 / 限额",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "docker_container_pids_usage_ratio{name=\"sub2api\"}",
+              "legendFormat": "PID / 限额",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "links": [
+                {
+                  "title": "进入服务总览",
+                  "url": "/d/losangeles-service-overview/losangeles-service-overview?${__url_time_range}",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 16,
         "w": 24,
         "h": 1
-      }
-    },
-    {
-      "id": 8,
-      "type": "timeseries",
-      "title": "PostgreSQL 与 Redis 饱和度",
-      "gridPos": {
-        "x": 0,
-        "y": 25,
-        "w": 12,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "sum by (instance) (pg_stat_activity_count{service=\"sub2api\"}) / clamp_min(max by (instance) (pg_settings_max_connections{service=\"sub2api\"}), 1)",
-          "legendFormat": "PostgreSQL 连接 {{instance}}",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "redis_memory_used_bytes{service=\"sub2api\"} / clamp_min(redis_memory_max_bytes{service=\"sub2api\"}, 1)",
-          "legendFormat": "Redis 内存 {{instance}}",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "探测延迟",
-      "gridPos": {
-        "x": 12,
-        "y": 25,
-        "w": 12,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "probe_duration_seconds{scope=\"business\",service=~\"$service\",journey=~\"$journey\"}",
-          "legendFormat": "{{journey}} / {{check}}",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 10,
-      "type": "timeseries",
-      "title": "依赖错误",
-      "gridPos": {
-        "x": 0,
-        "y": 33,
-        "w": 12,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "increase(pg_stat_database_deadlocks{service=\"sub2api\"}[5m])",
-          "legendFormat": "PostgreSQL 死锁 {{instance}}",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "increase(redis_rejected_connections_total{service=\"sub2api\"}[5m])",
-          "legendFormat": "Redis 拒绝连接 {{instance}}",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 11,
-      "type": "timeseries",
-      "title": "Sub2API 容器饱和度",
-      "gridPos": {
-        "x": 12,
-        "y": 33,
-        "w": 12,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "docker_container_cpu_limit_usage_ratio{name=\"sub2api\"}",
-          "legendFormat": "CPU / 限额",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "docker_container_memory_usage_ratio{name=\"sub2api\"}",
-          "legendFormat": "内存 / 限额",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "docker_container_pids_usage_ratio{name=\"sub2api\"}",
-          "legendFormat": "PID / 限额",
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
       }
     }
   ],
@@ -730,6 +798,68 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "Sub2API 部署与重建",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(docker_container_started_at_timestamp_seconds{service=\"sub2api\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "Sub2API 部署/重建 {{name}}",
+        "tagKeys": "service,name"
+      },
+      {
+        "name": "Sub2API 自动重启",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "increase(docker_container_restart_count{service=\"sub2api\"}[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "Sub2API 自动重启 {{name}}",
+        "tagKeys": "service,name"
+      }
+    ]
+  }
 }

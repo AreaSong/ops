@@ -48,14 +48,472 @@
   },
   "panels": [
     {
+      "id": 105,
+      "type": "row",
+      "title": "核心组件状态",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 12,
+      "type": "state-timeline",
+      "title": "组件抓取状态",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "min(up{job=\"prometheus\"})",
+          "legendFormat": "Prometheus",
+          "instant": false,
+          "range": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"grafana\"})",
+          "legendFormat": "Grafana",
+          "instant": false,
+          "range": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"loki\"})",
+          "legendFormat": "Loki",
+          "instant": false,
+          "range": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"promtail\"})",
+          "legendFormat": "Promtail",
+          "instant": false,
+          "range": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"alertmanager\"})",
+          "legendFormat": "Alertmanager",
+          "instant": false,
+          "range": true,
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "min(up{job=\"blackbox_exporter\"})",
+          "legendFormat": "Blackbox",
+          "instant": false,
+          "range": true,
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "异常",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "组件常驻内存",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 5
+      },
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=~\"prometheus|grafana|loki|promtail|alertmanager|blackbox_exporter\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Alertmanager 告警与通知",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(alertmanager_alerts{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
+          "legendFormat": "活跃告警",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(alertmanager_silences{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
+          "legendFormat": "活跃静默",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(alertmanager_notifications_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时通知",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(alertmanager_notifications_failed_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时失败",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Loki Compactor 与保留清理",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "min(loki_boltdb_shipper_compactor_running{job=\"loki\"}) or on() vector(0)",
+          "legendFormat": "Compactor",
+          "instant": true,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{job=\"loki\"}) or on() vector(0)",
+          "legendFormat": "Marker 队列",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "((time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"}) / 60 and loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"} > 0) or on() vector(0)",
+          "legendFormat": "距保留成功",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job=\"loki\"}[1h])) or on() vector(0)",
+          "legendFormat": "1 小时删除",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "links": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "异常",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "正常",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "id": 100,
       "type": "row",
       "title": "抓取与目标",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 10,
         "w": 24,
         "h": 1
       }
@@ -66,9 +524,9 @@
       "title": "抓取目标状态",
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 11,
         "w": 12,
-        "h": 9
+        "h": 7
       },
       "targets": [
         {
@@ -160,9 +618,9 @@
       "title": "抓取耗时（按任务）",
       "gridPos": {
         "x": 12,
-        "y": 1,
+        "y": 11,
         "w": 12,
-        "h": 5
+        "h": 7
       },
       "targets": [
         {
@@ -199,10 +657,9 @@
       "type": "row",
       "title": "Prometheus 引擎",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 10,
+        "y": 18,
         "w": 24,
         "h": 1
       }
@@ -213,9 +670,9 @@
       "title": "引擎健康",
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 19,
         "w": 8,
-        "h": 3
+        "h": 5
       },
       "targets": [
         {
@@ -333,9 +790,9 @@
       "title": "TSDB 活跃序列数",
       "gridPos": {
         "x": 8,
-        "y": 11,
+        "y": 19,
         "w": 8,
-        "h": 7
+        "h": 5
       },
       "targets": [
         {
@@ -371,9 +828,9 @@
       "title": "规则求值失败与通知丢弃",
       "gridPos": {
         "x": 16,
-        "y": 11,
+        "y": 19,
         "w": 8,
-        "h": 7
+        "h": 5
       },
       "targets": [
         {
@@ -417,10 +874,9 @@
       "type": "row",
       "title": "日志管道",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 24,
         "w": 24,
         "h": 1
       }
@@ -431,7 +887,7 @@
       "title": "Loki 接收字节速率",
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 25,
         "w": 12,
         "h": 5
       },
@@ -469,7 +925,7 @@
       "title": "Promtail 发送与丢弃",
       "gridPos": {
         "x": 12,
-        "y": 19,
+        "y": 25,
         "w": 12,
         "h": 5
       },
@@ -511,64 +967,32 @@
       }
     },
     {
-      "id": 105,
+      "id": 106,
       "type": "row",
-      "title": "核心组件自监控",
-      "collapsed": false,
-      "panels": [],
+      "title": "Grafana 数据源与插件",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 30,
         "w": 24,
         "h": 1
-      }
+      },
+      "collapsed": false
     },
     {
-      "id": 12,
-      "type": "stat",
-      "title": "组件抓取状态",
+      "id": 16,
+      "type": "timeseries",
+      "title": "Grafana 数据源请求 5xx",
       "gridPos": {
         "x": 0,
-        "y": 25,
-        "w": 6,
+        "y": 31,
+        "w": 12,
         "h": 5
       },
       "targets": [
         {
-          "expr": "min(up{job=\"grafana\"}) or on() vector(0)",
-          "legendFormat": "Grafana",
-          "instant": true,
+          "expr": "sum by (datasource, code) (increase(grafana_datasource_request_total{job=\"grafana\",code=~\"5..\"}[5m]))",
+          "legendFormat": "{{datasource}} HTTP {{code}}",
           "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "min(up{job=\"alertmanager\"}) or on() vector(0)",
-          "legendFormat": "Alertmanager",
-          "instant": true,
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "min(up{job=\"blackbox_exporter\"}) or on() vector(0)",
-          "legendFormat": "Blackbox",
-          "instant": true,
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "min(up{job=\"loki\"}) or on() vector(0)",
-          "legendFormat": "Loki",
-          "instant": true,
-          "refId": "D",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -578,80 +1002,11 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "异常",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "正常",
-                  "color": "green"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "组件常驻内存",
-      "gridPos": {
-        "x": 6,
-        "y": 25,
-        "w": 6,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "process_resident_memory_bytes{job=~\"grafana|alertmanager|blackbox_exporter|loki\"}",
-          "legendFormat": "{{job}}",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+          "min": 0,
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 1
           }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
         },
         "overrides": []
       },
@@ -667,51 +1022,20 @@
       }
     },
     {
-      "id": 14,
-      "type": "stat",
-      "title": "Alertmanager 告警与通知",
+      "id": 17,
+      "type": "timeseries",
+      "title": "Grafana 插件请求 P95",
       "gridPos": {
         "x": 12,
-        "y": 25,
-        "w": 6,
+        "y": 31,
+        "w": 12,
         "h": 5
       },
       "targets": [
         {
-          "expr": "sum(alertmanager_alerts{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
-          "legendFormat": "活跃告警",
-          "instant": true,
+          "expr": "histogram_quantile(0.95, sum by (le, plugin_id, endpoint) (rate(grafana_plugin_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{plugin_id}} / {{endpoint}}",
           "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "sum(alertmanager_silences{job=\"alertmanager\",state=\"active\"}) or on() vector(0)",
-          "legendFormat": "活跃静默",
-          "instant": true,
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "sum(increase(alertmanager_notifications_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
-          "legendFormat": "1 小时通知",
-          "instant": true,
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "sum(increase(alertmanager_notifications_failed_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
-          "legendFormat": "1 小时失败",
-          "instant": true,
-          "refId": "D",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -720,208 +1044,20 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "D"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "red",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 1
           }
-        ]
+        },
+        "overrides": []
       },
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 15,
-      "type": "stat",
-      "title": "Loki Compactor 与保留清理",
-      "gridPos": {
-        "x": 18,
-        "y": 25,
-        "w": 6,
-        "h": 5
-      },
-      "targets": [
-        {
-          "expr": "min(loki_boltdb_shipper_compactor_running{job=\"loki\"}) or on() vector(0)",
-          "legendFormat": "Compactor",
-          "instant": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{job=\"loki\"}) or on() vector(0)",
-          "legendFormat": "Marker 队列",
-          "instant": true,
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "((time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"}) / 60 and loki_compactor_apply_retention_last_successful_run_timestamp_seconds{job=\"loki\"} > 0) or on() vector(0)",
-          "legendFormat": "距保留成功",
-          "instant": true,
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "sum(increase(loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total{job=\"loki\"}[1h])) or on() vector(0)",
-          "legendFormat": "1 小时删除",
-          "instant": true,
-          "refId": "D",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "A"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "异常",
-                        "color": "red"
-                      },
-                      "1": {
-                        "text": "正常",
-                        "color": "green"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "B"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 1
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "C"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "m"
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 60
-                    },
-                    {
-                      "color": "red",
-                      "value": 90
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
       },
       "datasource": {
         "type": "prometheus",
@@ -931,273 +1067,273 @@
     {
       "id": 103,
       "type": "row",
-      "title": "告警第二通道（GitHub Issue 同步）",
-      "collapsed": false,
-      "panels": [],
+      "title": "告警第二通道（按需）",
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Issue 同步健康",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 7
+          },
+          "targets": [
+            {
+              "expr": "alertmanager_github_issue_sync_configured",
+              "legendFormat": "已配置",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_issue_sync_success",
+              "legendFormat": "最近一次同步",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "time() - alertmanager_github_issue_sync_last_success_timestamp",
+              "legendFormat": "距上次同步",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_alertmanager_available",
+              "legendFormat": "Alertmanager API",
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_token_days_until_expiry",
+              "legendFormat": "PAT 剩余天数",
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "异常",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "正常",
+                      "color": "green"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byFrameRefID",
+                  "options": "C"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": []
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 600
+                        },
+                        {
+                          "color": "red",
+                          "value": 900
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byFrameRefID",
+                  "options": "E"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "d"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": []
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 7
+                        },
+                        {
+                          "color": "green",
+                          "value": 14
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Issue 同步动作（活跃/新建/更新/关闭）",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 7
+          },
+          "targets": [
+            {
+              "expr": "alertmanager_github_issue_sync_active",
+              "legendFormat": "活跃 critical",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_issue_sync_created",
+              "legendFormat": "新建 issue",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_issue_sync_updated",
+              "legendFormat": "更新 issue",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "alertmanager_github_issue_sync_closed",
+              "legendFormat": "关闭 issue",
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 36,
         "w": 24,
         "h": 1
       }
     },
     {
-      "id": 8,
-      "type": "stat",
-      "title": "Issue 同步健康",
-      "gridPos": {
-        "x": 0,
-        "y": 31,
-        "w": 12,
-        "h": 7
-      },
-      "targets": [
-        {
-          "expr": "alertmanager_github_issue_sync_configured",
-          "legendFormat": "已配置",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_issue_sync_success",
-          "legendFormat": "最近一次同步",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "time() - alertmanager_github_issue_sync_last_success_timestamp",
-          "legendFormat": "距上次同步",
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_alertmanager_available",
-          "legendFormat": "Alertmanager API",
-          "refId": "D",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_token_days_until_expiry",
-          "legendFormat": "PAT 剩余天数",
-          "refId": "E",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "异常",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "正常",
-                  "color": "green"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "C"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "mappings",
-                "value": []
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 600
-                    },
-                    {
-                      "color": "red",
-                      "value": 900
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "E"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "d"
-              },
-              {
-                "id": "mappings",
-                "value": []
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 7
-                    },
-                    {
-                      "color": "green",
-                      "value": 14
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Issue 同步动作（活跃/新建/更新/关闭）",
-      "gridPos": {
-        "x": 12,
-        "y": 31,
-        "w": 12,
-        "h": 7
-      },
-      "targets": [
-        {
-          "expr": "alertmanager_github_issue_sync_active",
-          "legendFormat": "活跃 critical",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_issue_sync_created",
-          "legendFormat": "新建 issue",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_issue_sync_updated",
-          "legendFormat": "更新 issue",
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "alertmanager_github_issue_sync_closed",
-          "legendFormat": "关闭 issue",
-          "refId": "D",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
       "id": 104,
       "type": "row",
-      "title": "采集器新鲜度",
+      "title": "高频采集器新鲜度",
       "collapsed": false,
-      "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 38,
+        "y": 37,
         "w": 24,
         "h": 1
       }
@@ -1208,8 +1344,8 @@
       "title": "高频采集器距上次运行（分钟级任务）",
       "gridPos": {
         "x": 0,
-        "y": 39,
-        "w": 12,
+        "y": 38,
+        "w": 24,
         "h": 3
       },
       "targets": [
@@ -1302,123 +1438,137 @@
       }
     },
     {
-      "id": 11,
-      "type": "stat",
-      "title": "低频任务距上次成功（小时/日级）",
+      "id": 107,
+      "type": "row",
+      "title": "低频任务新鲜度（按需）",
       "gridPos": {
-        "x": 12,
-        "y": 39,
-        "w": 12,
-        "h": 3
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
       },
-      "targets": [
+      "collapsed": true,
+      "panels": [
         {
-          "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
-          "legendFormat": "源站证书（每小时）",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
-          "legendFormat": "Cloudflare IP 漂移（每日）",
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "time() - daily_ops_audit_last_success_timestamp",
-          "legendFormat": "每日运维审计",
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "time() - backup_last_success_timestamp",
-          "legendFormat": "本机备份（每日）",
-          "refId": "D",
+          "id": 11,
+          "type": "stat",
+          "title": "低频任务距上次成功（小时/日级）",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 3
+          },
+          "targets": [
+            {
+              "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
+              "legendFormat": "源站证书（每小时）",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
+              "legendFormat": "Cloudflare IP 漂移（每日）",
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "time() - daily_ops_audit_last_success_timestamp",
+              "legendFormat": "每日运维审计",
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "expr": "time() - backup_last_success_timestamp",
+              "legendFormat": "本机备份（每日）",
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 93600
+                  },
+                  {
+                    "color": "red",
+                    "value": 172800
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byFrameRefID",
+                  "options": "A"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 7200
+                        },
+                        {
+                          "color": "red",
+                          "value": 14400
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           }
         }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 93600
-              },
-              {
-                "color": "red",
-                "value": 172800
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byFrameRefID",
-              "options": "A"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 7200
-                    },
-                    {
-                      "color": "red",
-                      "value": 14400
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
+      ]
     }
   ],
   "description": "监控系统自身的健康：抓取目标、Prometheus 引擎、日志管道、核心组件、告警通道与各采集器新鲜度。",
@@ -1439,6 +1589,36 @@
       "keepTime": true,
       "targetBlank": false,
       "icon": "external link"
+    },
+    {
+      "type": "link",
+      "title": "返回服务总览",
+      "url": "/d/losangeles-service-overview/losangeles-service-overview",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "活动告警",
+      "url": "/alerting/list",
+      "icon": "bell",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": true,
+      "asDropdown": false
+    },
+    {
+      "type": "link",
+      "title": "静默管理",
+      "url": "/alerting/silences",
+      "icon": "pause",
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "asDropdown": false
     }
   ]
 }

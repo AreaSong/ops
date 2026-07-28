@@ -182,6 +182,9 @@ jobs:
       - name: Test log pipeline rules
         run: bash observability/prometheus/rules/tests/test_log_pipeline_rules.sh
 
+      - name: Test observability stack rules
+        run: bash observability/prometheus/rules/tests/test_observability_stack_rules.sh
+
       - name: Test runtime governance rules
         run: bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
 
@@ -189,7 +192,7 @@ jobs:
         run: |
           set -euxo pipefail
           grep -Fq 'service:synthetic_journey_success:ratio[30d]' observability/prometheus/rules/slo.yml
-          grep -Fq '/ 43200' observability/prometheus/rules/slo.yml
+          grep -Fq '/ 172800' observability/prometheus/rules/slo.yml
 
       - name: Test SLO rules with Promtool
         run: bash -x observability/prometheus/rules/tests/test_slo_rules.sh
