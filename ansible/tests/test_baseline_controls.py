@@ -98,6 +98,28 @@ class BaselineControlTests(unittest.TestCase):
         )
         self.assertIn("not ansible_check_mode", service["when"])
 
+    def test_ssh_handler_uses_platform_service_name(self) -> None:
+        defaults = yaml.safe_load(
+            (ANSIBLE_ROOT / "roles" / "security" / "defaults" / "main.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            defaults["security_ssh_service_name"],
+            "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}",
+        )
+
+        handlers = yaml.safe_load(
+            (ANSIBLE_ROOT / "roles" / "security" / "handlers" / "main.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        reload_sshd = next(handler for handler in handlers if handler["name"] == "reload sshd")
+        self.assertEqual(
+            reload_sshd["ansible.builtin.systemd"]["name"],
+            "{{ security_ssh_service_name }}",
+        )
+
     def test_community_collection_is_versioned_and_checksum_verified(self) -> None:
         requirements = yaml.safe_load(
             (ANSIBLE_ROOT / "requirements.yml").read_text(encoding="utf-8")

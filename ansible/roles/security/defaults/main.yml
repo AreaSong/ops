@@ -12,3 +12,5 @@ auditd_required_keys:
   - auditconfig
   - opsconfig
   - rootcmd
+
+security_ssh_service_name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"

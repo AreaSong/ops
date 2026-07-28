@@ -1,7 +1,7 @@
 ---
 - name: reload sshd
   ansible.builtin.systemd:
-    name: sshd
+    name: "{{ security_ssh_service_name }}"
     state: reloaded
 
 - name: restart fail2ban
