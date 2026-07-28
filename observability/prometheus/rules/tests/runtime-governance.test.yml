@@ -4,6 +4,43 @@ rule_files:
 evaluation_interval: 15s
 
 tests:
+  - interval: 1h
+    input_series: []
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: DockerBuildCachePruneStale
+        exp_alerts:
+          - exp_labels:
+              owner: areasong-ops
+              severity: warning
+              scope: host
+              service: docker
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+              summary: "Docker BuildKit cache cleanup is stale"
+              description: "The weekly cleanup has not published a successful result in eight days; verify cron, locking, and the cleanup log."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
+
+  - interval: 1m
+    input_series:
+      - series: 'docker_storage_reclaimable_bytes{type="build_cache"}'
+        values: '11811160064+0x500'
+    alert_rule_test:
+      - eval_time: 7h
+        alertname: DockerBuildCacheExcessive
+        exp_alerts:
+          - exp_labels:
+              owner: areasong-ops
+              severity: warning
+              scope: host
+              service: docker
+              type: build_cache
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+              summary: "Docker BuildKit reclaimable cache exceeds 10 GiB"
+              description: "Unused build cache remains above the host budget after the cleanup grace period."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
+
   - interval: 1m
     input_series:
       - series: 'business_http_requests_last_5m{service="sub2api",status_class="2xx"}'

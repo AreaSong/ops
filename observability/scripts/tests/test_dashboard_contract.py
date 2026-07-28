@@ -29,6 +29,13 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn("cloudflare_ip_ranges_check_success", expressions)
         self.assertIn("time() - cloudflare_ip_ranges_last_run_timestamp", expressions)
         self.assertIn("cloudflare_ip_ranges_match", expressions)
+        self.assertIn('docker_storage_size_bytes{type="build_cache"} or on() vector(0)', expressions)
+        self.assertIn(
+            'docker_storage_reclaimable_bytes{type="build_cache"} or on() vector(0)',
+            expressions,
+        )
+        self.assertIn("time() - docker_build_cache_prune_last_success_timestamp", expressions)
+        self.assertIn("docker_build_cache_prune_reclaimed_bytes", expressions)
 
     def test_change_and_recovery_annotations_are_provisioned(self) -> None:
         expected_queries = {

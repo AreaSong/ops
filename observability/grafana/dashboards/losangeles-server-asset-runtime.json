@@ -2,7 +2,7 @@
   "schemaVersion": 39,
   "title": "资产与运行配置",
   "uid": "losangeles-server-asset-runtime",
-  "version": 3,
+  "version": 4,
   "timezone": "browser",
   "refresh": "30s",
   "tags": [
@@ -1347,9 +1347,186 @@
         "type": "prometheus",
         "uid": "prometheus"
       }
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "Docker 存储与构建缓存",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 83,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "BuildKit 缓存总量",
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "docker_storage_size_bytes{type=\"build_cache\"} or on() vector(0)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 10737418240 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "BuildKit 可回收量",
+      "gridPos": {
+        "x": 6,
+        "y": 84,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "docker_storage_reclaimable_bytes{type=\"build_cache\"} or on() vector(0)",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5368709120 },
+              { "color": "red", "value": 10737418240 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "BuildKit 清理距今",
+      "gridPos": {
+        "x": 12,
+        "y": 84,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "time() - docker_build_cache_prune_last_success_timestamp",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 604800 },
+              { "color": "red", "value": 691200 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "最近回收量",
+      "gridPos": {
+        "x": 18,
+        "y": 84,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "docker_build_cache_prune_reclaimed_bytes",
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     }
   ],
-  "description": "服务、域名、端口、容器、配置漂移和发布状态的资产视图。",
+  "description": "服务、域名、端口、容器、配置漂移、发布状态和 Docker 存储的资产视图。",
   "editable": false,
   "graphTooltip": 1,
   "links": [

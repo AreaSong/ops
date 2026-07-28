@@ -88,6 +88,14 @@ class ContainerMetrics:
     pids_usage_ratio: float = 0
 
 
+@dataclass
+class DockerStorageMetrics:
+    size_bytes: float
+    reclaimable_bytes: float
+    total_items: float
+    active_items: float
+
+
 def run_docker(arguments: list[str]) -> subprocess.CompletedProcess[str]:
     command = ["docker", *arguments]
     try:
@@ -109,6 +117,33 @@ def parse_size(raw: str) -> float:
     if match is None or match.group(2) not in SIZE_FACTORS:
         raise ValueError(f"unsupported Docker size: {raw}")
     return float(match.group(1)) * SIZE_FACTORS[match.group(2)]
+
+
+def collect_storage_metrics() -> dict[str, DockerStorageMetrics]:
+    result = run_docker(["system", "df", "--format", "{{json .}}"])
+    if result.returncode != 0:
+        raise RuntimeError("docker system df failed")
+    storage: dict[str, DockerStorageMetrics] = {}
+    type_names = {
+        "Images": "images",
+        "Containers": "containers",
+        "Local Volumes": "local_volumes",
+        "Build Cache": "build_cache",
+    }
+    for line in result.stdout.splitlines():
+        row = json.loads(line)
+        metric_type = type_names.get(row["Type"])
+        if metric_type is None:
+            continue
+        storage[metric_type] = DockerStorageMetrics(
+            size_bytes=parse_size(row["Size"]),
+            reclaimable_bytes=parse_size(row["Reclaimable"].split()[0]),
+            total_items=float(row["TotalCount"]),
+            active_items=float(row["Active"]),
+        )
+    if "build_cache" not in storage:
+        raise RuntimeError("docker system df omitted Build Cache")
+    return storage
 
 
 def parse_started_at(raw: str) -> float:
@@ -188,7 +223,11 @@ def emit_family(lines: list[str], name: str, help_text: str, values: list[tuple[
         lines.append(f"{name}{{{labels}}} {value:.12g}")
 
 
-def render(metrics: dict[str, ContainerMetrics], check_success: int) -> str:
+def render(
+    metrics: dict[str, ContainerMetrics],
+    storage: dict[str, DockerStorageMetrics],
+    check_success: int,
+) -> str:
     lines = [
         "# HELP docker_metrics_last_run_timestamp Unix timestamp of the latest Docker metrics collection run.",
         "# TYPE docker_metrics_last_run_timestamp gauge",
@@ -232,6 +271,23 @@ def render(metrics: dict[str, ContainerMetrics], check_success: int) -> str:
         for name, item in metrics.items() if item.known
     ]
     emit_family(lines, "docker_container_health_status", "Current Docker health state as a one-hot series.", health_values)
+    storage_definitions = (
+        ("docker_storage_size_bytes", "Current Docker storage usage in bytes.", "size_bytes"),
+        (
+            "docker_storage_reclaimable_bytes",
+            "Current Docker storage that can be reclaimed in bytes.",
+            "reclaimable_bytes",
+        ),
+        ("docker_storage_total_items", "Current Docker storage item count.", "total_items"),
+        ("docker_storage_active_items", "Current active Docker storage item count.", "active_items"),
+    )
+    for metric_name, help_text, attribute in storage_definitions:
+        emit_family(
+            lines,
+            metric_name,
+            help_text,
+            [(f'type="{metric_type}"', getattr(item, attribute)) for metric_type, item in storage.items()],
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -240,6 +296,7 @@ def main() -> int:
     configured = os.environ.get("DOCKER_EXPECTED_CONTAINERS", "")
     names = tuple(name for name in configured.split(",") if name) or DEFAULT_CONTAINERS
     metrics = {name: ContainerMetrics() for name in names}
+    storage: dict[str, DockerStorageMetrics] = {}
     check_success = 1
 
     inventory = run_docker(["ps", "-a", "--format", "{{.Names}}"])
@@ -258,9 +315,14 @@ def main() -> int:
         running = [name for name, item in metrics.items() if item.running]
         check_success &= int(apply_stats(metrics, running))
 
+    try:
+        storage = collect_storage_metrics()
+    except (RuntimeError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        check_success = 0
+
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=output.parent, delete=False) as handle:
-        handle.write(render(metrics, check_success))
+        handle.write(render(metrics, storage, check_success))
         temporary = Path(handle.name)
     temporary.chmod(0o644)
     temporary.replace(output)

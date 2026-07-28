@@ -38,6 +38,13 @@ JSON
       '{"CPUPerc":"50.00%","MemUsage":"256MiB / 512MiB","Name":"sub2api","PIDs":"128"}' \
       '{"CPUPerc":"50.00%","MemUsage":"256MiB / 512MiB","Name":"account-vault-web-1","PIDs":"128"}'
     ;;
+  system)
+    printf '%s\n' \
+      '{"Active":"2","Reclaimable":"1.5GB (30%)","Size":"5GB","TotalCount":"4","Type":"Images"}' \
+      '{"Active":"2","Reclaimable":"0B (0%)","Size":"20MB","TotalCount":"2","Type":"Containers"}' \
+      '{"Active":"1","Reclaimable":"0B (0%)","Size":"100MB","TotalCount":"1","Type":"Local Volumes"}' \
+      '{"Active":"0","Reclaimable":"7.069GB","Size":"7.069GB","TotalCount":"118","Type":"Build Cache"}'
+    ;;
   *)
     exit 2
     ;;
@@ -59,6 +66,9 @@ grep -Fq 'docker_container_memory_usage_ratio{name="sub2api",service="sub2api"} 
 grep -Fq 'docker_container_cpu_limit_usage_ratio{name="sub2api",service="sub2api"} 0.5' "$success_out"
 grep -Fq 'docker_container_pids_usage_ratio{name="sub2api",service="sub2api"} 0.25' "$success_out"
 grep -Fq 'docker_container_health_status{name="sub2api",service="sub2api",status="healthy"} 1' "$success_out"
+grep -Fq 'docker_storage_size_bytes{type="build_cache"} 7069000000' "$success_out"
+grep -Fq 'docker_storage_reclaimable_bytes{type="images"} 1500000000' "$success_out"
+grep -Fq 'docker_storage_total_items{type="build_cache"} 118' "$success_out"
 
 failure_out="$WORK_DIR/failure.prom"
 FAKE_DOCKER_MODE=failure DOCKER_METRIC_OUT="$failure_out" \

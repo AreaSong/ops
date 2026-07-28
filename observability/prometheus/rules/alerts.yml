@@ -853,6 +853,34 @@ groups:
           description: "The runtime Compose file differs from its Git-controlled recovery copy."
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
+      - alert: DockerBuildCachePruneStale
+        expr: absent(docker_build_cache_prune_last_success_timestamp) or time() - docker_build_cache_prune_last_success_timestamp > 8 * 86400
+        for: 1h
+        labels:
+          owner: areasong-ops
+          severity: warning
+          scope: host
+          service: docker
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+          summary: "Docker BuildKit cache cleanup is stale"
+          description: "The weekly cleanup has not published a successful result in eight days; verify cron, locking, and the cleanup log."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
+
+      - alert: DockerBuildCacheExcessive
+        expr: docker_storage_reclaimable_bytes{type="build_cache"} > 10 * 1024 * 1024 * 1024
+        for: 6h
+        labels:
+          owner: areasong-ops
+          severity: warning
+          scope: host
+          service: docker
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+          summary: "Docker BuildKit reclaimable cache exceeds 10 GiB"
+          description: "Unused build cache remains above the host budget after the cleanup grace period."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
+
       - alert: BusinessErrorLogStale
         expr: absent(business_error_log_last_success_timestamp) or time() - business_error_log_last_success_timestamp > 180
         for: 5m
