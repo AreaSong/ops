@@ -68,6 +68,7 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
+      - --data.retention=720h
     ports:
       - "127.0.0.1:9093:9093"
     volumes:

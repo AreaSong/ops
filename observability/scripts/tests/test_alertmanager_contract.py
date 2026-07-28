@@ -8,6 +8,7 @@ import yaml
 
 ALERTMANAGER_CONFIG = Path(__file__).resolve().parents[2] / "alertmanager" / "alertmanager.yml"
 REPO_ROOT = Path(__file__).resolve().parents[3]
+COMPOSE_PATH = REPO_ROOT / "observability" / "docker-compose.yml"
 RULES_DIR = REPO_ROOT / "observability" / "prometheus" / "rules"
 RUNBOOK_PREFIX = "https://github.com/AreaSong/ops/blob/main/"
 
@@ -71,6 +72,23 @@ class AlertmanagerContractTests(unittest.TestCase):
         }
         self.assertIn('alertname="Fail2banSshdBanBurst"', matchers)
         self.assertNotIn('alertname="Fail2banSshdCurrentlyBanning"', matchers)
+
+    def test_alertmanager_retains_state_for_longest_repeat_interval(self) -> None:
+        compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+        command = compose["services"]["alertmanager"]["command"]
+        retention = next(
+            value.removeprefix("--data.retention=")
+            for value in command
+            if value.startswith("--data.retention=")
+        )
+        self.assertTrue(retention.endswith("h"))
+        retention_hours = int(retention.removesuffix("h"))
+        repeat_hours = [
+            int(route["repeat_interval"].removesuffix("h"))
+            for route in self.config["route"]["routes"]
+            if route.get("repeat_interval", "").endswith("h")
+        ]
+        self.assertGreaterEqual(retention_hours, max(repeat_hours))
 
     def test_every_alert_has_actionable_metadata(self) -> None:
         alerts = []

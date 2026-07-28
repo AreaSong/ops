@@ -3,23 +3,37 @@
   community.general.timezone:
     name: UTC
 
-- name: Ensure chrony is installed (Debian/Ubuntu)
-  ansible.builtin.apt:
+- name: Gather time synchronization service facts
+  ansible.builtin.service_facts:
+
+- name: Select the existing time synchronization service
+  ansible.builtin.set_fact:
+    ops_time_sync_service: >-
+      {{
+        'chrony' if 'chrony.service' in ansible_facts.services else
+        'chronyd' if 'chronyd.service' in ansible_facts.services else
+        'systemd-timesyncd' if 'systemd-timesyncd.service' in ansible_facts.services else
+        ('chrony' if ansible_os_family == 'Debian' else 'chronyd')
+      }}
+    ops_time_sync_service_present: >-
+      {{
+        'chrony.service' in ansible_facts.services or
+        'chronyd.service' in ansible_facts.services or
+        'systemd-timesyncd.service' in ansible_facts.services
+      }}
+
+- name: Install chrony when no time synchronization service exists
+  ansible.builtin.package:
     name: chrony
     state: present
-  when: ansible_os_family == "Debian"
+  when: not ops_time_sync_service_present
 
-- name: Ensure chrony is installed (RHEL)
-  ansible.builtin.dnf:
-    name: chrony
-    state: present
-  when: ansible_os_family == "RedHat"
-
-- name: Ensure chrony is running
+- name: Ensure the selected time synchronization service is running
   ansible.builtin.systemd:
-    name: chrony
+    name: "{{ ops_time_sync_service }}"
     state: started
     enabled: true
+  when: ops_time_sync_service_present or not ansible_check_mode
 
 - name: Create standard directories
   ansible.builtin.file:
@@ -44,16 +58,13 @@
   notify: restart journald
 
 - name: Configure sysctl baseline
-  ansible.builtin.copy:
-    dest: /etc/sysctl.d/99-ops-baseline.conf
-    content: |
-      net.ipv4.tcp_syncookies = 1
-      net.ipv4.conf.all.rp_filter = 1
-      net.ipv4.conf.default.rp_filter = 1
-      net.ipv4.icmp_echo_ignore_broadcasts = 1
-      vm.overcommit_memory = 1
-      fs.file-max = 65535
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.d/99-ops-baseline.conf
+    regexp: '^{{ item.name | regex_escape }}\s*='
+    line: "{{ item.name }} = {{ item.value }}"
+    create: true
     mode: "0644"
+  loop: "{{ ops_sysctl_baseline + ops_sysctl_extra }}"
   notify: apply sysctl
 
 # LosAngeles 高延迟代理路径：有证据后再调（见 standards/09 §25.2）

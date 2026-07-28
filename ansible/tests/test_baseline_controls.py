@@ -54,10 +54,49 @@ class BaselineControlTests(unittest.TestCase):
             )
         )
         sysctl = next(task for task in tasks if task["name"] == "Configure sysctl baseline")
-        self.assertIn(
-            "vm.overcommit_memory = 1",
-            sysctl["ansible.builtin.copy"]["content"].splitlines(),
+        self.assertIn("ansible.builtin.lineinfile", sysctl)
+        self.assertNotIn("ansible.builtin.copy", sysctl)
+        defaults = yaml.safe_load(
+            (ANSIBLE_ROOT / "roles" / "common" / "defaults" / "main.yml").read_text(
+                encoding="utf-8"
+            )
         )
+        self.assertIn(
+            {"name": "vm.overcommit_memory", "value": 1},
+            defaults["ops_sysctl_baseline"],
+        )
+
+    def test_losangeles_sysctl_overrides_preserve_runtime_network_controls(self) -> None:
+        host_vars = yaml.safe_load(
+            (ANSIBLE_ROOT / "host_vars" / "LosAngeles.yml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(host_vars["ops_sysctl_rp_filter"], 2)
+        extras = {item["name"]: item["value"] for item in host_vars["ops_sysctl_extra"]}
+        self.assertEqual(extras["net.ipv4.ip_forward"], 1)
+        self.assertEqual(extras["net.ipv4.tcp_congestion_control"], "bbr")
+        self.assertEqual(extras["net.core.default_qdisc"], "fq")
+
+    def test_time_sync_preserves_existing_service_and_is_check_mode_safe(self) -> None:
+        tasks = yaml.safe_load(
+            (ANSIBLE_ROOT / "roles" / "common" / "tasks" / "main.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = {task["name"] for task in tasks}
+        self.assertIn("Gather time synchronization service facts", names)
+        self.assertIn("Select the existing time synchronization service", names)
+        install = next(
+            task
+            for task in tasks
+            if task["name"] == "Install chrony when no time synchronization service exists"
+        )
+        self.assertEqual(install["when"], "not ops_time_sync_service_present")
+        service = next(
+            task
+            for task in tasks
+            if task["name"] == "Ensure the selected time synchronization service is running"
+        )
+        self.assertIn("not ansible_check_mode", service["when"])
 
     def test_community_collection_is_versioned_and_checksum_verified(self) -> None:
         requirements = yaml.safe_load(
