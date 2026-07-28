@@ -1,11 +1,12 @@
 {
   "uid": "losangeles-service-overview",
   "title": "服务总览",
-  "description": "LosAngeles NOC 首页：KPI、容器健康/重启/OOM、服务健康表、短资源趋势。",
+  "description": "LosAngeles NOC 首页：异常优先入口、服务健康矩阵、待处理告警与短资源趋势。",
   "tags": [
     "LosAngeles",
-    "overview",
-    "noc"
+    "nav-runtime",
+    "noc",
+    "overview"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -20,7 +21,7 @@
   "annotations": {
     "list": [
       {
-        "name": "容器部署与重建",
+        "name": "运行变更",
         "datasource": {
           "type": "prometheus",
           "uid": "prometheus"
@@ -28,41 +29,13 @@
         "enable": true,
         "hide": false,
         "iconColor": "blue",
-        "expr": "changes(docker_container_started_at_timestamp_seconds[75s]) > 0",
+        "expr": "label_replace(changes(docker_container_started_at_timestamp_seconds[75s]) > 0, \"event\", \"部署/重建 $1\", \"name\", \"(.*)\") or label_replace(increase(docker_container_restart_count[75s]) > 0, \"event\", \"自动重启 $1\", \"name\", \"(.*)\") or label_replace(changes(ops_config_drift[2m]) != 0, \"event\", \"配置漂移 $1\", \"name\", \"(.*)\")",
         "step": "60s",
-        "titleFormat": "部署/重建 {{name}}",
-        "tagKeys": "service,name"
+        "titleFormat": "{{event}}",
+        "tagKeys": "event,service,name,severity"
       },
       {
-        "name": "容器自动重启",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "enable": true,
-        "hide": false,
-        "iconColor": "red",
-        "expr": "increase(docker_container_restart_count[75s]) > 0",
-        "step": "60s",
-        "titleFormat": "自动重启 {{name}}",
-        "tagKeys": "service,name"
-      },
-      {
-        "name": "备份完成",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "enable": true,
-        "hide": false,
-        "iconColor": "blue",
-        "expr": "changes(backup_set_last_success_timestamp[5m]) > 0",
-        "step": "5m",
-        "titleFormat": "备份完成",
-        "tagKeys": "service"
-      },
-      {
-        "name": "恢复演练完成",
+        "name": "备份与恢复",
         "datasource": {
           "type": "prometheus",
           "uid": "prometheus"
@@ -70,24 +43,10 @@
         "enable": true,
         "hide": false,
         "iconColor": "green",
-        "expr": "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+        "expr": "label_replace(changes(backup_set_last_success_timestamp[5m]) > 0, \"event\", \"备份完成\", \"__name__\", \".*\") or label_replace(changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0, \"event\", \"恢复演练完成 $1\", \"source\", \"(.*)\")",
         "step": "5m",
-        "titleFormat": "恢复演练完成",
-        "tagKeys": "source"
-      },
-      {
-        "name": "配置漂移状态变化",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "enable": true,
-        "hide": false,
-        "iconColor": "orange",
-        "expr": "changes(ops_config_drift[2m]) != 0",
-        "step": "60s",
-        "titleFormat": "配置漂移状态变化 {{name}}",
-        "tagKeys": "name,severity"
+        "titleFormat": "{{event}}",
+        "tagKeys": "event,service,source"
       }
     ]
   },
@@ -98,14 +57,38 @@
     {
       "type": "dashboards",
       "asDropdown": true,
-      "title": "LosAngeles 看板",
+      "title": "运行",
       "tags": [
-        "LosAngeles"
+        "nav-runtime"
       ],
       "includeVars": false,
       "keepTime": true,
       "targetBlank": false,
-      "icon": "external link"
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "可靠性",
+      "tags": [
+        "nav-reliability"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "安全与审计",
+      "tags": [
+        "nav-governance"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
     },
     {
       "type": "link",
@@ -142,7 +125,7 @@
     {
       "id": 100,
       "type": "row",
-      "title": "全局 KPI",
+      "title": "当前需要处理",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -152,14 +135,118 @@
       }
     },
     {
+      "id": 2,
+      "type": "stat",
+      "title": "活动告警",
+      "description": "分别显示当前严重和警告级别的 Prometheus firing 告警，避免用总数掩盖单条严重告警。",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\",severity=\"critical\"}) or vector(0)",
+          "legendFormat": "严重",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\",severity=\"warning\"}) or vector(0)",
+          "legendFormat": "警告",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "id": 1,
       "type": "stat",
       "title": "探测异常",
       "description": "按服务聚合外部与业务探测；探测抓取数据全部缺失时显示红色缺失状态。",
       "gridPos": {
-        "x": 0,
+        "x": 6,
         "y": 1,
-        "w": 4,
+        "w": 6,
         "h": 3
       },
       "targets": [
@@ -218,81 +305,8 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 2,
-      "type": "stat",
-      "title": "Firing 告警",
-      "gridPos": {
-        "x": 4,
-        "y": 1,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)",
-          "legendFormat": "Firing 告警",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 3
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "links": [
-            {
-              "title": "查看活动告警",
-              "url": "/alerting/list?${__url_time_range}",
-              "targetBlank": false
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
+        "colorMode": "value",
+        "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
@@ -315,9 +329,9 @@
       "title": "停摆容器",
       "description": "仅在 Docker 指标采集成功且新鲜时统计停摆容器；采集失败、陈旧或缺失时显示红色缺失状态。",
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 1,
-        "w": 4,
+        "w": 6,
         "h": 3
       },
       "targets": [
@@ -376,8 +390,8 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
+        "colorMode": "value",
+        "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
@@ -397,17 +411,17 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "备份最旧(h)",
+      "title": "备份超期",
       "gridPos": {
-        "x": 12,
+        "x": 18,
         "y": 1,
-        "w": 4,
+        "w": 6,
         "h": 3
       },
       "targets": [
         {
-          "expr": "(time() - min(backup_last_success_timestamp)) / 3600",
-          "legendFormat": "备份最旧(h)",
+          "expr": "count((time() - backup_set_last_success_timestamp) > 24 * 3600) or on() (absent(backup_set_last_success_timestamp) * -1) or vector(0)",
+          "legendFormat": "备份超期",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -422,16 +436,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 36
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "red",
-                "value": 48
+                "value": 1
               }
             ]
           },
@@ -444,87 +458,24 @@
               "url": "/d/losangeles-services-backups/losangeles-services-backups?${__url_time_range}",
               "targetBlank": false
             }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
           ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 7,
-      "type": "stat",
-      "title": "最低错误预算",
-      "gridPos": {
-        "x": 16,
-        "y": 1,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "min(last_over_time(service:synthetic_error_budget_remaining:ratio_30d[2h]) and on(service, journey) (last_over_time(service:synthetic_slo_coverage:ratio_30d[2h]) >= 0.95))",
-          "legendFormat": "最低错误预算",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 0.25
-              },
-              {
-                "color": "green",
-                "value": 0.5
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "noValue": "预热中",
-          "links": [
+          "mappings": [
             {
-              "title": "查看各服务错误预算",
-              "url": "/d/losangeles-service-overview/losangeles-service-overview?${__url_time_range}&viewPanel=31",
-              "targetBlank": false
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "备份数据缺失",
+                  "color": "red"
+                }
+              }
             }
           ]
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
+        "colorMode": "value",
+        "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
@@ -539,82 +490,13 @@
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      }
+      },
+      "description": "统计超过 24 小时未完成的备份集；指标缺失时明确显示数据缺失。"
     },
     {
-      "id": 8,
-      "type": "stat",
-      "title": "观测链路异常",
-      "description": "固定核对 Prometheus、Grafana、Loki、Promtail、Alertmanager 与 Blackbox Exporter 六个核心目标；失败或缺失均计入异常。",
-      "gridPos": {
-        "x": 20,
-        "y": 1,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "clamp_min(6 - count(min by (job) (up{job=~\"prometheus|grafana|loki|promtail|alertmanager|blackbox_exporter\"}) == 1), 0) or vector(6)",
-          "legendFormat": "观测链路异常",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "links": [
-            {
-              "title": "进入观测栈自监控",
-              "url": "/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?${__url_time_range}",
-              "targetBlank": false
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 110,
+      "id": 101,
       "type": "row",
-      "title": "容器运行态",
+      "title": "影响范围与待处理事项",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -624,424 +506,14 @@
       }
     },
     {
-      "id": 40,
-      "type": "stat",
-      "title": "非健康",
-      "gridPos": {
-        "x": 0,
-        "y": 5,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "count(docker_container_health_status{status!=\"healthy\"} == 1) or vector(0)",
-          "legendFormat": "非健康",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 41,
-      "type": "stat",
-      "title": "有重启记录",
-      "gridPos": {
-        "x": 4,
-        "y": 5,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "count(docker_container_restart_count > 0) or vector(0)",
-          "legendFormat": "有重启记录",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 3
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 42,
-      "type": "stat",
-      "title": "OOM 异常",
-      "gridPos": {
-        "x": 8,
-        "y": 5,
-        "w": 4,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "count(docker_container_oom_killed == 1) or vector(0)",
-          "legendFormat": "OOM 异常",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 43,
-      "type": "table",
-      "title": "容器运行状态（重启/健康/OOM）",
-      "gridPos": {
-        "x": 12,
-        "y": 5,
-        "w": 12,
-        "h": 3
-      },
-      "targets": [
-        {
-          "expr": "docker_container_restart_count",
-          "format": "table",
-          "instant": true,
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "max by (name, service) (docker_container_health_status{status=\"healthy\"}) or (0 * max by (name, service) (docker_container_health_status))",
-          "format": "table",
-          "instant": true,
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        },
-        {
-          "expr": "docker_container_oom_killed",
-          "format": "table",
-          "instant": true,
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "joinByField",
-          "options": {
-            "byField": "name",
-            "mode": "outer"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Time 1": true,
-              "Time 2": true,
-              "Time 3": true,
-              "__name__": true,
-              "__name__ 1": true,
-              "__name__ 2": true,
-              "__name__ 3": true,
-              "instance": true,
-              "instance 1": true,
-              "instance 2": true,
-              "instance 3": true,
-              "job": true,
-              "job 1": true,
-              "job 2": true,
-              "job 3": true,
-              "service 1": true,
-              "service 2": true,
-              "service 3": true,
-              "status": true,
-              "status 1": true,
-              "status 2": true
-            },
-            "renameByName": {
-              "name": "容器",
-              "service": "服务",
-              "Value #A": "重启次数",
-              "Value #B": "健康(1=ok)",
-              "Value #C": "OOM"
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "center",
-            "filterable": true
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "重启次数"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 1
-                    },
-                    {
-                      "color": "red",
-                      "value": 3
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "健康(1=ok)"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "异常",
-                        "color": "red"
-                      },
-                      "1": {
-                        "text": "正常",
-                        "color": "green"
-                      }
-                    }
-                  }
-                ]
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "OOM"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "red",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "sortBy": [
-          {
-            "displayName": "重启次数",
-            "desc": true
-          }
-        ]
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 101,
-      "type": "row",
-      "title": "服务健康",
-      "collapsed": false,
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
       "id": 44,
       "type": "table",
-      "title": "服务健康总表",
+      "title": "服务健康矩阵",
       "gridPos": {
         "x": 0,
-        "y": 9,
-        "w": 12,
-        "h": 7
+        "y": 5,
+        "w": 16,
+        "h": 8
       },
       "targets": [
         {
@@ -1065,10 +537,40 @@
           }
         },
         {
-          "expr": "count by (service) (ALERTS{alertstate=\"firing\", service!=\"\"}) or on() vector(0)",
+          "expr": "count by (service) (ALERTS{alertstate=\"firing\",service!=\"\"}) or (0 * min by (service) (probe_success{service!=\"\"})) or (0 * sum by (service) (docker_container_running))",
           "format": "table",
           "instant": true,
           "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum by (service) (docker_container_running)",
+          "format": "table",
+          "instant": true,
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum by (service) (docker_container_health_status{status!=\"healthy\"} == 1) or (0 * sum by (service) (docker_container_running))",
+          "format": "table",
+          "instant": true,
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum by (service) (docker_container_oom_killed) or (0 * sum by (service) (docker_container_running))",
+          "format": "table",
+          "instant": true,
+          "refId": "F",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -1093,13 +595,34 @@
               "Time 3": true,
               "__name__": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "__name__ 4": true,
+              "__name__ 5": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "instance 4": true,
+              "instance 5": true,
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "job 4": true,
+              "job 5": true
             },
             "renameByName": {
               "service": "服务",
               "Value #A": "探测",
               "Value #B": "错误预算",
-              "Value #C": "告警"
+              "Value #C": "告警",
+              "Value #D": "运行容器",
+              "Value #E": "非健康",
+              "Value #F": "OOM"
             }
           }
         }
@@ -1140,7 +663,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
               }
             ]
@@ -1193,7 +716,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
                 }
               }
             ]
@@ -1223,7 +746,97 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background"
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "运行容器"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "非健康"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "OOM"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
                 }
               }
             ]
@@ -1234,6 +847,22 @@
         "showHeader": true,
         "sortBy": [
           {
+            "displayName": "告警",
+            "desc": true
+          },
+          {
+            "displayName": "非健康",
+            "desc": true
+          },
+          {
+            "displayName": "OOM",
+            "desc": true
+          },
+          {
+            "displayName": "探测",
+            "desc": false
+          },
+          {
             "displayName": "服务",
             "desc": false
           }
@@ -1243,22 +872,25 @@
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      }
+      },
+      "description": "按服务汇总探测、错误预算、活动告警、运行容器、非健康容器和 OOM 状态；空值表示该服务不适用对应信号。"
     },
     {
-      "id": 11,
-      "type": "stat",
-      "title": "备份集距今(h)",
+      "id": 45,
+      "type": "table",
+      "title": "待处理告警",
+      "description": "直接列出 Prometheus 当前 firing 告警；无告警时显示一行正常状态，点击任意单元格进入活动告警。",
       "gridPos": {
-        "x": 12,
-        "y": 9,
-        "w": 6,
-        "h": 3
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 8
       },
       "targets": [
         {
-          "expr": "(time() - backup_set_last_success_timestamp) / 3600",
-          "legendFormat": "备份集距今(h)",
+          "expr": "label_replace(ALERTS{alertstate=\"firing\",severity=\"critical\"}, \"severity\", \"1-critical\", \"severity\", \"critical\") or label_replace(ALERTS{alertstate=\"firing\",severity=\"warning\"}, \"severity\", \"2-warning\", \"severity\", \"warning\") or label_replace(ALERTS{alertstate=\"firing\",severity!~\"critical|warning\"}, \"severity\", \"3-other\", \"__name__\", \".*\") or on() label_replace(label_replace(label_replace(absent(ALERTS{alertstate=\"firing\"}) * 0, \"alertname\", \"当前无活动告警\", \"alertstate\", \".*\"), \"severity\", \"4-normal\", \"alertstate\", \".*\"), \"service\", \"-\", \"alertstate\", \".*\")",
+          "format": "table",
+          "instant": true,
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -1266,239 +898,98 @@
           }
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 36
-              },
-              {
-                "color": "red",
-                "value": 48
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 12,
-      "type": "stat",
-      "title": "数据库与缓存可用",
-      "gridPos": {
-        "x": 18,
-        "y": 9,
-        "w": 6,
-        "h": 3
-      },
-      "targets": [
+      "transformations": [
         {
-          "expr": "count(up{job=~\"postgres|redis\"} == 1) or vector(0)",
-          "legendFormat": "数据库与缓存可用",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "alertstate": true,
+              "instance": true,
+              "job": true
+            },
+            "indexByName": {
+              "severity": 0,
+              "service": 1,
+              "alertname": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "severity": "级别",
+              "service": "服务",
+              "alertname": "告警",
+              "Value": "数值"
+            }
           }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          "custom": {
+            "align": "left",
+            "filterable": true
+          },
+          "links": [
+            {
+              "title": "查看活动告警",
+              "url": "/alerting/list?${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "级别"
+            },
+            "properties": [
               {
-                "color": "red",
-                "value": null
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "4-normal": {
+                        "text": "正常",
+                        "color": "green"
+                      },
+                      "3-other": {
+                        "text": "其他",
+                        "color": "blue"
+                      },
+                      "2-warning": {
+                        "text": "警告",
+                        "color": "orange"
+                      },
+                      "1-critical": {
+                        "text": "严重",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
               },
               {
-                "color": "orange",
-                "value": 2
-              },
-              {
-                "color": "green",
-                "value": 3
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
-          },
-          "color": {
-            "mode": "thresholds"
           }
-        },
-        "overrides": []
+        ]
       },
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 13,
-      "type": "stat",
-      "title": "预期容器运行",
-      "gridPos": {
-        "x": 12,
-        "y": 12,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "sum(docker_container_running) or vector(0)",
-          "legendFormat": "预期容器运行",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "级别",
+            "desc": false
           }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 14
-              },
-              {
-                "color": "green",
-                "value": 16
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      }
-    },
-    {
-      "id": 14,
-      "type": "stat",
-      "title": "严重漂移",
-      "gridPos": {
-        "x": 18,
-        "y": 12,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "expr": "count(ops_config_drift{severity=\"critical\"} == 1) or vector(0)",
-          "legendFormat": "严重漂移",
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
+        ]
       },
       "datasource": {
         "type": "prometheus",
@@ -1512,7 +1003,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 13,
         "w": 24,
         "h": 1
       }
@@ -1523,7 +1014,7 @@
       "title": "CPU 使用率",
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 14,
         "w": 8,
         "h": 5
       },
@@ -1570,7 +1061,7 @@
       "title": "内存 %",
       "gridPos": {
         "x": 8,
-        "y": 17,
+        "y": 14,
         "w": 8,
         "h": 5
       },
@@ -1617,7 +1108,7 @@
       "title": "根盘 %",
       "gridPos": {
         "x": 16,
-        "y": 17,
+        "y": 14,
         "w": 8,
         "h": 5
       },
@@ -1661,7 +1152,7 @@
     {
       "id": 103,
       "type": "row",
-      "title": "SLO 与探测（次要）",
+      "title": "SLO 与容量（按需）",
       "collapsed": true,
       "panels": [
         {
@@ -1900,7 +1391,7 @@
       ],
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 19,
         "w": 24,
         "h": 1
       }

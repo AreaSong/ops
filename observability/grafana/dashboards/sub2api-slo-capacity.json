@@ -3,9 +3,10 @@
   "title": "Sub2API SLO 与容量",
   "tags": [
     "LosAngeles",
-    "sub2api",
+    "capacity",
+    "nav-runtime",
     "slo",
-    "capacity"
+    "sub2api"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -790,14 +791,38 @@
     {
       "type": "dashboards",
       "asDropdown": true,
-      "title": "LosAngeles 看板",
+      "title": "运行",
       "tags": [
-        "LosAngeles"
+        "nav-runtime"
       ],
       "includeVars": false,
       "keepTime": true,
       "targetBlank": false,
-      "icon": "external link"
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "可靠性",
+      "tags": [
+        "nav-reliability"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "安全与审计",
+      "tags": [
+        "nav-governance"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
     },
     {
       "type": "link",

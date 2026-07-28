@@ -175,10 +175,23 @@ create a duplicate Grafana-managed copy of a Prometheus rule.
 
 Operational entry points are available from every provisioned dashboard:
 
+- **运行 / 可靠性 / 安全与审计** split the twelve dashboards into three
+  purpose-specific dropdowns instead of one flat list while preserving the current
+  time range.
 - **活动告警** opens `/alerting/list` for label and state filtering.
 - **静默管理** opens `/alerting/silences` for time-bounded maintenance silences.
 - **返回服务总览** preserves the current time range and returns to the NOC home.
 - The service overview also links to the independent GitHub Actions external-uptime run.
+
+The service overview is an exception-first NOC page. Its first row contains only four
+actionable signals: active alerts, failed probes, stopped containers, and overdue
+backups. A service health matrix and the current firing-alert queue provide the next
+investigation step; host trends follow below, while SLO and capacity diagnostics remain
+collapsed until requested. The active-alert panel separates critical and warning counts;
+the queue and matrix sort incident signals before healthy services. Stat panels color the
+value rather than filling healthy panels with green, so red and amber retain their
+incident meaning. The overview groups deployment/restart/config-drift events into one
+**运行变更** annotation and backup/restore events into one **备份与恢复** annotation.
 
 Every silence must use the narrowest practical matchers and include an owner, reason,
 and expiry. Prefer a one-hour, four-hour, or approved maintenance-window duration;
@@ -202,6 +215,12 @@ service, application, host, datastore, observability, and Sub2API SLO views; fiv
 for daily audit, service/backup, security, and traffic views; ten minutes for asset and
 TLS/Cloudflare governance. Raw logs and low-frequency diagnostics are collapsed by
 default so opening a dashboard does not immediately execute every expensive query.
+
+Reloadable Prometheus, Loki, Promtail, and Blackbox configuration is mounted read-only
+by directory. Do not replace these mounts with single-file bind mounts: Git updates files
+atomically, and a running container can otherwise keep reading the previous inode even
+after a successful reload request. Exporter healthchecks that read `/metrics` must fully
+consume the response rather than use an early-closing HTTP probe.
 
 Managed host-job deployment:
 
@@ -314,18 +333,30 @@ curl http://127.0.0.1:9093/-/ready
 curl http://127.0.0.1:3100/ready
 ```
 
-After changing `prometheus.yml`, recreate Prometheus so the single-file bind mount is refreshed:
+The first deployment that migrates Prometheus, Loki, Promtail, or Blackbox from a
+single-file bind mount to its read-only directory mount must recreate that component.
+After the migration, validate changes to `prometheus.yml` or its rule files and use the
+lifecycle endpoint so Prometheus reads the current directory contents without a restart:
 
 ```bash
 cd /opt/ops/observability
-docker compose up -d --force-recreate --no-deps prometheus
+curl -fsS -X POST http://127.0.0.1:9090/-/reload
 ```
 
-After changing `blackbox.yml`, recreate Blackbox Exporter for the same reason:
+After changing `blackbox.yml`, validate it and recreate Blackbox Exporter so it loads the
+new configuration:
 
 ```bash
 cd /opt/ops/observability
 docker compose up -d --force-recreate --no-deps blackbox-exporter
+```
+
+After changing `loki.yml`, validate it and recreate Loki. Its persisted data remains on
+the `/var/lib/observability/loki` bind mount:
+
+```bash
+cd /opt/ops/observability
+docker compose up -d --force-recreate --no-deps loki
 ```
 
 After changing Alertmanager config or templates, validate and recreate Alertmanager:
