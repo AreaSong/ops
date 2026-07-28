@@ -51,6 +51,7 @@
       net.ipv4.conf.all.rp_filter = 1
       net.ipv4.conf.default.rp_filter = 1
       net.ipv4.icmp_echo_ignore_broadcasts = 1
+      vm.overcommit_memory = 1
       fs.file-max = 65535
     mode: "0644"
   notify: apply sysctl

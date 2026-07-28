@@ -18,19 +18,19 @@ scrape_configs:
                 expression: 'host="(?P<service>resume\.areasong\.top|sorryiossearch\.areasong\.top|cpa\.areasong\.top|forge\.areasong\.top)"'
             - replace:
                 source: service
-                expression: 'resume\.areasong\.top'
+                expression: '(resume\.areasong\.top)'
                 replace: 'resume-jadeai'
             - replace:
                 source: service
-                expression: 'sorryiossearch\.areasong\.top'
+                expression: '(sorryiossearch\.areasong\.top)'
                 replace: 'account-vault'
             - replace:
                 source: service
-                expression: 'cpa\.areasong\.top'
+                expression: '(cpa\.areasong\.top)'
                 replace: 'sub2api'
             - replace:
                 source: service
-                expression: 'forge\.areasong\.top'
+                expression: '(forge\.areasong\.top)'
                 replace: 'areaforge'
             - labels:
                 service:

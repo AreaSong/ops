@@ -47,6 +47,18 @@ class BaselineControlTests(unittest.TestCase):
             "sha256:6809dd0b3ec45fd6e992c19071d6b5253aed3ead7bf0686885a51d85c6643c66",
         )
 
+    def test_redis_host_memory_overcommit_is_persisted(self) -> None:
+        tasks = yaml.safe_load(
+            (ANSIBLE_ROOT / "roles" / "common" / "tasks" / "main.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        sysctl = next(task for task in tasks if task["name"] == "Configure sysctl baseline")
+        self.assertIn(
+            "vm.overcommit_memory = 1",
+            sysctl["ansible.builtin.copy"]["content"].splitlines(),
+        )
+
     def test_community_collection_is_versioned_and_checksum_verified(self) -> None:
         requirements = yaml.safe_load(
             (ANSIBLE_ROOT / "requirements.yml").read_text(encoding="utf-8")

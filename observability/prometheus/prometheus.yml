@@ -29,12 +29,7 @@ scrape_configs:
           - host.docker.internal:9100
         labels:
           instance: LosAngeles
-    metric_relabel_configs:
-      - source_labels:
-          - service
-        regex: ^$
-        target_label: service
-        replacement: host
+          service: host
 
   - job_name: loki
     static_configs:

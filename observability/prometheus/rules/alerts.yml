@@ -627,16 +627,16 @@ groups:
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
           loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
-      - alert: Fail2banSshdCurrentlyBanning
-        expr: fail2ban_currently_banned{jail="sshd"} > 0
-        for: 15m
+      - alert: Fail2banSshdBanBurst
+        expr: clamp_min(delta(fail2ban_total_banned{jail="sshd"}[15m]), 0) > 10
+        for: 5m
         labels:
           owner: areasong-ops
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Fail2ban sshd currently has banned addresses"
-          description: "Fail2ban is actively blocking SSH sources. Check the enriched Fail2ban panel for IP, country, ASN, BGP prefix and network organization."
+          summary: "Fail2ban sshd ban activity increased sharply"
+          description: "More than 10 new SSH bans were recorded within 15 minutes. Check the enriched Fail2ban panel for source patterns and confirm whether this is broad scanning or a targeted burst."
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
           loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 

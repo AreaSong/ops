@@ -49,6 +49,29 @@ class AlertmanagerContractTests(unittest.TestCase):
         for rule in self.config["inhibit_rules"]:
             self.assertNotIn("equal", rule)
 
+    def test_fail2ban_notifies_on_burst_instead_of_normal_banning(self) -> None:
+        rules = yaml.safe_load((RULES_DIR / "alerts.yml").read_text(encoding="utf-8"))
+        alerts = {
+            rule["alert"]: rule
+            for group in rules["groups"]
+            for rule in group["rules"]
+            if "alert" in rule
+        }
+        self.assertNotIn("Fail2banSshdCurrentlyBanning", alerts)
+        burst = alerts["Fail2banSshdBanBurst"]
+        self.assertEqual(
+            burst["expr"],
+            'clamp_min(delta(fail2ban_total_banned{jail="sshd"}[15m]), 0) > 10',
+        )
+        self.assertEqual(burst["for"], "5m")
+        matchers = {
+            matcher
+            for route in self.config["route"]["routes"]
+            for matcher in route.get("matchers", [])
+        }
+        self.assertIn('alertname="Fail2banSshdBanBurst"', matchers)
+        self.assertNotIn('alertname="Fail2banSshdCurrentlyBanning"', matchers)
+
     def test_every_alert_has_actionable_metadata(self) -> None:
         alerts = []
         for path in sorted(RULES_DIR.glob("*.yml")):

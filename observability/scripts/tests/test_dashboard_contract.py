@@ -87,7 +87,11 @@ class DashboardContractTests(unittest.TestCase):
             ]
             self.assertEqual(values, [20, 24], title)
         compliance_expr = by_title["合规归档启用"]["targets"][0]["expr"]
-        self.assertEqual(compliance_expr, "compliance_log_archive_configured or vector(0)")
+        self.assertEqual(compliance_expr, "compliance_log_archive_configured or on() vector(0)")
+        self.assertEqual(
+            by_title["用户表"]["targets"][0]["expr"],
+            "areaforge_restore_drill_user_tables",
+        )
 
         occupied: set[tuple[int, int]] = set()
         for panel in panels:
@@ -97,6 +101,35 @@ class DashboardContractTests(unittest.TestCase):
                     coordinate = (x, y)
                     self.assertNotIn(coordinate, occupied, panel["title"])
                     occupied.add(coordinate)
+
+    def test_service_overview_handles_normal_and_not_applicable_states(self) -> None:
+        path = DASHBOARD_DIR / "losangeles-service-overview.json"
+        dashboard = json.loads(path.read_text(encoding="utf-8"))
+        by_title = {panel["title"]: panel for panel in dashboard["panels"]}
+
+        containers = by_title["容器运行状态（重启/健康/OOM）"]
+        self.assertNotIn(
+            "filterByValue",
+            {item["id"] for item in containers["transformations"]},
+        )
+        self.assertIn(
+            "0 * max by (name, service)",
+            containers["targets"][1]["expr"],
+        )
+
+        health = by_title["服务健康总表"]
+        budget_override = next(
+            item
+            for item in health["fieldConfig"]["overrides"]
+            if item["matcher"].get("options") == "错误预算"
+        )
+        mapping = next(
+            item["value"]
+            for item in budget_override["properties"]
+            if item["id"] == "mappings"
+        )
+        self.assertEqual(mapping[0]["options"]["match"], "null")
+        self.assertEqual(mapping[0]["options"]["result"]["text"], "N/A")
 
     def test_slo_dashboard_filters_generic_panels_by_service_and_journey(self) -> None:
         dashboard = json.loads(
@@ -168,11 +201,31 @@ class DashboardContractTests(unittest.TestCase):
         )
         self.assertEqual(blackbox_https["static_configs"][0]["labels"]["service"], "x-ui")
 
-        promtail_text = (
+        node = next(item for item in prometheus["scrape_configs"] if item["job_name"] == "node")
+        self.assertEqual(node["static_configs"][0]["labels"]["service"], "host")
+
+        promtail = yaml.safe_load(
+            (
             REPO_ROOT / "observability" / "promtail" / "promtail-config.yml"
-        ).read_text(encoding="utf-8")
-        for service in ("resume-jadeai", "account-vault", "sub2api", "areaforge"):
-            self.assertIn(f"replace: '{service}'", promtail_text)
+            ).read_text(encoding="utf-8")
+        )
+        nginx = next(item for item in promtail["scrape_configs"] if item["job_name"] == "nginx")
+        stages = nginx["pipeline_stages"][0]["match"]["stages"]
+        replacements = {
+            stage["replace"]["replace"]: stage["replace"]["expression"]
+            for stage in stages
+            if "replace" in stage
+        }
+        expected = {
+            "resume-jadeai": "resume.areasong.top",
+            "account-vault": "sorryiossearch.areasong.top",
+            "sub2api": "cpa.areasong.top",
+            "areaforge": "forge.areasong.top",
+        }
+        for service, domain in expected.items():
+            expression = re.compile(replacements[service])
+            self.assertGreater(expression.groups, 0, service)
+            self.assertIsNotNone(expression.fullmatch(domain), service)
 
 
 if __name__ == "__main__":

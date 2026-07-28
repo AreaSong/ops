@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "refresh": "30s",
   "time": {
     "from": "now-24h",
@@ -1276,7 +1276,7 @@
     {
       "id": 74,
       "type": "stat",
-      "title": "public 表",
+      "title": "用户表",
       "gridPos": {
         "x": 12,
         "y": 29,
@@ -1285,13 +1285,13 @@
       },
       "targets": [
         {
-          "expr": "areaforge_restore_drill_public_tables",
+          "expr": "areaforge_restore_drill_user_tables",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "legendFormat": "public 表"
+          "legendFormat": "用户表"
         }
       ],
       "fieldConfig": {
@@ -1401,7 +1401,7 @@
       },
       "targets": [
         {
-          "expr": "compliance_log_archive_configured or vector(0)",
+          "expr": "compliance_log_archive_configured or on() vector(0)",
           "refId": "A",
           "datasource": {
             "type": "prometheus",

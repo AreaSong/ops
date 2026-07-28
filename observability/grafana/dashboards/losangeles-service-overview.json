@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -930,7 +930,7 @@
     {
       "id": 43,
       "type": "table",
-      "title": "需关注容器（重启/非健康/OOM）",
+      "title": "容器运行状态（重启/健康/OOM）",
       "gridPos": {
         "x": 12,
         "y": 5,
@@ -949,7 +949,7 @@
           }
         },
         {
-          "expr": "docker_container_health_status{status=\"healthy\"}",
+          "expr": "max by (name, service) (docker_container_health_status{status=\"healthy\"}) or (0 * max by (name, service) (docker_container_health_status))",
           "format": "table",
           "instant": true,
           "refId": "B",
@@ -1012,42 +1012,6 @@
               "Value #C": "OOM"
             }
           }
-        },
-        {
-          "id": "filterByValue",
-          "options": {
-            "filters": [
-              {
-                "fieldName": "重启次数",
-                "config": {
-                  "id": "greater",
-                  "options": {
-                    "value": 0
-                  }
-                }
-              },
-              {
-                "fieldName": "健康(1=ok)",
-                "config": {
-                  "id": "lower",
-                  "options": {
-                    "value": 1
-                  }
-                }
-              },
-              {
-                "fieldName": "OOM",
-                "config": {
-                  "id": "greater",
-                  "options": {
-                    "value": 0
-                  }
-                }
-              }
-            ],
-            "type": "include",
-            "match": "any"
-          }
         }
       ],
       "fieldConfig": {
@@ -1083,6 +1047,38 @@
                     }
                   ]
                 }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "健康(1=ok)"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "异常",
+                        "color": "red"
+                      },
+                      "1": {
+                        "text": "正常",
+                        "color": "green"
+                      }
+                    }
+                  }
+                ]
               },
               {
                 "id": "custom.cellOptions",
@@ -1270,6 +1266,21 @@
               "options": "错误预算"
             },
             "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "special",
+                    "options": {
+                      "match": "null",
+                      "result": {
+                        "text": "N/A",
+                        "color": "gray"
+                      }
+                    }
+                  }
+                ]
+              },
               {
                 "id": "unit",
                 "value": "percentunit"

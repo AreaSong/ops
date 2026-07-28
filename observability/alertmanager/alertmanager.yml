@@ -85,7 +85,7 @@ route:
 
     - receiver: email-ops
       matchers:
-        - alertname="Fail2banSshdCurrentlyBanning"
+        - alertname="Fail2banSshdBanBurst"
       group_by:
         - alertname
         - severity

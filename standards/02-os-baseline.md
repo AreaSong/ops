@@ -84,10 +84,12 @@ net.ipv4.tcp_syncookies = 1
 net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
+vm.overcommit_memory = 1
 fs.file-max = 65535
 ```
 
 写入 `/etc/sysctl.d/99-ops-baseline.conf`，`sysctl --system` 生效。
+运行 Redis 的主机必须启用 `vm.overcommit_memory = 1`，避免后台持久化在内存紧张时提前失败。
 
 ## 日志留存
 
