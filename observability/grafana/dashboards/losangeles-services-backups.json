@@ -4,8 +4,9 @@
   "description": "高密度：服务/备份 KPI + 压缩趋势。",
   "tags": [
     "LosAngeles",
-    "services",
-    "backup"
+    "backup",
+    "nav-reliability",
+    "services"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -141,7 +142,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -207,7 +208,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -280,7 +281,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -346,7 +347,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -412,7 +413,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -485,7 +486,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
@@ -921,7 +922,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "center",
         "orientation": "horizontal",
@@ -1038,7 +1039,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1096,7 +1097,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1154,7 +1155,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1212,7 +1213,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1271,7 +1272,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "none",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1333,7 +1334,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1399,7 +1400,7 @@
             "overrides": []
           },
           "options": {
-            "colorMode": "background",
+            "colorMode": "value",
             "graphMode": "area",
             "justifyMode": "center",
             "orientation": "auto",
@@ -1430,14 +1431,38 @@
     {
       "type": "dashboards",
       "asDropdown": true,
-      "title": "LosAngeles 看板",
+      "title": "运行",
       "tags": [
-        "LosAngeles"
+        "nav-runtime"
       ],
       "includeVars": false,
       "keepTime": true,
       "targetBlank": false,
-      "icon": "external link"
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "可靠性",
+      "tags": [
+        "nav-reliability"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "type": "dashboards",
+      "asDropdown": true,
+      "title": "安全与审计",
+      "tags": [
+        "nav-governance"
+      ],
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
     },
     {
       "type": "link",

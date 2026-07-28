@@ -13,7 +13,7 @@ from observability.scripts import business_error_log, docker_metrics
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DASHBOARD_PATH = REPO_ROOT / "observability" / "grafana" / "dashboards" / "losangeles-server-asset-runtime.json"
 DASHBOARD_DIR = REPO_ROOT / "observability" / "grafana" / "dashboards"
-ALLOWED_PANEL_WIDTHS = {4, 6, 8, 12, 24}
+ALLOWED_PANEL_WIDTHS = {4, 6, 8, 12, 16, 24}
 
 
 def load_dashboard(filename: str) -> dict:
@@ -86,6 +86,25 @@ class DashboardContractTests(unittest.TestCase):
             "losangeles-xray-traffic-audit.json": "5m",
             "sub2api-slo-capacity.json": "1m",
         }
+        expected_category = {
+            "losangeles-service-overview.json": "nav-runtime",
+            "losangeles-app-health.json": "nav-runtime",
+            "losangeles-host-overview.json": "nav-runtime",
+            "losangeles-datastores.json": "nav-runtime",
+            "sub2api-slo-capacity.json": "nav-runtime",
+            "losangeles-observability-selfcheck.json": "nav-reliability",
+            "losangeles-services-backups.json": "nav-reliability",
+            "losangeles-certificates-cloudflare.json": "nav-reliability",
+            "losangeles-daily-audit.json": "nav-governance",
+            "losangeles-security-overview.json": "nav-governance",
+            "losangeles-server-asset-runtime.json": "nav-governance",
+            "losangeles-xray-traffic-audit.json": "nav-governance",
+        }
+        navigation_contract = [
+            ("运行", ("nav-runtime",)),
+            ("可靠性", ("nav-reliability",)),
+            ("安全与审计", ("nav-governance",)),
+        ]
         self.assertEqual(
             {path.name for path in DASHBOARD_DIR.glob("*.json")},
             set(expected_refresh),
@@ -97,6 +116,29 @@ class DashboardContractTests(unittest.TestCase):
                 panel_ids = [panel["id"] for panel in walk_panels(dashboard["panels"])]
                 self.assertEqual(len(panel_ids), len(set(panel_ids)), dashboard["title"])
                 assert_no_overlap(self, dashboard["panels"], dashboard["title"])
+                category_tags = {
+                    tag for tag in dashboard["tags"] if tag.startswith("nav-")
+                }
+                self.assertEqual(category_tags, {expected_category[filename]})
+
+                navigation_links = [
+                    link for link in dashboard["links"] if link["type"] == "dashboards"
+                ]
+                self.assertEqual(
+                    [(link["title"], tuple(link["tags"])) for link in navigation_links],
+                    navigation_contract,
+                )
+                self.assertTrue(all(link["asDropdown"] for link in navigation_links))
+                self.assertTrue(all(link["keepTime"] for link in navigation_links))
+
+                stat_panels = [
+                    panel for panel in walk_panels(dashboard["panels"])
+                    if panel["type"] == "stat"
+                ]
+                self.assertTrue(
+                    all(panel["options"]["colorMode"] == "value" for panel in stat_panels),
+                    dashboard["title"],
+                )
 
                 first_row = min(
                     (panel for panel in dashboard["panels"] if panel["type"] == "row"),
@@ -172,13 +214,12 @@ class DashboardContractTests(unittest.TestCase):
 
         overview = load_dashboard("losangeles-service-overview.json")
         by_title = {panel["title"]: panel for panel in walk_panels(overview["panels"])}
-        for title in ("探测异常", "Firing 告警", "停摆容器", "备份最旧(h)", "最低错误预算"):
+        for title in ("活动告警", "探测异常", "停摆容器", "备份超期"):
             links = by_title[title]["fieldConfig"]["defaults"].get("links", [])
             self.assertTrue(links, title)
             self.assertTrue(any("${__url_time_range}" in link["url"] for link in links), title)
-        budget_link = by_title["最低错误预算"]["fieldConfig"]["defaults"]["links"][0]
-        self.assertIn("viewPanel=31", budget_link["url"])
-        self.assertNotIn("sub2api-slo-capacity", budget_link["url"])
+        queue_links = by_title["待处理告警"]["fieldConfig"]["defaults"]["links"]
+        self.assertEqual(queue_links[0]["url"], "/alerting/list?${__url_time_range}")
 
         external_links = overview["links"]
         self.assertTrue(
@@ -207,10 +248,6 @@ class DashboardContractTests(unittest.TestCase):
 
     def test_change_and_recovery_annotations_are_provisioned(self) -> None:
         expected_queries = {
-            "losangeles-service-overview.json": {
-                "changes(docker_container_started_at_timestamp_seconds[75s]) > 0",
-                "increase(docker_container_restart_count[75s]) > 0",
-            },
             "losangeles-services-backups.json": {
                 "changes(backup_set_last_success_timestamp[5m]) > 0",
                 "changes(r2_backup_last_success_timestamp[5m]) > 0",
@@ -234,6 +271,24 @@ class DashboardContractTests(unittest.TestCase):
                 dashboard = json.loads((DASHBOARD_DIR / filename).read_text(encoding="utf-8"))
                 expressions = {item["expr"] for item in dashboard["annotations"]["list"]}
                 self.assertTrue(queries.issubset(expressions))
+
+        overview = load_dashboard("losangeles-service-overview.json")
+        overview_annotations = overview["annotations"]["list"]
+        self.assertEqual(
+            [annotation["name"] for annotation in overview_annotations],
+            ["运行变更", "备份与恢复"],
+        )
+        merged_expressions = "\n".join(
+            annotation["expr"] for annotation in overview_annotations
+        )
+        for fragment in (
+            "changes(docker_container_started_at_timestamp_seconds[75s]) > 0",
+            "increase(docker_container_restart_count[75s]) > 0",
+            "changes(ops_config_drift[2m]) != 0",
+            "changes(backup_set_last_success_timestamp[5m]) > 0",
+            "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+        ):
+            self.assertIn(fragment, merged_expressions)
 
     def test_observability_components_have_dedicated_panels(self) -> None:
         path = DASHBOARD_DIR / "losangeles-observability-selfcheck.json"
@@ -323,7 +378,41 @@ class DashboardContractTests(unittest.TestCase):
     def test_service_overview_handles_normal_and_not_applicable_states(self) -> None:
         path = DASHBOARD_DIR / "losangeles-service-overview.json"
         dashboard = json.loads(path.read_text(encoding="utf-8"))
-        by_title = {panel["title"]: panel for panel in dashboard["panels"]}
+        by_title = {panel["title"]: panel for panel in walk_panels(dashboard["panels"])}
+
+        top_level_stats = [
+            panel["title"] for panel in dashboard["panels"] if panel["type"] == "stat"
+        ]
+        self.assertEqual(
+            top_level_stats,
+            ["活动告警", "探测异常", "停摆容器", "备份超期"],
+        )
+        self.assertEqual(
+            [by_title[title]["gridPos"]["w"] for title in top_level_stats],
+            [6, 6, 6, 6],
+        )
+
+        active_alerts = by_title["活动告警"]
+        self.assertEqual(
+            [(target["refId"], target["legendFormat"]) for target in active_alerts["targets"]],
+            [("A", "严重"), ("B", "警告")],
+        )
+        self.assertIn('severity="critical"', active_alerts["targets"][0]["expr"])
+        self.assertIn('severity="warning"', active_alerts["targets"][1]["expr"])
+        warning_override = next(
+            item
+            for item in active_alerts["fieldConfig"]["overrides"]
+            if item["matcher"] == {"id": "byFrameRefID", "options": "B"}
+        )
+        warning_thresholds = next(
+            item["value"]
+            for item in warning_override["properties"]
+            if item["id"] == "thresholds"
+        )
+        self.assertEqual(
+            warning_thresholds["steps"],
+            [{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+        )
 
         missing_telemetry_panels = {
             "探测异常": {
@@ -365,24 +454,45 @@ class DashboardContractTests(unittest.TestCase):
                 ],
             )
 
+        backup_overdue = by_title["备份超期"]
         self.assertEqual(
-            by_title["观测链路异常"]["targets"][0]["expr"],
-            "clamp_min(6 - count(min by (job) "
-            '(up{job=~"prometheus|grafana|loki|promtail|alertmanager|blackbox_exporter"}) '
-            "== 1), 0) or vector(6)",
+            backup_overdue["targets"][0]["expr"],
+            "count((time() - backup_set_last_success_timestamp) > 24 * 3600) "
+            "or on() (absent(backup_set_last_success_timestamp) * -1) or vector(0)",
+        )
+        self.assertEqual(
+            backup_overdue["fieldConfig"]["defaults"]["mappings"][0]["options"]["-1"]["text"],
+            "备份数据缺失",
         )
 
-        containers = by_title["容器运行状态（重启/健康/OOM）"]
-        self.assertNotIn(
-            "filterByValue",
-            {item["id"] for item in containers["transformations"]},
+        health = by_title["服务健康矩阵"]
+        self.assertEqual(health["gridPos"], {"x": 0, "y": 5, "w": 16, "h": 8})
+        self.assertEqual(
+            health["options"]["sortBy"],
+            [
+                {"displayName": "告警", "desc": True},
+                {"displayName": "非健康", "desc": True},
+                {"displayName": "OOM", "desc": True},
+                {"displayName": "探测", "desc": False},
+                {"displayName": "服务", "desc": False},
+            ],
         )
-        self.assertIn(
-            "0 * max by (name, service)",
-            containers["targets"][1]["expr"],
+        self.assertEqual(
+            {target["refId"] for target in health["targets"]},
+            {"A", "B", "C", "D", "E", "F"},
         )
+        self.assertIn("docker_container_running", health["targets"][3]["expr"])
+        self.assertIn("docker_container_health_status", health["targets"][4]["expr"])
+        self.assertIn("docker_container_oom_killed", health["targets"][5]["expr"])
+        cell_options = [
+            property["value"]["type"]
+            for override in health["fieldConfig"]["overrides"]
+            for property in override["properties"]
+            if property["id"] == "custom.cellOptions"
+        ]
+        self.assertTrue(cell_options)
+        self.assertEqual(set(cell_options), {"color-text"})
 
-        health = by_title["服务健康总表"]
         budget_override = next(
             item
             for item in health["fieldConfig"]["overrides"]
@@ -395,6 +505,27 @@ class DashboardContractTests(unittest.TestCase):
         )
         self.assertEqual(mapping[0]["options"]["match"], "null")
         self.assertEqual(mapping[0]["options"]["result"]["text"], "N/A")
+
+        alert_queue = by_title["待处理告警"]
+        self.assertEqual(alert_queue["gridPos"], {"x": 16, "y": 5, "w": 8, "h": 8})
+        self.assertIn(
+            'absent(ALERTS{alertstate="firing"})',
+            alert_queue["targets"][0]["expr"],
+        )
+        self.assertEqual(
+            alert_queue["options"]["sortBy"],
+            [{"displayName": "级别", "desc": False}],
+        )
+        severity_mapping = next(
+            property["value"][0]["options"]
+            for override in alert_queue["fieldConfig"]["overrides"]
+            for property in override["properties"]
+            if property["id"] == "mappings"
+        )
+        self.assertEqual(
+            list(severity_mapping),
+            ["4-normal", "3-other", "2-warning", "1-critical"],
+        )
 
     def test_slo_dashboard_is_sub2api_scoped_and_gates_immature_long_window_data(self) -> None:
         dashboard = json.loads(

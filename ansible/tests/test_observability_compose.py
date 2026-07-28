@@ -34,6 +34,39 @@ class ObservabilityComposeTests(unittest.TestCase):
         self.assertEqual(healthcheck, ["CMD", "/redis_exporter", "--version"])
         self.assertNotIn("wget", healthcheck)
 
+    def test_metrics_healthchecks_consume_the_complete_response(self) -> None:
+        services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
+        for name in (
+            "node-exporter",
+            "blackbox-exporter",
+            "postgres-exporter-sub2api",
+            "postgres-exporter-account-vault",
+        ):
+            with self.subTest(service=name):
+                healthcheck = services[name]["healthcheck"]["test"]
+                self.assertNotIn("--spider", healthcheck)
+                self.assertIn("-O", healthcheck)
+                self.assertIn("/dev/null", healthcheck)
+
+    def test_reloadable_configs_use_directory_bind_mounts(self) -> None:
+        services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
+        expected_mounts = {
+            "prometheus": "/opt/ops/observability/prometheus:/etc/prometheus:ro",
+            "loki": "/opt/ops/observability/loki:/etc/loki:ro",
+            "promtail": "/opt/ops/observability/promtail:/etc/promtail:ro",
+            "blackbox-exporter": (
+                "/opt/ops/observability/blackbox:/etc/blackbox_exporter:ro"
+            ),
+        }
+        for name, mount in expected_mounts.items():
+            with self.subTest(service=name):
+                self.assertIn(mount, services[name]["volumes"])
+
+        self.assertIn(
+            "--config.file=/etc/blackbox_exporter/blackbox.yml",
+            services["blackbox-exporter"]["command"],
+        )
+
     def test_promtail_can_read_host_adm_logs_without_capabilities(self) -> None:
         services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
         promtail = services["promtail"]
