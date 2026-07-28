@@ -29,7 +29,13 @@ scrape_configs:
           - host.docker.internal:9100
         labels:
           instance: LosAngeles
-          service: host
+    metric_relabel_configs:
+      # node-exporter 原生指标没有 service，统一归到 host；textfile 指标保留自身服务标签。
+      - source_labels:
+          - service
+        regex: ^$
+        target_label: service
+        replacement: host
 
   - job_name: loki
     static_configs:

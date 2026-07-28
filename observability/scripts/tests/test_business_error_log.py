@@ -57,15 +57,20 @@ class BusinessErrorLogTests(unittest.TestCase):
             ]
         )
         records, newest, matched = business_error_log.process_lines(
-            "account-vault", raw, "2026-07-18T01:00:00.000000000Z"
+            "account-vault",
+            "account-vault-web-1",
+            raw,
+            "2026-07-18T01:00:00.000000000Z",
         )
         self.assertEqual(matched, 1)
         self.assertEqual(len(records), 1)
         self.assertEqual(newest, "2026-07-18T01:00:03.000000000Z")
         self.assertNotIn("user@example.com", records[0])
+        self.assertIn('"container":"account-vault-web-1"', records[0])
 
     def test_old_lines_are_not_repeated(self) -> None:
         records, newest, matched = business_error_log.process_lines(
+            "sub2api",
             "sub2api",
             "2026-07-18T01:00:00.000000000Z ERROR old event",
             "2026-07-18T01:00:00.000000000Z",

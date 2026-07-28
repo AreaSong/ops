@@ -8,6 +8,10 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+    jsonData:
+      httpMethod: POST
+      queryTimeout: 60s
+      timeInterval: 15s
     correlations:
       - targetUID: loki
         label: 查看同服务日志
@@ -19,6 +23,16 @@ datasources:
             expr: '{service="$${__field.labels.service}"}'
             queryType: range
             refId: A
+      - targetUID: loki
+        label: 查看同容器业务日志
+        description: 按 Docker 指标 name 标签跳转到对应的已脱敏业务日志
+        config:
+          type: query
+          field: Value
+          target:
+            expr: '{job="business_errors",container="$${__field.labels.name}"}'
+            queryType: range
+            refId: A
 
   - name: Loki
     uid: loki
@@ -26,6 +40,8 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
+    jsonData:
+      maxLines: 1000
 
   - name: Alertmanager
     uid: alertmanager

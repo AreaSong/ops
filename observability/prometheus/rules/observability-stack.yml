@@ -14,6 +14,19 @@ groups:
           description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
+      - alert: GrafanaDatasourceRequestErrors
+        expr: sum by (instance, datasource, datasource_type) (increase(grafana_datasource_request_total{job="grafana",code=~"5.."}[5m])) > 5
+        for: 2m
+        labels:
+          owner: areasong-ops
+          severity: warning
+          service: grafana
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+          summary: "Grafana datasource {{ $labels.datasource }} is returning repeated 5xx responses"
+          description: "Grafana recorded more than five 5xx responses in five minutes for {{ $labels.datasource }} ({{ $labels.datasource_type }}); inspect that datasource and its upstream query service."
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
       - alert: AlertmanagerMetricsTargetDown
         expr: up{job="alertmanager"} == 0
         for: 2m

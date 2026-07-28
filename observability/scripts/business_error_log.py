@@ -97,7 +97,12 @@ def default_since() -> str:
     return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def process_lines(service: str, raw: str, last_timestamp: str) -> tuple[list[str], str, int]:
+def process_lines(
+    service: str,
+    container: str,
+    raw: str,
+    last_timestamp: str,
+) -> tuple[list[str], str, int]:
     records: list[str] = []
     newest = last_timestamp
     matched = 0
@@ -117,6 +122,7 @@ def process_lines(service: str, raw: str, last_timestamp: str) -> tuple[list[str
                 {
                     "timestamp": timestamp,
                     "service": service,
+                    "container": container,
                     "level": severity(message),
                     "message": sanitized,
                 },
@@ -206,7 +212,12 @@ def main() -> int:
         if result.returncode != 0:
             failures += 1
             continue
-        records, newest, count = process_lines(service, result.stdout + result.stderr, since)
+        records, newest, count = process_lines(
+            service,
+            container,
+            result.stdout + result.stderr,
+            since,
+        )
         next_state[container] = newest
         all_records.extend(records)
         matched += count

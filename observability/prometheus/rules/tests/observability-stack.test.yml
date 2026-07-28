@@ -57,6 +57,37 @@ tests:
               description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
+  - name: grafana datasource repeated failures
+    interval: 1m
+    input_series:
+      - series: 'grafana_datasource_request_total{job="grafana",instance="LosAngeles",service="grafana",datasource="Prometheus",datasource_type="prometheus",method="post",code="503"}'
+        values: '0 0 0 0 0 6 12 18'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: GrafanaDatasourceRequestErrors
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: GrafanaDatasourceRequestErrors
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: GrafanaDatasourceRequestErrors
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: GrafanaDatasourceRequestErrors
+        exp_alerts:
+          - exp_labels:
+              datasource: Prometheus
+              datasource_type: prometheus
+              instance: LosAngeles
+              owner: areasong-ops
+              service: grafana
+              severity: warning
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+              summary: "Grafana datasource Prometheus is returning repeated 5xx responses"
+              description: "Grafana recorded more than five 5xx responses in five minutes for Prometheus (prometheus); inspect that datasource and its upstream query service."
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
   - name: component reload and notification failures
     interval: 1m
     input_series:
