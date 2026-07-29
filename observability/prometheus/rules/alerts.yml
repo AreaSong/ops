@@ -431,7 +431,7 @@ groups:
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: PostgresDeadlocksDetected
-        expr: increase(pg_stat_database_deadlocks[15m]) > 0
+        expr: increase(label_replace(pg_stat_database_deadlocks, "__name__", "pg_stat_database_deadlocks_total", "__name__", ".*")[15m:]) > 0
         for: 0m
         labels:
           owner: areasong-ops

@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-18 14:02 UTC
+更新时间：2026-07-29 UTC
 
 ## 范围
 
@@ -9,7 +9,7 @@
 - 源站公网 IP：`23.185.200.12`
 - 源站入口：Nginx `80/443`
 
-本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头、源站 SNI 握手结果和 Cloudflare 控制台只读核对结果整理。控制台核对期间未修改 Cloudflare、DNS、Nginx 或服务配置。
+本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头、源站 SNI 握手结果和 Cloudflare 控制面核对结果整理。2026-07-29 已按批准为 Grafana 创建 Access Application、人员与自动化策略及 service token；token secret 不进入本台账或 Git。
 
 ## Zone 与权威 DNS
 
@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- |
 | `resume.areasong.top` | resume-jadeai | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，首页最终 200 | `127.0.0.1:2082` |
 | `sorryiossearch.areasong.top` | account-vault-web | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/health` 200 | `127.0.0.1:8392` |
-| `monitor.areasong.top` | Grafana | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/` 302 到 `/login` | `127.0.0.1:3000` |
+| `monitor.areasong.top` | Grafana | Cloudflare 代理并受 Access 保护，A/AAAA 返回 Cloudflare 边缘地址 | 未认证请求进入 Access 登录；允许邮箱完成 OTP 后进入 Grafana；专用 service token 的 `/api/health` 返回 200 | `127.0.0.1:3000` |
 | `forge.areasong.top` | AreaForge | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`，公网入口可达 | `127.0.0.1:3020` |
 | `cpa.areasong.top` | sub2api | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/health` 200 | `127.0.0.1:8080` |
 | `log.areasong.top` | x-ui / xray 入口 | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/` 200 | `127.0.0.1:46585`、`127.0.0.1:10000`、`127.0.0.1:2096` |
@@ -75,21 +75,23 @@
 | 对象 | 用途 | 创建人 | 负责人 | 提醒 / 处置 |
 | --- | --- | --- | --- | --- |
 | Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；Prometheus 已落地 180/90/30/7 天分级提醒，30 天内安排轮换，7 天内按紧急处理 |
+| Access Application `Grafana - monitor.areasong.top`（ID `8f78fba9-dadd-4ab0-ab18-41e895e7a32f`） | `monitor.areasong.top` 人员和自动化身份边界 | `as` | `as` | 仅允许 `song80184@gmail.com` 通过 OTP；会话 6 小时；策略或人员变化时立即复核 |
+| Service Token `github-actions-grafana-health`（ID `f9008337-dab4-46ec-8802-c17ea2739634`） | 仅供 `AreaSong/ops` 外部可用性工作流读取 Grafana `/api/health` | `as` | `as` | 2027-07-29 到期；2027-06-29 前轮换；GitHub 仅保存 `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` secrets |
 | Cloudflare Tunnel `hWin` / `www.areasong.top` | 旧 Cloudflare Access / Tunnel 应用入口 | `as` | `as` | 2026-07-04 已由用户删除 Access Application 与 Tunnel/Public Hostname；LosAngeles 本机未发现 `cloudflared` 进程或 systemd 服务；`www` 预留门户网站 |
 
-## 2026-07-18 Access 与源站治理状态
+## 2026-07-29 Access 与源站治理状态
 
 | 对象 | 目标策略 | 当前权威状态 | 完成证据 |
 | --- | --- | --- | --- |
-| `monitor.areasong.top` Access Application | self-hosted；运维邮箱 OTP allowlist；8 小时会话 | Cloudflare One 控制面只读确认当前没有任何 Access Application | 待创建后完成浏览器 OTP 验证 |
-| 外部监控 service token | 仅允许 GitHub Actions 读取 Grafana health；最小范围；有 owner/到期/轮换 | 控制面只读确认当前没有 service token | 待创建、写入 Actions secrets 并完成带/不带 token 对照探针 |
+| `monitor.areasong.top` Access Application | self-hosted；仅允许指定运维邮箱 OTP；6 小时会话 | **已生效**：`Grafana - monitor.areasong.top`；人员策略仅包含 `song80184@gmail.com` | 浏览器已完成 OTP 并进入 Grafana；未认证入口仍由 Access 拦截 |
+| 外部监控 service token | 仅允许 GitHub Actions 读取 Grafana health；最小范围；有 owner/到期/轮换 | **已生效**：自动化策略仅允许 `github-actions-grafana-health`；到期 2027-07-29 | Actions secrets 已写入；工作流 #191 六个入口全 200，Grafana 由 service token 返回 200；#192/#193 已完成故障/恢复 Issue 演练 |
 | `resume` / `sorryiossearch` / `monitor` / `forge` 源站 | Nginx 仅允许 Cloudflare 官方 IPv4/IPv6 | **生产已生效**（2026-07-21 只读回验）：站点 include `cloudflare-origin-only.conf`；本机 `--resolve` 直连返回 403；Cloudflare 公网路径可达（monitor 302 / forge 307） | 台账 `observed_origin_policy` 已晋升为 `cloudflare-only`；`cpa` / `log` 仍为 DNS-only + `direct` |
 
 Access 配置和 token 创建属于外部控制面写操作。token secret 只在创建时显示，不进入本台账；台账只记录名称、用途、owner、创建日、到期日、轮换日和 GitHub secret 名称。
 
 ## Cloudflare 控制台核对
 
-2026-07-04 通过 Cloudflare 控制台只读核对 Zone 配置；2026-07-18 追加只读核对 Cloudflare One 的 Access Application 与 service token 列表，均为空。以下 Zone 表保留 2026-07-04 事实边界：
+2026-07-04 通过 Cloudflare 控制台只读核对 Zone 配置；2026-07-18 追加核对时 Access Application 与 service token 均为空；2026-07-29 按批准完成 Grafana Access 创建和验证。以下 Zone 表保留 2026-07-04 的 Zone 配置事实边界，Access 的当前事实以上方 2026-07-29 表为准：
 
 | 类别 | 当前状态 | 说明 |
 | --- | --- | --- |

@@ -40,7 +40,7 @@
       },
       "targets": [
         {
-          "expr": "cloudflare_origin_cert_days_until_expiry",
+          "expr": "cloudflare_origin_cert_days_until_expiry{service=\"host\"}",
           "legendFormat": "{{cert}}",
           "refId": "A",
           "datasource": {
@@ -114,7 +114,7 @@
       },
       "targets": [
         {
-          "expr": "cloudflare_origin_cert_check_success",
+          "expr": "cloudflare_origin_cert_check_success{service=\"host\"}",
           "legendFormat": "{{cert}}",
           "refId": "A",
           "datasource": {
@@ -188,7 +188,7 @@
       },
       "targets": [
         {
-          "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
+          "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp{service=\"host\"}",
           "legendFormat": "距上次成功",
           "refId": "A",
           "datasource": {
@@ -263,7 +263,7 @@
       },
       "targets": [
         {
-          "expr": "cloudflare_origin_cert_days_until_expiry",
+          "expr": "cloudflare_origin_cert_days_until_expiry{service=\"host\"}",
           "legendFormat": "{{cert}}",
           "refId": "A",
           "datasource": {
@@ -351,7 +351,7 @@
       },
       "targets": [
         {
-          "expr": "cloudflare_ip_ranges_check_success",
+          "expr": "cloudflare_ip_ranges_check_success{service=\"host\"}",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -424,7 +424,7 @@
       },
       "targets": [
         {
-          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
+          "expr": "time() - cloudflare_ip_ranges_last_run_timestamp{service=\"host\"}",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -486,7 +486,7 @@
       },
       "targets": [
         {
-          "expr": "cloudflare_ip_ranges_match",
+          "expr": "cloudflare_ip_ranges_match{service=\"host\"}",
           "format": "table",
           "instant": true,
           "refId": "A",
@@ -625,7 +625,7 @@
         "enable": true,
         "hide": false,
         "iconColor": "blue",
-        "expr": "changes(cloudflare_ip_ranges_last_run_timestamp[20m]) > 0",
+        "expr": "changes(cloudflare_ip_ranges_last_run_timestamp{service=\"host\"}[20m]) > 0",
         "step": "10m",
         "titleFormat": "Cloudflare IP 清单已刷新",
         "tagKeys": "service"

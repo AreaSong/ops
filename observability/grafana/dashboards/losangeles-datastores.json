@@ -363,7 +363,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(pg_stat_database_deadlocks{instance=~\"$instance\"}[5m])) or vector(0)",
+          "expr": "sum(increase(label_replace(pg_stat_database_deadlocks{instance=~\"$instance\"}, \"__name__\", \"pg_stat_database_deadlocks_total\", \"__name__\", \".*\")[5m:])) or vector(0)",
           "legendFormat": "PG 死锁 5m",
           "refId": "A",
           "datasource": {
@@ -569,7 +569,7 @@
       },
       "targets": [
         {
-          "expr": "increase(pg_stat_database_deadlocks{instance=~\"$instance\"}[5m])",
+          "expr": "increase(label_replace(pg_stat_database_deadlocks{instance=~\"$instance\"}, \"__name__\", \"pg_stat_database_deadlocks_total\", \"__name__\", \".*\")[5m:])",
           "refId": "A",
           "datasource": {
             "type": "prometheus",

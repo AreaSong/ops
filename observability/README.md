@@ -8,6 +8,12 @@ Only Grafana is exposed through Nginx and Cloudflare:
 
 - `https://monitor.areasong.top/` -> Nginx 443 -> `127.0.0.1:3000`
 
+Cloudflare Access protects the public Grafana route. Human access uses the single
+approved email OTP policy with a six-hour session. The GitHub external-uptime workflow
+uses its own service token only for `/api/health`; the client secret is stored in GitHub
+Actions secrets and never in this repository. The internal readiness probe remains
+independent of Access and checks Grafana directly on the Docker network.
+
 Prometheus, Alertmanager, Loki, Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are not exposed publicly.
 
 ## Local ports

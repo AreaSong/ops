@@ -16,13 +16,14 @@
 - 非默认分支和未勾选 `manage_issues` 的手工运行只做检查，不会创建、更新或关闭 Issue。
 - 每月 1 日 03:17 UTC 运行独立 concurrency group 的 failure/recovery Issue 生命周期演练，不会被下一次五分钟探针取消。
 
-## Cloudflare Access 前置条件
+## Cloudflare Access 当前配置
 
-1. 为 `monitor.areasong.top` 创建 self-hosted Access Application。
-2. 人工访问策略使用运维邮箱 OTP allowlist，会话时长 8 小时。
-3. 自动化策略仅允许专用 service token，令牌设置明确 owner、用途、到期和轮换日期。
-4. 把 client ID/secret 写入 `AreaSong/ops` Actions secrets；不得复用浏览器 OTP 身份。
-5. 未带 token 的请求应进入 Access 登录；带 token 的 `/api/health` 探针应返回成功。
+1. Self-hosted Application 为 `Grafana - monitor.areasong.top`，Application ID `8f78fba9-dadd-4ab0-ab18-41e895e7a32f`。
+2. 人员策略仅允许 `song80184@gmail.com` 使用 OTP，会话时长 6 小时。
+3. 自动化策略仅允许 service token `github-actions-grafana-health`，Token ID `f9008337-dab4-46ec-8802-c17ea2739634`。
+4. token 于 2027-07-29 到期，负责人应在 2027-06-29 前创建替代 token、更新两个 GitHub secrets、验证后再撤销旧 token。
+5. client ID/secret 只保存在 `AreaSong/ops` 的 `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET` Actions secrets；不得复用浏览器 OTP 身份或输出 secret。
+6. 未带 token 的请求应进入 Access 登录；带 token 的 `/api/health` 探针应返回成功。
 
 ## 手工验证
 
@@ -40,6 +41,14 @@
 bash scripts/monitor/tests/test_external_uptime_check.sh
 bash scripts/monitor/tests/test_external_uptime_incident.sh
 ```
+
+## 2026-07-29 生产验收记录
+
+- 浏览器人员路径已完成 OTP，进入 Grafana 成功。
+- 工作流 #191 正常模式成功：6/6 HTTPS 入口返回 200，Grafana 使用 service token 通过 Access；此前生产故障 Issue #5 自动关闭。
+- 工作流 #192 受控故障模拟按预期失败并创建测试 Issue #86。
+- 工作流 #193 受控恢复模拟成功并自动关闭测试 Issue #86。
+- 验收日志和 Issue 未输出 Access client secret；测试 Issue 使用独立标记，不影响生产故障 Issue。
 
 ## 告警处理
 

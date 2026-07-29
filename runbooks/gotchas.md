@@ -44,6 +44,10 @@
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
   → 详见 [records/losangeles-standards-09-b3-fstab-uuid-20260706.md](records/losangeles-standards-09-b3-fstab-uuid-20260706.md)
 
+## Git / CI
+
+- **容器内扫描 Git worktree 时不能只挂载工作目录**——worktree 的 `.git` 是指向公共 Git 目录的绝对路径；容器看不到目标时，部分扫描器可能打印 fatal 却仍以 0 退出，并显示 `0 commits scanned`。必须核对实际扫描量；工作树可用 no-git 模式补扫，历史扫描需把公共 Git 目录挂入容器，并显式设置 `GIT_DIR` 与 `GIT_WORK_TREE`。
+
 ## 应用行为
 
 - **浏览器指纹作匿名身份的应用，"数据丢失"多半是身份错位**——指纹（如 `x-fingerprint`）变化会被当成新用户，旧数据看似消失实际都在。先只读核对数据库行数与完整性（SQLite `PRAGMA integrity_check`），确认是归属问题再做归属修正；不要急着从备份恢复，误恢复反而可能覆盖数据。

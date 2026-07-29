@@ -60,6 +60,16 @@ scrape_configs:
         labels:
           instance: LosAngeles
           service: grafana
+    metric_relabel_configs:
+      # Grafana 原生 service 标签与目标 service=grafana 冲突时会被改名为
+      # exported_service；保留其组件语义后删除冲突标签，避免标签契约分叉。
+      - source_labels:
+          - exported_service
+        regex: .+
+        target_label: component
+        replacement: $1
+      - action: labeldrop
+        regex: exported_service
 
   - job_name: alertmanager
     static_configs:

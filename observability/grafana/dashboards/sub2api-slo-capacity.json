@@ -668,7 +668,7 @@
           },
           "targets": [
             {
-              "expr": "increase(pg_stat_database_deadlocks{service=\"sub2api\"}[5m])",
+              "expr": "increase(label_replace(pg_stat_database_deadlocks{service=\"sub2api\"}, \"__name__\", \"pg_stat_database_deadlocks_total\", \"__name__\", \".*\")[5m:])",
               "legendFormat": "PostgreSQL 死锁 {{instance}}",
               "refId": "A",
               "datasource": {
