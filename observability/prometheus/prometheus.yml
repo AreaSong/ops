@@ -65,7 +65,9 @@ scrape_configs:
       # exported_service；保留其组件语义后删除冲突标签，避免标签契约分叉。
       - source_labels:
           - exported_service
-        regex: .+
+        # replacement 使用 $1，正则必须显式提供第一个捕获组；否则 component
+        # 会被写为空值并消失，随后 labeldrop 会让 11 条原始序列发生标签碰撞。
+        regex: (.+)
         target_label: component
         replacement: $1
       - action: labeldrop

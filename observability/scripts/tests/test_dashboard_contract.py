@@ -47,6 +47,25 @@ def assert_no_overlap(test: unittest.TestCase, panels: list[dict], context: str)
 
 
 class DashboardContractTests(unittest.TestCase):
+    def test_prometheus_relabel_replacements_have_required_capture_groups(self) -> None:
+        prometheus = yaml.safe_load(
+            (REPO_ROOT / "observability/prometheus/prometheus.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        for scrape in prometheus["scrape_configs"]:
+            for rule in scrape.get("metric_relabel_configs", []):
+                replacement = str(rule.get("replacement", ""))
+                references = [int(item) for item in re.findall(r"\$(\d+)", replacement)]
+                if not references:
+                    continue
+                regex = str(rule.get("regex", "(.*)"))
+                self.assertGreaterEqual(
+                    re.compile(regex).groups,
+                    max(references),
+                    f"{scrape['job_name']}: {replacement} references a missing group in {regex}",
+                )
+
     def test_prometheus_to_loki_correlations_use_real_shared_labels(self) -> None:
         datasources = yaml.safe_load(
             (
@@ -660,7 +679,7 @@ class DashboardContractTests(unittest.TestCase):
             [
                 {
                     "source_labels": ["exported_service"],
-                    "regex": ".+",
+                    "regex": "(.+)",
                     "target_label": "component",
                     "replacement": "$1",
                 },
