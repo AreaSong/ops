@@ -5,6 +5,8 @@
 约束（已锁定）：单机、不加第二台、不上 Kubernetes  
 优先维度（2026-07-21 用户确认）：**A 收口 + B 性能 + D 安全深化 + E 运维效率**（C 可靠性/第二台暂缓）
 
+状态（2026-07-29）：批次 0、批次 1、批次 2 与本次 Grafana/Prometheus 收口均已完成生产发布和回验；Account Vault 独立高风险发布及下方带触发条件的增强项不属于本轮完成门禁。
+
 > 本文是讨论计划的可执行落点：缺口核对 + 只读体检 + 下一步门禁清单。  
 > 生产变更仍须按 `standards/05-change-management.md` 单项说明并等待批准。
 
@@ -49,7 +51,7 @@
 | 步骤 | 状态 | 内容 |
 | --- | --- | --- |
 | 0.1–0.3 | 已完成 | cloudflare-only 台账、round2 刷新、本路线图已进入主分支 |
-| 0.4 | 已完成 | `/opt/ops` 已同步到 `origin/main`，生产基线工作树干净；本次 Grafana 增量另按独立变更闭环 |
+| 0.4 | 已完成 | `/opt/ops` 已同步到生产代码基线 `4fa7844`，工作树干净；Grafana 增量 PR #87/#88、生产 reload、标签与看板回验均闭环，最终文档合并后再次快进 main |
 
 ### 批次 1 — A 收口（Access，已完成）
 
@@ -62,7 +64,7 @@
 
 手册：[github-external-uptime.md](../playbooks/github-external-uptime.md)
 
-### 批次 2 — B 内存 limit 下调方案（**仅方案，未 recreate**）
+### 批次 2 — B 内存 limit 下调（已完成）
 
 依据 2026-07-21 `docker stats`；原则：实际用量 × ≥3 且不低于合理下限；已用 >25% limit 的不动。
 
@@ -89,7 +91,7 @@
 | 回滚 | 恢复旧 mem_limit 再 recreate |
 | 验收 | SwapUsed 下降趋势；无新 OOM；入口 health 200；`ops_config_drift=0` |
 
-**2.1 状态：用户已批准执行（2026-07-21）；见 [losangeles-mem-limit-tighten-20260721.md](losangeles-mem-limit-tighten-20260721.md)。**
+**2.1 状态：2026-07-21 已执行并验收。九个目标容器限制生效、均无 OOM，Swap 使用下降约 56 MiB；见 [losangeles-mem-limit-tighten-20260721.md](losangeles-mem-limit-tighten-20260721.md)。**
 
 ### 批次 3 — D 安全深化
 
@@ -135,4 +137,4 @@ flowchart TD
 
 ## 7. 工作树提示
 
-本机另有未提交 observability 看板/规则改动，与本路线图分 commit，勿混装。
+2026-07-29 时 observability 看板、规则、Access 与标签修复已分别通过 PR、CI、生产发布和回验；最终收口文档保持独立提交，不混入运行配置变更。

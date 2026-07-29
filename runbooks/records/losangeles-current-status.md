@@ -7,25 +7,28 @@
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
 
-> 状态边界：下方 2026-07-06 的“本轮完成”结论代表第一轮单机治理基线。2026-07-29 时第二轮主体与 Cloudflare Access 已上生产并通过验收；当前仅剩本轮 Grafana 查询卫生与标签清理的发布回验，完成前不把本次增量标记为 100%。第二轮权威进度和门禁见 `runbooks/records/losangeles-round2-governance-20260718.md`。
+> 状态边界：下方 2026-07-06 的结论代表第一轮单机治理基线。2026-07-29 时第二轮主体、Cloudflare Access 以及本次 Grafana/Prometheus 增量均已完成生产发布与权威回验；按本轮已批准边界可标记为 100%。Account Vault GHCR/migration 发布仍是需要单独批准的高风险专项，不属于本轮完成门禁。第二轮证据见 `runbooks/records/losangeles-round2-governance-20260718.md`。
 
 ## 0. 2026-07-29 第二轮收口状态
 
 | 项目 | 当前结论 |
 | --- | --- |
 | 第一轮基线 | 已完成并保留 |
-| 第二轮主体 | 资产/端口/容器面板、脱敏业务日志、Cloudflare IP 漂移、cron 纳管、容器加固、Alertmanager Issue 同步等已部署；`/opt/ops` 与 `origin/main` 当前基线一致且干净 |
+| 第二轮主体 | 资产/端口/容器面板、脱敏业务日志、Cloudflare IP 漂移、cron 纳管、容器加固、Alertmanager Issue 同步等已部署并完成生产回验 |
 | Cloudflare Access | **已完成**：`monitor.areasong.top` 仅允许 `song80184@gmail.com` OTP，会话 6 小时；GitHub 自动化仅允许专用 service token |
 | 外部监控闭环 | **已完成**：#191 正常探针 6/6 成功；#192 创建受控故障 Issue #86；#193 恢复并自动关闭 #86；生产故障 Issue #5 已恢复关闭 |
 | Loki 30 天保留 | **已完成**：marker 队列与 pending delete request 均为 0，retention 最近成功，原积压 46 个 marker 已处理 |
-| Grafana 看板 | 12 张桌面端逐张验收，无 `No data`、查询错误或插件缺失；12 张另以真实 `426×632` 移动视口验收，横向溢出、裁切、查询错误和 `No data` 均为 0 |
+| Grafana / Prometheus 增量 | PR #87、#88 已合并，main 治理 CI #67、#69 成功；生产 reload 为 HTTP 200，Grafana `component` 11 条、旧 `exported_service` 0 条，记录规则 11 条 |
+| Grafana 看板 | 12 张桌面端及真实 `426×632` 移动视口逐张验收；5 张本次修改看板另在生产登录态回验，共渲染 50 个 panel region，无 `No data`、查询错误、插件缺失、裁切或横向溢出 |
 | 每日审计未映射 Host | 2026-07-28 的 403 次已归因：400 次为源站 IP Host 扫描，其余 3 次为异常第三方 Host、根域 POST 和本机直连；全部返回 400/403，占当日请求约 0.46%，无合法服务漏映射 |
+| 最终运行门禁 | Prometheus 当前及过去 2 小时 down target 0、firing 0；当前 pending 0，窗口内仅有 1 个 15 秒 `AppHttpProbeSlow` pending 采样且未 firing；规则评估与通知错误增量 0；`ops_config_drift` 0；18 个生产服务容器运行，无异常重启、OOM 或 unhealthy |
+| 日报与备份 | 2026-07-28 UTC 日报 critical/warning 0、数据源失败 0、邮件 attempted/accepted 均为 1；本机、R2、完整 9 件套及 R2 独立回读均在 RPO 内 |
 | GitHub 分支保护 | 控制面只读确认 `ops` 与 `sorryiosSearch` 均未配置 classic branch protection；required checks 尚未落地 |
 | GitHub Actions secrets | `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET` 已配置；secret 明文不进入仓库、日志或台账 |
-| Account Vault 生产 | 公网 `/ready` 当前仍返回 SPA HTML，说明新 DB-readiness 镜像尚未部署 |
-| 当前验收门禁 | 本次 Grafana/Prometheus 增量需完成 CI、生产 reload 和标签/看板回验；Account Vault 独立发布仍按其专项门禁处理 |
+| Account Vault 生产 | 公网 `/ready` 当前仍返回 SPA HTML；新 DB-readiness 镜像和 migration/digest 发布继续按独立高风险专项处理，不阻塞本轮收口 |
+| 当前验收门禁 | **已完成**：生产代码基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`，最终收口文档合并后再将 `/opt/ops` 快进到最新 `origin/main` |
 
-在第二轮最终验收完成前，本文历史章节中的“P0/P1 无”“监控完成”和“Cloudflare 治理完成”不得外推为当前全部工作已 100% 完成。
+“本轮 100%”仅表示已批准的单机治理、可观测性、Grafana 与 Access 范围已经闭环，不表示未来增强项永远不存在。分支保护、PAT 轮换、Account Vault 独立发布和第二台机器等仍按各自触发条件推进。
 
 ## 1. 本轮结论
 
