@@ -35,7 +35,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api@sha256:ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d
+    image: weishaw/sub2api@sha256:8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0
     container_name: sub2api
     restart: unless-stopped
     user: "1000:1000"

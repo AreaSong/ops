@@ -8,10 +8,10 @@
       "targets": ["v0.1.9"]
     },
     "sub2api": {
-      "enabled": true,
+      "enabled": false,
       "adapter": "sub2api.sh",
       "actions": ["apply"],
-      "targets": ["v0.1.168"]
+      "targets": []
     }
   }
 }

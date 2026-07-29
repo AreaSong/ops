@@ -12,7 +12,7 @@ COMPOSE_PATH = REPO_ROOT / "services" / "sub2api" / "compose.yml"
 DIGEST_IMAGE = re.compile(r"^[^@]+@sha256:[0-9a-f]{64}$")
 SUB2API_IMAGE = (
     "weishaw/sub2api@sha256:"
-    "ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d"
+    "8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0"
 )
 
 

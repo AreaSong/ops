@@ -15,7 +15,7 @@
 
 Account Vault 操作必须先阅读 [发布与回滚 Runbook](../runbooks/records/losangeles-account-vault-release.md)。
 
-通用在线更新控制面必须先阅读 [在线更新控制面 Runbook](../runbooks/playbooks/online-update-control-plane.md)。AreaForge 已部署；Sub2API 只开放完成隔离恢复、迁移和回滚演练的固定 `v0.1.168` 目标。自动更新保持关闭。
+通用在线更新控制面必须先阅读 [在线更新控制面 Runbook](../runbooks/playbooks/online-update-control-plane.md)。AreaForge 已部署；Sub2API `v0.1.168` 已完成并退休一次性目标，适配器保留供下一固定版本重新审批启用。自动更新保持关闭。
 
 ## 备份脚本
 

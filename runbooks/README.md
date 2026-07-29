@@ -61,6 +61,7 @@
 | x-ui TCP/Nginx 调优 | [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md) |
 | 优化路线图（A→B 默认路径） | [records/losangeles-optimization-roadmap-20260721.md](records/losangeles-optimization-roadmap-20260721.md) |
 | 内存 limit 收敛 | [records/losangeles-mem-limit-tighten-20260721.md](records/losangeles-mem-limit-tighten-20260721.md) |
+| Sub2API v0.1.168 受控升级 | [records/losangeles-sub2api-v0168-update-20260729.md](records/losangeles-sub2api-v0168-update-20260729.md) |
 
 ### 恢复演练记录
 

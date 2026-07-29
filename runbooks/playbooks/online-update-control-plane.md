@@ -7,7 +7,7 @@
 当前状态：
 
 - AreaForge：控制面已部署，`v0.1.9` 生产身份和只读阶段验收通过。
-- Sub2API：仅开放已完成隔离恢复、迁移和回滚演练的 `v0.1.168` 固定目标。
+- Sub2API：`v0.1.168` 已完成生产升级并退休一次性目标；适配器保留，等待下一固定目标再次审批启用。
 - 自动更新：不启用。每次 `apply` 都需要一个 10 分钟内有效的 root-only 请求文件。
 
 ## 安全契约
@@ -51,7 +51,7 @@ bash -n scripts/deploy/update-control/adapters/*.sh
 jq empty scripts/deploy/update-control/services.json scripts/deploy/update-control/releases/*.json
 ```
 
-## Sub2API v0.1.168 已满足门禁
+## Sub2API v0.1.168 完成记录
 
 - 固定目标 `v0.1.168` 的 linux/amd64 image digest 与镜像内版本、commit 三方一致。
 - fresh PostgreSQL、Redis、`/app/data`、两份 Compose 与 root-only `.env` 备份完成并写入 manifest。
@@ -61,6 +61,8 @@ jq empty scripts/deploy/update-control/services.json scripts/deploy/update-contr
 - 只重建 `sub2api`，PostgreSQL 与 Redis 容器身份保持不变。
 - 健康、外部 Blackbox、Prometheus 告警、Loki 错误和版本身份全部通过。
 - 生产接入已单独批准；不恢复数据库、不启用 timer 或自动更新。
+- 请求 `update_1785329456218_e02d594a-d98f-4def-b386-f8d45191f80c` 七阶段成功；生产版本、Git commit、镜像 digest、237 条 migration 和依赖容器身份一致。
+- 一次性目标执行后已从服务 allowlist 移除，防止重放已过期的 expected-before；发布目录与演练证据继续保留。
 
 ## 回滚
 

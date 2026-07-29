@@ -17,6 +17,7 @@ AREAFORGE_ADAPTER = REPO_ROOT / "scripts" / "deploy" / "update-control" / "adapt
 AREAFORGE_RELEASES = REPO_ROOT / "scripts" / "deploy" / "update-control" / "releases" / "areaforge.json"
 SUB2API_ADAPTER = REPO_ROOT / "scripts" / "deploy" / "update-control" / "adapters" / "sub2api.sh"
 SUB2API_RELEASES = REPO_ROOT / "scripts" / "deploy" / "update-control" / "releases" / "sub2api.json"
+SERVICE_CATALOG = REPO_ROOT / "scripts" / "deploy" / "update-control" / "services.json"
 
 
 class UpdateControlTests(unittest.TestCase):
@@ -384,12 +385,16 @@ esac
             dependencies = json.loads((operation / "dependencies.before.json").read_text(encoding="utf-8"))
             self.assertEqual([item["name"] for item in dependencies], ["/sub2api-postgres", "/sub2api-redis"])
 
-    def test_release_catalog_enables_only_the_rehearsed_target(self) -> None:
+    def test_release_catalog_retains_completed_rehearsal_and_disables_replay(self) -> None:
         releases = json.loads(SUB2API_RELEASES.read_text(encoding="utf-8"))
         self.assertEqual(set(releases["targets"]), {"v0.1.168"})
         target = releases["targets"]["v0.1.168"]
+        self.assertEqual(target["status"], "completed")
         self.assertEqual(target["migration"], {"baselineCount": 229, "targetCount": 237, "newCount": 8})
         self.assertEqual(target["rehearsal"]["oldImageOnNewSchema"], "healthy")
+        service = json.loads(SERVICE_CATALOG.read_text(encoding="utf-8"))["services"]["sub2api"]
+        self.assertFalse(service["enabled"])
+        self.assertEqual(service["targets"], [])
 
 
 if __name__ == "__main__":

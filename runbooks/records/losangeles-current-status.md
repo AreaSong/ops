@@ -484,6 +484,17 @@ Grafana Dashboard（12 张）：
 - `pg_exporter_last_scrape_error{job="postgres"}` 两个实例均为 `0`。
 - 新日志不再出现 `checkpoints_timed` / `stat_bgwriter` 错误。
 
+## 2026-07-29 Sub2API v0.1.168 受控升级
+
+状态：完成。
+
+- 控制面请求 `update_1785329456218_e02d594a-d98f-4def-b386-f8d45191f80c` 七阶段成功。
+- 应用从 `v0.1.163` 升级到 `v0.1.168`，固定 linux/amd64 digest `sha256:8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0`。
+- migration 从 229 增至 237；PostgreSQL、Redis 的容器 ID 与 `StartedAt` 未变化。
+- 外部 health、认证管理 API、最小网关请求、Blackbox、告警和日志验收通过。
+- 未恢复数据库，未启用自动更新；已退休本次一次性目标。
+- 详细证据见 `runbooks/records/losangeles-sub2api-v0168-update-20260729.md`。
+
 留痕：
 
 - `runbooks/records/losangeles-standards-09-c7-postgres-exporter-pg18-compatibility-20260706.md`
