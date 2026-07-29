@@ -86,7 +86,7 @@
 
 以下为本轮已批准范围的最终权威证据：
 
-- [x] `/opt/ops` 生产代码基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`，工作树干净；最终收口文档合并后再次快进到最新 `origin/main`。
+- [x] 运行配置基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`；收口文档及证据修正均通过 PR/main 双重 CI，生产 `/opt/ops` 与最新 `origin/main` 一致且工作树干净；纯文档同步未触发 reload 或容器重建。
 - [x] 18 个生产服务容器均 running；无 unhealthy、异常重启或 OOM。既有退出的 `areaforge-ops006-tools` 为一次性工具容器，不是生产服务。
 - [x] 12 张 Grafana 看板桌面端逐张加载，关键 panel 无 `No data`、查询错误或插件缺失（2026-07-29）。
 - [x] 12 张 Grafana 看板以真实 `426×632` 移动视口逐张加载，横向溢出、裁切、查询错误和 `No data` 均为 0（2026-07-29）。
@@ -98,7 +98,7 @@
 - [x] Loki 30 天 retention 有运行证据：marker 队列和 pending delete request 均为 0，原积压 46 个 marker 已处理（2026-07-29）。
 - [x] 30、60、120 分钟窗口由连续 2 小时 Prometheus 数据覆盖：down target、firing 告警、规则评估失败和通知错误均为 0；仅有 1 个 15 秒 `AppHttpProbeSlow` pending 采样，随后恢复且未 firing，已解释。
 - [x] 最终日报覆盖 2026-07-28 UTC：数据源失败 0、critical/warning 0、邮件 attempted/accepted 均为 1；本机、R2、完整 9 件套与 R2 独立回读均在 RPO 内。
-- [x] PR #87、#88 已合并，main 治理 CI #67、#69 成功；Prometheus reload HTTP 200，配置与 5 个规则文件有效，Grafana `component` 11 条且旧 `exported_service` 0 条。
+- [x] PR #87、#88 已合并，main 治理 CI #67、#69 成功；Prometheus reload HTTP 200，配置与 5 个规则文件有效，Grafana `component` 11 条且旧 `exported_service` 0 条；生产 API 返回 12 条记录规则且全部 `health=ok`。
 
 以上复选项均有权威证据，本轮可标记 100% 完成。
 
