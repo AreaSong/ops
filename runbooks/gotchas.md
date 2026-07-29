@@ -39,6 +39,10 @@
 - **location 里 `include` 已含 `proxy_read_timeout` / `proxy_send_timeout` 的 snippet 后，不能再写同名指令想“覆盖”**——Nginx 同上下文重复指令会直接 `nginx -t` 失败（`directive is duplicate`），不会以后者为准。长连接（WebSocket / 反代隧道）需要更长超时时应去掉该 include，改为在 location 内联 headers + 目标超时，或单独维护不含超时的 snippet。
   → 详见 [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md)
 
+## Prometheus
+
+- **relabel 的 `replacement: $1` 不会自动引用整个匹配值**——配套 `regex` 必须显式包含第一个捕获组（如 `(.+)`）；若写成 `.+`，`$1` 会展开为空，目标标签随即消失。后续再 `labeldrop` 原标签时，原本靠该标签区分的多条序列会发生标签碰撞并静默丢失维度。发布此类变更必须在真实抓取后同时核对新标签数量、旧标签为零和代表性序列基数。
+
 ## 系统 / 启动链路
 
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
