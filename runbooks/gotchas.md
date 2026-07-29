@@ -56,6 +56,8 @@
 
 - **浏览器指纹作匿名身份的应用，"数据丢失"多半是身份错位**——指纹（如 `x-fingerprint`）变化会被当成新用户，旧数据看似消失实际都在。先只读核对数据库行数与完整性（SQLite `PRAGMA integrity_check`），确认是归属问题再做归属修正；不要急着从备份恢复，误恢复反而可能覆盖数据。
   → 详见 [records/losangeles-jadeai-fingerprint-incident-20260703.md](records/losangeles-jadeai-fingerprint-incident-20260703.md)
+- **Docker 内的二进制自更新不能靠放宽根文件系统写权限**——应用把新二进制写入容器可写层后，容器重建仍会恢复到镜像内旧版本，形成运行身份漂移；只读根文件系统还会让更新在临时目录创建阶段直接失败。Docker 服务应由宿主机控制面按 immutable digest（不可变摘要）拉取和重建，并同时核验期望摘要、Docker Image ID 与运行时身份。
+  → 详见 [playbooks/online-update-control-plane.md](playbooks/online-update-control-plane.md)
 
 ## 清退规则
 

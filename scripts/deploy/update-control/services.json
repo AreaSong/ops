@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "services": {
+    "areaforge": {
+      "enabled": true,
+      "adapter": "areaforge.sh",
+      "actions": ["apply"],
+      "targets": ["v0.1.9"]
+    },
+    "sub2api": {
+      "enabled": false,
+      "adapter": "sub2api.sh",
+      "actions": ["apply"],
+      "targets": []
+    }
+  }
+}

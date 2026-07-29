@@ -9,7 +9,7 @@ x-json-log-options: &json-log-options
 
 services:
   web:
-    image: ghcr.io/areasong/areaforge-web:v0.1.7@sha256:3a54995ca3776456c197e60f4a179ea0e6e30cf763ccb6ea372c5cbf555d48fd
+    image: ${AREAFORGE_IMAGE:?AREAFORGE_IMAGE is required}
     container_name: areaforge-web
     restart: unless-stopped
     user: nextjs
@@ -42,7 +42,7 @@ services:
       AI_ALLOW_SENSITIVE_CONTEXT: ${AI_ALLOW_SENSITIVE_CONTEXT:-false}
       UPLOAD_DIR: /app/uploads
       AREAFORGE_OPS_STATE_DIR: ${AREAFORGE_OPS_STATE_DIR:-/app/ops-state}
-      AREAFORGE_IMAGE: ghcr.io/areasong/areaforge-web:v0.1.7@sha256:3a54995ca3776456c197e60f4a179ea0e6e30cf763ccb6ea372c5cbf555d48fd
+      AREAFORGE_IMAGE: ${AREAFORGE_IMAGE:?AREAFORGE_IMAGE is required}
     depends_on:
       postgres:
         condition: service_healthy

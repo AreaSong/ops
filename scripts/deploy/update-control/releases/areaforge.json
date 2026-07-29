@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "v0.1.9": {
+      "tag": "v0.1.9",
+      "requiresMigration": true,
+      "dockerImageId": "sha256:2d91436a4c54a77365676265172ccd88242b05377666e40328f1390c3d747b4d",
+      "runtimeIdentityHash": "sha256:73e2bac18ecf565eba5f91cb552ae0a265b2f75e756bcab0d7872aaade890601",
+      "gitCommit": "749692ba719d801f14186a94af97b96350380141",
+      "params": {"autoApply": null, "tag": "v0.1.9"},
+      "target": {
+        "releaseId": 357108321,
+        "manifestSha256": "sha256:ce79f48d5b506890af39a6cedee33acd84051ce989167c5037003717903a3c3e",
+        "manifestVersion": "0.1.9",
+        "webImageDigest": "ghcr.io/areasong/areaforge-web:v0.1.9@sha256:2d91436a4c54a77365676265172ccd88242b05377666e40328f1390c3d747b4d"
+      }
+    }
+  }
+}

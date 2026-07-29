@@ -10,6 +10,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = REPO_ROOT / "services" / "areaforge" / "compose.yml"
 DIGEST_IMAGE = re.compile(r"^[^@]+@sha256:[0-9a-f]{64}$")
+REQUIRED_IMAGE = "${AREAFORGE_IMAGE:?AREAFORGE_IMAGE is required}"
 
 
 class AreaForgeComposeTests(unittest.TestCase):
@@ -17,10 +18,13 @@ class AreaForgeComposeTests(unittest.TestCase):
         self.services = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))["services"]
 
     def test_images_are_immutable_and_runtime_users_are_explicit(self) -> None:
-        self.assertRegex(self.services["web"]["image"], DIGEST_IMAGE)
+        self.assertEqual(self.services["web"]["image"], REQUIRED_IMAGE)
         self.assertRegex(self.services["postgres"]["image"], DIGEST_IMAGE)
         self.assertEqual(self.services["web"]["user"], "nextjs")
         self.assertEqual(self.services["postgres"]["user"], "postgres")
+
+    def test_web_runtime_identity_uses_the_same_required_image(self) -> None:
+        self.assertEqual(self.services["web"]["environment"]["AREAFORGE_IMAGE"], REQUIRED_IMAGE)
 
     def test_both_services_have_the_production_hardening_contract(self) -> None:
         for name, service in self.services.items():

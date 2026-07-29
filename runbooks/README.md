@@ -38,6 +38,7 @@
 | 场景 | 文件 |
 | --- | --- |
 | 标准应用部署 | [playbooks/losangeles-standard-app-deploy.md](playbooks/losangeles-standard-app-deploy.md) |
+| 在线更新控制面 | [playbooks/online-update-control-plane.md](playbooks/online-update-control-plane.md) |
 | 每日运维与流量审计 | [playbooks/daily-ops-audit.md](playbooks/daily-ops-audit.md) |
 | 外部可用性监控 | [playbooks/github-external-uptime.md](playbooks/github-external-uptime.md) |
 | 可观测告警响应 | [playbooks/observability-alert-response.md](playbooks/observability-alert-response.md) |

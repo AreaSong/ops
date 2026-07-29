@@ -9,10 +9,13 @@
 | deploy/account-vault-release-state.sh | 原子记录发布指标、镜像状态和按 digest 归档的当前/上一发布证据 |
 | deploy/account-vault-attestation-verify.sh | fail-closed 验证 Account Vault cosign keyless OCI provenance、签名工作流、Git SHA 和来源分支 |
 | deploy/account-vault-role-permissions.sh | 分离执行或只读核验 Account Vault runtime 角色的最小权限契约 |
+| deploy/update-control.py | 以严格 TTL、幂等、expected-before、服务锁和追加审计执行固定服务适配器；请求不能传命令、镜像或 Compose 路径 |
 | tests/validate_observability_configs.sh | 使用生产同版本镜像验证 Prometheus、Loki、Promtail、Blackbox 和 Alertmanager 配置 |
 | tests/validate_agent_governance.py | 校验 Agent 导航体系：五处路由表一致、路由引用存在、runbooks 分层、全库 markdown 无死链 |
 
 Account Vault 操作必须先阅读 [发布与回滚 Runbook](../runbooks/records/losangeles-account-vault-release.md)。
+
+通用在线更新控制面必须先阅读 [在线更新控制面 Runbook](../runbooks/playbooks/online-update-control-plane.md)。当前 AreaForge 适配器已注册，Sub2API 适配器保持 disabled，控制面尚未部署到生产。
 
 ## 备份脚本
 
