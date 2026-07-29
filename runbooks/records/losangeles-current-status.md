@@ -18,7 +18,7 @@
 | Cloudflare Access | **已完成**：`monitor.areasong.top` 仅允许 `song80184@gmail.com` OTP，会话 6 小时；GitHub 自动化仅允许专用 service token |
 | 外部监控闭环 | **已完成**：#191 正常探针 6/6 成功；#192 创建受控故障 Issue #86；#193 恢复并自动关闭 #86；生产故障 Issue #5 已恢复关闭 |
 | Loki 30 天保留 | **已完成**：marker 队列与 pending delete request 均为 0，retention 最近成功，原积压 46 个 marker 已处理 |
-| Grafana / Prometheus 增量 | PR #87、#88 已合并，main 治理 CI #67、#69 成功；生产 reload 为 HTTP 200，Grafana `component` 11 条、旧 `exported_service` 0 条，记录规则 11 条 |
+| Grafana / Prometheus 增量 | PR #87、#88 已合并，main 治理 CI #67、#69 成功；生产 reload 为 HTTP 200，Grafana `component` 11 条、旧 `exported_service` 0 条；生产 API 返回 12 条记录规则且全部 `health=ok` |
 | Grafana 看板 | 12 张桌面端及真实 `426×632` 移动视口逐张验收；5 张本次修改看板另在生产登录态回验，共渲染 50 个 panel region，无 `No data`、查询错误、插件缺失、裁切或横向溢出 |
 | 每日审计未映射 Host | 2026-07-28 的 403 次已归因：400 次为源站 IP Host 扫描，其余 3 次为异常第三方 Host、根域 POST 和本机直连；全部返回 400/403，占当日请求约 0.46%，无合法服务漏映射 |
 | 最终运行门禁 | Prometheus 当前及过去 2 小时 down target 0、firing 0；当前 pending 0，窗口内仅有 1 个 15 秒 `AppHttpProbeSlow` pending 采样且未 firing；规则评估与通知错误增量 0；`ops_config_drift` 0；18 个生产服务容器运行，无异常重启、OOM 或 unhealthy |
@@ -26,7 +26,7 @@
 | GitHub 分支保护 | 控制面只读确认 `ops` 与 `sorryiosSearch` 均未配置 classic branch protection；required checks 尚未落地 |
 | GitHub Actions secrets | `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET` 已配置；secret 明文不进入仓库、日志或台账 |
 | Account Vault 生产 | 公网 `/ready` 当前仍返回 SPA HTML；新 DB-readiness 镜像和 migration/digest 发布继续按独立高风险专项处理，不阻塞本轮收口 |
-| 当前验收门禁 | **已完成**：生产代码基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`，最终收口文档合并后再将 `/opt/ops` 快进到最新 `origin/main` |
+| 当前验收门禁 | **已完成**：运行配置基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`；收口文档及证据修正均通过 PR/main 双重 CI，生产 `/opt/ops` 与最新 `origin/main` 一致且工作树干净；纯文档同步未触发 reload 或容器重建 |
 
 “本轮 100%”仅表示已批准的单机治理、可观测性、Grafana 与 Access 范围已经闭环，不表示未来增强项永远不存在。分支保护、PAT 轮换、Account Vault 独立发布和第二台机器等仍按各自触发条件推进。
 
