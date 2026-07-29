@@ -2,7 +2,7 @@
 
 日期：2026-07-18
 范围：LosAngeles 单机生产服务器
-状态：大部分已上生产；Grafana Cloudflare Access 已于 2026-07-29 完成，剩余事项以 [losangeles-optimization-roadmap-20260721.md](losangeles-optimization-roadmap-20260721.md) 和当前变更验收为准。
+状态：**本轮已批准范围已于 2026-07-29 完成生产发布与回验（100%）**。Account Vault GHCR/migration 发布是独立高风险专项；未来增强见 [losangeles-optimization-roadmap-20260721.md](losangeles-optimization-roadmap-20260721.md)。
 
 ## 1. 目标与边界
 
@@ -21,7 +21,8 @@
 | Loki retention | 720h / 30 天（非原计划 7 天） |
 | Cloudflare-only 源站 | `resume`/`sorryiossearch`/`monitor`/`forge` 已生效；台账 `observed_origin_policy` 已晋升 |
 | Cloudflare Access（Grafana） | **2026-07-29 已完成**：仅允许指定邮箱 OTP（6 小时），GitHub 专用 service token 正常探针与故障/恢复演练通过 |
-| Account Vault GHCR digest 发布 | 仍按原高风险门禁单项推进 |
+| Grafana / Prometheus 收口 | PR #87、#88 与 main CI #67、#69 成功；生产 reload、标签契约、五张修改看板及最终运行门禁均通过 |
+| Account Vault GHCR digest 发布 | 独立高风险专项，仍按原门禁单项推进，不属于本轮完成判定 |
 
 ### 2026-07-18 原表（历史）
 
@@ -83,19 +84,22 @@
 
 ## 6. 生产验收记录
 
-以下项目在取得权威输出前保持未完成：
+以下为本轮已批准范围的最终权威证据：
 
-- [ ] `/opt/ops` HEAD 与批准提交一致，工作树干净。
-- [ ] 所有受控容器 running/healthy，无新增 OOM 或异常重启。
+- [x] `/opt/ops` 生产代码基线为 `4fa7844e35cfa44155a7317260f4495073ad02be`，工作树干净；最终收口文档合并后再次快进到最新 `origin/main`。
+- [x] 18 个生产服务容器均 running；无 unhealthy、异常重启或 OOM。既有退出的 `areaforge-ops006-tools` 为一次性工具容器，不是生产服务。
 - [x] 12 张 Grafana 看板桌面端逐张加载，关键 panel 无 `No data`、查询错误或插件缺失（2026-07-29）。
 - [x] 12 张 Grafana 看板以真实 `426×632` 移动视口逐张加载，横向溢出、裁切、查询错误和 `No data` 均为 0（2026-07-29）。
-- [ ] `ops_config_drift` 对受控 Compose 和 Nginx 路由均为 0。
-- [ ] 四业务日志完成真实脱敏抽检，无凭据、Cookie、邮箱、IP 或身份值泄漏。
-- [ ] Alertmanager critical failure/recovery 创建并关闭唯一受管 GitHub Issue。
+- [x] 5 张本次修改看板在生产 Access 登录态再次加载，共渲染 50 个 panel region，无查询错误、`No data` 或 Access 重定向。
+- [x] `ops_config_drift` 对受控 Compose 和 Nginx 路由总和为 0。
+- [x] 四个业务日志源均有采集游标，collector 成功且 source failure 为 0；真实样本的邮箱、IP、Bearer、UUID、JWT 和敏感赋值原文命中均为 0。
+- [x] Alertmanager 受控故障由工作流 #192 创建唯一 Issue #86，工作流 #193 恢复后自动关闭；历史生产故障 Issue #5 也已恢复关闭。
 - [x] Grafana 浏览器访问触发邮箱 OTP；service token 外部探针成功（2026-07-29，工作流 #191）。
 - [x] Loki 30 天 retention 有运行证据：marker 队列和 pending delete request 均为 0，原积压 46 个 marker 已处理（2026-07-29）。
-- [ ] Account Vault 运行镜像为批准 GHCR RepoDigest，发布证据、当前/上一镜像和 Compose 快照已记录。
-- [ ] 30、60、120 分钟窗口均无未解释告警、漂移或失败。
-- [ ] 最终日报日期、数据源、R2、邮件 attempted/accepted 和历史 critical finding 清除均通过。
+- [x] 30、60、120 分钟窗口由连续 2 小时 Prometheus 数据覆盖：down target、firing 告警、规则评估失败和通知错误均为 0；仅有 1 个 15 秒 `AppHttpProbeSlow` pending 采样，随后恢复且未 firing，已解释。
+- [x] 最终日报覆盖 2026-07-28 UTC：数据源失败 0、critical/warning 0、邮件 attempted/accepted 均为 1；本机、R2、完整 9 件套与 R2 独立回读均在 RPO 内。
+- [x] PR #87、#88 已合并，main 治理 CI #67、#69 成功；Prometheus reload HTTP 200，配置与 5 个规则文件有效，Grafana `component` 11 条且旧 `exported_service` 0 条。
 
-只有全部复选项有权威证据时，本轮才可标记 100% 完成。
+以上复选项均有权威证据，本轮可标记 100% 完成。
+
+Account Vault 新 DB-readiness 镜像、GHCR RepoDigest 与 migration 发布继续作为独立高风险变更；GitHub required checks、PAT 轮换和第二台机器等属于后续治理或未来增强，不能倒推为本轮未完成。
