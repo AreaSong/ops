@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CONTROL = REPO_ROOT / "scripts" / "deploy" / "update-control.py"
 AREAFORGE_ADAPTER = REPO_ROOT / "scripts" / "deploy" / "update-control" / "adapters" / "areaforge.sh"
 AREAFORGE_RELEASES = REPO_ROOT / "scripts" / "deploy" / "update-control" / "releases" / "areaforge.json"
+SUB2API_ADAPTER = REPO_ROOT / "scripts" / "deploy" / "update-control" / "adapters" / "sub2api.sh"
+SUB2API_RELEASES = REPO_ROOT / "scripts" / "deploy" / "update-control" / "releases" / "sub2api.json"
 
 
 class UpdateControlTests(unittest.TestCase):
@@ -292,6 +294,102 @@ class AreaForgeAdapterTests(unittest.TestCase):
                 **{key: guard[key] for key in guard if key != "requestHash"},
             }
             self.assertEqual(guard["requestHash"], hash_value(request_projection))
+
+
+class Sub2APIAdapterTests(unittest.TestCase):
+    def test_preflight_verifies_pinned_identity_and_captures_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            old_digest = "ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d"
+            target_digest = "8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0"
+            old_image = f"weishaw/sub2api@sha256:{old_digest}"
+            fake_docker = fake_bin / "docker"
+            fake_docker.write_text(
+                f"""#!/usr/bin/env bash
+set -eu
+if [ "$1" = inspect ] && [ "${{2:-}}" = --format ] && [ "${{4:-}}" = sub2api ]; then
+  case "$3" in
+    *Config.Image*) printf '%s\\n' '{old_image}' ;;
+    *Image*) printf '%s\\n' 'sha256:{old_digest}' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+case "$*" in
+  "image inspect sha256:{old_digest}") printf '%s\\n' '[{{"Id":"sha256:{old_digest}","Config":{{"Labels":{{"org.opencontainers.image.version":"0.1.163","org.opencontainers.image.revision":"d0bdd7e771636a8d315f542cafd39484f39bd60c"}}}}}}]' ;;
+  "image inspect sha256:{target_digest}") printf '%s\\n' '[{{"Id":"sha256:{target_digest}","Config":{{"Labels":{{"org.opencontainers.image.version":"0.1.168","org.opencontainers.image.revision":"99c8e4bf7564823bafbab369acab6539e734c1bb"}}}}}}]' ;;
+  "inspect sub2api-postgres") printf '%s\\n' '[{{"Config":{{"Env":["POSTGRES_USER=sub2api","POSTGRES_DB=sub2api"]}}}}]' ;;
+  "exec sub2api-postgres psql -v ON_ERROR_STOP=1 -U sub2api -d sub2api -Atc SELECT count(*) FROM schema_migrations;") printf '229\\n' ;;
+  "inspect sub2api-postgres sub2api-redis") printf '%s\\n' '[{{"Name":"/sub2api-postgres","Id":"pg-id","State":{{"StartedAt":"pg-start"}},"Config":{{"Image":"postgres@sha256:test"}}}},{{"Name":"/sub2api-redis","Id":"redis-id","State":{{"StartedAt":"redis-start"}},"Config":{{"Image":"redis@sha256:test"}}}}]' ;;
+  "inspect sub2api") printf '%s\\n' '[{{"Name":"/sub2api","Id":"app-id","State":{{"StartedAt":"app-start"}},"Config":{{"Image":"{old_image}"}}}}]' ;;
+  *) printf 'unexpected docker invocation: %s\\n' "$*" >&2; exit 1 ;;
+esac
+""",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            compose = root / "compose.yml"
+            compose.write_text(f"services:\n  sub2api:\n    image: {old_image}\n", encoding="utf-8")
+            controlled = root / "controlled.yml"
+            controlled.write_bytes(compose.read_bytes())
+            env_file = root / ".env"
+            env_file.write_text("POSTGRES_USER=sub2api\n", encoding="utf-8")
+            backup_scripts = [root / name for name in ("backup-postgres", "backup-redis", "backup-volumes")]
+            for path in backup_scripts:
+                path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                path.chmod(0o755)
+            operation = root / "operation"
+            operation.mkdir()
+            request = {
+                "targetId": "v0.1.168",
+                "expectedBefore": {
+                    "currentVersion": "0.1.163",
+                    "currentImage": old_image,
+                    "currentImageId": f"sha256:{old_digest}",
+                    "runtimeIdentityHash": "sha256:c1b5609eca7d08baf453411956236bb9397e0ace72b670ce1447795104132cd1",
+                    "autoApply": "none",
+                    "signatureRequired": False,
+                    "rollbackAvailable": True,
+                    "rollbackTargetVersion": "0.1.163",
+                    "rollbackTargetImage": old_image,
+                    "rollbackSourceRecordSha256": "sha256:c5a0aab13dc4c81a5698b12656a9285f1017984a07c7f76d2d647f4380118ba1",
+                },
+            }
+            request_path = root / "request.json"
+            request_path.write_text(json.dumps(request), encoding="utf-8")
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PATH": f"{fake_bin}:{environment['PATH']}",
+                    "SUB2API_UPDATE_CONTROL_RELEASES": str(SUB2API_RELEASES),
+                    "SUB2API_UPDATE_CONTROL_CONTROLLED_COMPOSE": str(controlled),
+                    "SUB2API_UPDATE_CONTROL_RUNTIME_COMPOSE": str(compose),
+                    "SUB2API_UPDATE_CONTROL_ENV_FILE": str(env_file),
+                    "SUB2API_UPDATE_CONTROL_BACKUP_POSTGRES": str(backup_scripts[0]),
+                    "SUB2API_UPDATE_CONTROL_BACKUP_REDIS": str(backup_scripts[1]),
+                    "SUB2API_UPDATE_CONTROL_BACKUP_VOLUMES": str(backup_scripts[2]),
+                }
+            )
+            result = subprocess.run(
+                ["bash", str(SUB2API_ADAPTER), "preflight", str(request_path), str(operation)],
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["phase"], "preflight")
+            dependencies = json.loads((operation / "dependencies.before.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["name"] for item in dependencies], ["/sub2api-postgres", "/sub2api-redis"])
+
+    def test_release_catalog_enables_only_the_rehearsed_target(self) -> None:
+        releases = json.loads(SUB2API_RELEASES.read_text(encoding="utf-8"))
+        self.assertEqual(set(releases["targets"]), {"v0.1.168"})
+        target = releases["targets"]["v0.1.168"]
+        self.assertEqual(target["migration"], {"baselineCount": 229, "targetCount": 237, "newCount": 8})
+        self.assertEqual(target["rehearsal"]["oldImageOnNewSchema"], "healthy")
 
 
 if __name__ == "__main__":

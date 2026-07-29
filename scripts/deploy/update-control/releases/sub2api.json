@@ -1,15 +1,41 @@
 {
   "schemaVersion": 1,
-  "enabled": false,
-  "reason": "生产接入、迁移 smoke 和回滚契约尚未单独批准",
-  "targets": {},
-  "auditedCandidate": {
-    "targetId": "v0.1.168",
-    "tag": "v0.1.168",
-    "gitCommit": "99c8e4bf7564823bafbab369acab6539e734c1bb",
-    "imageIndexDigest": "sha256:85d29bfc69fa7a314cd2a35420dbe2faa6251ccbb3c3d1d4c56c732270e87479",
-    "linuxAmd64ManifestDigest": "sha256:8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0",
-    "linuxAmd64ArchiveSha256": "sha256:fd0fbbd1cfd29c16d891a25be6c9126e05968749f35673058c6dc7b2b8a842d0",
-    "migrationCount": 8
+  "targets": {
+    "v0.1.168": {
+      "tag": "v0.1.168",
+      "requiresMigration": true,
+      "expectedBefore": {
+        "currentVersion": "0.1.163",
+        "currentImage": "weishaw/sub2api@sha256:ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d",
+        "currentImageId": "sha256:ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d",
+        "runtimeIdentityHash": "sha256:c1b5609eca7d08baf453411956236bb9397e0ace72b670ce1447795104132cd1",
+        "gitCommit": "d0bdd7e771636a8d315f542cafd39484f39bd60c",
+        "autoApply": "none",
+        "signatureRequired": false,
+        "rollbackAvailable": true,
+        "rollbackTargetVersion": "0.1.163",
+        "rollbackTargetImage": "weishaw/sub2api@sha256:ac3013098153fd276e7fb0723bbb7032f290e1de018dd7b21a238c298064ff5d",
+        "rollbackSourceRecordSha256": "sha256:c5a0aab13dc4c81a5698b12656a9285f1017984a07c7f76d2d647f4380118ba1"
+      },
+      "target": {
+        "version": "0.1.168",
+        "image": "weishaw/sub2api@sha256:8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0",
+        "imageId": "sha256:8c94357c48d6cad360159b14a4bee913a6375520845593ec942cdd59506855e0",
+        "runtimeIdentityHash": "sha256:2fd6988bdccb31ac6c1835e51704c3d696d4574876cd8ba96116932389170ad2",
+        "gitCommit": "99c8e4bf7564823bafbab369acab6539e734c1bb"
+      },
+      "migration": {
+        "baselineCount": 229,
+        "targetCount": 237,
+        "newCount": 8
+      },
+      "rehearsal": {
+        "evidencePath": "/var/backups/ops/change/20260729T115314Z-sub2api-v0168",
+        "manifestSha256": "sha256:c5a0aab13dc4c81a5698b12656a9285f1017984a07c7f76d2d647f4380118ba1",
+        "networkInternal": true,
+        "hostPorts": false,
+        "oldImageOnNewSchema": "healthy"
+      }
+    }
   }
 }

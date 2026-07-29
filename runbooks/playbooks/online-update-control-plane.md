@@ -6,8 +6,8 @@
 
 当前状态：
 
-- AreaForge：适配器已注册，但本仓库实现尚未部署。
-- Sub2API：适配器和发布目录保持 disabled；生产接入需单独批准。
+- AreaForge：控制面已部署，`v0.1.9` 生产身份和只读阶段验收通过。
+- Sub2API：仅开放已完成隔离恢复、迁移和回滚演练的 `v0.1.168` 固定目标。
 - 自动更新：不启用。每次 `apply` 都需要一个 10 分钟内有效的 root-only 请求文件。
 
 ## 安全契约
@@ -29,6 +29,8 @@
 
 AreaForge 适配器将通用请求转换为现有 updater 的严格 V2 request guard。updater 继续负责签名、manifest、迁移和内部失败回滚；控制面额外执行 fresh backup、认证只读 smoke 和三方身份核验。回滚点来自请求中已核验的实际更新前 Docker 身份，不读取旧 updater status 中的历史回滚目标。
 
+Sub2API 适配器只允许 `v0.1.163` 升级至 linux/amd64 固定 digest 的 `v0.1.168`。它验证 fresh backup 和隔离演练证据，只执行 `up -d --no-deps --force-recreate sub2api`；PostgreSQL、Redis 的容器 ID 与 `StartedAt` 必须保持不变。生产没有预置 admin API key 时，smoke 会创建随机短生命周期 key，按值精确删除且不写入日志；不会覆盖已有 key。失败回滚只恢复旧 Compose 和旧应用镜像，不恢复数据库，因为旧镜像在 237 条 migration 的新 schema 上已演练通过。
+
 ## 请求门禁
 
 - 文件：regular file、非 symlink、`root:root 0600`
@@ -49,7 +51,7 @@ bash -n scripts/deploy/update-control/adapters/*.sh
 jq empty scripts/deploy/update-control/services.json scripts/deploy/update-control/releases/*.json
 ```
 
-## Sub2API 接入前清单
+## Sub2API v0.1.168 已满足门禁
 
 - 固定目标 `v0.1.168` 的 linux/amd64 image digest 与镜像内版本、commit 三方一致。
 - fresh PostgreSQL、Redis、`/app/data`、两份 Compose 与 root-only `.env` 备份完成并写入 manifest。
@@ -58,7 +60,7 @@ jq empty scripts/deploy/update-control/services.json scripts/deploy/update-contr
 - 失败回滚验证旧镜像可在新 schema 上安全启动；若不兼容，升级请求必须标记不可自动回滚并安排数据库恢复窗口。
 - 只重建 `sub2api`，PostgreSQL 与 Redis 容器身份保持不变。
 - 健康、外部 Blackbox、Prometheus 告警、Loki 错误和版本身份全部通过。
-- 单独批准生产接入；不恢复数据库、不启用 timer 或自动更新。
+- 生产接入已单独批准；不恢复数据库、不启用 timer 或自动更新。
 
 ## 回滚
 
