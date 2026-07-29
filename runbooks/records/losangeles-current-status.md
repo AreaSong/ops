@@ -1,27 +1,29 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-18 16:31 UTC
+更新时间：2026-07-29 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
 运维仓库：/opt/ops
 远端仓库：git@github.com:AreaSong/ops.git
 
-> 状态边界：下方 2026-07-06 的“本轮完成”结论只代表第一轮单机治理基线。2026-07-18 已启动第二轮治理，当前本地实现尚未全部提交、部署和生产回验，因此整项任务仍为实施中。第二轮权威进度、批准门禁和验收清单见 `runbooks/records/losangeles-round2-governance-20260718.md`。
+> 状态边界：下方 2026-07-06 的“本轮完成”结论代表第一轮单机治理基线。2026-07-29 时第二轮主体与 Cloudflare Access 已上生产并通过验收；当前仅剩本轮 Grafana 查询卫生与标签清理的发布回验，完成前不把本次增量标记为 100%。第二轮权威进度和门禁见 `runbooks/records/losangeles-round2-governance-20260718.md`。
 
-## 0. 2026-07-18 第二轮状态
+## 0. 2026-07-29 第二轮收口状态
 
 | 项目 | 当前结论 |
 | --- | --- |
 | 第一轮基线 | 已完成并保留 |
-| 第二轮本地实现 | 资产/端口/容器面板、脱敏业务日志、Cloudflare IP 漂移、cron 纳管、容器加固、Alertmanager Issue 同步和 Account Vault 供应链已实现并通过本地测试 |
-| 生产部署 | 尚未完成 |
-| Cloudflare Access | 控制面只读确认当前无 Access Application、无 service token |
+| 第二轮主体 | 资产/端口/容器面板、脱敏业务日志、Cloudflare IP 漂移、cron 纳管、容器加固、Alertmanager Issue 同步等已部署；`/opt/ops` 与 `origin/main` 当前基线一致且干净 |
+| Cloudflare Access | **已完成**：`monitor.areasong.top` 仅允许 `song80184@gmail.com` OTP，会话 6 小时；GitHub 自动化仅允许专用 service token |
+| 外部监控闭环 | **已完成**：#191 正常探针 6/6 成功；#192 创建受控故障 Issue #86；#193 恢复并自动关闭 #86；生产故障 Issue #5 已恢复关闭 |
+| Loki 30 天保留 | **已完成**：marker 队列与 pending delete request 均为 0，retention 最近成功，原积压 46 个 marker 已处理 |
+| Grafana 看板 | 12 张桌面端逐张验收，无 `No data`、查询错误或插件缺失；12 张另以真实 `426×632` 移动视口验收，横向溢出、裁切、查询错误和 `No data` 均为 0 |
+| 每日审计未映射 Host | 2026-07-28 的 403 次已归因：400 次为源站 IP Host 扫描，其余 3 次为异常第三方 Host、根域 POST 和本机直连；全部返回 400/403，占当日请求约 0.46%，无合法服务漏映射 |
 | GitHub 分支保护 | 控制面只读确认 `ops` 与 `sorryiosSearch` 均未配置 classic branch protection；required checks 尚未落地 |
-| GitHub Actions secrets / GHCR | `ops` 当前无 repository secrets；`sorryiossearch` GHCR package 尚不存在，需首次 publish 后配置并验证 private/read-only 凭据 |
+| GitHub Actions secrets | `CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET` 已配置；secret 明文不进入仓库、日志或台账 |
 | Account Vault 生产 | 公网 `/ready` 当前仍返回 SPA HTML，说明新 DB-readiness 镜像尚未部署 |
-| 高风险门禁 | 源站仅 Cloudflare、Loki 7 天删除、Account Vault migration/digest 发布均待分别确认 |
-| 验收 | 待 30、60、120 分钟；24/48/72 小时已取消 |
+| 当前验收门禁 | 本次 Grafana/Prometheus 增量需完成 CI、生产 reload 和标签/看板回验；Account Vault 独立发布仍按其专项门禁处理 |
 
 在第二轮最终验收完成前，本文历史章节中的“P0/P1 无”“监控完成”和“Cloudflare 治理完成”不得外推为当前全部工作已 100% 完成。
 
@@ -50,7 +52,7 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 | --- | --- | --- |
 | SSH | `ssh -i ~/.ssh/id_ed25519_losangeles -o IdentitiesOnly=yes as@23.185.200.12` | 密钥登录 |
 | 运维仓库 | `/opt/ops` | root-only 管理 |
-| Grafana | `https://monitor.areasong.top/` | Cloudflare 代理 |
+| Grafana | `https://monitor.areasong.top/` | Cloudflare 代理 + Access；指定邮箱 OTP，GitHub 健康检查使用专用 service token |
 | x-ui / xray 入口 | `https://log.areasong.top/` | DNS-only，经 Nginx |
 | resume-jadeai | `https://resume.areasong.top/` | Cloudflare 代理 |
 | account-vault | `https://sorryiossearch.areasong.top/` | Cloudflare 代理 |
@@ -121,17 +123,11 @@ LosAngeles 本轮生产服务器加固、规范化、备份、恢复、监控、
 - SMTP 授权码位于 `/etc/observability/alertmanager-smtp-password`，不进 Git。
 - 告警邮件已包含 Grafana 入口、Loki 查询提示和更多诊断标签。
 
-Grafana Dashboard：
+Grafana Dashboard（12 张）：
 
-- `LosAngeles Host Overview`
-- `LosAngeles Services and Backups`
-- `LosAngeles Datastores`
-- `LosAngeles Security Overview`
-- `LosAngeles App and Business Health`
-- `LosAngeles Certificates and Cloudflare`
-- `LosAngeles Daily Operations Audit`
-- `LosAngeles Server Asset and Runtime`（待第二轮生产部署）
-- `sub2api SLO and Capacity`
+- 运行：`服务总览`、`应用与业务健康`、`主机资源总览`、`数据库与缓存`、`Sub2API SLO 与容量`
+- 可靠性：`观测栈自监控`、`服务运行与备份`、`TLS 与 Cloudflare 治理`
+- 安全与审计：`每日运维审计`、`安全态势总览`、`资产与运行配置`、`流量审计`
 
 已覆盖：
 
@@ -159,6 +155,7 @@ Grafana Dashboard：
 - `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top` 使用 Cloudflare 代理和 Origin Certificate。
 - `cpa.areasong.top`、`log.areasong.top` 为 DNS-only，使用 Let's Encrypt。
 - `www.areasong.top` 旧 Access / Tunnel 入口已下线，预留后续门户网站。
+- `monitor.areasong.top` 使用独立 Grafana Access Application；人员与 GitHub 自动化分开授权，不复用身份。
 
 证书监控：
 

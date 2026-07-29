@@ -269,7 +269,7 @@
           }
         },
         {
-          "expr": "sum(increase(alertmanager_notifications_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "expr": "round(sum(increase(alertmanager_notifications_total{job=\"alertmanager\"}[1h]))) or on() vector(0)",
           "legendFormat": "1 小时通知",
           "instant": true,
           "refId": "C",
@@ -279,7 +279,7 @@
           }
         },
         {
-          "expr": "sum(increase(alertmanager_notifications_failed_total{job=\"alertmanager\"}[1h])) or on() vector(0)",
+          "expr": "round(sum(increase(alertmanager_notifications_failed_total{job=\"alertmanager\"}[1h]))) or on() vector(0)",
           "legendFormat": "1 小时失败",
           "instant": true,
           "refId": "D",
@@ -1462,7 +1462,7 @@
           },
           "targets": [
             {
-              "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp",
+              "expr": "time() - cloudflare_origin_cert_metrics_last_run_timestamp{service=\"host\"}",
               "legendFormat": "源站证书（每小时）",
               "refId": "A",
               "datasource": {
@@ -1471,7 +1471,7 @@
               }
             },
             {
-              "expr": "time() - cloudflare_ip_ranges_last_run_timestamp",
+              "expr": "time() - cloudflare_ip_ranges_last_run_timestamp{service=\"host\"}",
               "legendFormat": "Cloudflare IP 漂移（每日）",
               "refId": "B",
               "datasource": {

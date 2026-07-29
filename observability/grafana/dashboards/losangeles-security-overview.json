@@ -300,6 +300,7 @@
       "targets": [
         {
           "expr": "nginx_http_requests_last_5m",
+          "legendFormat": "{{status_class}}",
           "refId": "A",
           "datasource": {
             "type": "prometheus",

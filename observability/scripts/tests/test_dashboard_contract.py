@@ -322,12 +322,21 @@ class DashboardContractTests(unittest.TestCase):
             for panel in walk_panels(tls["panels"])
             for target in panel.get("targets", [])
         }
-        for expression in (
-            "cloudflare_ip_ranges_check_success",
-            "time() - cloudflare_ip_ranges_last_run_timestamp",
-            "cloudflare_ip_ranges_match",
+        for metric, expression in (
+            (
+                "cloudflare_ip_ranges_check_success",
+                'cloudflare_ip_ranges_check_success{service="host"}',
+            ),
+            (
+                "cloudflare_ip_ranges_last_run_timestamp",
+                'time() - cloudflare_ip_ranges_last_run_timestamp{service="host"}',
+            ),
+            (
+                "cloudflare_ip_ranges_match",
+                'cloudflare_ip_ranges_match{service="host"}',
+            ),
         ):
-            self.assertNotIn(expression, asset_expressions)
+            self.assertFalse(any(metric in item for item in asset_expressions))
             self.assertIn(expression, tls_expressions)
         tls_by_title = {panel["title"]: panel for panel in walk_panels(tls["panels"])}
         self.assertEqual(
@@ -640,6 +649,22 @@ class DashboardContractTests(unittest.TestCase):
                     "target_label": "service",
                     "replacement": "host",
                 }
+            ],
+        )
+
+        grafana = next(
+            item for item in prometheus["scrape_configs"] if item["job_name"] == "grafana"
+        )
+        self.assertEqual(
+            grafana["metric_relabel_configs"],
+            [
+                {
+                    "source_labels": ["exported_service"],
+                    "regex": ".+",
+                    "target_label": "component",
+                    "replacement": "$1",
+                },
+                {"action": "labeldrop", "regex": "exported_service"},
             ],
         )
 

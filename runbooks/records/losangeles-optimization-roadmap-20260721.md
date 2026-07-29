@@ -26,7 +26,7 @@
 | Alertmanager → GitHub Issue | 待 Token | 已启用；PAT 至 2026-08-19 |
 | Loki retention | 待 7 天确认 | 已为 720h/30 天 |
 | Cloudflare-only 源站 | 待单项确认 | **已生效**（四代理域名直连 403） |
-| Cloudflare Access（Grafana） | 待创建 | **仍未创建**（A 线剩余主阻塞） |
+| Cloudflare Access（Grafana） | 待创建 | **2026-07-29 已完成**：指定邮箱 OTP、6 小时会话、GitHub 专用 service token、正常/故障/恢复外部监控验收均通过 |
 | Account Vault GHCR digest | 待发布 | 另项，不阻塞本路线图 |
 
 ## 3. 只读容量 / 性能体检
@@ -48,16 +48,16 @@
 
 | 步骤 | 状态 | 内容 |
 | --- | --- | --- |
-| 0.1–0.3 | 本地已改 | cloudflare-only 台账、round2 刷新、本路线图 |
-| 0.4 | 待 pull | commit + push + 服务器 `sudo git -C /opt/ops pull` |
+| 0.1–0.3 | 已完成 | cloudflare-only 台账、round2 刷新、本路线图已进入主分支 |
+| 0.4 | 已完成 | `/opt/ops` 已同步到 `origin/main`，生产基线工作树干净；本次 Grafana 增量另按独立变更闭环 |
 
-### 批次 1 — A 收口（Access，需你在 CF 控制台）
+### 批次 1 — A 收口（Access，已完成）
 
 | 步骤 | 级别 | 做什么 | 你需要准备 |
 | --- | --- | --- | --- |
-| 1.1 | 外部 | Access Application：`monitor.areasong.top`，邮箱 OTP，会话 8h | 运维邮箱 |
-| 1.2 | 外部 | Service Token（仅外部探针）→ GitHub secrets `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | 值勿贴聊天 |
-| 1.3 | L1 | 更新 Cloudflare 台账（owner/到期/轮换） | 建好后回「已建好」 |
+| 1.1 | 已完成 | Access Application：`monitor.areasong.top`，仅允许指定邮箱 OTP，会话 6h | 2026-07-29 浏览器 OTP 验收通过 |
+| 1.2 | 已完成 | Service Token（仅外部探针）→ GitHub secrets `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | #191 正常探针与 #192/#193 故障恢复演练通过；值未进入仓库或聊天 |
+| 1.3 | 已完成 | 更新 Cloudflare 台账（owner/到期/轮换） | Token 2027-07-29 到期，2027-06-29 前轮换 |
 | 1.4 | L1 | PAT 轮换（2026-08-19 前） | 可稍后 |
 
 手册：[github-external-uptime.md](../playbooks/github-external-uptime.md)

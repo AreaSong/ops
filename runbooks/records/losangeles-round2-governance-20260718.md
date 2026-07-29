@@ -2,7 +2,7 @@
 
 日期：2026-07-18
 范围：LosAngeles 单机生产服务器
-状态：大部分已上生产；**剩余阻塞项见下文「2026-07-21 刷新」**。权威下一步见 [losangeles-optimization-roadmap-20260721.md](losangeles-optimization-roadmap-20260721.md)。
+状态：大部分已上生产；Grafana Cloudflare Access 已于 2026-07-29 完成，剩余事项以 [losangeles-optimization-roadmap-20260721.md](losangeles-optimization-roadmap-20260721.md) 和当前变更验收为准。
 
 ## 1. 目标与边界
 
@@ -20,7 +20,7 @@
 | Alertmanager → GitHub Issue | 已启用（PAT 2026-08-19 到期需轮换） |
 | Loki retention | 720h / 30 天（非原计划 7 天） |
 | Cloudflare-only 源站 | `resume`/`sorryiossearch`/`monitor`/`forge` 已生效；台账 `observed_origin_policy` 已晋升 |
-| Cloudflare Access（Grafana） | **仍未创建**（本轮剩余主阻塞） |
+| Cloudflare Access（Grafana） | **2026-07-29 已完成**：仅允许指定邮箱 OTP（6 小时），GitHub 专用 service token 正常探针与故障/恢复演练通过 |
 | Account Vault GHCR digest 发布 | 仍按原高风险门禁单项推进 |
 
 ### 2026-07-18 原表（历史）
@@ -33,7 +33,7 @@
 | Cloudflare 官方 IP 漂移检查 | 已完成 | 单元测试通过 | 待部署 | 待验证 |
 | Observability 定时任务纳管 | 已完成 | Ansible/cron 测试通过 | 待部署 | 待验证新鲜度 |
 | Alertmanager critical 告警 GitHub Issue 闭环 | 已完成 | 失败/恢复/去重测试通过 | 待 Token 与 cron | 待真实演练 |
-| Cloudflare Access 邮箱 OTP 与服务令牌 | 不在仓库内 | 控制面只读确认当前不存在 | 待创建 | 待 OTP 与外部探针验证 |
+| Cloudflare Access 邮箱 OTP 与服务令牌 | 不在仓库内 | 策略和凭据边界已核对 | 已创建 | OTP、6/6 外部探针和故障/恢复 Issue 生命周期均已验证 |
 | Cloudflare-only 源站限制 | 事务式 playbook 已完成 | 本地结构测试通过 | 待单项确认 | 待 CDN/直连双向验证 |
 | Loki 7 天 retention | 配置已完成 | Loki 3.1 配置验证通过 | 待单项确认 | 待真实删除证据 |
 | Account Vault GHCR digest 发布 | 已完成 | 本地门禁通过；代码变化后须重新跑真实镜像/安全扫描 | 待 CI/GHCR 与单项确认 | 待发布/回滚演练 |
@@ -64,7 +64,7 @@
 3. 完成文档、全量测试、配置解析和 diff 检查。
 4. 提交并推送 `ops` 与 Account Vault 分支，运行真实 GitHub CI。
 5. 确认 GHCR 私有、配置生产 packages-read 凭据，取得 published release manifest 与 RepoDigest。
-6. 创建 Grafana Cloudflare Access Application、邮箱 OTP allowlist、8 小时会话和 service token，并写入 GitHub Actions secrets。
+6. 已创建 Grafana Cloudflare Access Application、指定邮箱 OTP allowlist、6 小时会话和 service token，并写入 GitHub Actions secrets；2026-07-29 验收通过。
 7. 创建最小权限 GitHub Issues token，部署 Alertmanager Issue 同步，完成 failure/recovery 演练。
 8. 部署低风险 observability、cron、Dashboard 和容器加固变更。
 9. 分别确认并执行 Cloudflare-only 源站限制、Loki 7 天删除和 Account Vault migration/digest 发布。
@@ -87,12 +87,13 @@
 
 - [ ] `/opt/ops` HEAD 与批准提交一致，工作树干净。
 - [ ] 所有受控容器 running/healthy，无新增 OOM 或异常重启。
-- [ ] Grafana `LosAngeles Server Asset and Runtime` 面板有真实数据且关键 panel 无 `No data`。
+- [x] 12 张 Grafana 看板桌面端逐张加载，关键 panel 无 `No data`、查询错误或插件缺失（2026-07-29）。
+- [x] 12 张 Grafana 看板以真实 `426×632` 移动视口逐张加载，横向溢出、裁切、查询错误和 `No data` 均为 0（2026-07-29）。
 - [ ] `ops_config_drift` 对受控 Compose 和 Nginx 路由均为 0。
 - [ ] 四业务日志完成真实脱敏抽检，无凭据、Cookie、邮箱、IP 或身份值泄漏。
 - [ ] Alertmanager critical failure/recovery 创建并关闭唯一受管 GitHub Issue。
-- [ ] Grafana 浏览器访问触发邮箱 OTP；service token 外部探针成功。
-- [ ] Loki 7 天 retention 有运行证据。
+- [x] Grafana 浏览器访问触发邮箱 OTP；service token 外部探针成功（2026-07-29，工作流 #191）。
+- [x] Loki 30 天 retention 有运行证据：marker 队列和 pending delete request 均为 0，原积压 46 个 marker 已处理（2026-07-29）。
 - [ ] Account Vault 运行镜像为批准 GHCR RepoDigest，发布证据、当前/上一镜像和 Compose 快照已记录。
 - [ ] 30、60、120 分钟窗口均无未解释告警、漂移或失败。
 - [ ] 最终日报日期、数据源、R2、邮件 attempted/accepted 和历史 critical finding 清除均通过。
