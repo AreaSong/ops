@@ -1,89 +1,78 @@
+{{ define "email.status.zh" -}}
+{{- if eq . "firing" -}}触发{{- else if eq . "resolved" -}}已恢复{{- else -}}{{ . }}{{- end -}}
+{{- end }}
+
+{{ define "email.severity.zh" -}}
+{{- if eq . "critical" -}}严重{{- else if eq . "warning" -}}警告{{- else if eq . "info" -}}信息{{- else -}}{{ . }}{{- end -}}
+{{- end }}
+
 {{ define "email.ops.subject" -}}
-[LosAngeles][{{ .Status | toUpper }}][{{ with .CommonLabels.severity }}{{ . | toUpper }}{{ else }}UNKNOWN{{ end }}]{{ with .CommonLabels.service }} {{ . }}{{ end }}{{ with .CommonLabels.check }}/{{ . }}{{ end }} {{ .CommonLabels.alertname }} firing={{ len .Alerts.Firing }} resolved={{ len .Alerts.Resolved }}
+[洛杉矶][{{ template "email.status.zh" .Status }}][{{ with .CommonLabels.severity }}{{ template "email.severity.zh" . }}{{ else }}未知{{ end }}]{{ with .CommonLabels.service }} {{ . }}{{ end }}{{ with .CommonLabels.check }}/{{ . }}{{ end }} {{ .CommonLabels.alertname }} 触发={{ len .Alerts.Firing }} 已恢复={{ len .Alerts.Resolved }}
 {{- end }}
 
 {{ define "email.ops.html" -}}
 <!doctype html>
-<html>
-  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
-    <h2 style="margin: 0 0 12px;">LosAngeles alert {{ .Status | toUpper }}</h2>
-    <p style="margin: 0 0 16px;">
-      <strong>Severity:</strong> {{ with .CommonLabels.severity }}{{ . }}{{ else }}unknown{{ end }}<br>
-      <strong>Alert:</strong> {{ .CommonLabels.alertname }}<br>
-      {{ with .CommonLabels.service }}<strong>Service:</strong> {{ . }}<br>{{ end }}
-      {{ with .CommonLabels.check }}<strong>Check:</strong> {{ . }}<br>{{ end }}
-      {{ with .CommonLabels.instance }}<strong>Instance:</strong> {{ . }}<br>{{ end }}
-      {{ with .CommonLabels.target }}<strong>Target:</strong> {{ . }}<br>{{ end }}
-      {{ with .CommonLabels.jail }}<strong>Jail:</strong> {{ . }}<br>{{ end }}
-      <strong>Firing:</strong> {{ len .Alerts.Firing }} /
-      <strong>Resolved:</strong> {{ len .Alerts.Resolved }}
-    </p>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>洛杉矶告警</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
+  <h2 style="margin: 0 0 12px;">洛杉矶告警 {{ template "email.status.zh" .Status }}</h2>
+  <p style="margin: 0 0 16px;">
+    <strong>严重性：</strong> {{ with .CommonLabels.severity }}{{ template "email.severity.zh" . }}{{ else }}未知{{ end }}<br>
+    <strong>告警标识：</strong> {{ .CommonLabels.alertname }}<br>
+    {{ with .CommonLabels.service }}<strong>服务：</strong> {{ . }}<br>{{ end }}
+    {{ with .CommonLabels.check }}<strong>检查：</strong> {{ . }}<br>{{ end }}
+    {{ with .CommonLabels.instance }}<strong>实例：</strong> {{ . }}<br>{{ end }}
+    {{ with .CommonLabels.target }}<strong>目标：</strong> {{ . }}<br>{{ end }}
+    {{ with .CommonLabels.jail }}<strong>封禁规则：</strong> {{ . }}<br>{{ end }}
+    <strong>触发数量：</strong> {{ len .Alerts.Firing }} ／
+    <strong>已恢复数量：</strong> {{ len .Alerts.Resolved }}
+  </p>
 
-    <div style="margin: 0 0 18px; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc;">
-      <strong>Recommended checks</strong>
-      <ul style="margin: 8px 0 0 18px; padding: 0;">
-        {{ with .CommonAnnotations.grafana_url }}
-        <li>Grafana detail: <a href="{{ . }}">{{ . }}</a></li>
-        {{ end }}
-        {{ with .CommonAnnotations.loki_query }}
-        <li>Loki query: <code>{{ . }}</code></li>
-        {{ end }}
-        <li>Security dashboard: <a href="https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now">LosAngeles Security Overview</a></li>
-        <li>App dashboard: <a href="https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now">LosAngeles App and Business Health</a></li>
-        <li>Backup dashboard: <a href="https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-and-backups?orgId=1&from=now-24h&to=now">LosAngeles Services and Backups</a></li>
-        <li>Datastore dashboard: <a href="https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now">LosAngeles Datastores</a></li>
-        <li>Host dashboard: <a href="https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now">LosAngeles Host Overview</a></li>
-      </ul>
-    </div>
+  <div style="margin: 0 0 18px; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc;">
+    <strong>建议检查</strong>
+    <ul style="margin: 8px 0 0 18px; padding: 0;">
+      {{ with .CommonAnnotations.grafana_url }}
+      <li>Grafana 详情：<a href="{{ . }}">{{ . }}</a></li>
+      {{ end }}
+      {{ with .CommonAnnotations.loki_query }}
+      <li>Loki 查询：<code>{{ . }}</code></li>
+      {{ end }}
+      <li>安全态势面板：<a href="https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now">洛杉矶安全态势总览</a></li>
+      <li>应用面板：<a href="https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now">洛杉矶应用与业务健康</a></li>
+      <li>备份面板：<a href="https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-and-backups?orgId=1&from=now-24h&to=now">洛杉矶服务与备份</a></li>
+      <li>数据存储面板：<a href="https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now">洛杉矶数据存储</a></li>
+      <li>主机面板：<a href="https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now">洛杉矶主机总览</a></li>
+    </ul>
+  </div>
 
-    <table cellpadding="6" cellspacing="0" border="1" style="border-collapse: collapse; border-color: #d8dee9; font-size: 13px;">
-      <thead>
-        <tr style="background: #eef2f7;">
-          <th align="left">Status</th>
-          <th align="left">Alert</th>
-          <th align="left">Severity</th>
-          <th align="left">Service</th>
-          <th align="left">Check</th>
-          <th align="left">Instance</th>
-          <th align="left">Target</th>
-          <th align="left">Jail</th>
-          <th align="left">Job</th>
-          <th align="left">Name</th>
-          <th align="left">Class</th>
-          <th align="left">Summary</th>
-          <th align="left">Started</th>
-          <th align="left">Ended</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{ range .Alerts }}
-        <tr>
-          <td>{{ .Status }}</td>
-          <td>{{ .Labels.alertname }}</td>
-          <td>{{ .Labels.severity }}</td>
-          <td>{{ .Labels.service }}</td>
-          <td>{{ .Labels.check }}</td>
-          <td>{{ .Labels.instance }}</td>
-          <td>{{ .Labels.target }}</td>
-          <td>{{ with .Labels.jail }}{{ . }}{{ end }}</td>
-          <td>{{ with .Labels.job }}{{ . }}{{ end }}</td>
-          <td>{{ with .Labels.name }}{{ . }}{{ end }}</td>
-          <td>{{ with .Labels.status_class }}{{ . }}{{ end }}</td>
-          <td>{{ .Annotations.summary }}</td>
-          <td>{{ .StartsAt }}</td>
-          <td>{{ if eq .Status "resolved" }}{{ .EndsAt }}{{ end }}</td>
-        </tr>
-        {{ end }}
-      </tbody>
-    </table>
+  <table cellpadding="6" cellspacing="0" border="1" style="border-collapse: collapse; border-color: #d8dee9; font-size: 13px;">
+    <thead>
+      <tr style="background: #eef2f7;">
+        <th align="left">状态</th><th align="left">告警标识</th><th align="left">严重性</th>
+        <th align="left">服务</th><th align="left">检查</th><th align="left">实例</th>
+        <th align="left">目标</th><th align="left">封禁规则</th><th align="left">任务</th>
+        <th align="left">名称</th><th align="left">分类</th><th align="left">摘要</th>
+        <th align="left">开始时间</th><th align="left">结束时间</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ range .Alerts }}
+      <tr>
+        <td>{{ template "email.status.zh" .Status }}</td>
+        <td>{{ .Labels.alertname }}</td>
+        <td>{{ template "email.severity.zh" .Labels.severity }}</td>
+        <td>{{ .Labels.service }}</td><td>{{ .Labels.check }}</td><td>{{ .Labels.instance }}</td>
+        <td>{{ .Labels.target }}</td><td>{{ with .Labels.jail }}{{ . }}{{ end }}</td>
+        <td>{{ with .Labels.job }}{{ . }}{{ end }}</td><td>{{ with .Labels.name }}{{ . }}{{ end }}</td>
+        <td>{{ with .Labels.status_class }}{{ . }}{{ end }}</td><td>{{ .Annotations.summary }}</td>
+        <td>{{ .StartsAt }}</td><td>{{ if eq .Status "resolved" }}{{ .EndsAt }}{{ end }}</td>
+      </tr>
+      {{ end }}
+    </tbody>
+  </table>
 
-    {{ with .CommonAnnotations.description }}
-    <p><strong>Description:</strong> {{ . }}</p>
-    {{ end }}
-
-    {{ with .CommonAnnotations.runbook_url }}
-    <p><strong>Runbook:</strong> <a href="{{ . }}">{{ . }}</a></p>
-    {{ end }}
-  </body>
+  {{ with .CommonAnnotations.description }}<p><strong>说明：</strong> {{ . }}</p>{{ end }}
+  {{ with .CommonAnnotations.runbook_url }}<p><strong>处理手册：</strong> <a href="{{ . }}">{{ . }}</a></p>{{ end }}
+</body>
 </html>
 {{- end }}

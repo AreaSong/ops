@@ -18,8 +18,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "The auditd-to-Loki pipeline is stale"
-              description: "No recent fixed audit pipeline probe is visible in Loki. Check auditd, file permissions, Promtail positions, and Loki ingestion."
+              summary: "auditd 到 Loki 管道已过期"
+              description: "Loki 中未发现近期固定审计管道探针。请检查 auditd、文件权限、Promtail positions 和 Loki 摄入。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: continuously fresh audit probe timestamp remains healthy
@@ -46,6 +46,6 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "auditd events are not reaching Loki"
-              description: "The fixed non-sensitive audit probe could not be emitted, queried, or observed within five minutes."
+              summary: "auditd 事件未到达 Loki"
+              description: "固定的无敏感信息审计探针无法在五分钟内完成写入、查询或观测。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

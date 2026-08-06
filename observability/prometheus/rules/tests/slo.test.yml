@@ -64,8 +64,8 @@ tests:
               window: fast
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Synthetic SLO fast burn: sub2api / login"
-              description: "The 99.9% availability error budget is burning above 14.4x in both the 5-minute and 1-hour windows."
+              summary: "合成 SLO 错误预算快速消耗：sub2api / login"
+              description: "99.9% 可用性错误预算在 5 分钟和 1 小时窗口中的消耗速度均超过 14.4 倍。"
               grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now&var-journey=login"
       - eval_time: 15m
         alertname: SyntheticSloSlowBurnWarning
@@ -81,8 +81,8 @@ tests:
               window: slow
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Synthetic SLO sustained burn: account-vault / login"
-              description: "The 99.9% availability error budget is burning above 6x in both the 30-minute and 6-hour windows."
+              summary: "合成 SLO 错误预算持续消耗：account-vault / login"
+              description: "99.9% 可用性错误预算在 30 分钟和 6 小时窗口中的消耗速度均超过 6 倍。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-24h&to=now"
       - eval_time: 30m
         alertname: SyntheticSloBudgetLow
@@ -98,8 +98,8 @@ tests:
               window: 30d
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Synthetic SLO error budget below 25%: resume-jadeai / public-home"
-              description: "At least 95% of the 30-day observation window is present and less than one quarter of the error budget remains."
+              summary: "合成 SLO 错误预算低于 25%：resume-jadeai / public-home"
+              description: "30 天观测窗口至少已覆盖 95%，且剩余错误预算不足四分之一。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-30d&to=now"
       - eval_time: 15m
         alertname: SyntheticSloBudgetExhausted
@@ -115,6 +115,6 @@ tests:
               window: 30d
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Synthetic SLO error budget exhausted: areaforge / login"
-              description: "At least 95% of the 30-day observation window is present and the 99.9% availability error budget is exhausted."
+              summary: "合成 SLO 错误预算耗尽：areaforge / login"
+              description: "30 天观测窗口至少已覆盖 95%，且 99.9% 可用性错误预算已经耗尽。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-30d&to=now"

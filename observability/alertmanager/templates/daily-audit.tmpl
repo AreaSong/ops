@@ -1,21 +1,26 @@
+{{ define "email.daily.audit.severity.zh" -}}
+{{- if eq . "critical" -}}严重{{- else if eq . "warning" -}}警告{{- else if eq . "info" -}}信息{{- else -}}{{ . }}{{- end -}}
+{{- end }}
+
 {{ define "email.daily.audit.subject" -}}
-[LosAngeles][DAILY AUDIT][{{ .CommonLabels.report_date }}][{{ .CommonAnnotations.severity | toUpper }}]
+[洛杉矶][每日运维审计][{{ .CommonLabels.report_date }}][{{ template "email.daily.audit.severity.zh" .CommonAnnotations.severity }}]
 {{- end }}
 
 {{ define "email.daily.audit.html" -}}
 <!doctype html>
-<html>
-  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
-    <h2 style="margin: 0 0 12px;">LosAngeles daily operations audit</h2>
-    <p style="margin: 0 0 16px;">
-      <strong>Date:</strong> {{ .CommonLabels.report_date }}<br>
-      <strong>Severity:</strong> {{ .CommonAnnotations.severity }}<br>
-      <strong>Host:</strong> {{ .CommonLabels.host }}
-    </p>
-    {{ range .Alerts.Firing }}
-    <pre style="white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">{{ .Annotations.report | html }}</pre>
-    {{ end }}
-    <p><a href="https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-operations-audit?orgId=1&from=now-30d&to=now">Open daily audit dashboard</a></p>
-  </body>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>洛杉矶每日运维审计</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #172033; line-height: 1.5;">
+  <h2 style="margin: 0 0 12px;">洛杉矶每日运维审计</h2>
+  <p style="margin: 0 0 16px;">
+    <strong>日期：</strong> {{ .CommonLabels.report_date }}<br>
+    <strong>严重性：</strong> {{ template "email.daily.audit.severity.zh" .CommonAnnotations.severity }}<br>
+    <strong>主机：</strong> {{ .CommonLabels.host }}
+  </p>
+  {{ range .Alerts.Firing }}
+  <pre style="white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid #d8dee9; background: #f7f9fc; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;">{{ .Annotations.report | html }}</pre>
+  {{ end }}
+  <p><a href="https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-operations-audit?orgId=1&from=now-30d&to=now">打开每日审计面板</a></p>
+</body>
 </html>
 {{- end }}

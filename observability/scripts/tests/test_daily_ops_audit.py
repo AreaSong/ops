@@ -379,6 +379,8 @@ class ReportingAndCliTests(unittest.TestCase):
         self.assertEqual(first["labels"], second["labels"])
         self.assertNotIn("severity", first["labels"])
         self.assertNotEqual(first["annotations"]["severity"], second["annotations"]["severity"])
+        self.assertEqual(first["annotations"]["summary"], "洛杉矶每日运维审计 2026-07-15：严重")
+        self.assertEqual(second["annotations"]["summary"], "洛杉矶每日运维审计 2026-07-15：警告")
 
     def test_post_json_accepts_empty_success_response(self) -> None:
         response = mock.MagicMock()

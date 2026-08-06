@@ -25,8 +25,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Grafana metrics endpoint is unavailable"
-              description: "Grafana readiness and metrics are monitored separately; this alert means Prometheus cannot scrape Grafana metrics."
+              summary: "Grafana 指标端点不可用"
+              description: "Grafana 就绪状态和指标是分别监控的；此告警表示 Prometheus 无法抓取 Grafana 指标。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 3m
         alertname: AlertmanagerMetricsTargetDown
@@ -39,8 +39,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Alertmanager metrics endpoint is unavailable"
-              description: "Prometheus cannot scrape Alertmanager; active alerts remain visible in Prometheus but notifications may not be delivered."
+              summary: "Alertmanager 指标端点不可用"
+              description: "Prometheus 无法抓取 Alertmanager；活动告警仍会显示在 Prometheus 中，但通知可能无法送达。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 3m
         alertname: BlackboxExporterMetricsTargetDown
@@ -53,8 +53,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Blackbox Exporter metrics endpoint is unavailable"
-              description: "Synthetic probe alerts may fan out while their shared exporter is unavailable; investigate this root-cause alert first."
+              summary: "Blackbox Exporter 指标端点不可用"
+              description: "共享 Exporter 不可用时，合成探测告警可能批量出现；请先调查此根因告警。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: grafana datasource repeated failures
@@ -84,8 +84,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Grafana datasource Prometheus is returning repeated 5xx responses"
-              description: "Grafana recorded more than five 5xx responses in five minutes for Prometheus (prometheus); inspect that datasource and its upstream query service."
+              summary: "Grafana 数据源 Prometheus 重复返回 5xx"
+              description: "Grafana 在五分钟内记录到 Prometheus（prometheus）超过五次 5xx 响应；请检查该数据源及其上游查询服务。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: component reload and notification failures
@@ -123,8 +123,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Alertmanager rejected its latest configuration reload"
-              description: "Alertmanager is still running with its previous configuration; validate and reload the intended configuration before relying on routing changes."
+              summary: "Alertmanager 拒绝了最新配置重载"
+              description: "Alertmanager 仍使用上一份配置运行；请先校验并重载目标配置，再依赖路由变更。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: AlertmanagerNotificationFailures
@@ -136,8 +136,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Alertmanager notification delivery failed: email"
-              description: "At least one notification failed in the last ten minutes; verify the receiver and the independent GitHub watchdog path."
+              summary: "Alertmanager 通知投递失败：email"
+              description: "最近十分钟内至少有一条通知失败；请验证接收器和独立的 GitHub 看门狗链路。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: BlackboxExporterConfigReloadFailed
@@ -150,8 +150,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Blackbox Exporter rejected its latest configuration reload"
-              description: "Blackbox Exporter is still running with its previous configuration; validate modules before retrying the reload."
+              summary: "Blackbox Exporter 拒绝了最新配置重载"
+              description: "Blackbox Exporter 仍使用上一份配置运行；重试重载前请校验模块。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: PrometheusConfigReloadFailed
@@ -164,8 +164,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Prometheus rejected its latest configuration reload"
-              description: "Prometheus is still running with its previous configuration; validate rules and scrape configuration before reloading again."
+              summary: "Prometheus 拒绝了最新配置重载"
+              description: "Prometheus 仍使用上一份配置运行；再次重载前请校验规则和抓取配置。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: PrometheusWalCorruptionDetected
@@ -176,8 +176,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Prometheus detected WAL corruption"
-              description: "Prometheus reported a new write-ahead log corruption in the last fifteen minutes; preserve evidence and inspect TSDB recovery logs."
+              summary: "Prometheus 检测到 WAL 损坏"
+              description: "Prometheus 在最近十五分钟报告了新的预写日志损坏；请保留证据并检查 TSDB 恢复日志。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: PrometheusRuleEvaluationFailures
@@ -188,8 +188,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Prometheus rule evaluation failed"
-              description: "At least one recording or alerting rule evaluation failed in the last ten minutes; inspect the failing rule group before trusting derived signals."
+              summary: "Prometheus 规则评估失败"
+              description: "最近十分钟内至少有一条记录或告警规则评估失败；信任派生信号前请检查失败的规则组。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: PrometheusNotificationsDropped
@@ -200,8 +200,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Prometheus dropped alert notifications"
-              description: "Prometheus dropped at least one notification bound for Alertmanager in the last ten minutes; inspect queue capacity and Alertmanager connectivity."
+              summary: "Prometheus 丢弃了告警通知"
+              description: "最近十分钟内 Prometheus 至少丢弃了一条发往 Alertmanager 的通知；请检查队列容量和 Alertmanager 连通性。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: NodeTextfileScrapeError
@@ -214,8 +214,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Node Exporter cannot read one or more textfile metrics"
-              description: "A malformed or unreadable textfile collector file has hidden host-job metrics for at least five minutes; inspect collector logs and recent metric files."
+              summary: "Node Exporter 无法读取一个或多个 textfile 指标"
+              description: "格式错误或不可读的 textfile collector 文件已导致主机任务指标至少五分钟不可见；请检查采集器日志和最近的指标文件。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: PromtailLogEntriesDropped
@@ -226,8 +226,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Promtail dropped log entries"
-              description: "Promtail discarded one or more log entries in the last ten minutes; inspect rejection reasons, client retries, and Loki limits."
+              summary: "Promtail 丢弃了日志条目"
+              description: "最近十分钟内 Promtail 丢弃了一条或多条日志；请检查拒绝原因、客户端重试和 Loki 限制。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: LokiWalSamplesDiscarded
@@ -238,8 +238,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Loki discarded WAL samples"
-              description: "Loki discarded one or more samples while replaying or writing its WAL in the last fifteen minutes; inspect ingester logs and storage health."
+              summary: "Loki 丢弃了 WAL 样本"
+              description: "Loki 在最近十五分钟回放或写入 WAL 时丢弃了一条或多条样本；请检查 ingester 日志和存储健康状态。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: loki compactor and retention failures
@@ -267,8 +267,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Loki compactor is not active"
-              description: "The compactor has remained inactive beyond its startup stabilization window; retention and index compaction may be stalled."
+              summary: "Loki compactor 未运行"
+              description: "compactor 超过启动稳定窗口仍未活动；保留清理和索引压缩可能已停滞。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 91m
         alertname: LokiRetentionApplyStalled
@@ -281,8 +281,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Loki retention has not completed successfully"
-              description: "Loki is up, but retention has not completed within the expected compaction interval and startup allowance."
+              summary: "Loki 保留清理未成功完成"
+              description: "Loki 正常运行，但保留清理未能在预期压缩周期和启动宽限时间内完成。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 181m
         alertname: LokiRetentionMarkerProcessingStalled
@@ -293,8 +293,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Loki retention marker queue is not draining"
-              description: "Deletion markers remained queued beyond the configured two-hour delete delay without any successful deletion."
+              summary: "Loki 保留清理标记队列未减少"
+              description: "删除标记超过配置的两小时删除延迟后仍在排队，且没有成功删除记录。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - name: healthy loki retention remains quiet

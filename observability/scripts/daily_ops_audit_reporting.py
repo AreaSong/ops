@@ -17,6 +17,14 @@ from daily_ops_audit_common import (
 )
 
 
+def _severity_label(severity: str) -> str:
+    return {
+        "critical": "严重",
+        "warning": "警告",
+        "info": "信息",
+    }.get(severity, severity)
+
+
 def _resource_findings(data: AuditData) -> list[Finding]:
     findings: list[Finding] = []
     prom = data.prometheus
@@ -24,12 +32,12 @@ def _resource_findings(data: AuditData) -> list[Finding]:
     if prom.node_exporter_up < 1:
         findings.append(Finding("critical", "Node Exporter 在审计窗口末端不可用"))
     if runtime.systemd_failed > 0:
-        findings.append(Finding("critical", f"systemd failed units={runtime.systemd_failed}"))
+        findings.append(Finding("critical", f"systemd 失败单元数={runtime.systemd_failed}"))
     if runtime.docker_unhealthy > 0 or prom.expected_containers_down > 0:
         findings.append(
             Finding(
                 "critical",
-                f"Docker unhealthy={runtime.docker_unhealthy} expected_down={int(prom.expected_containers_down)}",
+                f"Docker 异常={runtime.docker_unhealthy} 预期未运行={int(prom.expected_containers_down)}",
             )
         )
     if runtime.ufw_active != 1:
@@ -182,10 +190,10 @@ def _security_section(data: AuditData) -> list[str]:
         "",
         "## 安全事件",
         "",
-        f"- SSH accepted={security['ssh_accepted']} failed={security['ssh_failed']} invalid_user={security['ssh_invalid_user']}",
-        f"- sudo commands={security['sudo_commands']}",
-        f"- Fail2ban ban={security['fail2ban_bans']} unban={security['fail2ban_unbans']}",
-        f"- UFW blocked={security['ufw_blocks']} current_active={data.runtime.ufw_active}",
+        f"- SSH 登录成功={security['ssh_accepted']}；失败={security['ssh_failed']}；无效用户={security['ssh_invalid_user']}",
+        f"- sudo 命令数={security['sudo_commands']}",
+        f"- Fail2ban 封禁={security['fail2ban_bans']}；解封={security['fail2ban_unbans']}",
+        f"- UFW 拦截={security['ufw_blocks']}；当前 active={data.runtime.ufw_active}",
         f"- 传统 syslog 解释时区={data.system_timezone}",
     ]
 
@@ -193,27 +201,27 @@ def _security_section(data: AuditData) -> list[str]:
 def _host_section(data: AuditData) -> list[str]:
     prom = data.prometheus
     runtime = data.runtime
-    missing = ", ".join(prom.backup_missing) or "none"
-    stale = ", ".join(prom.backup_stale) or "none"
-    alerts = ", ".join(runtime.active_alerts) or "none"
+    missing = ", ".join(prom.backup_missing) or "无"
+    stale = ", ".join(prom.backup_stale) or "无"
+    alerts = ", ".join(runtime.active_alerts) or "无"
     return [
         "",
         "## 主机、备份与监控",
         "",
-        f"- Network RX={human_bytes(prom.network_receive_bytes)} TX={human_bytes(prom.network_transmit_bytes)}",
-        f"- Peak load1={prom.load1_peak:.2f} memory={prom.memory_used_percent_peak:.1f}% disk={prom.disk_used_percent_peak:.1f}%",
-        f"- Docker running={runtime.docker_running} unhealthy={runtime.docker_unhealthy} expected_down={int(prom.expected_containers_down)}",
-        f"- systemd failed={runtime.systemd_failed} node_exporter_up={prom.node_exporter_up:.0f}",
-        f"- Backup missing={missing}; stale={stale}; R2 missing={int(prom.r2_missing)} stale={int(prom.r2_stale)}",
-        f"- Backup set missing={int(prom.backup_set_missing)} stale={int(prom.backup_set_stale)}; R2 verify missing={int(prom.r2_verify_missing)} stale={int(prom.r2_verify_stale)}",
-        f"- Active alerts={alerts}",
+        f"- 网络接收={human_bytes(prom.network_receive_bytes)}；发送={human_bytes(prom.network_transmit_bytes)}",
+        f"- 峰值 load1={prom.load1_peak:.2f}；内存={prom.memory_used_percent_peak:.1f}%；磁盘={prom.disk_used_percent_peak:.1f}%",
+        f"- Docker 运行中={runtime.docker_running}；异常={runtime.docker_unhealthy}；预期未运行={int(prom.expected_containers_down)}",
+        f"- systemd 失败={runtime.systemd_failed}；node_exporter 可用={prom.node_exporter_up:.0f}",
+        f"- 备份缺失={missing}；过期={stale}；R2 缺失={int(prom.r2_missing)}；过期={int(prom.r2_stale)}",
+        f"- 备份集缺失={int(prom.backup_set_missing)}；过期={int(prom.backup_set_stale)}；R2 校验缺失={int(prom.r2_verify_missing)}；过期={int(prom.r2_verify_stale)}",
+        f"- 活动告警={alerts}",
     ]
 
 
 def _findings_section(data: AuditData, findings: list[Finding]) -> list[str]:
     lines = ["", "## 发现与处理", ""]
     if findings:
-        lines.extend(f"- [{item.severity.upper()}] {item.message}" for item in findings)
+        lines.extend(f"- [{_severity_label(item.severity)}] {item.message}" for item in findings)
     else:
         lines.append("- 未发现需要处理的异常。")
     if data.failures:
@@ -228,9 +236,9 @@ def build_report(data: AuditData, findings: list[Finding]) -> str:
     lines = [
         f"# LosAngeles 每日运维审计 {data.window.report_day.isoformat()}",
         "",
-        f"- 结论：**{severity.upper()}**",
+        f"- 结论：**{_severity_label(severity)}**",
         f"- 审计窗口：`{data.window.start.isoformat()}` 至 `{data.window.end.isoformat()}`",
-        f"- 发现：critical={critical} warning={warning}",
+        f"- 发现：严重={critical}；警告={warning}",
         "",
     ]
     lines += _web_section(data) + _top_paths_section(data) + _http_error_section(data)
@@ -380,7 +388,7 @@ def send_report(
             },
             "annotations": {
                 "severity": severity,
-                "summary": f"LosAngeles daily audit {report_date}: {severity.upper()}",
+                "summary": f"洛杉矶每日运维审计 {report_date}：{_severity_label(severity)}",
                 "report": report,
                 "report_path": str(report_path),
             },

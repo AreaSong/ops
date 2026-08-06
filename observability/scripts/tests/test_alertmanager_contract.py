@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,10 @@ import yaml
 
 
 ALERTMANAGER_CONFIG = Path(__file__).resolve().parents[2] / "alertmanager" / "alertmanager.yml"
+EMAIL_TEMPLATE = Path(__file__).resolve().parents[2] / "alertmanager" / "templates" / "email.tmpl"
+DAILY_AUDIT_TEMPLATE = (
+    Path(__file__).resolve().parents[2] / "alertmanager" / "templates" / "daily-audit.tmpl"
+)
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMPOSE_PATH = REPO_ROOT / "observability" / "docker-compose.yml"
 RULES_DIR = REPO_ROOT / "observability" / "prometheus" / "rules"
@@ -89,6 +94,33 @@ class AlertmanagerContractTests(unittest.TestCase):
             if route.get("repeat_interval", "").endswith("h")
         ]
         self.assertGreaterEqual(retention_hours, max(repeat_hours))
+
+    def test_email_templates_are_utf8_and_localized(self) -> None:
+        email = EMAIL_TEMPLATE.read_text(encoding="utf-8")
+        daily_audit = DAILY_AUDIT_TEMPLATE.read_text(encoding="utf-8")
+
+        self.assertIn('<meta charset="UTF-8">', email)
+        self.assertIn('<meta charset="UTF-8">', daily_audit)
+        self.assertIn("洛杉矶告警", email)
+        self.assertIn("每日运维审计", daily_audit)
+        self.assertIn('template "email.status.zh"', email)
+        self.assertIn('template "email.severity.zh"', email)
+
+        r2_rules = (RULES_DIR / "alerts.yml").read_text(encoding="utf-8")
+        self.assertIn("R2 备份同步接近 RPO 限制", r2_rules)
+        self.assertIn("最近一次成功的 R2 同步已超过 20 小时", r2_rules)
+
+    def test_every_alert_message_is_localized(self) -> None:
+        for path in sorted(RULES_DIR.glob("*.yml")):
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for group in data.get("groups", []):
+                for rule in group.get("rules", []):
+                    if "alert" not in rule:
+                        continue
+                    for key in ("summary", "description"):
+                        value = rule.get("annotations", {}).get(key, "")
+                        with self.subTest(file=path.name, alert=rule["alert"], annotation=key):
+                            self.assertRegex(value, re.compile(r"[\u4e00-\u9fff]"))
 
     def test_every_alert_has_actionable_metadata(self) -> None:
         alerts = []

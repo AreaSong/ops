@@ -17,8 +17,8 @@ tests:
               service: docker
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Docker BuildKit cache cleanup is stale"
-              description: "The weekly cleanup has not published a successful result in eight days; verify cron, locking, and the cleanup log."
+              summary: "Docker BuildKit 缓存清理已过期"
+              description: "每周清理已连续八天未发布成功结果；请检查 cron、锁和清理日志。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
 
   - interval: 1m
@@ -37,8 +37,8 @@ tests:
               type: build_cache
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Docker BuildKit reclaimable cache exceeds 10 GiB"
-              description: "Unused build cache remains above the host budget after the cleanup grace period."
+              summary: "Docker BuildKit 可回收缓存超过 10 GiB"
+              description: "清理宽限期结束后，未使用的构建缓存仍高于主机预算。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
 
   - interval: 1m
@@ -92,8 +92,8 @@ tests:
               service: account-vault
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: Account Vault release evidence metric is missing
-              description: Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom.
+              summary: "Account Vault 发布证据指标缺失"
+              description: "请部署受控发布脚本，并验证 node-exporter textfile collector 能读取 account-vault-release.prom。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
   - interval: 15s
@@ -109,8 +109,8 @@ tests:
               severity: warning
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: Business warning/error events increased sharply
-              description: More than twenty sanitized warning/error events were recorded in one collector run.
+              summary: "业务警告/错误事件急剧增加"
+              description: "一次采集运行中记录到超过二十条已脱敏的警告/错误事件。"
               loki_query: '{job="business_errors", host="LosAngeles"}'
               grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
       - eval_time: 15s
@@ -131,8 +131,8 @@ tests:
               service: x-ui
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "xray traffic audit metrics are stale"
-              description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
+              summary: "xray 流量审计指标已过期"
+              description: "xray 出站流量采集器在最近五分钟内未成功完成。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
 
   # xray 流量审计：时间戳停在 0（落后超过 300s）应告警；紧跟 time() 的新鲜时间戳不告警
@@ -151,8 +151,8 @@ tests:
               service: x-ui
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "xray traffic audit metrics are stale"
-              description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
+              summary: "xray 流量审计指标已过期"
+              description: "xray 出站流量采集器在最近五分钟内未成功完成。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
 
   - interval: 15s
@@ -180,8 +180,8 @@ tests:
               service: x-ui
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "xray statsquery API is failing"
-              description: "The collector cannot read outbound traffic counters from the xray API on 127.0.0.1:62789."
+              summary: "xray statsquery API 失败"
+              description: "采集器无法从 127.0.0.1:62789 的 xray API 读取出站流量计数器。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
 
   - interval: 15s
@@ -209,8 +209,8 @@ tests:
               service: account-vault
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: The latest Account Vault release action failed
-              description: Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying.
+              summary: "最新 Account Vault 发布操作失败"
+              description: "重试前请检查发布日志、保留的 Compose 快照、当前/上一镜像状态和服务健康状况。"
               grafana_url: https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now
       - eval_time: 15s
         alertname: AccountVaultReleaseFailed
@@ -232,8 +232,8 @@ tests:
               scope: alerting
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "GitHub Issue sync token expiry metadata is missing"
-              description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
+              summary: "GitHub Issue 同步令牌到期元数据缺失"
+              description: "请在仅 root 可读的配置中设置 GITHUB_TOKEN_EXPIRES_AT，以便在通知覆盖失效前安排令牌轮换。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
   - interval: 1m
@@ -252,8 +252,8 @@ tests:
               scope: alerting
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "GitHub Issue sync token expires within fourteen days"
-              description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
+              summary: "GitHub Issue 同步令牌将在 14 天内到期"
+              description: "请在进入七天严重窗口前轮换细粒度 GitHub 令牌，并更新仅 root 可读的配置。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 16m
         alertname: AlertmanagerGitHubTokenExpiringCritical
@@ -278,6 +278,6 @@ tests:
               scope: alerting
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "GitHub Issue sync token expires within seven days"
-              description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
+              summary: "GitHub Issue 同步令牌将在 7 天内到期"
+              description: "请立即轮换并验证细粒度 GitHub 令牌；令牌到期将导致独立严重告警链路失效。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

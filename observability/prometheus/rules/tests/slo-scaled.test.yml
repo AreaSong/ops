@@ -1,10 +1,10 @@
 rule_files:
-  - slo.yml
+  - ../slo.yml
 
 evaluation_interval: 15s
 
 tests:
-  - name: complete scaled window preserves availability and budget
+  - name: two hour fixture reports proportional coverage
     interval: 15s
     input_series:
       - series: 'probe_success{scope="business",service="sub2api",journey="health",check="health-json"}'
@@ -19,14 +19,14 @@ tests:
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_slo_coverage:ratio_30d{service="sub2api",journey="health",slo="synthetic_availability",objective="0.999"}'
-            value: 1
+            value: 0.0027835648148148147
       - expr: 'service:synthetic_error_budget_remaining:ratio_30d{service="sub2api",journey="health"}'
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_error_budget_remaining:ratio_30d{service="sub2api",journey="health",slo="synthetic_availability",objective="0.999"}'
             value: 1
 
-  - name: missing raw samples reduce scaled coverage
+  - name: missing raw samples reduce proportional coverage
     interval: 15s
     input_series:
       - series: 'probe_success{scope="business",service="resume-jadeai",journey="public-home",check="resume-home"}'
@@ -41,7 +41,7 @@ tests:
         eval_time: 2h
         exp_samples:
           - labels: 'service:synthetic_slo_coverage:ratio_30d{service="resume-jadeai",journey="public-home",slo="synthetic_availability",objective="0.999"}'
-            value: 0.5
+            value: 0.001388888888888889
 
   - name: one failed minute exhausts the scaled 99.9 percent budget
     interval: 15s

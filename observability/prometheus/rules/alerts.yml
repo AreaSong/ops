@@ -8,9 +8,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Host down: {{ $labels.instance }}"
+          summary: "主机不可用：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DiskUsageHigh
@@ -20,9 +20,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Disk usage high on {{ $labels.instance }} {{ $labels.mountpoint }}"
+          summary: "磁盘使用率偏高：{{ $labels.instance }} {{ $labels.mountpoint }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DiskUsageCritical
@@ -32,9 +32,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Disk usage critical on {{ $labels.instance }} {{ $labels.mountpoint }}"
+          summary: "磁盘使用率严重：{{ $labels.instance }} {{ $labels.mountpoint }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
       - alert: MemoryUsageHigh
@@ -44,9 +44,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Memory usage high on {{ $labels.instance }}"
+          summary: "内存使用率偏高：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
       - alert: CpuUsageHigh
@@ -56,9 +56,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "CPU usage high on {{ $labels.instance }}"
+          summary: "CPU 使用率偏高：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-host-overview/losangeles-host-overview?orgId=1&from=now-6h&to=now"
 
   - name: blackbox_alerts
@@ -72,8 +72,8 @@ groups:
           service: grafana
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Grafana internal readiness probe failed"
-          description: "The local Grafana API health endpoint is unavailable independently of Cloudflare Access."
+          summary: "Grafana 内部就绪探测失败"
+          description: "本机 Grafana API 健康端点不可用，与 Cloudflare Access 无关。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: HttpProbeFailed
@@ -83,9 +83,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "HTTPS probe failed: {{ $labels.target }}"
+          summary: "HTTPS 探测失败：{{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
 
       - alert: SslCertExpiringSoon
@@ -95,9 +95,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "TLS certificate expires within 30 days: {{ $labels.target }}"
+          summary: "TLS 证书将在 30 天内到期：{{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-30d&to=now"
 
       - alert: SslCertExpiringCritical
@@ -107,9 +107,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "TLS certificate expires within 7 days: {{ $labels.target }}"
+          summary: "TLS 证书将在 7 天内到期：{{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-30d&to=now"
 
   - name: app_health_alerts
@@ -121,9 +121,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Application HTTP probe failed: {{ $labels.service }} {{ $labels.target }}"
+          summary: "应用 HTTP 探测失败：{{ $labels.service }} {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: AppBlackboxTargetDown
@@ -133,9 +133,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Application blackbox scrape target down: {{ $labels.service }}"
+          summary: "应用 Blackbox 抓取目标不可用：{{ $labels.service }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: AppHttpProbeSlow
@@ -145,9 +145,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Application HTTP probe is slow: {{ $labels.service }}"
+          summary: "应用 HTTP 探测响应缓慢：{{ $labels.service }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: AppTlsCertExpiringSoon
@@ -157,9 +157,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Application TLS certificate expires within 30 days: {{ $labels.target }}"
+          summary: "应用 TLS 证书将在 30 天内到期：{{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-30d&to=now"
 
   - name: business_probe_alerts
@@ -171,9 +171,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business probe failed: {{ $labels.service }} {{ $labels.check }} {{ $labels.target }}"
+          summary: "业务探测失败：{{ $labels.service }} {{ $labels.check }} {{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: BusinessBlackboxTargetDown
@@ -183,9 +183,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business blackbox scrape target down: {{ $labels.service }} {{ $labels.check }}"
+          summary: "业务 Blackbox 抓取目标不可用：{{ $labels.service }} {{ $labels.check }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: BusinessHttpProbeSlow
@@ -195,9 +195,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business probe is slow: {{ $labels.service }} {{ $labels.check }}"
+          summary: "业务探测响应缓慢：{{ $labels.service }} {{ $labels.check }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-6h&to=now"
 
       - alert: BusinessTlsCertExpiringSoon
@@ -207,9 +207,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business endpoint TLS certificate expires within 30 days: {{ $labels.target }}"
+          summary: "业务端点 TLS 证书将在 30 天内到期：{{ $labels.target }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-health?orgId=1&from=now-30d&to=now"
 
   - name: backup_alerts
@@ -221,9 +221,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Backup freshness metrics are missing"
+          summary: "备份时效指标缺失"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupFreshnessWarning
@@ -233,8 +233,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Backup approaching RPO limit: {{ $labels.backup }}"
-          description: "The latest backup is older than 20 hours and has less than four hours remaining before the 24-hour RPO is breached."
+          summary: "备份接近 RPO 限制：{{ $labels.backup }}"
+          description: "最新备份已超过 20 小时，距离突破 24 小时 RPO 剩余不足四小时。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupStale
@@ -244,8 +244,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Backup stale: {{ $labels.backup }}"
-          description: "The latest backup has breached the 24-hour RPO."
+          summary: "备份已过期：{{ $labels.backup }}"
+          description: "最新备份已突破 24 小时 RPO。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupJobMetricsMissing
@@ -256,8 +256,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Backup execution metrics are missing"
-          description: "The guarded backup runner has not published attempt, result, and duration metrics."
+          summary: "备份执行指标缺失"
+          description: "受控备份运行器尚未发布尝试次数、结果和耗时指标。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupJobFailed
@@ -268,8 +268,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Latest backup job failed: {{ $labels.backup_job }}"
-          description: "Inspect the guarded backup job result and logs before the next RPO boundary."
+          summary: "最新备份任务失败：{{ $labels.backup_job }}"
+          description: "请在下一个 RPO 时限前检查受控备份任务的结果和日志。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupMetricsMissing
@@ -280,8 +280,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "R2 backup sync metrics are missing"
-          description: "The off-host backup sync has not published a success timestamp."
+          summary: "R2 备份同步指标缺失"
+          description: "异地 R2 备份同步尚未发布成功时间戳。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupFreshnessWarning
@@ -291,8 +291,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "R2 backup sync is approaching the RPO limit"
-          description: "The latest successful R2 sync is older than 20 hours."
+          summary: "R2 备份同步接近 RPO 限制"
+          description: "最近一次成功的 R2 同步已超过 20 小时。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupStale
@@ -302,8 +302,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "R2 backup stale"
-          description: "The off-host backup sync has breached the 24-hour RPO."
+          summary: "R2 备份已过期"
+          description: "异地 R2 备份同步已超过 24 小时 RPO 限制。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
   - name: docker_alerts
@@ -315,9 +315,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker runtime metrics are stale"
+          summary: "Docker 运行时指标已过期"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: DockerMetricsCollectionFailed
@@ -327,9 +327,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker runtime metrics collection failed"
+          summary: "Docker 运行时指标采集失败"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerDown
@@ -339,9 +339,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker container down: {{ $labels.name }}"
+          summary: "Docker 容器不可用：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerUnhealthy
@@ -351,9 +351,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker health check is unhealthy: {{ $labels.name }}"
+          summary: "Docker 健康检查异常：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerMemoryHigh
@@ -363,9 +363,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker container memory usage is high: {{ $labels.name }}"
+          summary: "Docker 容器内存使用率偏高：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerMemoryCritical
@@ -375,9 +375,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker container memory usage is critical: {{ $labels.name }}"
+          summary: "Docker 容器内存使用率严重：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerPidsHigh
@@ -387,9 +387,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker container PID usage is high: {{ $labels.name }}"
+          summary: "Docker 容器 PID 使用率偏高：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
       - alert: DockerContainerOomKilled
@@ -399,9 +399,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker container reports OOMKilled: {{ $labels.name }}"
+          summary: "Docker 容器报告 OOMKilled：{{ $labels.name }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-6h&to=now"
 
   - name: datastore_alerts
@@ -413,9 +413,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Postgres exporter down: {{ $labels.instance }}"
+          summary: "Postgres Exporter 不可用：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: PostgresTooManyConnections
@@ -425,9 +425,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Postgres connection usage high: {{ $labels.instance }}"
+          summary: "Postgres 连接使用率偏高：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: PostgresDeadlocksDetected
@@ -437,9 +437,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Postgres deadlocks detected: {{ $labels.instance }} {{ $labels.datname }}"
+          summary: "检测到 Postgres 死锁：{{ $labels.instance }} {{ $labels.datname }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: RedisExporterDown
@@ -449,9 +449,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Redis exporter down: {{ $labels.instance }}"
+          summary: "Redis Exporter 不可用：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: RedisMemoryUsageHigh
@@ -461,9 +461,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Redis memory usage high: {{ $labels.instance }}"
+          summary: "Redis 内存使用率偏高：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
       - alert: RedisRejectedConnections
@@ -473,9 +473,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Redis rejected connections detected: {{ $labels.instance }}"
+          summary: "检测到 Redis 拒绝连接：{{ $labels.instance }}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-datastores/losangeles-datastores?orgId=1&from=now-6h&to=now"
 
   - name: security_log_alerts
@@ -487,9 +487,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Security textfile metrics are stale"
+          summary: "安全 textfile 指标已过期"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: UfwDisabled
@@ -499,9 +499,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "UFW is not active"
+          summary: "UFW 未处于 active 状态"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: UfwStatusCheckFailed
@@ -511,9 +511,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "UFW status check failed"
+          summary: "UFW 状态检查失败"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: AuditdServiceDown
@@ -524,8 +524,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "auditd is not active"
-          description: "System command and critical configuration audit logging is unavailable."
+          summary: "auditd 未处于 active 状态"
+          description: "系统命令和关键配置的审计日志记录不可用。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"auditd\", host=\"LosAngeles\"}"
 
@@ -536,9 +536,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "auditd status or rule check failed"
+          summary: "auditd 状态或规则检查失败"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: AuditdKernelDisabled
@@ -549,8 +549,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "The kernel audit subsystem is disabled"
-          description: "auditd may be running, but the kernel is not accepting audit rules or events."
+          summary: "内核审计子系统已禁用"
+          description: "auditd 可能正在运行，但内核未接受审计规则或事件。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: AuditdRulesMissing
@@ -561,8 +561,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "auditd managed baseline rules are incomplete"
-          description: "Compare auditd_required_rule_keys_present with the expected count and inspect auditctl -l."
+          summary: "auditd 受管基线规则不完整"
+          description: "请将 auditd_required_rule_keys_present 与预期数量比较，并检查 auditctl -l。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: AuditdEventsLost
@@ -572,9 +572,9 @@ groups:
           owner: areasong-ops
           severity: critical
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "The kernel audit subsystem reports lost events"
+          summary: "内核审计子系统报告事件丢失"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: AuditdBacklogHigh
@@ -584,9 +584,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "The kernel audit backlog is above 80 percent"
+          summary: "内核审计积压已超过 80%"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: Fail2banSshdCheckFailed
@@ -596,9 +596,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Fail2ban sshd status check failed"
+          summary: "Fail2ban sshd 状态检查失败"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
 
       - alert: SshFailedLoginsHigh
@@ -609,8 +609,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "SSH failed logins are high over the last 24 hours"
-          description: "Check whether the increase is normal internet scanning or targeted login attempts."
+          summary: "过去 24 小时 SSH 登录失败次数偏高"
+          description: "请判断增长来自常规互联网扫描还是有针对性的登录尝试。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
           loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
@@ -622,8 +622,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "SSH invalid user probes are high over the last 24 hours"
-          description: "Usually caused by automated SSH scanning. Check the security dashboard for source IP patterns."
+          summary: "过去 24 小时 SSH 无效用户探测次数偏高"
+          description: "通常由自动化 SSH 扫描引起；请在安全面板中检查来源 IP 模式。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
           loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
@@ -635,8 +635,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Fail2ban sshd ban activity increased sharply"
-          description: "More than 10 new SSH bans were recorded within 15 minutes. Check the enriched Fail2ban panel for source patterns and confirm whether this is broad scanning or a targeted burst."
+          summary: "Fail2ban sshd 封禁活动急剧增加"
+          description: "15 分钟内记录到超过 10 次新的 SSH 封禁。请在增强版 Fail2ban 面板中检查来源模式，确认是广泛扫描还是定向突发攻击。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-24h&to=now"
           loki_query: "{job=\"fail2ban_enriched\", host=\"LosAngeles\"} | json"
 
@@ -648,8 +648,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Nginx 5xx responses are high"
-          description: "Check Nginx errors and upstream application health before deciding whether this is external traffic or service failure."
+          summary: "Nginx 5xx 响应次数偏高"
+          description: "请先检查 Nginx 错误和上游应用健康状况，再判断是外部流量还是服务故障。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 5[0-9][0-9] \""
 
@@ -661,8 +661,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Nginx 4xx responses are high"
-          description: "High 4xx volume is often scanners or invalid paths. Check Nginx logs for source and request patterns."
+          summary: "Nginx 4xx 响应次数偏高"
+          description: "大量 4xx 通常来自扫描器或无效路径；请检查 Nginx 日志中的来源和请求模式。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-security-overview/losangeles-security-overview?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\"} |~ \" 4[0-9][0-9] \""
 
@@ -697,8 +697,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business log textfile metrics are stale"
-          description: "The Nginx business log metrics script has not produced fresh textfile metrics."
+          summary: "业务日志 textfile 指标已过期"
+          description: "Nginx 业务日志指标脚本未生成新的 textfile 指标。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"}"
 
@@ -710,8 +710,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business HTTP 5xx responses are high: {{ $labels.service }}"
-          description: "The service has more than 5 HTTP 5xx responses in the latest 5-minute Nginx business log window."
+          summary: "业务 HTTP 5xx 响应次数偏高：{{ $labels.service }}"
+          description: "该服务在最近五分钟 Nginx 业务日志窗口中出现超过 5 次 HTTP 5xx 响应。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"host=\\\".*\\\"\" |~ \" 5[0-9][0-9] \""
 
@@ -723,8 +723,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business HTTP 4xx responses are high: {{ $labels.service }}"
-          description: "The service has more than 80 HTTP 4xx responses in the latest 5-minute Nginx business log window."
+          summary: "业务 HTTP 4xx 响应次数偏高：{{ $labels.service }}"
+          description: "该服务在最近五分钟 Nginx 业务日志窗口中出现超过 80 次 HTTP 4xx 响应。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \" 4[0-9][0-9] \""
 
@@ -736,8 +736,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business HTTP slow requests are high: {{ $labels.service }}"
-          description: "The service has more than 10 non-streaming requests with Nginx request_time >= 2s in the latest 5-minute window."
+          summary: "业务 HTTP 慢请求次数偏高：{{ $labels.service }}"
+          description: "该服务在最近五分钟窗口中有超过 10 个非流式请求的 Nginx request_time >= 2 秒。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
           loki_query: "{job=\"nginx\", host=\"LosAngeles\", filename=\"/var/log/nginx/ops-business-access.log\"} |~ \"request_time=([2-9]|[1-9][0-9]+)\\.\" != \"/v1/responses\""
 
@@ -749,8 +749,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business log parse errors are high"
-          description: "The business log metrics parser is seeing unexpected enhanced Nginx access log lines."
+          summary: "业务日志解析错误次数偏高"
+          description: "业务日志指标解析器发现了不符合预期的增强版 Nginx 访问日志行。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-app-health/losangeles-app-and-business-health?orgId=1&from=now-6h&to=now"
 
   - name: daily_ops_audit_alerts
@@ -763,8 +763,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Daily operations audit is missing or stale"
-          description: "The previous UTC day audit should be generated by 00:20 UTC."
+          summary: "每日运维审计缺失或已过期"
+          description: "上一个 UTC 日的审计应在 UTC 00:20 前生成。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
       - alert: DailyOpsAuditCriticalFindings
@@ -775,8 +775,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Daily operations audit contains critical findings"
-          description: "Review the daily audit email and dashboard before changing production."
+          summary: "每日运维审计包含严重发现"
+          description: "变更生产环境前，请查看每日审计邮件和面板。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
       - alert: DailyOpsAuditDataSourceFailure
@@ -786,9 +786,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Daily operations audit could not read all data sources"
+          summary: "每日运维审计无法读取全部数据源"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
       - alert: DailyOpsAuditDeliveryFailed
@@ -798,9 +798,9 @@ groups:
           owner: areasong-ops
           severity: warning
         annotations:
-          description: "This alert remained active beyond its configured threshold; use the linked runbook to confirm impact, identify the root cause, and verify recovery."
+          description: "该告警持续超过设定阈值；请参照处理手册确认影响、定位根因并验证恢复。"
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Daily operations audit email was not accepted by Alertmanager"
+          summary: "Alertmanager 未接收每日运维审计邮件"
           grafana_url: "https://monitor.areasong.top/d/losangeles-daily-audit/losangeles-daily-audit?orgId=1&from=now-24h&to=now"
 
   - name: runtime_asset_and_business_error_alerts
@@ -813,8 +813,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "LosAngeles runtime asset snapshot is stale"
-          description: "The sanitized service, listener, container, and drift snapshot has not completed in three minutes."
+          summary: "洛杉矶运行时资产快照已过期"
+          description: "已脱敏的服务、监听器、容器和漂移快照未能在三分钟内完成。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: RuntimeSnapshotCheckFailed
@@ -825,8 +825,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "LosAngeles runtime asset snapshot is incomplete"
-          description: "At least one inventory, systemd, listener, Docker, or drift collector failed."
+          summary: "洛杉矶运行时资产快照不完整"
+          description: "至少一个清单、systemd、监听器、Docker 或漂移采集器失败。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: SecurityCriticalConfigurationDrift
@@ -837,8 +837,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Security-critical configuration drift: {{ $labels.service_id }} {{ $labels.hostname }}"
-          description: "A Cloudflare-protected Nginx route is missing its expected backend, real-IP trust chain, or origin allowlist."
+          summary: "安全关键配置发生漂移：{{ $labels.service_id }} {{ $labels.hostname }}"
+          description: "某条受 Cloudflare 保护的 Nginx 路由缺少预期后端、真实 IP 信任链或源站白名单。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: ControlledConfigurationDrift
@@ -849,8 +849,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Controlled configuration drift: {{ $labels.service_id }}"
-          description: "The runtime Compose file differs from its Git-controlled recovery copy."
+          summary: "受控配置发生漂移：{{ $labels.service_id }}"
+          description: "运行时 Compose 文件与 Git 受控的恢复副本不一致。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: DockerBuildCachePruneStale
@@ -863,8 +863,8 @@ groups:
           service: docker
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker BuildKit cache cleanup is stale"
-          description: "The weekly cleanup has not published a successful result in eight days; verify cron, locking, and the cleanup log."
+          summary: "Docker BuildKit 缓存清理已过期"
+          description: "每周清理已连续八天未发布成功结果；请检查 cron、锁和清理日志。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
 
       - alert: DockerBuildCacheExcessive
@@ -877,8 +877,8 @@ groups:
           service: docker
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Docker BuildKit reclaimable cache exceeds 10 GiB"
-          description: "Unused build cache remains above the host budget after the cleanup grace period."
+          summary: "Docker BuildKit 可回收缓存超过 10 GiB"
+          description: "清理宽限期结束后，未使用的构建缓存仍高于主机预算。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-14d&to=now"
 
       - alert: BusinessErrorLogStale
@@ -889,8 +889,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Sanitized business error log collector is stale"
-          description: "The collector for resume, Account Vault, sub2api, and AreaForge has not completed in three minutes."
+          summary: "已脱敏业务错误日志采集器已过期"
+          description: "resume、Account Vault、sub2api 和 AreaForge 的采集器未能在三分钟内完成。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: BusinessErrorLogCheckFailed
@@ -901,8 +901,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Sanitized business error log collector cannot read every source"
-          description: "Check the configured Docker container names and collector permissions."
+          summary: "已脱敏业务错误日志采集器无法读取全部来源"
+          description: "请检查配置的 Docker 容器名称和采集器权限。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: BusinessErrorEventsBurst
@@ -913,8 +913,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Business warning/error events increased sharply"
-          description: "More than twenty sanitized warning/error events were recorded in one collector run."
+          summary: "业务警告/错误事件急剧增加"
+          description: "一次采集运行中记录到超过二十条已脱敏的警告/错误事件。"
           loki_query: "{job=\"business_errors\", host=\"LosAngeles\"}"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
@@ -928,8 +928,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare IP range comparison is stale"
-          description: "The daily comparison with Cloudflare's official IPv4 and IPv6 lists has not completed."
+          summary: "Cloudflare IP 网段比对已过期"
+          description: "每日 Cloudflare 官方 IPv4 和 IPv6 列表比对尚未完成。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
 
       - alert: CloudflareIpRangeCheckFailed
@@ -940,8 +940,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare IP range comparison failed"
-          description: "The official list could not be fetched or a managed CIDR file is invalid."
+          summary: "Cloudflare IP 网段比对失败"
+          description: "无法获取官方列表，或受管 CIDR 文件无效。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-cloudflare?orgId=1&from=now-6h&to=now"
 
       - alert: CloudflareIpRangeDrift
@@ -952,8 +952,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Managed Cloudflare {{ $labels.family }} ranges differ from the official list"
-          description: "Review the official change, update the Git-managed CIDRs, run nginx -t, and reload only after approval."
+          summary: "受管 Cloudflare {{ $labels.family }} 网段与官方列表不一致"
+          description: "请审核官方变更、更新 Git 管理的 CIDR、运行 nginx -t，并仅在批准后重载。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: CloudflareOriginCertMetricsStale
@@ -964,8 +964,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate metrics are stale"
-          description: "The local Cloudflare Origin certificate metrics script has not produced fresh textfile metrics."
+          summary: "Cloudflare Origin 证书指标已过期"
+          description: "本机 Cloudflare Origin 证书指标脚本未生成新的 textfile 指标。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
 
@@ -977,8 +977,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate check failed: {{ $labels.cert }}"
-          description: "The local Cloudflare Origin certificate file cannot be read or parsed. Check the certificate path and permissions."
+          summary: "Cloudflare Origin 证书检查失败：{{ $labels.cert }}"
+          description: "无法读取或解析本机 Cloudflare Origin 证书文件。请检查证书路径和权限。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
       - alert: CloudflareOriginCertExpiring180Days
@@ -989,8 +989,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate expires within 180 days: {{ $labels.cert }}"
-          description: "Start planning renewal. This is the first long-range reminder for the Origin Certificate rotation window."
+          summary: "Cloudflare Origin 证书将在 180 天内到期：{{ $labels.cert }}"
+          description: "请开始规划续期。这是 Origin Certificate 轮换窗口的首次长期提醒。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
       - alert: CloudflareOriginCertExpiring90Days
@@ -1001,8 +1001,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate expires within 90 days: {{ $labels.cert }}"
-          description: "Prepare the new Origin Certificate and schedule a low-risk rotation window."
+          summary: "Cloudflare Origin 证书将在 90 天内到期：{{ $labels.cert }}"
+          description: "请准备新的 Origin Certificate，并安排低风险轮换窗口。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
       - alert: CloudflareOriginCertExpiring30Days
@@ -1013,8 +1013,8 @@ groups:
           severity: warning
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate expires within 30 days: {{ $labels.cert }}"
-          description: "Rotate the Origin Certificate soon and validate Cloudflare Full strict back-to-origin TLS."
+          summary: "Cloudflare Origin 证书将在 30 天内到期：{{ $labels.cert }}"
+          description: "请尽快轮换 Origin Certificate，并验证 Cloudflare Full (strict) 回源 TLS。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
       - alert: CloudflareOriginCertExpiringCritical
@@ -1025,8 +1025,8 @@ groups:
           severity: critical
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Cloudflare Origin certificate expires within 7 days: {{ $labels.cert }}"
-          description: "Rotate the Origin Certificate immediately to avoid Cloudflare Full strict origin TLS failure."
+          summary: "Cloudflare Origin 证书将在 7 天内到期：{{ $labels.cert }}"
+          description: "请立即轮换 Origin Certificate，避免 Cloudflare Full (strict) 回源 TLS 失败。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-certificates-cloudflare/losangeles-certificates-and-cloudflare?orgId=1&from=now-30d&to=now"
 
   - name: sub2api_capacity_symptom_alerts
@@ -1041,8 +1041,8 @@ groups:
           service: sub2api
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "sub2api capacity symptom metrics are stale"
-          description: "The Docker log symptom collector missed its five-minute cadence for more than one full cycle (11 minutes)."
+          summary: "sub2api 容量异常指标已过期"
+          description: "Docker 日志异常采集器已错过超过一个完整的五分钟周期（11 分钟）。"
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
 
       - alert: Sub2apiLogCheckFailed
@@ -1055,8 +1055,8 @@ groups:
           service: sub2api
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "sub2api Docker log symptom check failed"
-          description: "Check that the sub2api container exists and the collector can read Docker logs."
+          summary: "sub2api Docker 日志异常检查失败"
+          description: "请确认 sub2api 容器存在，且采集器能够读取 Docker 日志。"
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-capacity?orgId=1&from=now-6h&to=now"
 
       - alert: Sub2apiNoAvailableAccountWarning
@@ -1069,8 +1069,8 @@ groups:
           service: sub2api
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "sub2api has no available account events"
-          description: "The application reported {{ $value }} no-available-account events in the latest five-minute window."
+          summary: "sub2api 出现无可用账户事件"
+          description: "应用在最近五分钟窗口中报告了 {{ $value }} 次无可用账户事件。"
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
 
       - alert: Sub2apiNoAvailableAccountCritical
@@ -1083,8 +1083,8 @@ groups:
           service: sub2api
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "sub2api account pool is unavailable at high frequency"
-          description: "At least ten no-available-account events were observed in the latest five-minute window."
+          summary: "sub2api 账户池高频不可用"
+          description: "最近五分钟窗口中至少观测到十次无可用账户事件。"
           grafana_url: "https://monitor.areasong.top/d/sub2api-slo-capacity/sub2api-slo-and-capacity?orgId=1&from=now-6h&to=now"
 
   - name: xray_traffic_audit_alerts
@@ -1099,8 +1099,8 @@ groups:
           service: x-ui
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "xray traffic audit metrics are stale"
-          description: "The xray outbound traffic collector has not completed successfully in the last five minutes."
+          summary: "xray 流量审计指标已过期"
+          description: "xray 出站流量采集器在最近五分钟内未成功完成。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
 
       - alert: XrayTrafficStatsQueryFailed
@@ -1113,8 +1113,8 @@ groups:
           service: x-ui
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "xray statsquery API is failing"
-          description: "The collector cannot read outbound traffic counters from the xray API on 127.0.0.1:62789."
+          summary: "xray statsquery API 失败"
+          description: "采集器无法从 127.0.0.1:62789 的 xray API 读取出站流量计数器。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-xray-traffic-audit/liu-liang-shen-ji?orgId=1&from=now-6h&to=now"
 
   - name: release_governance_alerts
@@ -1129,8 +1129,8 @@ groups:
           service: account-vault
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Account Vault release evidence metric is missing"
-          description: "Deploy the controlled release script and verify that the node-exporter textfile collector reads account-vault-release.prom."
+          summary: "Account Vault 发布证据指标缺失"
+          description: "请部署受控发布脚本，并验证 node-exporter textfile collector 能读取 account-vault-release.prom。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: AccountVaultReleaseFailed
@@ -1143,8 +1143,8 @@ groups:
           service: account-vault
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "The latest Account Vault release action failed"
-          description: "Inspect the release log, retained compose snapshot, current/previous image state, and service health before retrying."
+          summary: "最新 Account Vault 发布操作失败"
+          description: "重试前请检查发布日志、保留的 Compose 快照、当前/上一镜像状态和服务健康状况。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-server-asset-runtime/losangeles-server-asset-and-runtime?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubIssueSyncDisabled
@@ -1156,8 +1156,8 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Alertmanager critical-alert GitHub Issue sync is disabled"
-          description: "Provision the root-only GitHub token configuration or explicitly document a temporary risk acceptance."
+          summary: "Alertmanager 严重告警 GitHub Issue 同步已禁用"
+          description: "请配置仅 root 可读的 GitHub 令牌，或明确记录临时风险接受。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubIssueSyncFailed
@@ -1169,8 +1169,8 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Alertmanager critical-alert GitHub Issue sync failed"
-          description: "Check local Alertmanager access, the fine-grained GitHub token, repository scope, and the sync log."
+          summary: "Alertmanager 严重告警 GitHub Issue 同步失败"
+          description: "请检查本机 Alertmanager 访问、细粒度 GitHub 令牌、仓库权限范围和同步日志。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubIssueSyncStale
@@ -1182,8 +1182,8 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "Alertmanager critical-alert GitHub Issue sync is stale"
-          description: "The five-minute host job has not published a fresh sync result."
+          summary: "Alertmanager 严重告警 GitHub Issue 同步已过期"
+          description: "五分钟周期的主机任务尚未发布新的同步结果。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubTokenExpiryMetadataMissing
@@ -1198,8 +1198,8 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "GitHub Issue sync token expiry metadata is missing"
-          description: "Set GITHUB_TOKEN_EXPIRES_AT in the root-only configuration so token rotation is scheduled before notification coverage is lost."
+          summary: "GitHub Issue 同步令牌到期元数据缺失"
+          description: "请在仅 root 可读的配置中设置 GITHUB_TOKEN_EXPIRES_AT，以便在通知覆盖失效前安排令牌轮换。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubTokenExpiringWarning
@@ -1216,8 +1216,8 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "GitHub Issue sync token expires within fourteen days"
-          description: "Rotate the fine-grained GitHub token and update the root-only configuration before the seven-day critical window."
+          summary: "GitHub Issue 同步令牌将在 14 天内到期"
+          description: "请在进入七天严重窗口前轮换细粒度 GitHub 令牌，并更新仅 root 可读的配置。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
       - alert: AlertmanagerGitHubTokenExpiringCritical
@@ -1232,6 +1232,6 @@ groups:
           scope: alerting
         annotations:
           runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-          summary: "GitHub Issue sync token expires within seven days"
-          description: "Rotate and validate the fine-grained GitHub token immediately; expiry will remove the independent critical-alert path."
+          summary: "GitHub Issue 同步令牌将在 7 天内到期"
+          description: "请立即轮换并验证细粒度 GitHub 令牌；令牌到期将导致独立严重告警链路失效。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"

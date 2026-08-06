@@ -15,8 +15,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Compliance log archive is not configured"
-              description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
+              summary: "合规日志归档尚未配置"
+              description: "受管归档 cron、凭据或启用开关缺失；恢复部署前，无法信任归档时效告警。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
   - name: configured archive reports missing verification metrics
@@ -35,8 +35,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Immutable compliance log archive verification is stale"
-              description: "The daily audit/auth/Nginx archive has not completed its independent remote read-back within 36 hours."
+              summary: "不可变合规日志归档校验已过期"
+              description: "每日审计、认证和 Nginx 日志归档未能在 36 小时内完成独立远程回读。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 31m
         alertname: ComplianceLogArchiveDayGap
@@ -48,8 +48,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Compliance log archive is missing a recent UTC day"
-              description: "The newest verified archive does not cover the previous complete UTC day."
+              summary: "合规日志归档缺少最近一个 UTC 日"
+              description: "最新已验证归档未覆盖上一个完整 UTC 日。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 16m
         alertname: ComplianceLogArchiveChainIncomplete
@@ -61,8 +61,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Compliance log archive hash chain or append-only gateway is not verified"
-              description: "Do not treat the remote compliance archive as complete until the manifest chain and gateway verification recover."
+              summary: "合规日志归档哈希链或只追加网关未通过验证"
+              description: "在清单链和网关校验恢复前，不要将远程合规归档视为完整。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
   - name: disabled archive emits configuration alert but not freshness alerts
@@ -81,8 +81,8 @@ tests:
               severity: critical
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
-              summary: "Compliance log archive is not configured"
-              description: "The managed archive cron, credentials, or activation gate is missing; archive freshness alerts cannot be trusted until deployment is restored."
+              summary: "合规日志归档尚未配置"
+              description: "受管归档 cron、凭据或启用开关缺失；恢复部署前，无法信任归档时效告警。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
       - eval_time: 31m
         alertname: ComplianceLogArchiveStale
