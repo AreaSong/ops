@@ -26,6 +26,7 @@ operation_dir="${3:-}"
 [[ "$phase" =~ ^(preflight|backup|migration|apply|health|smoke|identity|rollback)$ ]] || fail "unsupported phase"
 [[ -f "$request" && ! -L "$request" ]] || fail "request must be a regular file"
 [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail "operation directory is unsafe"
+DEPENDENCY_BASELINE="${SUB2API_UPDATE_CONTROL_DEPENDENCY_BASELINE:-$operation_dir/dependencies.before.json}"
 target_id="$(jq -er '.targetId' "$request")"
 jq -e --arg target "$target_id" '.schemaVersion == 1 and (.targets[$target] | type == "object")' "$CATALOG" >/dev/null ||
   fail "target is not present in the Sub2API release catalog"
@@ -89,7 +90,8 @@ container_identity() {
 
 assert_dependencies_unchanged() {
   local expected observed
-  expected="$(jq -cS . "$operation_dir/dependencies.before.json")"
+  [[ -f "$DEPENDENCY_BASELINE" && ! -L "$DEPENDENCY_BASELINE" ]] || fail "dependency baseline is missing or unsafe"
+  expected="$(jq -cS . "$DEPENDENCY_BASELINE")"
   observed="$(container_identity "$POSTGRES_CONTAINER" "$REDIS_CONTAINER")"
   [[ "$observed" == "$expected" ]] || fail "PostgreSQL or Redis container identity changed"
 }
@@ -106,15 +108,21 @@ migration_count() {
 }
 
 wait_for_health() {
-  local code
+  local code body
+  body="$(mktemp "$operation_dir/.health.XXXXXX")"
   for _ in $(seq 1 120); do
-    code="$(curl -sS -o "$operation_dir/health.json" -w '%{http_code}' "$BASE_URL/health" || true)"
-    if [[ "$code" == 200 ]] && jq -e '.status == "ok" or .ok == true' "$operation_dir/health.json" >/dev/null 2>&1; then
+    code="$(curl -sS -o "$body" -w '%{http_code}' "$BASE_URL/health" || true)"
+    if [[ "$code" == 200 ]] && jq -e '.status == "ok" or .ok == true' "$body" >/dev/null 2>&1; then
+      rm -f "$body"
       return
     fi
-    docker inspect --format '{{.State.Running}}' "$APP_CONTAINER" 2>/dev/null | grep -Fxq true || fail "application exited before health passed"
+    if ! docker inspect --format '{{.State.Running}}' "$APP_CONTAINER" 2>/dev/null | grep -Fxq true; then
+      rm -f "$body"
+      fail "application exited before health passed"
+    fi
     sleep 1
   done
+  rm -f "$body"
   fail "application did not become healthy"
 }
 
@@ -160,19 +168,30 @@ trap cleanup_temp_admin_key EXIT
 
 http_json() {
   local label="$1" path="$2" header_name="${3:-}" header_value="${4:-}" body code
-  body="$operation_dir/http-$label.json"
+  body="$(mktemp "$operation_dir/.http-$label.XXXXXX")"
   if [[ -n "$header_name" ]]; then
     code="$(curl -sS -o "$body" -w '%{http_code}' -H "$header_name: $header_value" "$BASE_URL$path")"
   else
     code="$(curl -sS -o "$body" -w '%{http_code}' "$BASE_URL$path")"
   fi
-  [[ "$code" == 200 ]] || fail "$label returned HTTP $code"
-  jq -e '.code == 0' "$body" >/dev/null || fail "$label returned a non-success JSON envelope"
+  if [[ "$code" != 200 ]]; then
+    rm -f "$body"
+    fail "$label returned HTTP $code"
+  fi
+  if ! jq -e '.code == 0' "$body" >/dev/null; then
+    rm -f "$body"
+    fail "$label returned a non-success JSON envelope"
+  fi
+  if [[ "$label" == "system-version" ]]; then
+    jq -cS '{version:.data.version}' "$body" >"$operation_dir/system-version-summary.json"
+    chmod 0600 "$operation_dir/system-version-summary.json"
+  fi
+  rm -f "$body"
   printf '%s|http=200|code=0\n' "$label"
 }
 
 authenticated_smoke() {
-  local admin_key admin_id user_key code smoke_file
+  local admin_key admin_id user_key code smoke_file models_file
   admin_key="$(psql_value "SELECT value FROM settings WHERE key='admin_api_key' LIMIT 1;")"
   admin_id="$(psql_value "SELECT id FROM users WHERE role='admin' AND deleted_at IS NULL ORDER BY id LIMIT 1;")"
   user_key="$(psql_value "SELECT key FROM api_keys WHERE status='active' AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY id LIMIT 1;")"
@@ -192,7 +211,9 @@ authenticated_smoke() {
     http_json admin-accounts '/api/v1/admin/accounts?page=1&page_size=1' x-api-key "$admin_key"
     http_json admin-api-keys "/api/v1/admin/users/$admin_id/api-keys?page=1&page_size=1" x-api-key "$admin_key"
     http_json system-version /api/v1/admin/system/version x-api-key "$admin_key"
-    code="$(curl -sS -o "$operation_dir/http-models.json" -w '%{http_code}' -H "Authorization: Bearer $user_key" "$BASE_URL/v1/models")"
+    models_file="$(mktemp "$operation_dir/.http-models.XXXXXX")"
+    code="$(curl -sS -o "$models_file" -w '%{http_code}' -H "Authorization: Bearer $user_key" "$BASE_URL/v1/models")"
+    rm -f "$models_file"
     [[ "$code" == 200 || "$code" == 402 || "$code" == 403 ]] || fail "gateway models returned unexpected HTTP $code"
     printf 'gateway-models|http=%s|authentication-path=accepted\n' "$code"
   } >"$smoke_file"
@@ -213,7 +234,6 @@ case "$phase" in
     [[ "$(image_identity "$target_image_id" | jq -r '.gitCommit')" == "$target_git_commit" ]] || fail "target image Git commit mismatch"
     cp -p -- "$CONTROLLED_COMPOSE" "$operation_dir/controlled-compose.before.yml"
     cp -p -- "$RUNTIME_COMPOSE" "$operation_dir/runtime-compose.before.yml"
-    cp -p -- "$ENV_FILE" "$operation_dir/sub2api.env.before"
     container_identity "$POSTGRES_CONTAINER" "$REDIS_CONTAINER" >"$operation_dir/dependencies.before.json"
     container_identity "$APP_CONTAINER" >"$operation_dir/application.before.json"
     chmod 0600 "$operation_dir"/*
@@ -259,7 +279,7 @@ case "$phase" in
   identity)
     assert_target_image
     [[ "$(migration_count)" == "$target_migrations" ]] || fail "target migration count mismatch"
-    jq -e --arg version "$target_version" '.data.version == $version' "$operation_dir/http-system-version.json" >/dev/null || fail "runtime version endpoint mismatch"
+    jq -e --arg version "$target_version" '.version == $version' "$operation_dir/system-version-summary.json" >/dev/null || fail "runtime version endpoint mismatch"
     cmp -s "$CONTROLLED_COMPOSE" "$RUNTIME_COMPOSE" || fail "controlled and runtime Compose files differ"
     assert_dependencies_unchanged
     result "$phase" "version, Git commit, image digest, migrations and dependency identities agree"

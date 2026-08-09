@@ -9,7 +9,8 @@ Scripts:
 - `backup-volumes.sh`: archives non-database application data volumes/bind mounts.
 - `sync-r2.sh`: uploads local backup artifacts to Cloudflare R2 with `/etc/ops/r2-backup.env`; uses `--s3-no-head` to avoid Cloudflare R2 post-upload HEAD 501 false failures with the current rclone build.
 - `restore-areaforge-isolated.sh`: restores explicitly selected AreaForge artifacts from local storage or R2 into a network-isolated temporary PostgreSQL container and root-only extraction directories.
-- `create-backup-manifest.sh`: selects all nine required artifacts from one bounded backup window, validates every archive, writes a JSON manifest plus SHA-256 sidecar, and emits backup-set metrics.
+- `restore_areasong_ops_isolated.py`: verifies the complete manifest, extracts only the AreaSong Ops SQLite snapshot into a root-only temporary directory, checks integrity, foreign keys, required tables and row counts, then removes the restored copy without starting any service.
+- `create-backup-manifest.sh`: selects all ten required artifacts from one bounded backup window, validates every archive, writes a JSON manifest plus SHA-256 sidecar, and emits backup-set metrics.
 - `verify-backup-set-r2.sh`: downloads the latest manifest and all selected artifacts from R2, verifies sizes, SHA-256, archive readability, exact required roles, and emits verification metrics.
 - `archive-compliance-logs.sh`: filters the previous UTC day of auditd, auth, Nginx, and daily-report data, uploads immutable-by-key parts through the compliance Worker, and invokes independent read-back verification.
 - `verify-compliance-log-archive.sh`: uses a separate read-only R2 credential to verify the newest archive and the complete manifest hash chain.
@@ -26,7 +27,7 @@ Retention:
 
 Complete backup sets:
 - The `04:00 UTC` manifest job groups the latest artifacts produced by the existing staggered backup jobs. It is an explicit recovery set, not an atomic filesystem snapshot.
-- A valid set contains exactly nine roles and must have no more than three hours between its oldest and newest artifact.
+- A valid set contains exactly ten roles and must have no more than three hours between its oldest and newest artifact.
 - Manifests are root-only under `/var/backups/ops/manifests/`; `latest-manifest.txt` identifies the set used by automated R2 verification.
 - Normal `sync-r2.sh` runs do not publish a success metric until every selected R2 object has been downloaded and SHA-256 verified. `--skip-verify` is an explicit emergency bypass and leaves the separate verification freshness alert stale.
 - R2 verification requires a separate root-only `/etc/ops/r2-verify.env` (or `R2_VERIFY_ENV`) and rejects the upload credential file, the same underlying file, or the same access key ID. Normal upload success is not published until this independent download path succeeds.
@@ -40,6 +41,12 @@ AreaForge restore drill:
 - Manifests record archive member counts and unpacked sizes. Restore checks those values, bounds extraction, and preflights both the work filesystem and Docker storage before import.
 - Production comparison is enabled by default: it compares normalized user schema and table name lists, records both database sizes, and rejects a restored database that is unexpectedly small. `--no-compare-production` performs an offline import check and does not publish success metrics.
 - Successful runs publish `areaforge_restore_drill_*` textfile metrics and write a root-readable log under `/var/log/backup/`.
+
+AreaSong Ops restore drill:
+- Pass one complete local manifest with `sudo /opt/ops/scripts/backup/restore_areasong_ops_isolated.py --manifest manifests/backup-set-YYYYMMDD-HHMMSS.json`.
+- The script verifies the exact ten-role contract and the selected archive, then extracts only `areasong-ops-state/ops.db`; operation evidence and unrelated backup artifacts are never restored.
+- SQLite is opened read-only and immutable for integrity, foreign-key, required-table and required-column checks; critical table row counts are recorded. No Runner is started, no port is bound, and `/var/lib/areasong-ops` is never written.
+- Success atomically publishes `areasong_ops_restore_drill_last_success_timestamp_seconds`. Failure preserves the previous success metric and always removes the temporary restored database.
 
 Sensitive Redis note:
 - Redis backups include `users.acl` when present. The file contains ACL password hashes, so backup artifacts must remain root-only locally and access-controlled in R2.

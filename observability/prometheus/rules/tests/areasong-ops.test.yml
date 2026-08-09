@@ -1,0 +1,136 @@
+rule_files:
+  - ../areasong-ops.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: metrics target outage alerts after two minutes
+    interval: 1m
+    input_series:
+      - series: 'up{job="areasong_ops"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AreaSongOpsMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              job: areasong_ops
+              owner: areasong-ops
+              severity: critical
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops 指标端点不可用"
+              description: "Prometheus 无法抓取控制面 Web；请先检查 Web 容器、控制面网络和内部指标端点。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+  - name: runner socket outage alerts independently
+    interval: 1m
+    input_series:
+      - series: 'areasong_ops_runner_reachable{job="areasong_ops"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AreaSongOpsRunnerUnreachable
+        exp_alerts:
+          - exp_labels:
+              job: areasong_ops
+              owner: areasong-ops
+              severity: critical
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops Web 无法连接 Runner"
+              description: "Web 仍可被抓取，但无法通过受限 Unix Socket 访问 root Runner；禁止绕过 Socket 权限直接挂载 Docker Socket。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+  - name: overtime task alerts after the longest task window
+    interval: 1m
+    input_series:
+      - series: 'areasong_ops_oldest_active_task_age_seconds{job="areasong_ops"}'
+        values: '7600+60x8'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AreaSongOpsActiveTaskOvertime
+        exp_alerts:
+          - exp_labels:
+              job: areasong_ops
+              owner: areasong-ops
+              severity: critical
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops 活动任务超过最长执行窗口"
+              description: "最老的 queued/running 任务已超过 125 分钟；不要自动重试，请核对任务事件、业务身份和可能的人工恢复状态。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+  - name: missing initial sqlite snapshot alerts
+    interval: 1m
+    input_series:
+      - series: 'areasong_ops_last_sqlite_snapshot_timestamp_seconds{job="areasong_ops"}'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: AreaSongOpsSqliteSnapshotStale
+        exp_alerts:
+          - exp_labels:
+              job: areasong_ops
+              owner: areasong-ops
+              severity: warning
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops SQLite 一致性快照过期"
+              description: "Runner 超过 25 小时没有生成新的 SQLite 快照；控制面状态备份将无法满足 24 小时 RPO。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-30h&to=now"
+
+  - name: missing restore drill alerts after grace period
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: AreaSongOpsRestoreDrillStale
+        exp_alerts:
+          - exp_labels:
+              owner: areasong-ops
+              severity: warning
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops 隔离恢复演练缺失或已超过 35 天"
+              description: "完整备份集中的控制面 SQLite 超过 35 天未完成隔离恢复、完整性、关键表和行数验证。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-40d&to=now"
+
+  - name: access policy failure and scrape outage remain distinct
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_access_policy",service="areasong-ops"}'
+        values: '0+0x8'
+      - series: 'up{job="blackbox_access_policy",service="areasong-ops"}'
+        values: '0+0x8'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: AreaSongOpsAccessPolicyProbeFailed
+        exp_alerts:
+          - exp_labels:
+              job: blackbox_access_policy
+              owner: areasong-ops
+              severity: critical
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops Cloudflare Access 门禁探测失败"
+              description: "未认证公网请求没有得到预期的 Cloudflare Access 302 登录跳转；请核对 DNS、Access Application、策略和源站限制。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+      - eval_time: 3m
+        alertname: AreaSongOpsAccessProbeTargetDown
+        exp_alerts:
+          - exp_labels:
+              job: blackbox_access_policy
+              owner: areasong-ops
+              severity: critical
+              service: areasong-ops
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+              summary: "AreaSong Ops Access 探针抓取目标不可用"
+              description: "Prometheus 无法从 Blackbox Exporter 获取 Access 策略探测结果；请先确认共享 Blackbox Exporter 是否正常。"
+              grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"

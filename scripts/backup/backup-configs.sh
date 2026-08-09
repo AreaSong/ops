@@ -89,6 +89,9 @@ add_spec required configuration opt/ops
 add_spec required configuration etc/ssh/sshd_config
 add_spec required configuration etc/ufw/ufw.conf
 add_spec required configuration etc/sysctl.d
+add_spec required configuration etc/areasong-ops/services.json
+add_spec required executable usr/local/libexec/areasong-ops
+add_spec required configuration etc/systemd/system/areasong-ops-runner.service
 add_spec optional secret-bearing etc/x-ui
 add_spec optional secret-bearing etc/account-vault
 add_spec optional secret-bearing opt/services
@@ -116,6 +119,7 @@ add_spec optional configuration etc/default/ufw
 # 这些凭据和私钥故意不进入普通 R2 配置包，恢复时必须从独立密钥托管取回。
 add_external_secret '/etc/ops/*.env'
 add_external_secret '/etc/observability/*secret*'
+add_external_secret '/etc/areasong-ops/web.env'
 add_external_secret '/etc/letsencrypt/**/privkey*.pem'
 add_external_secret '/root/.acme.sh/**/*.key'
 

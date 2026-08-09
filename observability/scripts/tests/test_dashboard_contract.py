@@ -92,6 +92,7 @@ class DashboardContractTests(unittest.TestCase):
 
     def test_global_dashboard_layout_refresh_and_navigation_contract(self) -> None:
         expected_refresh = {
+            "areasong-ops-control-plane.json": "1m",
             "losangeles-app-health.json": "1m",
             "losangeles-certificates-cloudflare.json": "10m",
             "losangeles-daily-audit.json": "5m",
@@ -106,6 +107,7 @@ class DashboardContractTests(unittest.TestCase):
             "sub2api-slo-capacity.json": "1m",
         }
         expected_category = {
+            "areasong-ops-control-plane.json": "nav-runtime",
             "losangeles-service-overview.json": "nav-runtime",
             "losangeles-app-health.json": "nav-runtime",
             "losangeles-host-overview.json": "nav-runtime",
@@ -704,6 +706,7 @@ class DashboardContractTests(unittest.TestCase):
             "account-vault": "sorryiossearch.areasong.top",
             "sub2api": "cpa.areasong.top",
             "areaforge": "forge.areasong.top",
+            "areasong-ops": "ops.areasong.top",
         }
         for service, domain in expected.items():
             expression = re.compile(replacements[service])
@@ -721,6 +724,21 @@ class DashboardContractTests(unittest.TestCase):
         )
         self.assertEqual(json_stage["expressions"]["container"], "container")
         self.assertIn("container", labels_stage)
+
+        areasong_ops_web = next(
+            item for item in promtail["scrape_configs"] if item["job_name"] == "areasong_ops_web"
+        )
+        docker_json_stages = [
+            stage["json"] for stage in areasong_ops_web["pipeline_stages"] if "json" in stage
+        ]
+        self.assertEqual(docker_json_stages[0]["expressions"]["attrs"], "attrs")
+        self.assertEqual(
+            docker_json_stages[1],
+            {
+                "source": "attrs",
+                "expressions": {"service": "service", "component": "component"},
+            },
+        )
         self.assertTrue(
             set(business_error_log.DEFAULT_SOURCES.values()).issubset(
                 set(docker_metrics.DEFAULT_CONTAINERS)

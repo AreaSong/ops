@@ -17,6 +17,7 @@
 | 8392 | TCP | account-vault-web | LosAngeles | 127.0.0.1 | 映射到容器 3001，Nginx 反代 |
 | 25432 | TCP | account-vault-postgres | LosAngeles | 127.0.0.1 | 映射到容器 5432，仅本机访问 |
 | 8080 | TCP | sub2api | LosAngeles | 127.0.0.1 | 映射到容器 8080，Nginx 反代 |
+| 3200 | TCP | areasong-ops-web | LosAngeles | 127.0.0.1 | 计划映射到容器 8080，由 Nginx 反代 ops.areasong.top；待生产部署验收 |
 | 5432 | TCP | sub2api-postgres | LosAngeles | docker-network | 仅容器网络暴露 |
 | 5432 | TCP | areaforge-postgres | LosAngeles | docker-network | 仅容器网络暴露 |
 | 6379 | TCP | sub2api-redis | LosAngeles | docker-network | 仅容器网络暴露 |

@@ -30,6 +30,7 @@ ARTIFACT_SPECS = (
     ("volume-jadeai-data", "volumes/jadeai-data-*.tar.gz", "tar"),
     ("volume-areaforge-uploads", "volumes/areaforge-uploads-*.tar.gz", "tar"),
     ("volume-areaforge-ops-state", "volumes/areaforge-ops-state-*.tar.gz", "tar"),
+    ("volume-areasong-ops-state", "volumes/areasong-ops-state-*.tar.gz", "tar"),
 )
 
 

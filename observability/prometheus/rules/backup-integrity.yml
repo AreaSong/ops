@@ -36,7 +36,7 @@ groups:
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: BackupSetManifestInvalid
-        expr: backup_set_artifacts != 9 or backup_set_artifact_span_seconds > 3 * 3600
+        expr: backup_set_artifacts != 10 or backup_set_artifact_span_seconds > 3 * 3600
         for: 15m
         labels:
           owner: areasong-ops
@@ -82,7 +82,7 @@ groups:
           grafana_url: "https://monitor.areasong.top/d/losangeles-services-backups/losangeles-services-backups?orgId=1&from=now-24h&to=now"
 
       - alert: R2BackupSetVerificationIncomplete
-        expr: backup_set_r2_verify_artifacts != 9
+        expr: backup_set_r2_verify_artifacts != 10
         for: 15m
         labels:
           owner: areasong-ops

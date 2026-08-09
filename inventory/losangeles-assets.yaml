@@ -245,6 +245,29 @@ services:
       dashboards: [losangeles-host-overview, losangeles-services-backups, losangeles-service-overview, losangeles-observability-selfcheck]
       notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/etc/ops/alertmanager-github.env root:root 0600，fine-grained PAT 仅 AreaSong/ops Issues RW，2026-08-19 到期需轮换；5 分钟 cron + 每月演练）；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
 
+  - service_id: areasong-ops
+    name: AreaSong Ops control plane
+    owner: as
+    lifecycle: planned
+    deployment_status: pending-production-validation
+    runtime:
+      type: systemd-and-docker-compose
+      units: [areasong-ops-runner.service]
+      compose_project: areasong-ops
+      runtime_compose: /opt/services/areasong-ops/compose.yml
+      controlled_compose: /opt/ops/services/areasong-ops/deploy/compose.yml
+      containers: [areasong-ops-web]
+      config_paths: [/etc/areasong-ops/services.json, /etc/areasong-ops/web.env]
+    ports:
+      - { bind: 127.0.0.1, host_port: 3200, container_port: 8080, protocol: tcp, exposure: loopback }
+    data: { type: sqlite-and-operation-evidence, path: /var/lib/areasong-ops, classification: confidential }
+    backup: { required: true, jobs: [backup-volumes, backup-configs], offsite: R2 }
+    observability:
+      prometheus_jobs: [areasong_ops, blackbox_access_policy]
+      log_jobs: [areasong_ops_web, syslog, nginx]
+      dashboards: [areasong-ops-control-plane]
+      notes: "目标配置已进入仓库；所有运行态、指标、日志、Access 与恢复演练信号均待生产部署后验收。"
+
 routes:
   - service_id: resume-jadeai
     hostname: resume.areasong.top
@@ -269,6 +292,16 @@ routes:
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/monitor.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:3000"]
+    tls_mode: cloudflare-origin-ca
+  - service_id: areasong-ops
+    hostname: ops.areasong.top
+    lifecycle: planned
+    validation_status: pending
+    cloudflare_mode: proxied
+    observed_origin_policy: direct
+    desired_origin_policy: cloudflare-only
+    nginx_file: /etc/nginx/sites-enabled/ops.areasong.top.conf
+    backend_endpoints: ["http://127.0.0.1:3200"]
     tls_mode: cloudflare-origin-ca
   - service_id: areaforge-web
     hostname: forge.areasong.top
@@ -303,3 +336,4 @@ config_pairs:
   - { service_id: account-vault-web, runtime: /opt/services/account-vault/compose.yml, controlled: /opt/ops/services/account-vault/compose.yml, severity: warning }
   - { service_id: areaforge-web, runtime: /opt/areaforge/docker-compose.prod.yml, controlled: /opt/ops/services/areaforge/compose.yml, severity: warning }
   - { service_id: sub2api, runtime: /opt/services/sub2api/compose.yml, controlled: /opt/ops/services/sub2api/compose.yml, severity: warning }
+  - { service_id: areasong-ops, runtime: /opt/services/areasong-ops/compose.yml, controlled: /opt/ops/services/areasong-ops/deploy/compose.yml, severity: warning, lifecycle: planned }

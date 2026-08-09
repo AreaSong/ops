@@ -30,6 +30,7 @@ DEFAULT_CONTAINERS = (
     "postgres-exporter-sub2api",
     "postgres-exporter-account-vault",
     "redis-exporter-sub2api",
+    "areasong-ops-web",
 )
 
 CONTAINER_SERVICES = {
@@ -51,6 +52,7 @@ CONTAINER_SERVICES = {
     "promtail": "observability",
     "node-exporter": "observability",
     "blackbox-exporter": "observability",
+    "areasong-ops-web": "areasong-ops",
 }
 
 SIZE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)([A-Za-z]+)$")

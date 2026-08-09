@@ -28,6 +28,7 @@ DATASOURCES_PATH = (
 HAN_RE = re.compile(r"[\u4e00-\u9fff]")
 
 EXPECTED_TITLES = {
+    "AreaSong Ops 控制面",
     "应用与业务健康",
     "TLS 与 Cloudflare 治理",
     "每日运维审计",

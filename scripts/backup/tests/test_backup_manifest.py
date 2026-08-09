@@ -66,7 +66,8 @@ class BackupManifestTests(unittest.TestCase):
         latest = (self.root / "manifests" / "latest-manifest.txt").read_text(encoding="utf-8").strip()
         self.assertEqual(latest, f"manifests/{manifest_path.name}")
         metrics = (self.root / "metrics" / "backup-set.prom").read_text(encoding="utf-8")
-        self.assertIn("backup_set_artifacts 9", metrics)
+        self.assertIn("backup_set_artifacts 10", metrics)
+        self.assertTrue(any(record.role == "volume-areasong-ops-state" for record in records))
         self.assertEqual(stat.S_IMODE(manifest_path.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(manifest_path.with_suffix(".json.sha256").stat().st_mode), 0o600)
         self.assertEqual(

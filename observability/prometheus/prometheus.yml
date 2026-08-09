@@ -73,6 +73,14 @@ scrape_configs:
       - action: labeldrop
         regex: exported_service
 
+  - job_name: areasong_ops
+    static_configs:
+      - targets:
+          - areasong-ops-web:8080
+        labels:
+          instance: areasong-ops-web
+          service: areasong-ops
+
   - job_name: alertmanager
     static_configs:
       - targets:
@@ -162,6 +170,29 @@ scrape_configs:
           instance: areaforge-web
           service: areaforge
           check: login-redirect
+    relabel_configs:
+      - source_labels:
+          - __address__
+        target_label: __param_target
+      - source_labels:
+          - __param_target
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox_access_policy
+    metrics_path: /probe
+    params:
+      module:
+        - http_cloudflare_access_login_tls
+    static_configs:
+      - targets:
+          - https://ops.areasong.top/
+        labels:
+          instance: areasong-ops-web
+          service: areasong-ops
+          check: access-login-redirect
+          policy: cloudflare-access
     relabel_configs:
       - source_labels:
           - __address__

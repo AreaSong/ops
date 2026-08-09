@@ -15,7 +15,7 @@ scrape_configs:
           selector: '{filename="/var/log/nginx/ops-business-access.log"}'
           stages:
             - regex:
-                expression: 'host="(?P<service>resume\.areasong\.top|sorryiossearch\.areasong\.top|cpa\.areasong\.top|forge\.areasong\.top)"'
+                expression: 'host="(?P<service>resume\.areasong\.top|sorryiossearch\.areasong\.top|cpa\.areasong\.top|forge\.areasong\.top|ops\.areasong\.top)"'
             - replace:
                 source: service
                 expression: '(resume\.areasong\.top)'
@@ -32,6 +32,10 @@ scrape_configs:
                 source: service
                 expression: '(forge\.areasong\.top)'
                 replace: 'areaforge'
+            - replace:
+                source: service
+                expression: '(ops\.areasong\.top)'
+                replace: 'areasong-ops'
             - labels:
                 service:
     static_configs:
@@ -94,6 +98,13 @@ scrape_configs:
           __path__: /var/log/business-errors/*.log
 
   - job_name: syslog
+    pipeline_stages:
+      - match:
+          selector: '{job="syslog"} |~ "areasong-ops-runner(\\[[0-9]+\\])?:"'
+          stages:
+            - static_labels:
+                service: areasong-ops
+                component: runner
     static_configs:
       - targets:
           - localhost
@@ -103,6 +114,41 @@ scrape_configs:
           instance: LosAngeles
           service: host
           __path__: /var/log/syslog
+
+  - job_name: areasong_ops_web
+    pipeline_stages:
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            event_timestamp: time
+            attrs: attrs
+      - json:
+          source: attrs
+          expressions:
+            service: service
+            component: component
+      - labels:
+          service:
+          component:
+          stream:
+      - match:
+          selector: '{service!="areasong-ops"}'
+          action: drop
+          drop_counter_reason: not_areasong_ops
+      - timestamp:
+          source: event_timestamp
+          format: RFC3339Nano
+      - output:
+          source: output
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          host: LosAngeles
+          instance: LosAngeles
+          __path__: /var/lib/docker/containers/*/*-json.log
 
   - job_name: fail2ban
     static_configs:

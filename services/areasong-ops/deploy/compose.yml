@@ -1,0 +1,65 @@
+name: areasong-ops
+
+x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+    labels: "service,component"
+
+services:
+  web:
+    build:
+      context: /opt/ops/services/areasong-ops
+      dockerfile: Dockerfile
+      target: web
+      args:
+        BUILD_VERSION: ${OPS_BUILD_VERSION:?OPS_BUILD_VERSION is required}
+        BUILD_REVISION: ${OPS_BUILD_REVISION:?OPS_BUILD_REVISION is required}
+    image: areasong-ops-web:${OPS_BUILD_REVISION:?OPS_BUILD_REVISION is required}
+    pull_policy: never
+    container_name: areasong-ops-web
+    labels:
+      service: areasong-ops
+      component: web
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    group_add:
+      - ${OPS_RUNNER_GID:?OPS_RUNNER_GID is required}
+    env_file:
+      - /etc/areasong-ops/web.env
+    environment:
+      OPS_ENV: production
+      OPS_RUNNER_SOCKET: /run/areasong-ops/runner.sock
+      OPS_WEB_LISTEN: :8080
+    ports:
+      - "127.0.0.1:3200:8080"
+    volumes:
+      - type: bind
+        source: /run/areasong-ops
+        target: /run/areasong-ops
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    memswap_limit: 320m
+    cpus: "0.50"
+    stop_grace_period: 20s
+    logging: *json-log-options
+    healthcheck:
+      test: ["CMD", "/app/areasong-ops-web", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  default:
+    name: areasong-ops-network

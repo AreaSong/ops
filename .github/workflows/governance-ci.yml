@@ -15,6 +15,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  areasong-ops:
+    name: areasong-ops
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+
+      - name: Install service validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+
+      - name: Test Runner and Web backend
+        working-directory: services/areasong-ops
+        run: CGO_ENABLED=0 go test ./cmd/... ./internal/...
+
+      - name: Test service adapters
+        run: python3 -m unittest discover -s services/areasong-ops/adapters/tests -v
+
+      - name: Validate service shell entry points
+        run: |
+          set -euo pipefail
+          find services/areasong-ops -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find services/areasong-ops -type f -name '*.sh' -print0 | xargs -0 shellcheck
+          OPS_PREFLIGHT_REPO_ROOT="$GITHUB_WORKSPACE" \
+            services/areasong-ops/deploy/preflight.sh source
+
+      - name: Test and build Web frontend
+        working-directory: services/areasong-ops/web
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run build
+
+      - name: Build Runner export and Web image
+        working-directory: services/areasong-ops
+        run: |
+          set -euo pipefail
+          revision="$(git rev-parse HEAD)"
+          output="$(mktemp -d)"
+          docker build --target runner-export --output "type=local,dest=$output" \
+            --build-arg BUILD_VERSION=ci \
+            --build-arg "BUILD_REVISION=$revision" .
+          test -x "$output/areasong-ops-runner"
+          docker build --target web -t areasong-ops-web:ci \
+            --build-arg BUILD_VERSION=ci \
+            --build-arg "BUILD_REVISION=$revision" .
+          test "$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' areasong-ops-web:ci)" = "$revision"
+          test "$(docker image inspect -f '{{.Config.User}}' areasong-ops-web:ci)" = "nonroot:nonroot"
+
   governance:
     name: governance
     runs-on: ubuntu-latest
@@ -45,6 +99,9 @@ jobs:
 
       - name: Test backup manifest controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_manifest.py'
+
+      - name: Test volume backup controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_volumes.py'
 
       - name: Test compliance archive build and part verification
         run: >-
@@ -108,6 +165,9 @@ jobs:
 
       - name: Test isolated restore controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areaforge_isolated.py'
+
+      - name: Test AreaSong Ops isolated restore controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_restore_areasong_ops_isolated.py'
 
       - name: Test R2 verifier complete remote set
         env:
@@ -185,6 +245,9 @@ jobs:
       - name: Test observability stack rules
         run: bash observability/prometheus/rules/tests/test_observability_stack_rules.sh
 
+      - name: Test AreaSong Ops rules
+        run: bash observability/prometheus/rules/tests/test_areasong_ops_rules.sh
+
       - name: Test runtime governance rules
         run: bash observability/prometheus/rules/tests/test_runtime_governance_rules.sh
 
@@ -211,6 +274,7 @@ jobs:
           docker compose -f services/areaforge/compose.yml config --quiet --no-interpolate
           docker compose -f services/resume-jadeai/compose.yml config --quiet --no-interpolate
           docker compose -f services/sub2api/compose.yml config --quiet --no-interpolate
+          docker compose -f services/areasong-ops/deploy/compose.yml config --quiet --no-interpolate --no-env-resolution
           ASSET_INVENTORY_PATH=inventory/losangeles-assets.yaml \
             python3 observability/scripts/runtime_snapshot.py --validate-only
 

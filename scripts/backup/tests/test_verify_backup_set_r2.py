@@ -187,7 +187,7 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
         result = self._run_verifier()
         self.assertEqual(result.returncode, 0, result.stderr)
         metric = (self.output_root / "backup-set-r2-verify.prom").read_text(encoding="utf-8")
-        self.assertIn("backup_set_r2_verify_artifacts 9", metric)
+        self.assertIn("backup_set_r2_verify_artifacts 10", metric)
         state = (self.output_root / "backup-set-r2-verify.state").read_text(encoding="utf-8")
         self.assertIn(f"manifest_relative=manifests/{self.manifest.name}", state)
         self.assertRegex(state, r"manifest_sha256=[0-9a-f]{64}")

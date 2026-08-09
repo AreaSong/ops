@@ -26,6 +26,10 @@ class GitHubWorkflowTests(unittest.TestCase):
         content = (WORKFLOW_ROOT / "governance-ci.yml").read_text(encoding="utf-8")
         self.assertRegex(content, r"permissions:\s+contents: read")
         for gate in (
+            "services/areasong-ops",
+            "test_backup_volumes.py",
+            "test_restore_areasong_ops_isolated.py",
+            "test_areasong_ops_rules.sh",
             "scripts/deploy/tests",
             "test_backup_integrity_rules.sh",
             "test_log_pipeline_rules.sh",

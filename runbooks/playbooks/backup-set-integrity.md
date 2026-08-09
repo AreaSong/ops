@@ -2,7 +2,7 @@
 
 ## 目标
 
-现有 PostgreSQL、Redis、configs 和 volumes 任务继续错峰执行。每天 `04:00 UTC` 将同一受限时间窗口中的九个必需产物固化为一个显式恢复集，`04:15 UTC` 上传 R2 后再完整下载并校验 SHA-256。
+现有 PostgreSQL、Redis、configs 和 volumes 任务继续错峰执行。每天 `04:00 UTC` 将同一受限时间窗口中的十个必需产物固化为一个显式恢复集，`04:15 UTC` 上传 R2 后再完整下载并校验 SHA-256。
 
 该恢复集解决“恢复时分别选择各类最新文件，意外混合不同日期”的问题。它不是数据库和文件系统的原子快照；manifest 会记录每个产物的实际修改时间，并强制整个集合跨度不超过三小时。
 
@@ -17,6 +17,7 @@
 7. `volume-jadeai-data`
 8. `volume-areaforge-uploads`
 9. `volume-areaforge-ops-state`
+10. `volume-areasong-ops-state`
 
 缺少任何角色、文件为空或损坏、tar 成员路径不安全、集合跨度超过三小时，manifest 任务都会失败且不会更新成功指标或 `latest-manifest.txt`。
 
@@ -65,7 +66,7 @@ sudo /opt/ops/scripts/backup/verify-backup-set-r2.sh
 
 1. `latest-manifest.txt`
 2. manifest 和 sidecar
-3. manifest 指定的九个对象
+3. manifest 指定的十个对象
 4. 对全部对象重新检查大小、SHA-256 和归档可读性
 
 临时目录为 root-only `/var/tmp/ops-r2-verify.*`，无论成功或失败都会清理。验证过程不删除、覆盖或恢复生产数据。
@@ -84,6 +85,7 @@ sudo /opt/ops/scripts/backup/verify-backup-set-r2.sh
 - `BackupSetManifestInvalid`
 - `R2BackupSetVerificationStale`
 - `R2BackupSetVerificationIncomplete`
+- `AreaSongOpsRestoreDrillStale`
 
 ## 凭据边界
 
@@ -91,6 +93,25 @@ sudo /opt/ops/scripts/backup/verify-backup-set-r2.sh
 `/etc/ops/r2-verify.env`。脚本会拒绝上传凭据文件、指向同一 inode 的别名，以及与上传
 凭据相同的 access key ID。凭据文件隔离和不同 key 能阻止误复用，但对象存储侧的只读
 策略仍须在 Cloudflare 控制面核验并记录；S3 下载本身无法证明 token 没有写权限。
+
+## AreaSong Ops 隔离恢复演练
+
+从已完成本机校验的 manifest 演练：
+
+```bash
+sudo /opt/ops/scripts/backup/restore_areasong_ops_isolated.py \
+  --manifest manifests/backup-set-YYYYMMDD-HHMMSS.json
+```
+
+脚本先验证 manifest sidecar、精确的十角色集合以及
+`volume-areasong-ops-state` 的大小、SHA-256 和 tar 契约，只提取
+`areasong-ops-state/ops.db`。恢复副本位于 root-only 临时目录，使用 SQLite 只读
+immutable 模式执行 `PRAGMA integrity_check`、`PRAGMA foreign_key_check`、五张关键表
+及关键列存在性检查，并记录表行数。成功后原子写入 textfile 指标；成功或失败都会删除恢复副本。
+
+该演练不会覆盖 `/var/lib/areasong-ops`、不会启动 Runner、不会绑定端口、不会恢复业务
+数据库，也不能作为生产数据库恢复授权。建议至少每月执行一次，并在更改 SQLite schema、
+备份角色或归档结构后立即补做。
 
 ## 回滚
 

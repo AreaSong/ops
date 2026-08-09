@@ -39,6 +39,7 @@ services:
       - /var/lib/observability/prometheus:/prometheus
     networks:
       - monitoring
+      - areasong-ops
     # node-exporter 已切 host 网络，经宿主机网关抓取
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -319,6 +320,9 @@ services:
 networks:
   monitoring:
     driver: bridge
+  areasong-ops:
+    external: true
+    name: areasong-ops-network
   sub2api:
     external: true
     name: sub2api_sub2api-network

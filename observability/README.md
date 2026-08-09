@@ -35,6 +35,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Node Exporter with textfile collector
 - Blackbox Exporter for HTTPS and TLS checks
 - Blackbox app probes for resume-jadeai, account-vault, and sub2api public health checks
+- Planned AreaSong Ops integration: direct Web/Runner aggregate metrics on the external `areasong-ops-network`, a Cloudflare Access 302 policy probe, and unified `service="areasong-ops"` labels for Web, Runner and Nginx logs. These signals remain pending until production deployment is accepted.
 - Postgres Exporter for sub2api and account-vault PostgreSQL metrics
 - Redis Exporter for sub2api Redis metrics
 - Business blackbox probes for public, read-only key paths:
@@ -181,7 +182,7 @@ create a duplicate Grafana-managed copy of a Prometheus rule.
 
 Operational entry points are available from every provisioned dashboard:
 
-- **运行 / 可靠性 / 安全与审计** split the twelve dashboards into three
+- **运行 / 可靠性 / 安全与审计** split the thirteen provisioned dashboards into three
   purpose-specific dropdowns instead of one flat list while preserving the current
   time range.
 - **活动告警** opens `/alerting/list` for label and state filtering.

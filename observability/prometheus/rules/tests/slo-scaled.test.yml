@@ -1,7 +1,11 @@
 rule_files:
-  - ../slo.yml
+  - slo.yml
 
 evaluation_interval: 15s
+group_eval_order:
+  - synthetic_slo_recording
+  - synthetic_slo_long_window_recording
+  - synthetic_slo_alerts
 
 tests:
   - name: two hour fixture reports proportional coverage

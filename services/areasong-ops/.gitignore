@@ -1,0 +1,7 @@
+/web/dist/
+/web/*.tsbuildinfo
+/web/node_modules/
+/cmd/web/static/assets/
+/.playwright-cli/
+/build/
+/output/

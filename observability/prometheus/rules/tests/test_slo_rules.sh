@@ -18,12 +18,11 @@ docker run --rm --entrypoint /bin/promtool \
 
 sed \
   -e 's/\[30d\]/[2h]/g' \
-  -e 's#/ 172800#/ 480#' \
   "$RULE_FILE" >"$WORK_DIR/slo.yml"
 cp "$SCRIPT_DIR/slo-scaled.test.yml" "$WORK_DIR/slo.test.yml"
 
-docker run --rm --entrypoint /bin/promtool \
+docker run --rm --entrypoint /bin/promtool --workdir /work \
   -v "$WORK_DIR:/work:ro" \
-  "$IMAGE" test rules /work/slo.test.yml
+  "$IMAGE" test rules slo.test.yml
 
 echo "scaled SLO recording rules: PASS"

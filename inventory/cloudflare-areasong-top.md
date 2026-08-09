@@ -1,6 +1,6 @@
 # areasong.top Cloudflare 与证书策略台账
 
-更新时间：2026-07-29 UTC
+更新时间：2026-08-09 UTC
 
 ## 范围
 
@@ -9,7 +9,7 @@
 - 源站公网 IP：`23.185.200.12`
 - 源站入口：Nginx `80/443`
 
-本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头、源站 SNI 握手结果和 Cloudflare 控制面核对结果整理。2026-07-29 已按批准为 Grafana 创建 Access Application、人员与自动化策略及 service token；token secret 不进入本台账或 Git。
+本台账基于服务器侧 Nginx 配置、源站证书、公开 DNS、公开 HTTPS 响应头、源站 SNI 握手结果和 Cloudflare 控制面核对结果整理。2026-07-29 已按批准为 Grafana 创建 Access Application、人员与自动化策略及 service token；token secret 不进入本台账或 Git。`ops.areasong.top` 仅为仓库目标态，DNS、Nginx 与 Access 均尚未创建或验收，以下对应条目明确标为计划状态。
 
 ## Zone 与权威 DNS
 
@@ -26,6 +26,7 @@
 | `resume.areasong.top` | resume-jadeai | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，首页最终 200 | `127.0.0.1:2082` |
 | `sorryiossearch.areasong.top` | account-vault-web | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`、`cf-ray`，`/health` 200 | `127.0.0.1:8392` |
 | `monitor.areasong.top` | Grafana | Cloudflare 代理并受 Access 保护，A/AAAA 返回 Cloudflare 边缘地址 | 未认证请求进入 Access 登录；允许邮箱完成 OTP 后进入 Grafana；专用 service token 的 `/api/health` 返回 200 | `127.0.0.1:3000` |
+| `ops.areasong.top` | AreaSong Ops 控制面 | **计划/待验收**：目标为 Cloudflare 代理并受独立 Access Application 保护；当前不作为已生效 DNS 记录 | **待验收**：未认证请求应进入 Access 登录，仅允许 `song80184@gmail.com` OTP | 计划 `127.0.0.1:3200` |
 | `forge.areasong.top` | AreaForge | Cloudflare 代理，A/AAAA 返回 Cloudflare 边缘地址 | `server: cloudflare`，公网入口可达 | `127.0.0.1:3020` |
 | `cpa.areasong.top` | sub2api | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/health` 200 | `127.0.0.1:8080` |
 | `log.areasong.top` | x-ui / xray 入口 | DNS-only，A 返回 `23.185.200.12` | `server: nginx/1.24.0 (Ubuntu)`，`/` 200 | `127.0.0.1:46585`、`127.0.0.1:10000`、`127.0.0.1:2096` |
@@ -36,6 +37,7 @@
 - Cloudflare 代理 / DNS-only、TTL、Tunnel 记录基于 Cloudflare 控制台核对；公开 DNS 和 HTTP 响应头用于交叉验证。
 - `log.areasong.top` 的 x-ui 管理面板隐藏路径不进入台账；Nginx 配置核查时已脱敏。
 - `www.areasong.top` 的旧 Cloudflare Access Application 与 Tunnel/Public Hostname 已由用户在 Cloudflare 控制台删除；当前不再作为旧入口使用，预留给后续门户网站。
+- `ops.areasong.top` 的目标配置已进入仓库，但公开 DNS、HTTP 响应和 Cloudflare 控制面均未完成生产验收，不能据此条目认定已上线。
 
 ## 源站证书策略
 
@@ -44,6 +46,7 @@
 | `resume.areasong.top` | `/etc/ssl/cf/top/origin.pem` | Cloudflare Origin CA，SAN `*.areasong.top`、`areasong.top` | 2026-07-01 至 2041-06-27 | Cloudflare 代理域名使用 Origin Certificate |
 | `sorryiossearch.areasong.top` | `/etc/ssl/cf/top/origin.pem` | Cloudflare Origin CA，SAN `*.areasong.top`、`areasong.top` | 2026-07-01 至 2041-06-27 | Cloudflare 代理域名使用 Origin Certificate |
 | `monitor.areasong.top` | `/etc/ssl/cf/top/origin.pem` | Cloudflare Origin CA，SAN `*.areasong.top`、`areasong.top` | 2026-07-01 至 2041-06-27 | Cloudflare 代理域名使用 Origin Certificate |
+| `ops.areasong.top` | 计划 `/etc/ssl/cf/top/origin.pem` | 现有 wildcard Origin CA 覆盖目标域名 | 2026-07-01 至 2041-06-27 | **计划/待验收**：Nginx 站点安装后仅允许 Cloudflare 官方 CIDR 回源 |
 | `forge.areasong.top` | `/etc/ssl/cf/top/origin.pem` | Cloudflare Origin CA，SAN `*.areasong.top`、`areasong.top` | 2026-07-01 至 2041-06-27 | Cloudflare 代理域名使用 Origin Certificate |
 | `cpa.areasong.top` | `/etc/letsencrypt/live/cpa.areasong.top/fullchain.pem` | Let's Encrypt，SAN `cpa.areasong.top` | 2026-07-02 至 2026-09-30 | DNS-only 直连域名使用公开可信证书 |
 | `log.areasong.top` | `/etc/letsencrypt/live/log.areasong.top/fullchain.pem` | Let's Encrypt，SAN `log.areasong.top` | 2026-07-01 至 2026-09-29 | DNS-only 直连域名使用公开可信证书 |
@@ -57,6 +60,7 @@
 | `resume.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `sorryiossearch.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `monitor.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
+| `ops.areasong.top` | 待 Cloudflare 代理生效后验收 | 目标为 `*.areasong.top`、`areasong.top` | **计划状态**，当前不记录为已观察到的公网证书 |
 | `forge.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书 |
 | `www.areasong.top` | Let's Encrypt `YE2` | `*.areasong.top`、`areasong.top` | Cloudflare 边缘证书；旧 Access/Tunnel 入口已下线，预留门户网站 |
 | `cpa.areasong.top` | Let's Encrypt `YE1` | `cpa.areasong.top` | 源站直连证书 |
@@ -66,7 +70,7 @@
 
 | 项目 | 当前状态 |
 | --- | --- |
-| Cloudflare Origin Certificate | 控制台创建人和轮换负责人均为 `as`；用途为 `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top` 的 Cloudflare 代理源站证书；长期有效至 2041-06-27；过期前 180/90/30/7 天提醒 |
+| Cloudflare Origin Certificate | 控制台创建人和轮换负责人均为 `as`；当前用途为 `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top`，目标增加 `ops.areasong.top`；长期有效至 2041-06-27；过期前 180/90/30/7 天提醒 |
 | Let's Encrypt / acme.sh | root crontab 存在每日 acme.sh cron：`13 23 * * *` |
 | 监控 | Blackbox 已监控公网 HTTPS 可用性和公网证书临期；本机 Cloudflare Origin Certificate 文件已接入 textfile metrics、Prometheus 告警、Alertmanager 邮件提醒和 Grafana `LosAngeles Certificates and Cloudflare` Dashboard |
 
@@ -76,6 +80,7 @@
 | --- | --- | --- | --- | --- |
 | Cloudflare Origin Certificate `*.areasong.top` / `areasong.top` | `resume.areasong.top`、`sorryiossearch.areasong.top`、`monitor.areasong.top`、`forge.areasong.top` 的代理回源 TLS 证书 | `as` | `as` | 2041-06-27 到期；Prometheus 已落地 180/90/30/7 天分级提醒，30 天内安排轮换，7 天内按紧急处理 |
 | Access Application `Grafana - monitor.areasong.top`（ID `8f78fba9-dadd-4ab0-ab18-41e895e7a32f`） | `monitor.areasong.top` 人员和自动化身份边界 | `as` | `as` | 仅允许 `song80184@gmail.com` 通过 OTP；会话 6 小时；策略或人员变化时立即复核 |
+| Access Application `AreaSong Ops - ops.areasong.top`（计划） | AreaSong Ops 人员身份边界 | 待创建 | `as` | **待单独批准和验收**：仅允许 `song80184@gmail.com` OTP、会话 6 小时；不复用 Grafana service token、不创建 Bypass |
 | Service Token `github-actions-grafana-health`（ID `f9008337-dab4-46ec-8802-c17ea2739634`） | 仅供 `AreaSong/ops` 外部可用性工作流读取 Grafana `/api/health` | `as` | `as` | 2027-07-29 到期；2027-06-29 前轮换；GitHub 仅保存 `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` secrets |
 | Cloudflare Tunnel `hWin` / `www.areasong.top` | 旧 Cloudflare Access / Tunnel 应用入口 | `as` | `as` | 2026-07-04 已由用户删除 Access Application 与 Tunnel/Public Hostname；LosAngeles 本机未发现 `cloudflared` 进程或 systemd 服务；`www` 预留门户网站 |
 
@@ -84,6 +89,7 @@
 | 对象 | 目标策略 | 当前权威状态 | 完成证据 |
 | --- | --- | --- | --- |
 | `monitor.areasong.top` Access Application | self-hosted；仅允许指定运维邮箱 OTP；6 小时会话 | **已生效**：`Grafana - monitor.areasong.top`；人员策略仅包含 `song80184@gmail.com` | 浏览器已完成 OTP 并进入 Grafana；未认证入口仍由 Access 拦截 |
+| `ops.areasong.top` Access Application | self-hosted；仅允许 `song80184@gmail.com` OTP；6 小时会话；无 Bypass/service token | **计划/待验收**：尚未创建 DNS、Application 或策略 | 创建属于后续独立生产写操作；须验证未认证 302、错误邮箱拒绝、允许邮箱 OTP、JWT/CSRF 和源站直连 403 |
 | 外部监控 service token | 仅允许 GitHub Actions 读取 Grafana health；最小范围；有 owner/到期/轮换 | **已生效**：自动化策略仅允许 `github-actions-grafana-health`；到期 2027-07-29 | Actions secrets 已写入；工作流 #191 六个入口全 200，Grafana 由 service token 返回 200；#192/#193 已完成故障/恢复 Issue 演练 |
 | `resume` / `sorryiossearch` / `monitor` / `forge` 源站 | Nginx 仅允许 Cloudflare 官方 IPv4/IPv6 | **生产已生效**（2026-07-21 只读回验）：站点 include `cloudflare-origin-only.conf`；本机 `--resolve` 直连返回 403；Cloudflare 公网路径可达（monitor 302 / forge 307） | 台账 `observed_origin_policy` 已晋升为 `cloudflare-only`；`cpa` / `log` 仍为 DNS-only + `direct` |
 
@@ -95,7 +101,7 @@ Access 配置和 token 创建属于外部控制面写操作。token secret 只�
 
 | 类别 | 当前状态 | 说明 |
 | --- | --- | --- |
-| DNS TTL | 全部为自动 | `resume`、`sorryiossearch`、`monitor`、`forge` 已代理；`cpa`、`log` 为 DNS-only；`www` 的旧 Access/Tunnel 入口已下线，当前仍由 Cloudflare 边缘响应并预留给门户网站。 |
+| DNS TTL | 全部已存在记录为自动 | `resume`、`sorryiossearch`、`monitor`、`forge` 已代理；`cpa`、`log` 为 DNS-only；`ops` 为尚未创建/验收的目标记录；`www` 的旧 Access/Tunnel 入口已下线，当前仍由 Cloudflare 边缘响应并预留给门户网站。 |
 | SSL/TLS 模式 | Full (strict) | Cloudflare 会校验源站证书；与代理域名使用 Cloudflare Origin Certificate 的策略匹配。 |
 | Universal SSL | 有效 | `*.areasong.top`、`areasong.top` 通用证书有效期至 2026-09-19；备份证书已签发。 |
 | Always Use HTTPS | 已开启 | HTTP 请求由 Cloudflare 侧重定向到 HTTPS。 |
@@ -124,6 +130,7 @@ Access 配置和 token 创建属于外部控制面写操作。token secret 只�
 
 - Cloudflare Origin Certificate 的自动化提醒已落地到 Prometheus / Alertmanager / Grafana；如需更强治理，可再补日历或任务系统提醒。
 - `www.areasong.top` 的门户网站接入方案仍需确认，包括源站位置、Cloudflare 代理状态、Nginx server block、证书策略、WAF/缓存规则和上线回滚方案。
+- `ops.areasong.top` 仍需按独立生产变更完成 Nginx、DNS、Access Application 与仅允许邮箱策略，并在验收后把 inventory 的 lifecycle/observed policy 从计划态晋升为已验证事实。
 - 若未来启用 HSTS、Bot Fight Mode、速率限制、WAF 自定义规则或缓存规则，需要先评估对 `log`、`cpa`、`monitor` 等入口的影响。
 
 ## `www.areasong.top` 下线记录

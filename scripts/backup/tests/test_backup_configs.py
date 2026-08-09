@@ -27,6 +27,9 @@ class BackupConfigsTests(unittest.TestCase):
             "etc/sysctl.d/99-ops-baseline.conf",
             "etc/cron.d/ops-backup-postgres",
             "etc/systemd/system/x-ui.service",
+            "etc/systemd/system/areasong-ops-runner.service",
+            "etc/areasong-ops/services.json",
+            "usr/local/libexec/areasong-ops/areasong-ops-runner",
         ):
             target = self.source / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +70,8 @@ class BackupConfigsTests(unittest.TestCase):
         entries = {entry["path"]: entry for entry in coverage["entries"]}
         self.assertEqual(entries["/etc/ssh/sshd_config"]["status"], "included")
         self.assertEqual(entries["/etc/ops/*.env"]["status"], "external-secret-required")
+        self.assertEqual(entries["/etc/areasong-ops/web.env"]["status"], "external-secret-required")
+        self.assertEqual(entries["/etc/areasong-ops/services.json"]["status"], "included")
 
     def test_missing_required_config_fails_without_archive(self) -> None:
         (self.source / "etc/ssh/sshd_config").unlink()

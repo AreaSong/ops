@@ -1,0 +1,172 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "name": "控制面任务完成",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "expr": "changes(areasong_ops_last_task_finished_timestamp_seconds[75s]) > 0",
+        "step": "60s",
+        "titleFormat": "{{service}} {{action}} {{state}}",
+        "tagKeys": "service,action,state"
+      },
+      {
+        "name": "控制面运行变更",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "expr": "label_replace(changes(docker_container_started_at_timestamp_seconds{name=\"areasong-ops-web\"}[75s]) > 0, \"event\", \"Web 部署/重建\", \"name\", \".*\") or label_replace(increase(docker_container_restart_count{name=\"areasong-ops-web\"}[75s]) > 0, \"event\", \"Web 自动重启\", \"name\", \".*\")",
+        "step": "60s",
+        "titleFormat": "{{event}}",
+        "tagKeys": "event,service,name"
+      },
+      {
+        "name": "控制面备份与恢复",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "expr": "label_replace(changes(backup_set_last_success_timestamp[5m]) > 0, \"event\", \"完整备份集完成\", \"__name__\", \".*\") or label_replace(changes(areasong_ops_restore_drill_last_success_timestamp_seconds[5m]) > 0, \"event\", \"控制面恢复演练完成\", \"__name__\", \".*\")",
+        "step": "5m",
+        "titleFormat": "{{event}}",
+        "tagKeys": "event,service"
+      }
+    ]
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [
+    {"type": "dashboards", "asDropdown": true, "title": "运行", "tags": ["nav-runtime"], "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "dashboard"},
+    {"type": "dashboards", "asDropdown": true, "title": "可靠性", "tags": ["nav-reliability"], "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "dashboard"},
+    {"type": "dashboards", "asDropdown": true, "title": "安全与审计", "tags": ["nav-governance"], "includeVars": false, "keepTime": true, "targetBlank": false, "icon": "dashboard"},
+    {"type": "link", "title": "返回服务总览", "url": "/d/losangeles-service-overview/losangeles-service-overview", "icon": "dashboard", "targetBlank": false, "includeVars": false, "keepTime": true, "asDropdown": false},
+    {"type": "link", "title": "活动告警", "url": "/alerting/list", "icon": "bell", "targetBlank": false, "includeVars": false, "keepTime": true, "asDropdown": false},
+    {"type": "link", "title": "静默管理", "url": "/alerting/silences", "icon": "pause", "targetBlank": false, "includeVars": false, "keepTime": false, "asDropdown": false}
+  ],
+  "liveNow": false,
+  "panels": [
+    {"id": 100, "type": "row", "title": "当前风险", "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1}, "collapsed": false, "panels": []},
+    {
+      "id": 1, "type": "stat", "title": "Web 指标", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(up{job=\"areasong_ops\"})", "instant": true, "legendFormat": "Web", "refId": "A"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "异常", "color": "red"}, "1": {"text": "正常", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {
+      "id": 2, "type": "stat", "title": "Runner 连接", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 4, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(areasong_ops_runner_reachable{job=\"areasong_ops\"})", "instant": true, "legendFormat": "Runner", "refId": "A"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "不可达", "color": "red"}, "1": {"text": "可达", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {
+      "id": 3, "type": "stat", "title": "活动任务", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 8, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(areasong_ops_tasks_total{job=\"areasong_ops\",state=~\"queued|running\"}) or on() vector(0)", "instant": true, "legendFormat": "活动任务", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 2}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {
+      "id": 4, "type": "stat", "title": "最老活动任务", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "max(areasong_ops_oldest_active_task_age_seconds{job=\"areasong_ops\"})", "instant": true, "legendFormat": "最老任务", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 3600}, {"color": "red", "value": 7500}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {
+      "id": 5, "type": "stat", "title": "Access 门禁", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 16, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(probe_success{job=\"blackbox_access_policy\",service=\"areasong-ops\"})", "instant": true, "legendFormat": "Access", "refId": "A"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "异常", "color": "red"}, "1": {"text": "已保护", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {
+      "id": 6, "type": "stat", "title": "SQLite 快照年龄", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 20, "y": 1, "w": 4, "h": 4},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "clamp_min(time() - max(areasong_ops_last_sqlite_snapshot_timestamp_seconds{job=\"areasong_ops\"}), 0)", "instant": true, "legendFormat": "快照年龄", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 72000}, {"color": "red", "value": 90000}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true}
+    },
+    {"id": 101, "type": "row", "title": "任务与能力", "gridPos": {"x": 0, "y": 5, "w": 24, "h": 1}, "collapsed": false, "panels": []},
+    {
+      "id": 7, "type": "state-timeline", "title": "控制面链路状态", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 5},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(up{job=\"areasong_ops\"})", "instant": false, "range": true, "legendFormat": "Web 指标", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(areasong_ops_runner_reachable{job=\"areasong_ops\"})", "instant": false, "range": true, "legendFormat": "Runner 连接", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "min(probe_success{job=\"blackbox_access_policy\",service=\"areasong-ops\"})", "instant": false, "range": true, "legendFormat": "Access 门禁", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "异常", "color": "red"}, "1": {"text": "正常", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}, "custom": {"fillOpacity": 70, "lineWidth": 0, "spanNulls": false}}, "overrides": []},
+      "options": {"alignValue": "left", "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "mergeValues": true, "rowHeight": 0.9, "showValue": "auto", "tooltip": {"mode": "single", "sort": "none"}}
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "任务状态数量", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 5},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state) (areasong_ops_tasks_total{job=\"areasong_ops\"})", "legendFormat": "{{state}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+    },
+    {
+      "id": 9, "type": "state-timeline", "title": "受控能力开关", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 11, "w": 24, "h": 6},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_service_action_enabled{job=\"areasong_ops\"}", "instant": false, "range": true, "legendFormat": "{{service}} / {{action}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "关闭", "color": "orange"}, "1": {"text": "开放", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}, {"color": "green", "value": 1}]}, "custom": {"fillOpacity": 70, "lineWidth": 0, "spanNulls": false}}, "overrides": []},
+      "options": {"alignValue": "left", "legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "mergeValues": true, "rowHeight": 0.8, "showValue": "auto", "tooltip": {"mode": "single", "sort": "none"}}
+    },
+    {"id": 102, "type": "row", "title": "资源、身份与恢复", "gridPos": {"x": 0, "y": 17, "w": 24, "h": 1}, "collapsed": false, "panels": []},
+    {
+      "id": 10, "type": "timeseries", "title": "Web 资源配额使用率", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 18, "w": 8, "h": 6},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_cpu_limit_usage_ratio{name=\"areasong-ops-web\"}", "legendFormat": "CPU 配额使用", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_memory_usage_ratio{name=\"areasong-ops-web\"}", "legendFormat": "内存配额使用", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_pids_usage_ratio{name=\"areasong-ops-web\"}", "legendFormat": "进程配额使用", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"min": 0, "max": 1, "unit": "percentunit"}, "overrides": []},
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+    },
+    {
+      "id": 11, "type": "stat", "title": "Web 与 Runner 构建身份", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 8, "y": 18, "w": 8, "h": 6},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_build_info{job=\"areasong_ops\"}", "instant": true, "legendFormat": "{{component}} {{version}} {{revision}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "vertical", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "name", "wideLayout": true}
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "终态任务距今时间", "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 16, "y": 18, "w": 8, "h": 6},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "clamp_min(time() - areasong_ops_last_task_finished_timestamp_seconds{job=\"areasong_ops\"}, 0)", "legendFormat": "{{service}} / {{action}} / {{state}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"legend": {"calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+    },
+    {
+      "id": 103, "type": "row", "title": "控制面原始日志（按需）", "gridPos": {"x": 0, "y": 24, "w": 24, "h": 1}, "collapsed": true,
+      "panels": [
+        {
+          "id": 13, "type": "logs", "title": "控制面关联日志", "datasource": {"type": "loki", "uid": "loki"},
+          "gridPos": {"x": 0, "y": 0, "w": 24, "h": 8},
+          "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"areasong-ops\"}", "refId": "A"}],
+          "fieldConfig": {"defaults": {}},
+          "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true}
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 40,
+  "tags": ["LosAngeles", "areasong-ops", "control-plane", "nav-runtime"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AreaSong Ops 控制面",
+  "uid": "areasong-ops-control-plane",
+  "version": 1,
+  "weekStart": ""
+}

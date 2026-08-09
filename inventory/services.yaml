@@ -187,6 +187,26 @@ services:
     backup: true
     monitoring: []
 
+  - name: areasong-ops
+    host: LosAngeles
+    lifecycle: planned
+    deploy_type: systemd-and-docker-compose
+    compose_path: /opt/services/areasong-ops
+    ports:
+      - port: 3200
+        protocol: tcp
+        expose: "127.0.0.1"
+        notes: "计划映射到非 root Web 容器 8080；仅由 Nginx 反代，待生产部署验收"
+    dependencies:
+      - nginx
+    backup: true
+    backup_script: scripts/backup/backup-volumes.sh
+    monitoring:
+      - areasong_ops
+      - blackbox_access_policy
+      - loki_service_logs
+    notes: "目标态已在仓库完成，生产 Runner、Web、DNS 与 Cloudflare Access 尚未部署验收。"
+
 # 全局端口（所有机器）
 global_ports:
   - port: 22

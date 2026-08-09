@@ -26,7 +26,7 @@ class AlertmanagerContractTests(unittest.TestCase):
         expected = [
             (
                 ['alertname="BlackboxExporterMetricsTargetDown"'],
-                ['alertname=~"AppBlackboxTargetDown|BusinessBlackboxTargetDown|AppHttpProbeFailed|BusinessHttpProbeFailed"'],
+                ['alertname=~"AppBlackboxTargetDown|BusinessBlackboxTargetDown|AppHttpProbeFailed|BusinessHttpProbeFailed|AreaSongOpsAccessPolicyProbeFailed|AreaSongOpsAccessProbeTargetDown"'],
             ),
             (
                 ['alertname=~"DockerMetricsStale|DockerMetricsCollectionFailed"'],
