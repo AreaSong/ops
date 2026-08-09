@@ -3,9 +3,9 @@
 ## 当前状态
 
 仓库中的 Runner、Web、适配器、Nginx、Cloudflare Access 目标配置、监控、日志、备份和
-看板已经形成待部署目标态。生产 `areasong-ops-runner.service`、Web 容器、
-`ops.areasong.top` DNS/Access 仍需按独立变更逐项批准和验收；在台账状态晋升前，不把本
-手册中的目标命令视为已执行事实。
+看板已经形成受控目标态。生产 `areasong-ops-runner.service` 与 Unix Socket 已完成隔离验收；
+Web 容器、Nginx、`ops.areasong.top` DNS/Access 和完整可观测接入仍需按独立变更逐项批准。
+在对应台账状态晋升前，不把本手册中的其余目标命令视为已执行事实。
 
 ## 责任边界
 

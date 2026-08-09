@@ -1,6 +1,6 @@
 [Unit]
 Description=AreaSong Ops privileged runner
-Documentation=/opt/ops/services/areasong-ops/README.md
+Documentation=file:///opt/ops/services/areasong-ops/README.md
 After=docker.service network-online.target
 Wants=network-online.target
 Requires=docker.service

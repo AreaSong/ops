@@ -249,7 +249,7 @@ services:
     name: AreaSong Ops control plane
     owner: as
     lifecycle: planned
-    deployment_status: pending-production-validation
+    deployment_status: runner-production-web-pending
     runtime:
       type: systemd-and-docker-compose
       units: [areasong-ops-runner.service]
@@ -266,7 +266,7 @@ services:
       prometheus_jobs: [areasong_ops, blackbox_access_policy]
       log_jobs: [areasong_ops_web, syslog, nginx]
       dashboards: [areasong-ops-control-plane]
-      notes: "目标配置已进入仓库；所有运行态、指标、日志、Access 与恢复演练信号均待生产部署后验收。"
+      notes: "Runner unit 与 Unix Socket 已完成生产验收；Web、指标抓取、日志关联、Access 与恢复演练信号仍待后续生产部署。"
 
 routes:
   - service_id: resume-jadeai

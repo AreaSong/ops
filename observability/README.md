@@ -43,6 +43,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
   - `account-vault` login page and auth status API
   - `sub2api` login page and health JSON
 - Sanitized runtime asset snapshots for CPU/load/memory/disk, listeners, systemd, containers, security state, domain routing, Compose paths, and configuration drift
+- Inventory entries with `lifecycle: planned` remain visible in the sanitized asset snapshot, but missing planned runtime components and unconverged planned configuration are excluded from production completeness and drift gates until their lifecycle is promoted.
 - Sanitized warning/error collection for the four business services, forwarded to Loki as `job="business_errors"`
 - Daily comparison of the deployed Cloudflare proxy CIDRs with the official IPv4/IPv6 lists
 - Optional Alertmanager critical-alert to GitHub Issue synchronization with failure/recovery lifecycle simulation

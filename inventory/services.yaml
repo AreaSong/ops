@@ -205,7 +205,7 @@ services:
       - areasong_ops
       - blackbox_access_policy
       - loki_service_logs
-    notes: "目标态已在仓库完成，生产 Runner、Web、DNS 与 Cloudflare Access 尚未部署验收。"
+    notes: "Runner 已完成生产部署和 Unix Socket 隔离验收；Web、Nginx、DNS、Cloudflare Access 与完整可观测接入仍为计划态。"
 
 # 全局端口（所有机器）
 global_ports:

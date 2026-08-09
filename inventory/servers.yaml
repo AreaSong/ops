@@ -57,8 +57,8 @@ servers:
 
     planned_changes:
       - service: areasong-ops
-        status: pending-production-approval
-        notes: "仓库目标态包含第 13 块 Grafana 看板、备份与隔离恢复能力；生产服务、DNS 和 Cloudflare Access 尚未部署验收。"
+        status: runner-production-web-pending
+        notes: "Runner 已完成生产部署和隔离验收；Web、Nginx、DNS、Cloudflare Access、完整可观测接入与恢复演练仍待逐项批准。"
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:

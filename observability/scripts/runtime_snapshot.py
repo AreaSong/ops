@@ -62,6 +62,14 @@ def load_inventory(path: Path) -> dict[str, Any]:
     return payload
 
 
+def lifecycle(item: dict[str, Any]) -> str:
+    return str(item.get("lifecycle") or "production")
+
+
+def runtime_enforced(item: dict[str, Any]) -> bool:
+    return lifecycle(item) != "planned"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Write a sanitized LosAngeles runtime snapshot.")
     parser.add_argument("--validate-only", action="store_true", help="Validate the asset inventory and exit.")
@@ -128,14 +136,14 @@ def collect_listeners() -> tuple[list[dict[str, str]], bool]:
 
 
 def collect_systemd(inventory: dict[str, Any]) -> tuple[list[dict[str, str]], bool]:
-    unit_to_service: dict[str, str] = {}
+    unit_to_service: dict[str, tuple[str, str]] = {}
     for service in inventory.get("services", []):
         for unit in service.get("runtime", {}).get("units", []) or []:
-            unit_to_service[str(unit)] = str(service["service_id"])
+            unit_to_service[str(unit)] = (str(service["service_id"]), lifecycle(service))
 
     output: list[dict[str, str]] = []
     success = True
-    for unit, service_id in sorted(unit_to_service.items()):
+    for unit, (service_id, service_lifecycle) in sorted(unit_to_service.items()):
         result = run(
             [
                 "systemctl",
@@ -151,11 +159,12 @@ def collect_systemd(inventory: dict[str, Any]) -> tuple[list[dict[str, str]], bo
                 if "=" in line:
                     key, value = line.split("=", 1)
                     values[key] = value
-        else:
+        elif service_lifecycle != "planned":
             success = False
         output.append(
             {
                 "service_id": service_id,
+                "lifecycle": service_lifecycle,
                 "unit": unit,
                 "load_state": values.get("LoadState", "unknown"),
                 "active_state": values.get("ActiveState", "unknown"),
@@ -166,12 +175,27 @@ def collect_systemd(inventory: dict[str, Any]) -> tuple[list[dict[str, str]], bo
     return output, success
 
 
-def expected_containers(inventory: dict[str, Any]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+def expected_containers(inventory: dict[str, Any]) -> dict[str, tuple[str, str]]:
+    mapping: dict[str, tuple[str, str]] = {}
     for service in inventory.get("services", []):
         for name in service.get("runtime", {}).get("containers", []) or []:
-            mapping[str(name)] = str(service["service_id"])
+            mapping[str(name)] = (str(service["service_id"]), lifecycle(service))
     return mapping
+
+
+def missing_container(
+    name: str,
+    service_id: str,
+    service_lifecycle: str,
+    enforced: bool,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "service_id": service_id,
+        "lifecycle": service_lifecycle,
+        "enforced": enforced,
+        "present": False,
+    }
 
 
 def port_bindings(payload: dict[str, Any]) -> list[dict[str, str]]:
@@ -199,15 +223,18 @@ def collect_containers(inventory: dict[str, Any]) -> tuple[list[dict[str, Any]],
     output: list[dict[str, Any]] = []
     success = True
 
-    for name, service_id in sorted(mapping.items()):
+    for name, (service_id, service_lifecycle) in sorted(mapping.items()):
+        enforced = service_lifecycle != "planned"
         if name not in present:
-            output.append({"name": name, "service_id": service_id, "present": False})
-            success = False
+            output.append(missing_container(name, service_id, service_lifecycle, enforced))
+            if enforced:
+                success = False
             continue
         result = run(["docker", "inspect", name])
         if result.returncode != 0:
-            output.append({"name": name, "service_id": service_id, "present": False})
-            success = False
+            output.append(missing_container(name, service_id, service_lifecycle, enforced))
+            if enforced:
+                success = False
             continue
         try:
             payload = json.loads(result.stdout)[0]
@@ -221,6 +248,8 @@ def collect_containers(inventory: dict[str, Any]) -> tuple[list[dict[str, Any]],
                 {
                     "name": name,
                     "service_id": service_id,
+                    "lifecycle": service_lifecycle,
+                    "enforced": enforced,
                     "present": True,
                     "running": bool(state.get("Running")),
                     "health": state.get("Health", {}).get("Status", "none"),
@@ -245,8 +274,9 @@ def collect_containers(inventory: dict[str, Any]) -> tuple[list[dict[str, Any]],
                 }
             )
         except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-            output.append({"name": name, "service_id": service_id, "present": False})
-            success = False
+            output.append(missing_container(name, service_id, service_lifecycle, enforced))
+            if enforced:
+                success = False
     return output, success
 
 
@@ -261,6 +291,8 @@ def sha256_file(path: Path) -> str:
 def evaluate_config_pairs(inventory: dict[str, Any]) -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
     for pair in inventory.get("config_pairs", []) or []:
+        pair_lifecycle = lifecycle(pair)
+        enforced = runtime_enforced(pair)
         runtime = Path(str(pair["runtime"]))
         controlled = Path(str(pair["controlled"]))
         runtime_hash = sha256_file(runtime) if runtime.is_file() else ""
@@ -268,13 +300,16 @@ def evaluate_config_pairs(inventory: dict[str, Any]) -> list[dict[str, Any]]:
         output.append(
             {
                 "service_id": str(pair["service_id"]),
+                "lifecycle": pair_lifecycle,
+                "enforced": enforced,
                 "kind": "file",
                 "runtime_path": str(runtime),
                 "controlled_path": str(controlled),
                 "runtime_sha256": runtime_hash,
                 "controlled_sha256": controlled_hash,
                 "severity": str(pair.get("severity") or "warning"),
-                "drift": not runtime_hash or not controlled_hash or runtime_hash != controlled_hash,
+                "drift": enforced
+                and (not runtime_hash or not controlled_hash or runtime_hash != controlled_hash),
             }
         )
     return output
@@ -283,6 +318,8 @@ def evaluate_config_pairs(inventory: dict[str, Any]) -> list[dict[str, Any]]:
 def evaluate_routes(inventory: dict[str, Any]) -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
     for route in inventory.get("routes", []):
+        route_lifecycle = lifecycle(route)
+        enforced = runtime_enforced(route)
         path = Path(str(route["nginx_file"]))
         content = path.read_text(encoding="utf-8") if path.is_file() else ""
         expected = [f"server_name {route['hostname']}", *(route.get("backend_endpoints") or [])]
@@ -297,13 +334,15 @@ def evaluate_routes(inventory: dict[str, Any]) -> list[dict[str, Any]]:
         output.append(
             {
                 "service_id": str(route["service_id"]),
+                "lifecycle": route_lifecycle,
+                "enforced": enforced,
                 "kind": "nginx-route",
                 "hostname": str(route["hostname"]),
                 "runtime_path": str(path),
                 "controlled_path": "inventory/losangeles-assets.yaml",
                 "severity": "critical" if desired_origin_policy == "cloudflare-only" else "warning",
                 "observed_origin_policy": observed_origin_policy,
-                "drift": bool(missing),
+                "drift": enforced and bool(missing),
                 "missing_expectations": missing,
             }
         )
