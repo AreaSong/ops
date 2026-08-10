@@ -142,7 +142,7 @@
           - >-
             not host_jobs_pointer_state.results[0].stat.exists or
             (host_jobs_pointer_state.results[1].stat.islnk | default(false) and
-            host_jobs_pointer_state.results[1].stat.lnk_source == 'generations/' ~ host_jobs_release_id)
+            host_jobs_pointer_state.results[1].stat.lnk_target == 'generations/' ~ host_jobs_release_id)
         fail_msg: The requested host-job generation exists but is not the active current generation.
 
     - name: Determine whether the requested generation is already active
@@ -150,7 +150,7 @@
         host_jobs_generation_already_active: >-
           {{ (host_jobs_pointer_state.results[0].stat.exists | default(false)) and
              (host_jobs_pointer_state.results[1].stat.islnk | default(false)) and
-             host_jobs_pointer_state.results[1].stat.lnk_source == ('generations/' ~ host_jobs_release_id) }}
+             host_jobs_pointer_state.results[1].stat.lnk_target == ('generations/' ~ host_jobs_release_id) }}
 
     - name: Require a commit-addressed host-job generation
       ansible.builtin.assert:

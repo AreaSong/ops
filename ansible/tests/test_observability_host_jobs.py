@@ -153,6 +153,19 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn(current, content, path.name)
             self.assertNotIn("/opt/ops/observability/scripts/", content, path.name)
 
+    def test_active_generation_uses_the_unresolved_symlink_target(self) -> None:
+        tasks = {task.get("name"): task for task in self.play["tasks"]}
+        guard = tasks["Refuse to overwrite an existing inactive generation"]["ansible.builtin.assert"][
+            "that"
+        ][0]
+        active = tasks["Determine whether the requested generation is already active"][
+            "ansible.builtin.set_fact"
+        ]["host_jobs_generation_already_active"]
+
+        for expression in (guard, active):
+            self.assertIn("stat.lnk_target", expression)
+            self.assertNotIn("stat.lnk_source", expression)
+
     def test_generation_contains_cron_logrotate_and_checksums(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
         task_names = list(tasks)
