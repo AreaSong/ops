@@ -12,7 +12,9 @@ source_dir="${5:-}"
 RUNTIME_COMPOSE="${SUB2API_OPS_RUNTIME_COMPOSE:-/opt/services/sub2api/compose.yml}"
 CONTROLLED_COMPOSE="${SUB2API_OPS_CONTROLLED_COMPOSE:-/opt/ops/services/sub2api/compose.yml}"
 ENV_FILE="${SUB2API_OPS_ENV_FILE:-/opt/services/sub2api/.env}"
-RELEASES="${SUB2API_OPS_RELEASES:-/opt/ops/scripts/deploy/update-control/releases/sub2api.json}"
+STATIC_RELEASES="${SUB2API_OPS_RELEASES:-/opt/ops/scripts/deploy/update-control/releases/sub2api.json}"
+PREPARED_RELEASE_DIR="${SUB2API_OPS_PREPARED_RELEASE_DIR:-/var/lib/areasong-ops/prepared-releases/sub2api}"
+RELEASES="$STATIC_RELEASES"
 LEGACY_ADAPTER="${SUB2API_OPS_UPDATE_ADAPTER:-/opt/ops/scripts/deploy/update-control/adapters/sub2api.sh}"
 BACKUP_POSTGRES="${SUB2API_OPS_BACKUP_POSTGRES:-/opt/ops/scripts/backup/backup-postgres.sh}"
 BACKUP_REDIS="${SUB2API_OPS_BACKUP_REDIS:-/opt/ops/scripts/backup/backup-redis.sh}"
@@ -31,6 +33,23 @@ result() {
 
 [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail "operation directory is unsafe"
 [[ "$action" =~ ^(inspect|check|backup|restart|update|rollback|restore-drill)$ ]] || fail "unsupported action"
+
+activate_release_target() {
+  local release_target="$1" record effective
+  record="$PREPARED_RELEASE_DIR/${release_target}.json"
+  if jq -e --arg target "$release_target" '.targets[$target] | type == "object"' "$STATIC_RELEASES" >/dev/null 2>&1; then
+    RELEASES="$STATIC_RELEASES"
+    return
+  fi
+  [[ -f "$record" && ! -L "$record" ]] || fail "target is not present in prepared release catalog"
+  jq -e --arg target "$release_target" '.tag == $target and .status == "prepared"' "$record" >/dev/null ||
+    fail "prepared release record is invalid"
+  effective="$operation_dir/effective-releases.json"
+  jq -S --arg target "$release_target" --slurpfile record "$record" \
+    '.targets[$target] = $record[0]' "$STATIC_RELEASES" >"$effective"
+  chmod 0600 "$effective"
+  RELEASES="$effective"
+}
 
 postgres_value() {
   local query="$1" user database
@@ -87,6 +106,7 @@ assert_dependencies_unchanged() {
 assert_rollback_source_is_current() {
   local directory="$1" source_target source_identity current_identity
   source_target="$(jq -er .targetId "$directory/legacy-request.json")"
+  activate_release_target "$source_target"
   [[ "$source_target" == "$(jq -er .target "$directory/task-contract.json")" ]] ||
     fail "rollback source target mismatch"
   source_identity="$(jq -cS --arg target "$source_target" '.targets[$target].target | {
@@ -125,6 +145,7 @@ public_smoke() {
 
 write_legacy_request() {
   local catalog_policy identity now expires
+  activate_release_target "$target"
   jq -e --arg target "$target" '.schemaVersion == 1 and
     (.targets[$target] | type == "object" and .status == "prepared")' "$RELEASES" >/dev/null ||
     fail "target is not present in prepared release catalog"
@@ -143,8 +164,10 @@ write_legacy_request() {
 
 delegate_update_phase() {
   local legacy_output
+  activate_release_target "$target"
   [[ -f "$operation_dir/legacy-request.json" ]] || write_legacy_request
-  legacy_output="$("$LEGACY_ADAPTER" "$phase" "$operation_dir/legacy-request.json" "$operation_dir")"
+  legacy_output="$(SUB2API_UPDATE_CONTROL_RELEASES="$RELEASES" \
+    "$LEGACY_ADAPTER" "$phase" "$operation_dir/legacy-request.json" "$operation_dir")"
   jq -e --arg phase "$phase" '.ok == true and .phase == $phase' <<<"$legacy_output" >/dev/null || fail "legacy adapter contract failed"
   result "$(jq -r .detail <<<"$legacy_output")"
 }
@@ -225,7 +248,9 @@ case "$action:$phase" in
     result "受控更新来源、当前发布与依赖身份已核验"
     ;;
   rollback:apply)
+    activate_release_target "$(jq -er .targetId "$source_dir/legacy-request.json")"
     legacy_output="$(SUB2API_UPDATE_CONTROL_DEPENDENCY_BASELINE="$operation_dir/dependencies.before.json" \
+      SUB2API_UPDATE_CONTROL_RELEASES="$RELEASES" \
       "$LEGACY_ADAPTER" rollback "$source_dir/legacy-request.json" "$source_dir")"
     jq -e '.ok == true and .phase == "rollback"' <<<"$legacy_output" >/dev/null || fail "legacy rollback contract failed"
     result "$(jq -r .detail <<<"$legacy_output")"

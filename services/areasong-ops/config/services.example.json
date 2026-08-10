@@ -1,10 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "services": {
     "areaforge": {
       "name": "areaforge",
       "displayName": "AreaForge",
       "description": "AreaForge Web 与 PostgreSQL",
+      "template": "custom",
       "adapter": "/usr/local/libexec/areasong-ops/adapters/areaforge.sh",
       "actions": {
         "inspect": {
@@ -63,6 +64,7 @@
           "enabled": true,
           "risk": "high",
           "targetMode": "signed_release_tag",
+          "readinessGate": "prepared_release",
           "steps": ["preflight", "backup", "apply", "health", "smoke", "identity"],
           "timeoutSeconds": 7200,
           "confirmationTemplate": "更新 {service} 到 {target}",
@@ -102,7 +104,29 @@
       "name": "sub2api",
       "displayName": "Sub2API",
       "description": "Sub2API、PostgreSQL 与 Redis",
-      "adapter": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh",
+      "template": "compose-service-v1",
+      "adapter": "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
+      "runtime": {
+        "controlledCompose": "/opt/ops/services/sub2api/compose.yml",
+        "runtimeCompose": "/opt/services/sub2api/compose.yml",
+        "envFile": "/opt/services/sub2api/.env",
+        "applicationService": "sub2api",
+        "applicationContainer": "sub2api",
+        "dependencyContainers": ["sub2api-postgres", "sub2api-redis"],
+        "healthUrl": "http://127.0.0.1:8080/health",
+        "releaseRepository": "Wei-Shaw/sub2api",
+        "releaseCatalog": "/opt/ops/scripts/deploy/update-control/releases/sub2api.json",
+        "preparedReleaseDir": "/var/lib/areasong-ops/prepared-releases/sub2api",
+        "inspectExecutable": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh",
+        "backupExecutables": [
+          "/opt/ops/scripts/backup/backup-postgres.sh",
+          "/opt/ops/scripts/backup/backup-redis.sh",
+          "/opt/ops/scripts/backup/backup-volumes.sh"
+        ],
+        "restoreDrillExecutable": "/opt/ops/scripts/backup/restore-sub2api-isolated.sh",
+        "prepareExecutable": "/opt/ops/scripts/backup/restore-sub2api-isolated.sh",
+        "updateExecutable": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh"
+      },
       "actions": {
         "inspect": {
           "name": "inspect",
@@ -154,13 +178,26 @@
           "rollback": "重启不改变版本；失败时停止自动处理并进入人工核对。",
           "scope": "仅 Sub2API 应用容器"
         },
+        "prepare": {
+          "name": "prepare",
+          "displayName": "准备发布",
+          "enabled": true,
+          "risk": "medium",
+          "targetMode": "signed_release_tag",
+          "steps": ["preflight", "backup", "drill", "verify", "publish"],
+          "timeoutSeconds": 7200,
+          "confirmationTemplate": "演练 {service} 发布 {target}",
+          "impact": "使用 fresh backup 在无宿主机端口的隔离环境验证目标迁移和旧镜像兼容性，不更新生产应用。",
+          "rollback": "失败时删除隔离容器、网络和工作目录，不修改生产数据库、Compose 或运行版本。",
+          "scope": "Sub2API 隔离迁移与回滚兼容演练"
+        },
         "update": {
           "name": "update",
           "displayName": "更新版本",
-          "enabled": false,
+          "enabled": true,
           "risk": "high",
-          "targetMode": "allowlist",
-          "allowedTargets": [],
+          "targetMode": "signed_release_tag",
+          "readinessGate": "prepared_release",
           "steps": ["preflight", "backup", "migration", "apply", "health", "smoke", "identity"],
           "timeoutSeconds": 7200,
           "confirmationTemplate": "更新 {service} 到 {target}",
@@ -184,15 +221,15 @@
         "restore-drill": {
           "name": "restore-drill",
           "displayName": "恢复演练",
-          "enabled": false,
+          "enabled": true,
           "risk": "medium",
           "targetMode": "none",
-          "steps": ["preflight", "drill", "verify"],
+          "steps": ["preflight", "backup", "drill", "verify"],
           "timeoutSeconds": 7200,
           "confirmationTemplate": "演练恢复 {service}",
-          "impact": "当前尚未开放通用 Sub2API 隔离恢复编排。",
-          "rollback": "不执行生产数据库恢复。",
-          "scope": "未开放"
+          "impact": "从最新完整备份集恢复 PostgreSQL、Redis 与应用卷并执行隔离健康检查。",
+          "rollback": "失败时删除隔离资源；不执行生产数据库恢复。",
+          "scope": "Sub2API 隔离恢复环境"
         }
       }
     }

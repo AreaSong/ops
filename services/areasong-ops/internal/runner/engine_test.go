@@ -40,9 +40,9 @@ func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	catalog := &config.Catalog{SchemaVersion: 1, Services: map[string]model.ServiceDefinition{
+	catalog := &config.Catalog{SchemaVersion: 2, Services: map[string]model.ServiceDefinition{
 		"demo": {
-			Name: "demo", DisplayName: "Demo", Description: "test", Adapter: "/tmp/demo",
+			Name: "demo", DisplayName: "Demo", Description: "test", Template: "custom", Adapter: "/tmp/demo",
 			Actions: map[string]model.ActionDefinition{
 				"inspect": {
 					Name: "inspect", DisplayName: "检查", Enabled: true, Risk: model.RiskReadOnly,

@@ -12,10 +12,16 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 - Web 只接收并校验 Cloudflare Access JWT，向 Runner 传递邮箱 SHA-256。
 - Web 不接触 Docker Socket、SQLite、备份目录或业务卷。
-- Runner 独占 `/var/lib/areasong-ops/ops.db`，通过 `root:areasong-ops 0660` Socket 提供 API。
+- Runner 独占 `/var/lib/areasong-ops/ops.db`，通过持久目录中的 `root:areasong-ops 0660` Socket 提供 API；Runner 重启不会使 Web 的 bind mount 失效。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 详细事件保留 30 天，任务和审计摘要保留 365 天，SQLite 快照及操作产物保留 30 天。
-- AreaForge 使用发布自带签名 manifest 与严格 V2 request guard；Sub2API 只接受已固定摘要并完成迁移演练的 allowlist 目标。
+- AreaForge 使用发布自带签名 manifest 与严格 V2 request guard；Sub2API 只接受已固定摘要并完成隔离迁移、恢复和旧镜像兼容演练的动态 prepared 目标。
+
+## 通用服务模板
+
+`compose-service-v1` 把 Compose 应用的检查、备份、单服务重建、健康检查、发布发现和 prepared 门禁统一到一个适配器。新增服务通常只需要一份 `schemaVersion: 2` 服务声明；数据库恢复、迁移验证或认证 smoke 等服务特有逻辑通过少量 root-owned hook 接入。
+
+模板字段、hook 契约、接入步骤和安全边界见 [deploy/service-template.md](deploy/service-template.md)。模板不会自动恢复生产数据库、修改公网流量或启用自动更新。
 
 ## 本地验证
 

@@ -33,7 +33,7 @@ func run() error {
 	}
 	stateRoot := envOr("OPS_STATE_ROOT", "/var/lib/areasong-ops")
 	catalogPath := envOr("OPS_SERVICE_CATALOG", "/etc/areasong-ops/services.json")
-	socketPath := envOr("OPS_RUNNER_SOCKET", "/run/areasong-ops/runner.sock")
+	socketPath := envOr("OPS_RUNNER_SOCKET", "/var/lib/areasong-ops/run/runner.sock")
 	catalog, err := config.Load(catalogPath, !development)
 	if err != nil {
 		return err

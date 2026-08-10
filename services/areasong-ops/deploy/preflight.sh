@@ -13,7 +13,7 @@ RUNTIME_DIR="${OPS_PREFLIGHT_RUNTIME_DIR:-/opt/services/areasong-ops}"
 CONFIG_DIR="${OPS_PREFLIGHT_CONFIG_DIR:-/etc/areasong-ops}"
 RUNNER_ROOT="${OPS_PREFLIGHT_RUNNER_ROOT:-/usr/local/libexec/areasong-ops}"
 UNIT_PATH="${OPS_PREFLIGHT_UNIT_PATH:-/etc/systemd/system/areasong-ops-runner.service}"
-SOCKET_PATH="${OPS_PREFLIGHT_SOCKET_PATH:-/run/areasong-ops/runner.sock}"
+SOCKET_PATH="${OPS_PREFLIGHT_SOCKET_PATH:-/var/lib/areasong-ops/run/runner.sock}"
 CONTAINER_NAME="${OPS_PREFLIGHT_CONTAINER_NAME:-areasong-ops-web}"
 
 fail() { printf 'preflight failed: %s\n' "$*" >&2; exit 1; }
@@ -42,7 +42,7 @@ read_env_value() {
 for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
-jq -e '.schemaVersion == 1 and (.services | length > 0)' \
+jq -e '.schemaVersion == 2 and (.services | length > 0)' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
 
 revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
@@ -85,6 +85,10 @@ if [ "$mode" = installed ]; then
 fi
 
 systemctl is-active --quiet areasong-ops-runner.service || fail "Runner service is not active"
+[ "$(stat -c '%a %U:%G' /var/lib/areasong-ops)" = "710 root:areasong-ops" ] ||
+  fail "Runner state root owner or mode is invalid"
+[ "$(stat -c '%a %U:%G' /var/lib/areasong-ops/run)" = "750 root:areasong-ops" ] ||
+  fail "Runner socket directory owner or mode is invalid"
 [ -S "$SOCKET_PATH" ] || fail "Runner socket is missing"
 [ "$(stat -c '%a %U:%G' "$SOCKET_PATH")" = "660 root:areasong-ops" ] ||
   fail "Runner socket owner or mode is invalid"
@@ -96,6 +100,7 @@ docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$revision" '
   .[0].HostConfig.ReadonlyRootfs == true and
   .[0].Config.User == "65532:65532" and
   .[0].Config.Labels["org.opencontainers.image.revision"] == $revision and
+  any(.[0].Mounts[]; .Source == "/var/lib/areasong-ops/run" and .Destination == "/run/areasong-ops" and .RW == false) and
   ([.[0].Mounts[].Destination] | index("/var/run/docker.sock") | not)
 ' >/dev/null || fail "Web runtime identity or isolation check failed"
 

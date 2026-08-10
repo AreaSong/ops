@@ -61,6 +61,7 @@ func (CommandExecutor) Execute(ctx context.Context, input ExecuteInput) (model.A
 	stderr := newCappedBuffer(adapterOutputLimit)
 	command := exec.CommandContext(ctx, input.Service.Adapter, input.Action, input.Phase,
 		input.OperationDir, input.Target, input.SourceDir)
+	command.Env = append(command.Environ(), "OPS_SERVICE_NAME="+input.Service.Name)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	err := command.Run()

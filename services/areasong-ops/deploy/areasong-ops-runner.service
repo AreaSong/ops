@@ -11,19 +11,18 @@ User=root
 Group=areasong-ops
 UMask=0077
 ExecStartPre=/usr/bin/install -d -m 0700 -o root -g areasong-ops /var/lib/areasong-ops/tmp /var/lib/areasong-ops/cache /var/lib/areasong-ops/restore-drill
+ExecStartPre=/usr/bin/install -d -m 0750 -o root -g areasong-ops /var/lib/areasong-ops/run
 ExecStart=/usr/local/libexec/areasong-ops/areasong-ops-runner
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
 KillMode=mixed
-RuntimeDirectory=areasong-ops
-RuntimeDirectoryMode=0750
 StateDirectory=areasong-ops
-StateDirectoryMode=0700
+StateDirectoryMode=0710
 Environment=OPS_STATE_ROOT=/var/lib/areasong-ops
 Environment=OPS_LEGACY_STATE_ROOT=/var/lib/ops/update-control
 Environment=OPS_SERVICE_CATALOG=/etc/areasong-ops/services.json
-Environment=OPS_RUNNER_SOCKET=/run/areasong-ops/runner.sock
+Environment=OPS_RUNNER_SOCKET=/var/lib/areasong-ops/run/runner.sock
 Environment=TMPDIR=/var/lib/areasong-ops/tmp
 Environment=HOME=/var/lib/areasong-ops
 Environment=XDG_CACHE_HOME=/var/lib/areasong-ops/cache

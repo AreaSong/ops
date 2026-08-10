@@ -6,6 +6,7 @@ import {
   RotateCcw,
   SearchCheck,
   ShieldCheck,
+  FlaskConical,
 } from 'lucide-react'
 import { shortHash } from '../labels'
 import type { ActionDefinition, ReleaseDiscovery, ServiceView, Task } from '../types'
@@ -26,12 +27,13 @@ const actionIcons = {
   check: SearchCheck,
   backup: DatabaseBackup,
   restart: RotateCcw,
+  prepare: FlaskConical,
   update: RefreshCw,
   rollback: History,
   'restore-drill': ArchiveRestore,
 }
 
-const actionOrder = ['check', 'backup', 'restart', 'update', 'rollback', 'restore-drill']
+const actionOrder = ['check', 'backup', 'restart', 'prepare', 'update', 'rollback', 'restore-drill']
 
 export function Services({
   services,
@@ -103,7 +105,7 @@ export function Services({
             <section className="release-band">
               <div><ShieldCheck size={19} aria-hidden="true" /><span><strong>最新发布</strong><small>{discovery.latestTag ?? `v${discovery.manifestVersion}`}</small></span></div>
               <span>{updateAvailable ? '有新版本' : '已是最新'}</span>
-              {service.name === 'sub2api' && <span>{discovery.prepared ? '迁移门禁已准备' : '等待迁移演练'}</span>}
+              {discovery.prepared !== undefined && <span>{discovery.prepared ? '发布门禁已准备' : discovery.blockers?.[0] ?? '等待发布准备'}</span>}
             </section>
           )}
 
@@ -117,16 +119,23 @@ export function Services({
                   const Icon = actionIcons[action.name as keyof typeof actionIcons] ?? RefreshCw
                   let target = ''
                   let unavailable = !action.enabled || Boolean(service.activeTaskId)
-                  let disabledReason = !action.enabled ? '该能力尚未开放' : service.activeTaskId ? '服务已有活动任务' : ''
+                  let disabledReason = !action.enabled ? action.disabledReason ?? '该能力尚未开放' : service.activeTaskId ? '服务已有活动任务' : ''
                   if (action.name === 'update') {
                     target = discoveredTarget
                     if (!target || !updateAvailable) {
                       unavailable = true
                       disabledReason = target ? '当前已是最新版本' : '请先执行检查更新'
                     }
-                    if (service.name === 'sub2api' && !discovery?.prepared) {
+                    if (action.readinessGate === 'prepared_release' && !discovery?.prepared) {
                       unavailable = true
-                      disabledReason = '目标尚未通过迁移演练门禁'
+                      disabledReason = discovery?.blockers?.[0] ?? '目标尚未通过发布准备门禁'
+                    }
+                  }
+                  if (action.name === 'prepare') {
+                    target = discoveredTarget
+                    if (!target || !updateAvailable || discovery?.prepared) {
+                      unavailable = true
+                      disabledReason = discovery?.prepared ? '目标已经通过发布准备门禁' : target ? '当前已是最新版本' : '请先执行检查更新'
                     }
                   }
                   if (action.name === 'rollback') {

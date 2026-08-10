@@ -41,16 +41,38 @@ type ActionDefinition struct {
 	Steps                []string `json:"steps"`
 	TimeoutSeconds       int      `json:"timeoutSeconds"`
 	ConfirmationTemplate string   `json:"confirmationTemplate,omitempty"`
+	DisabledReason       string   `json:"disabledReason,omitempty"`
+	ReadinessGate        string   `json:"readinessGate,omitempty"`
 	Impact               string   `json:"impact"`
 	Rollback             string   `json:"rollback"`
 	Scope                string   `json:"scope"`
+}
+
+type ComposeServiceRuntime struct {
+	ControlledCompose      string   `json:"controlledCompose"`
+	RuntimeCompose         string   `json:"runtimeCompose"`
+	EnvFile                string   `json:"envFile"`
+	ApplicationService     string   `json:"applicationService"`
+	ApplicationContainer   string   `json:"applicationContainer"`
+	DependencyContainers   []string `json:"dependencyContainers,omitempty"`
+	HealthURL              string   `json:"healthUrl"`
+	ReleaseRepository      string   `json:"releaseRepository"`
+	ReleaseCatalog         string   `json:"releaseCatalog"`
+	PreparedReleaseDir     string   `json:"preparedReleaseDir"`
+	InspectExecutable      string   `json:"inspectExecutable"`
+	BackupExecutables      []string `json:"backupExecutables,omitempty"`
+	RestoreDrillExecutable string   `json:"restoreDrillExecutable,omitempty"`
+	PrepareExecutable      string   `json:"prepareExecutable,omitempty"`
+	UpdateExecutable       string   `json:"updateExecutable,omitempty"`
 }
 
 type ServiceDefinition struct {
 	Name        string                      `json:"name"`
 	DisplayName string                      `json:"displayName"`
 	Description string                      `json:"description"`
+	Template    string                      `json:"template"`
 	Adapter     string                      `json:"adapter"`
+	Runtime     *ComposeServiceRuntime      `json:"runtime,omitempty"`
 	Actions     map[string]ActionDefinition `json:"actions"`
 }
 

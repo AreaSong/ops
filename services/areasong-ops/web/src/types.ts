@@ -16,6 +16,8 @@ export interface ActionDefinition {
   allowedTargets?: string[]
   steps: string[]
   timeoutSeconds: number
+  disabledReason?: string
+  readinessGate?: 'prepared_release'
   impact: string
   rollback: string
   scope: string
@@ -104,4 +106,6 @@ export interface ReleaseDiscovery {
   prepared?: boolean
   updateAvailable?: boolean
   webImageDigest?: string
+  blockers?: string[]
+  preparationSteps?: Array<{ name: string; state: 'pending' | 'running' | 'succeeded' | 'failed'; detail?: string }>
 }

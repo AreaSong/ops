@@ -105,6 +105,42 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("target is not present in prepared release catalog", result.stderr)
 
+    def test_dynamic_prepared_release_is_used_by_later_update_phases(self) -> None:
+        prepared_dir = self.root / "prepared"
+        prepared_dir.mkdir()
+        record = json.loads(RELEASES.read_text(encoding="utf-8"))["targets"]["v0.1.168"]
+        record["tag"] = "v0.1.173"
+        record["status"] = "prepared"
+        (prepared_dir / "v0.1.173.json").write_text(json.dumps(record), encoding="utf-8")
+        (self.operation / "legacy-request.json").write_text(
+            json.dumps({"targetId": "v0.1.173"}), encoding="utf-8"
+        )
+        legacy = self.root / "legacy.sh"
+        legacy.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -eu\n"
+            "jq -e --arg target v0.1.173 '.targets[$target].status == \"prepared\"' \"$SUB2API_UPDATE_CONTROL_RELEASES\" >/dev/null\n"
+            "jq -cn --arg phase \"$1\" '{ok:true,phase:$phase,detail:\"accepted\"}'\n",
+            encoding="utf-8",
+        )
+        legacy.chmod(0o755)
+        environment = os.environ.copy()
+        environment.update({
+            "PATH": f"{self.fake_bin}:{environment['PATH']}",
+            "SUB2API_OPS_RELEASES": str(RELEASES),
+            "SUB2API_OPS_PREPARED_RELEASE_DIR": str(prepared_dir),
+            "SUB2API_OPS_UPDATE_ADAPTER": str(legacy),
+        })
+        result = subprocess.run(
+            [str(ADAPTER), "update", "backup", str(self.operation), "v0.1.173", ""],
+            text=True,
+            capture_output=True,
+            env=environment,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["summary"], "accepted")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -37,7 +37,7 @@ services:
       - "127.0.0.1:3200:8080"
     volumes:
       - type: bind
-        source: /run/areasong-ops
+        source: /var/lib/areasong-ops/run
         target: /run/areasong-ops
         read_only: true
     read_only: true
