@@ -2,10 +2,9 @@
 
 ## 当前状态
 
-仓库中的 Runner、Web、适配器、Nginx、Cloudflare Access 目标配置、监控、日志、备份和
-看板已经形成受控目标态。生产 `areasong-ops-runner.service` 与 Unix Socket 已完成隔离验收；
-Web 容器、Nginx、`ops.areasong.top` DNS/Access 和完整可观测接入仍需按独立变更逐项批准。
-在对应台账状态晋升前，不把本手册中的其余目标命令视为已执行事实。
+Runner、Web、适配器、Nginx、Cloudflare Access、监控、日志、备份和 Grafana 看板均已进入
+受控生产状态。2026-08-10 已完成 `areasong-ops-runner.service`、Unix Socket、非 root 只读 Web、
+`ops.areasong.top` DNS/Access、源站限制、Prometheus、Blackbox 与 Loki 链路验收。
 
 ## 责任边界
 

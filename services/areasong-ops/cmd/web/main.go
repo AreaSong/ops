@@ -58,6 +58,7 @@ func run() error {
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    32 << 10,
 	}
+	slog.Info("Web 启动", "address", server.Addr)
 	serveErrors := make(chan error, 1)
 	go func() { serveErrors <- server.ListenAndServe() }()
 	stop := make(chan os.Signal, 1)

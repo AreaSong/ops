@@ -248,8 +248,8 @@ services:
   - service_id: areasong-ops
     name: AreaSong Ops control plane
     owner: as
-    lifecycle: planned
-    deployment_status: runner-production-web-pending
+    lifecycle: production
+    deployment_status: production-validated
     runtime:
       type: systemd-and-docker-compose
       units: [areasong-ops-runner.service]
@@ -264,9 +264,9 @@ services:
     backup: { required: true, jobs: [backup-volumes, backup-configs], offsite: R2 }
     observability:
       prometheus_jobs: [areasong_ops, blackbox_access_policy]
-      log_jobs: [areasong_ops_web, syslog, nginx]
+      log_jobs: [docker, syslog, nginx]
       dashboards: [areasong-ops-control-plane]
-      notes: "Runner unit 与 Unix Socket 已完成生产验收；Web、指标抓取、日志关联、Access 与恢复演练信号仍待后续生产部署。"
+      notes: "Runner、Web、Prometheus、Blackbox Access 探针、Loki 标签链路与 Grafana 看板已于 2026-08-10 完成生产验收；控制面状态已纳入十角色备份集与隔离恢复演练。"
 
 routes:
   - service_id: resume-jadeai
@@ -295,10 +295,10 @@ routes:
     tls_mode: cloudflare-origin-ca
   - service_id: areasong-ops
     hostname: ops.areasong.top
-    lifecycle: planned
-    validation_status: pending
+    lifecycle: production
+    validation_status: validated
     cloudflare_mode: proxied
-    observed_origin_policy: direct
+    observed_origin_policy: cloudflare-only
     desired_origin_policy: cloudflare-only
     nginx_file: /etc/nginx/sites-enabled/ops.areasong.top.conf
     backend_endpoints: ["http://127.0.0.1:3200"]
@@ -336,4 +336,4 @@ config_pairs:
   - { service_id: account-vault-web, runtime: /opt/services/account-vault/compose.yml, controlled: /opt/ops/services/account-vault/compose.yml, severity: warning }
   - { service_id: areaforge-web, runtime: /opt/areaforge/docker-compose.prod.yml, controlled: /opt/ops/services/areaforge/compose.yml, severity: warning }
   - { service_id: sub2api, runtime: /opt/services/sub2api/compose.yml, controlled: /opt/ops/services/sub2api/compose.yml, severity: warning }
-  - { service_id: areasong-ops, runtime: /opt/services/areasong-ops/compose.yml, controlled: /opt/ops/services/areasong-ops/deploy/compose.yml, severity: warning, lifecycle: planned }
+  - { service_id: areasong-ops, runtime: /opt/services/areasong-ops/compose.yml, controlled: /opt/ops/services/areasong-ops/deploy/compose.yml, severity: warning }

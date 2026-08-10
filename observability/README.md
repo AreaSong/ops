@@ -35,7 +35,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Node Exporter with textfile collector
 - Blackbox Exporter for HTTPS and TLS checks
 - Blackbox app probes for resume-jadeai, account-vault, and sub2api public health checks
-- Planned AreaSong Ops integration: direct Web/Runner aggregate metrics on the external `areasong-ops-network`, a Cloudflare Access 302 policy probe, and unified `service="areasong-ops"` labels for Web, Runner and Nginx logs. These signals remain pending until production deployment is accepted.
+- AreaSong Ops integration: direct Web/Runner aggregate metrics on the external `areasong-ops-network`, a Cloudflare Access 302 policy probe, and unified `service="areasong-ops"` labels for Web, Runner and Nginx logs. Production validation completed on 2026-08-10.
 - Postgres Exporter for sub2api and account-vault PostgreSQL metrics
 - Redis Exporter for sub2api Redis metrics
 - Business blackbox probes for public, read-only key paths:
