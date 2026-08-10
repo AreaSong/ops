@@ -69,19 +69,21 @@ backup_areasong_ops_state() {
     echo "skip missing directory: $source_dir" >&2
     return
   fi
-  [ -d "$source_dir" ] && [ ! -L "$source_dir" ] || {
+  if [ ! -d "$source_dir" ] || [ -L "$source_dir" ]; then
     echo "unsafe AreaSong Ops state root: $source_dir" >&2
     exit 1
-  }
-  [ -d "$snapshot_dir" ] && [ ! -L "$snapshot_dir" ] || {
+  fi
+  if [ ! -d "$snapshot_dir" ] || [ -L "$snapshot_dir" ]; then
     echo "AreaSong Ops snapshot directory is missing or unsafe" >&2
     exit 1
-  }
+  fi
   shopt -s nullglob
   snapshots=("$snapshot_dir"/ops-*.db)
   shopt -u nullglob
   for candidate in "${snapshots[@]}"; do
-    [ -f "$candidate" ] && [ ! -L "$candidate" ] || continue
+    if [ ! -f "$candidate" ] || [ -L "$candidate" ]; then
+      continue
+    fi
     if [ -z "$snapshot" ] || [ "$candidate" -nt "$snapshot" ]; then
       snapshot="$candidate"
     fi
@@ -150,10 +152,10 @@ os.chmod(destination, 0o600)
 PY
 
   if [ -e "$source_dir/operations" ]; then
-    [ -d "$source_dir/operations" ] && [ ! -L "$source_dir/operations" ] || {
+    if [ ! -d "$source_dir/operations" ] || [ -L "$source_dir/operations" ]; then
       echo "unsafe AreaSong Ops operations directory" >&2
       exit 1
-    }
+    fi
     if find "$source_dir/operations" -xdev -type l -print -quit | grep -q .; then
       echo "AreaSong Ops operations directory contains a symbolic link" >&2
       exit 1

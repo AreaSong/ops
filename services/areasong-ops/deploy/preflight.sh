@@ -21,7 +21,9 @@ require_command() { command -v "$1" >/dev/null || fail "missing command: $1"; }
 
 require_regular_file() {
   local path="$1"
-  [ -f "$path" ] && [ ! -L "$path" ] || fail "unsafe or missing regular file: $path"
+  if [ ! -f "$path" ] || [ -L "$path" ]; then
+    fail "unsafe or missing regular file: $path"
+  fi
 }
 
 require_owner_mode() {
