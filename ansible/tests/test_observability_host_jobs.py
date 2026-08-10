@@ -166,6 +166,15 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn("stat.lnk_target", expression)
             self.assertNotIn("stat.lnk_source", expression)
 
+    def test_activation_gate_is_removed_only_during_generation_switch(self) -> None:
+        tasks = {task.get("name"): task for task in self.play["tasks"]}
+        conditions = tasks[
+            "Remove the compliance archive activation gate while changing its deployment"
+        ]["when"]
+
+        self.assertIn("compliance_archive_enabled | bool", conditions)
+        self.assertIn("not (host_jobs_generation_already_active | bool)", conditions)
+
     def test_generation_contains_cron_logrotate_and_checksums(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
         task_names = list(tasks)

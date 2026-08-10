@@ -48,6 +48,7 @@
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
   → 详见 [records/losangeles-standards-09-b3-fstab-uuid-20260706.md](records/losangeles-standards-09-b3-fstab-uuid-20260706.md)
 - **Ansible `stat` 校验相对符号链接时必须使用 `lnk_target`**——`lnk_source` 会把相对目标解析成绝对路径，用它和创建链接时的相对 `src` 比较会误判活动版本并阻断幂等部署；`lnk_target` 才保留链接中原始的相对目标。
+- **带激活门的 Ansible 部署不能在每次运行时无条件先删门再重建**——删除动作必须只在 generation 确实切换时执行；否则重复部署会短暂制造监控误报，check mode 也会永久报告伪变更，掩盖真实配置漂移。
 
 ## Git / CI
 

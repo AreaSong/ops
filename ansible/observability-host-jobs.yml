@@ -618,7 +618,9 @@
       ansible.builtin.file:
         path: /var/lib/node_exporter/textfile_collector/compliance-log-archive-configured.prom
         state: absent
-      when: compliance_archive_enabled | bool
+      when:
+        - compliance_archive_enabled | bool
+        - not (host_jobs_generation_already_active | bool)
 
     - name: Disable the compliance archive cron when the feature is disabled
       ansible.builtin.file:
