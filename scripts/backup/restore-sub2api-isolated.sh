@@ -22,7 +22,8 @@ IMAGE_REPOSITORY="${SUB2API_RESTORE_IMAGE_REPOSITORY:-weishaw/sub2api}"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 result() {
-  local summary="$1" data="${2:-\{\}}"
+  local summary="$1" data="${2:-}"
+  [[ -n "$data" ]] || data='{}'
   jq -cn --arg summary "$summary" --argjson data "$data" '{ok:true,summary:$summary,data:$data}'
 }
 
@@ -101,7 +102,9 @@ case "$phase" in
         current:$current,targetIdentity:$targetIdentity,postgresImage:$postgresImage,redisImage:$redisImage,
         productionDatabase:$productionDatabase}' >"$state_file"
     chmod 0600 "$state_file"
-    result "生产身份、目标镜像与迁移基线已锁定" "$(jq -c '{target,baselineMigrations,targetIdentity:{version,image,imageId,gitCommit}}' "$state_file")"
+    result "生产身份、目标镜像与迁移基线已锁定" "$(jq -c \
+      '{target,baselineMigrations,targetIdentity:(.targetIdentity | {version,image,imageId,gitCommit})}' \
+      "$state_file")"
     ;;
   backup)
     [[ -f "$state_file" && ! -L "$state_file" ]] || fail "drill state is missing"
