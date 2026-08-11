@@ -63,7 +63,7 @@
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
 }
-.metric-strip.operation-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.metric-strip.operation-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .metric-strip > div { min-height: 72px; display: flex; align-items: center; gap: 11px; padding: 14px 18px; border-right: 1px solid var(--line); }
 .metric-strip > div:last-child { border-right: 0; }
 .metric-strip svg { color: var(--muted); }
@@ -84,3 +84,19 @@
 .service-selector strong { font-size: 13px; }
 .service-selector small { margin-top: 3px; color: var(--muted); font-size: 11px; }
 .service-detail { min-width: 0; }
+
+.automatic-task-list { display: grid; border-top: 1px solid var(--line); }
+.automatic-task-row {
+  min-height: 88px; display: grid; grid-template-columns: minmax(220px, 1.25fr) minmax(330px, 1fr) auto 112px;
+  align-items: center; gap: 18px; padding: 14px 12px; border-bottom: 1px solid var(--line);
+}
+.automatic-task-main { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.automatic-task-main > span:last-child { min-width: 0; }
+.automatic-task-main strong, .automatic-task-main small { display: block; }
+.automatic-task-main strong { font-size: 13px; }
+.automatic-task-main small { margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.automatic-task-icon { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 5px; color: #258d88; background: var(--surface); }
+.automatic-task-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.automatic-task-facts dt { color: var(--muted); font-size: 10px; }
+.automatic-task-facts dd { margin: 4px 0 0; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.automatic-task-action { width: 112px; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }

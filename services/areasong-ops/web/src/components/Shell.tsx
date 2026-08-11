@@ -6,13 +6,14 @@ import {
   History,
   LayoutDashboard,
   ServerCog,
+  TimerReset,
   Wifi,
   WifiOff,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { NavigationLinks } from '../types'
 
-export type ViewName = 'overview' | 'services' | 'tasks' | 'audit'
+export type ViewName = 'overview' | 'services' | 'automatic-tasks' | 'tasks' | 'audit'
 
 interface ShellProps {
   view: ViewName
@@ -25,6 +26,7 @@ interface ShellProps {
 const navigation = [
   { id: 'overview' as const, label: '操作总览', icon: LayoutDashboard },
   { id: 'services' as const, label: '服务操作', icon: ServerCog },
+  { id: 'automatic-tasks' as const, label: '自动任务', icon: TimerReset },
   { id: 'tasks' as const, label: '执行记录', icon: ClipboardList },
   { id: 'audit' as const, label: '变更审计', icon: History },
 ]

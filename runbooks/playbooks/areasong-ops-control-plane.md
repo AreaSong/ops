@@ -11,14 +11,15 @@ Runner、Web、适配器、Nginx、Cloudflare Access、监控、日志、备份�
 ```text
 Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> root Runner
                                                                           |
-                                                               固定服务适配器
+                                                               固定受信适配器
 ```
 
 - Cloudflare Access 只负责人员入口，目标策略仅允许 `song80184@gmail.com` Email OTP。
 - Web 验证 Access JWT、同源 Origin 和 CSRF，只负责预览、确认与任务展示。
 - Web 不挂载 Docker Socket、SQLite、备份目录、业务卷，不提供 Shell 或文件管理。
-- Runner 独占 SQLite 和 root 权限，只执行 `services.json` 中声明的服务、动作和适配器。
+- Runner 独占 SQLite 和 root 权限，只执行 `services.json` 中声明的受管对象、动作和受信适配器。
 - 适配器不能从请求接收命令、脚本、Compose 路径、环境文件路径、镜像引用或批量目标。
+- cron/systemd 是自动任务的唯一调度权威；控制面只读汇总状态，并只允许补跑代码内固定白名单中的低风险采集器。
 - Prometheus 是唯一告警规则源；Alertmanager 是告警和静默的唯一权威；Grafana 负责诊断，不执行生产变更。
 - Runner 只通过 loopback Alertmanager v2 API 查询 Git 映射的活动阻断告警，并创建声明限定的短期维护静默；不提供通用告警规则或静默编辑器。
 
@@ -29,7 +30,7 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 | 受控源码 | `/opt/ops/services/areasong-ops` |
 | 运行 Compose | `/opt/services/areasong-ops/compose.yml` |
 | 非敏感构建参数 | `/opt/services/areasong-ops/.env` |
-| 服务能力声明 | `/etc/areasong-ops/services.json`，`root:root 0600` |
+| 受管对象与能力声明 | `/etc/areasong-ops/services.json`，`root:root 0600` |
 | Access 配置 | `/etc/areasong-ops/web.env`，`root:root 0600` |
 | Runner | `/usr/local/libexec/areasong-ops/areasong-ops-runner` |
 | Unix Socket | 宿主 `/var/lib/areasong-ops/run/runner.sock`，Web 容器内 `/run/areasong-ops/runner.sock`，`root:areasong-ops 0660` |
@@ -50,6 +51,17 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 
 同一幂等键只能重放完全相同的请求。出现 `recovery_uncertain`、身份漂移、阶段输出不完整
 或进程中断时，停止自动重试，先核对容器、Compose、数据库 migration、备份和任务证据。
+
+## 受管对象与自动任务
+
+- schema 4 将服务和自动任务统一为受管对象，并用稳定 `objectId`、类型、环境、责任域、重要级别、生命周期和成熟度描述治理状态。
+- 顶层受信适配器注册表由 root 管理；对象只能引用注册项。schema 3 仅用于兼容既有服务声明，不能承载新增自动任务。
+- 新对象默认处于 `proposed`/`inspect_only`，只开放只读动作；退役中、已退役或禁用对象不能开放动作。
+- 自动任务页面展示既有 cron 调度、新鲜度、最近成功时间和运行状态，不创建、删除、暂停或修改调度。
+- 当前补跑白名单只有“运行资产快照”和“Docker 运行指标”。补跑沿用计划、确认、锁、任务事件和审计闭环，并使用原调度相同的 flock。
+- 控制面拒绝从网页或 API 输入 unit、脚本路径、命令、参数、target 或 source。备份、清理、发布、GitHub 同步、归档、凭据、网络、权限和数据库任务均不开放补跑。
+
+自动任务异常时先查看新鲜度和最近成功证据，再检查对应 cron 文件、固定采集器和 textfile 指标。不要通过网页补跑替代修复失效的调度。首次或新增补跑能力必须按 [自动任务接入模板](../../services/areasong-ops/deploy/automatic-task-template.md) 完成风险审查，并单独批准生产验收。
 
 ## 首轮只读诊断
 

@@ -21,7 +21,7 @@ func (engine *Engine) Services(ctx context.Context) []model.ServiceView {
 			defer wait.Done()
 			view := model.ServiceView{
 				Name: service.Name, ObjectID: service.ObjectID, DisplayName: service.DisplayName,
-				Description: service.Description, Actions: service.Actions,
+				Metadata: service.Metadata, Description: service.Description, Actions: service.Actions,
 			}
 			status, err := engine.inspect(ctx, service)
 			if err != nil {
@@ -48,4 +48,48 @@ func (engine *Engine) Services(ctx context.Context) []model.ServiceView {
 	}
 	wait.Wait()
 	return views
+}
+
+func (engine *Engine) Objects(ctx context.Context) []model.ManagedObjectView {
+	names := engine.catalog.ObjectNames()
+	views := make([]model.ManagedObjectView, 0, len(names))
+	for _, name := range names {
+		object, _ := engine.catalog.Object(name)
+		view := engine.objectView(ctx, object)
+		views = append(views, view)
+	}
+	return views
+}
+
+func (engine *Engine) AutomaticTasks(ctx context.Context) []model.AutomaticTaskView {
+	names := engine.catalog.AutomaticTaskNames()
+	views := make([]model.AutomaticTaskView, 0, len(names))
+	for _, name := range names {
+		object := engine.catalog.AutomaticTasks[name]
+		base := engine.objectView(ctx, object)
+		views = append(views, model.AutomaticTaskView{
+			ManagedObjectView: base,
+			Schedule:          object.AutomaticTask.Schedule,
+			ScheduleSource:    object.AutomaticTask.ScheduleSource,
+			FreshnessSeconds:  object.AutomaticTask.FreshnessSeconds,
+		})
+	}
+	return views
+}
+
+func (engine *Engine) objectView(ctx context.Context, object model.ServiceDefinition) model.ManagedObjectView {
+	view := model.ManagedObjectView{
+		Name: object.Name, ObjectID: object.ObjectID, Metadata: object.Metadata,
+		DisplayName: object.DisplayName, Description: object.Description, Actions: object.Actions,
+	}
+	status, err := engine.inspect(ctx, object)
+	if err != nil {
+		view.StatusError = redactText(err.Error())
+	} else {
+		view.Status = status
+	}
+	if active, found, err := engine.store.ActiveTask(ctx, object.Name); err == nil && found {
+		view.ActiveTaskID = active.ID
+	}
+	return view
 }

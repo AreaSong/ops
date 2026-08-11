@@ -1,10 +1,11 @@
 import { AlertTriangle, BellRing, CheckCheck, Clock3, Eye, ShieldCheck } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { formatTime } from '../labels'
-import type { ActiveAlert, ReleasePlan, ServiceView, Task } from '../types'
+import type { ActiveAlert, AutomaticTaskView, ReleasePlan, ServiceView, Task } from '../types'
 
 interface OverviewProps {
   services: ServiceView[]
+  automaticTasks: AutomaticTaskView[]
   tasks: Task[]
   plans: ReleasePlan[]
   alerts: ActiveAlert[]
@@ -13,6 +14,7 @@ interface OverviewProps {
   onService: (name: string) => void
   onTask: (task: Task) => void
   onPlan: (plan: ReleasePlan) => void
+  onAutomaticTasks: () => void
 }
 
 const activeTaskStates = new Set<Task['state']>(['queued', 'running', 'rolling_back'])
@@ -25,7 +27,8 @@ function serviceGate(service: ServiceView): 'healthy' | 'error' | 'warning' {
 }
 
 export function Overview({
-  services, tasks, plans, alerts, alertsError, alertsURL, onService, onTask, onPlan,
+  services, automaticTasks, tasks, plans, alerts, alertsError, alertsURL,
+  onService, onTask, onPlan, onAutomaticTasks,
 }: OverviewProps) {
   const pendingPlans = plans.filter((plan) => plan.state === 'pending_approval')
   const approvedPlans = plans.filter((plan) => plan.state === 'approved')
@@ -35,7 +38,10 @@ export function Overview({
   const attentionTasks = tasks.filter((task) => attentionTaskStates.has(task.state))
   const orphanedAttentionPlans = attentionPlans.filter((plan) => !attentionTasks.some((task) => task.id === plan.taskId))
   const actionablePlans = [...pendingPlans, ...approvedPlans]
-  const handlingCount = alerts.length + actionablePlans.length + observingPlans.length + attentionTasks.length + orphanedAttentionPlans.length
+  const failedAutomaticTasks = automaticTasks.filter((task) =>
+    Boolean(task.statusError) || !task.status || task.status.health !== 'healthy')
+  const handlingCount = alerts.length + actionablePlans.length + observingPlans.length + attentionTasks.length +
+    orphanedAttentionPlans.length + failedAutomaticTasks.length
 
   return (
     <div className="page">
@@ -50,6 +56,9 @@ export function Overview({
         <div><Eye size={18} aria-hidden="true" /><span><b>{observingPlans.length}</b>观察中</span></div>
         <div className={attentionTasks.length + orphanedAttentionPlans.length > 0 ? 'metric-alert' : ''}>
           <AlertTriangle size={18} aria-hidden="true" /><span><b>{attentionTasks.length + orphanedAttentionPlans.length}</b>恢复待处理</span>
+        </div>
+        <div className={failedAutomaticTasks.length > 0 ? 'metric-alert' : ''}>
+          <Clock3 size={18} aria-hidden="true" /><span><b>{failedAutomaticTasks.length}</b>自动任务异常</span>
         </div>
       </section>
 
@@ -78,6 +87,14 @@ export function Overview({
                 <div key={alert.fingerprint} className="task-row alert-row static">{content}</div>
               )
             })}
+            {failedAutomaticTasks.map((task) => (
+              <button key={task.objectId} type="button" className="task-row" onClick={onAutomaticTasks}>
+                <span><strong>{task.displayName}</strong><small>{task.schedule}</small></span>
+                <span className="task-summary">{task.statusError || '任务结果已超过新鲜度窗口'}</span>
+                <time>{formatTime(task.status?.lastSuccessAt as string | undefined)}</time>
+                <StatusBadge kind="health" value="error" label="任务异常" />
+              </button>
+            ))}
             {actionablePlans.map((plan) => (
               <button key={plan.id} type="button" className="task-row" onClick={() => onPlan(plan)}>
                 <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>

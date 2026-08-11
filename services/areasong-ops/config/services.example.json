@@ -1,13 +1,35 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
+  "adapters": {
+    "areaforge-v1": {
+      "path": "/usr/local/libexec/areasong-ops/adapters/areaforge.sh",
+      "allowedTypes": ["service"]
+    },
+    "compose-service-v1": {
+      "path": "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
+      "allowedTypes": ["service"]
+    },
+    "automatic-task-v1": {
+      "path": "/usr/local/libexec/areasong-ops/adapters/automatic-task.sh",
+      "allowedTypes": ["automatic_task"]
+    }
+  },
   "services": {
     "areaforge": {
       "name": "areaforge",
       "objectId": "service:areaforge",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "important",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
       "displayName": "AreaForge",
       "description": "AreaForge Web 与 PostgreSQL",
       "template": "custom",
-      "adapter": "/usr/local/libexec/areasong-ops/adapters/areaforge.sh",
+      "adapterRef": "areaforge-v1",
       "alertPolicy": {
         "matchers": {"service": "areaforge"},
         "blockingAlerts": [
@@ -132,10 +154,18 @@
     "sub2api": {
       "name": "sub2api",
       "objectId": "service:sub2api",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "critical",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
       "displayName": "Sub2API",
       "description": "Sub2API、PostgreSQL 与 Redis",
       "template": "compose-service-v1",
-      "adapter": "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
+      "adapterRef": "compose-service-v1",
       "alertPolicy": {
         "matchers": {"service": "sub2api"},
         "blockingAlerts": [
@@ -289,6 +319,114 @@
           "impact": "从最新完整备份集恢复 PostgreSQL、Redis 与应用卷并执行隔离健康检查。",
           "rollback": "失败时删除隔离资源；不执行生产数据库恢复。",
           "scope": "Sub2API 隔离恢复环境"
+        }
+      }
+    }
+  },
+  "automaticTasks": {
+    "runtime-snapshot": {
+      "name": "runtime-snapshot",
+      "objectId": "automatic-task:runtime-snapshot",
+      "metadata": {
+        "type": "automatic_task",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "important",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "运行资产快照",
+      "description": "汇总受管资产、容器、端口和配置漂移状态。",
+      "template": "automatic-task-v1",
+      "adapterRef": "automatic-task-v1",
+      "automaticTask": {
+        "schedule": "每分钟",
+        "scheduleSource": "cron",
+        "freshnessSeconds": 180
+      },
+      "actions": {
+        "inspect": {
+          "name": "inspect",
+          "displayName": "检查状态",
+          "enabled": true,
+          "risk": "read_only",
+          "targetMode": "none",
+          "steps": ["inspect"],
+          "timeoutSeconds": 30,
+          "impact": "仅读取固定 cron、受信脚本和新鲜度指标。",
+          "rollback": "没有变更，无需回滚。",
+          "scope": "运行资产快照任务"
+        },
+        "rerun": {
+          "name": "rerun",
+          "displayName": "立即补跑",
+          "enabled": true,
+          "risk": "low",
+          "targetMode": "none",
+          "steps": ["preflight", "run", "verify"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "run": {"effect": "artifact_write", "failurePolicy": "fail"},
+            "verify": {"effect": "observe", "failurePolicy": "fail"}
+          },
+          "timeoutSeconds": 120,
+          "confirmationTemplate": "补跑 {service}",
+          "impact": "执行固定运行资产采集器并原子刷新指标，不修改调度、服务版本或业务数据。",
+          "rollback": "采集失败保留原指标文件并进入可重试失败状态。",
+          "scope": "仅运行资产快照采集器"
+        }
+      }
+    },
+    "docker-metrics": {
+      "name": "docker-metrics",
+      "objectId": "automatic-task:docker-metrics",
+      "metadata": {
+        "type": "automatic_task",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "important",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "Docker 运行指标",
+      "description": "采集受管容器身份、健康、资源边界和使用率。",
+      "template": "automatic-task-v1",
+      "adapterRef": "automatic-task-v1",
+      "automaticTask": {
+        "schedule": "每分钟",
+        "scheduleSource": "cron",
+        "freshnessSeconds": 180
+      },
+      "actions": {
+        "inspect": {
+          "name": "inspect",
+          "displayName": "检查状态",
+          "enabled": true,
+          "risk": "read_only",
+          "targetMode": "none",
+          "steps": ["inspect"],
+          "timeoutSeconds": 30,
+          "impact": "仅读取固定 cron、受信脚本和新鲜度指标。",
+          "rollback": "没有变更，无需回滚。",
+          "scope": "Docker 运行指标任务"
+        },
+        "rerun": {
+          "name": "rerun",
+          "displayName": "立即补跑",
+          "enabled": true,
+          "risk": "low",
+          "targetMode": "none",
+          "steps": ["preflight", "run", "verify"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "run": {"effect": "artifact_write", "failurePolicy": "fail"},
+            "verify": {"effect": "observe", "failurePolicy": "fail"}
+          },
+          "timeoutSeconds": 120,
+          "confirmationTemplate": "补跑 {service}",
+          "impact": "执行固定 Docker 指标采集器并原子刷新指标，不重启或修改容器。",
+          "rollback": "采集失败保留原指标文件并进入可重试失败状态。",
+          "scope": "仅 Docker 运行指标采集器"
         }
       }
     }

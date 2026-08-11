@@ -67,6 +67,24 @@ func (server *Server) metrics(response http.ResponseWriter, request *http.Reques
 			fmt.Fprintf(&output, "areasong_ops_service_action_enabled{service=%q,action=%q} %d\n", name, actionName, enabled)
 		}
 	}
+	output.WriteString("# HELP areasong_ops_object_action_enabled 受管对象能力是否开放。\n")
+	output.WriteString("# TYPE areasong_ops_object_action_enabled gauge\n")
+	for _, name := range server.engine.catalog.ObjectNames() {
+		object, _ := server.engine.catalog.Object(name)
+		actionNames := make([]string, 0, len(object.Actions))
+		for action := range object.Actions {
+			actionNames = append(actionNames, action)
+		}
+		sort.Strings(actionNames)
+		for _, actionName := range actionNames {
+			enabled := 0
+			if object.Actions[actionName].Enabled {
+				enabled = 1
+			}
+			fmt.Fprintf(&output, "areasong_ops_object_action_enabled{object_id=%q,object_type=%q,action=%q} %d\n",
+				object.ObjectID, object.Metadata.Type, actionName, enabled)
+		}
+	}
 	response.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
 	_, _ = response.Write([]byte(output.String()))

@@ -8,6 +8,8 @@ import type {
   ActiveAlert,
   ActionDefinition,
   AuditEntry,
+  AutomaticTaskView,
+  ManagedObjectView,
   NavigationLinks,
   OpsEvent,
   ReleaseDiscovery,
@@ -16,6 +18,7 @@ import type {
   Task,
 } from './types'
 import { Audit } from './views/Audit'
+import { AutomaticTasks } from './views/AutomaticTasks'
 import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Tasks } from './views/Tasks'
@@ -36,6 +39,7 @@ export default function App() {
   const [links, setLinks] = useState<NavigationLinks>({})
   const [view, setView] = useState<ViewName>('overview')
   const [services, setServices] = useState<ServiceView[]>([])
+  const [automaticTasks, setAutomaticTasks] = useState<AutomaticTaskView[]>([])
   const [alerts, setAlerts] = useState<ActiveAlert[]>([])
   const [alertsError, setAlertsError] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
@@ -72,8 +76,8 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const [serviceData, taskData, auditData, planData, alertData] = await Promise.all([
-      api.services(), api.tasks(), api.audit(), api.plans(),
+    const [serviceData, automaticTaskData, taskData, auditData, planData, alertData] = await Promise.all([
+      api.services(), api.automaticTasks(), api.tasks(), api.audit(), api.plans(),
       api.alerts()
         .then((items) => ({ items, error: '' }))
         .catch((reason) => ({
@@ -86,6 +90,7 @@ export default function App() {
     const nextTasks = mergeTasks(taskData.items, previousTasks)
     const nextAudit = mergeAudit(auditData.items, previousAudit)
     setServices(serviceData)
+    setAutomaticTasks(automaticTaskData)
     setAlerts(alertData.items)
     setAlertsError(alertData.error)
     setPlans(planData.items)
@@ -149,6 +154,8 @@ export default function App() {
       if (event.phase === 'terminal') {
         setServices((current) => current.map((service) =>
           service.activeTaskId === event.taskId ? { ...service, activeTaskId: undefined } : service))
+        setAutomaticTasks((current) => current.map((task) =>
+          task.activeTaskId === event.taskId ? { ...task, activeTaskId: undefined } : task))
         void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : '刷新失败'))
       }
     }, setConnected)
@@ -162,7 +169,7 @@ export default function App() {
     return () => window.clearInterval(timer)
   }, [email, refresh])
 
-  async function beginAction(service: ServiceView, action: ActionDefinition, target = '') {
+  async function beginAction(service: ManagedObjectView, action: ActionDefinition, target = '') {
     const key = `${service.name}/${action.name}`
     setBusyAction(key)
     setError('')
@@ -267,6 +274,8 @@ export default function App() {
     updateTasks([task, ...tasksRef.current.filter((item) => item.id !== task.id)])
     setServices((current) => current.map((service) =>
       service.name === task.service ? { ...service, activeTaskId: task.id } : service))
+    setAutomaticTasks((current) => current.map((item) =>
+      item.name === task.service ? { ...item, activeTaskId: task.id } : item))
   }
 
   async function loadMoreTasks() {
@@ -334,9 +343,15 @@ export default function App() {
         </div>
       )}
       {view === 'overview' && (
-        <Overview services={services} tasks={tasks} plans={plans} alerts={alerts}
+        <Overview services={services} automaticTasks={automaticTasks} tasks={tasks} plans={plans} alerts={alerts}
           alertsError={alertsError} alertsURL={links.alerts}
-          onService={openService} onTask={openTask} onPlan={setSelectedPlan} />
+          onService={openService} onTask={openTask} onPlan={setSelectedPlan}
+          onAutomaticTasks={() => setView('automatic-tasks')} />
+      )}
+      {view === 'automatic-tasks' && (
+        <AutomaticTasks tasks={automaticTasks} busyAction={busyAction}
+          onRefresh={() => void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : '刷新失败'))}
+          onAction={beginAction} />
       )}
       {view === 'services' && (
         <Services

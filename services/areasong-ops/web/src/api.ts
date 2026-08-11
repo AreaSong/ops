@@ -1,4 +1,7 @@
-import type { ActiveAlert, AuditEntry, OpsEvent, Page, Preview, ReleasePlan, ServiceView, SessionResponse, Task } from './types'
+import type {
+  ActiveAlert, AuditEntry, AutomaticTaskView, ManagedObjectView, OpsEvent, Page, Preview,
+  ReleasePlan, ServiceView, SessionResponse, Task,
+} from './types'
 
 class APIError extends Error {
   status: number
@@ -32,6 +35,16 @@ export class OpsAPI {
   async services(): Promise<ServiceView[]> {
     const response = await fetch('/api/services')
     return (await parseResponse<{ services: ServiceView[] }>(response)).services ?? []
+  }
+
+  async objects(): Promise<ManagedObjectView[]> {
+    const response = await fetch('/api/objects')
+    return (await parseResponse<{ objects: ManagedObjectView[] }>(response)).objects ?? []
+  }
+
+  async automaticTasks(): Promise<AutomaticTaskView[]> {
+    const response = await fetch('/api/automatic-tasks')
+    return (await parseResponse<{ automaticTasks: AutomaticTaskView[] }>(response)).automaticTasks ?? []
   }
 
   async alerts(): Promise<ActiveAlert[]> {

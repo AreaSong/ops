@@ -21,10 +21,18 @@
 {
   "name": "demo",
   "objectId": "service:demo",
+  "metadata": {
+    "type": "service",
+    "environment": "production",
+    "owner": "operations",
+    "criticality": "important",
+    "lifecycle": "proposed",
+    "maturity": "inspect_only"
+  },
   "displayName": "Demo",
   "description": "Demo Web 与 PostgreSQL",
   "template": "compose-service-v1",
-  "adapter": "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
+  "adapterRef": "compose-service-v1",
   "alertPolicy": {
     "matchers": {"service": "demo"},
     "blockingAlerts": ["AppHttpProbeFailed", "AppBlackboxTargetDown"],
@@ -49,7 +57,11 @@
 }
 ```
 
-完整服务目录使用 `schemaVersion: 3`。`objectId` 是稳定治理身份；`alertPolicy.matchers.service`
+完整受管对象目录使用 `schemaVersion: 4`，并在顶层 `adapters` 注册由 root 管理的适配器路径及允许对象类型。对象只能用 `adapterRef` 引用注册项，不能直接声明任意可执行路径。Runner 兼容读取既有 schema 3 服务目录，但所有新增或迁移声明必须采用 schema 4。
+
+`objectId` 是稳定治理身份；`metadata` 记录对象类型、环境、责任域、重要级别、生命周期和成熟度。新对象默认使用 `lifecycle: proposed` 与 `maturity: inspect_only`，只开放 `inspect`、`check` 等只读动作；完成接入验证后才能显式提升生命周期和成熟度。`retiring`、`retired`、`disabled` 对象不能开放动作。
+
+`alertPolicy.matchers.service`
 必须精确等于服务名。`blockingAlerts` 只保存 Git 管理的处置映射，不复制 Prometheus 规则；
 `maintenanceAlerts` 必须是其子集。维护静默不得覆盖 Blackbox 抓取链路、备份、审计、通知链路、
 控制面或恢复失败告警。matcher、告警名和最长 4 小时时长均由声明与观察窗口生成，网页不允许输入。
@@ -93,6 +105,6 @@ Runner 会拒绝动作/阶段身份不匹配、尾随第二个 JSON 或其他多
 1. 固定受控 Compose、运行 Compose、env、容器名、health 和发布仓库。
 2. 实现只读 inspect hook；有数据服务时实现分类备份和隔离恢复 hook。
 3. 在隔离网络中验证 fresh backup、目标迁移、目标 health、认证 smoke 和旧镜像兼容；不得发布宿主端口。
-4. 将 schema 3 声明加入 `services.json`，复核稳定 `objectId`、精确告警 matcher 和最小静默白名单，再执行测试、构建和 `preflight.sh installed`。
+4. 在 schema 4 顶层受信注册表中复用或新增适配器，再将受管对象声明加入 `services.json`；复核稳定 `objectId`、metadata、精确告警 matcher 和最小静默白名单，然后执行测试、构建和 `preflight.sh installed`。
 5. 部署后先运行 inspect/check/prepare，核对 prepared 记录和证据摘要。
 6. 只有 prepared 门禁通过后才开放目标更新；生产升级仍需单独确认。

@@ -77,6 +77,14 @@ func (executor *demoExecutor) Execute(ctx context.Context, input runner.ExecuteI
 	defer executor.mu.Unlock()
 	version := executor.versions[input.Service.Name]
 	if input.Action == "inspect" {
+		if input.Service.Metadata.Type == "automatic_task" {
+			now := time.Now().UTC()
+			return model.AdapterResult{OK: true, Summary: "开发自动任务状态检查完成", Data: map[string]any{
+				"objectId": input.Service.ObjectID, "taskName": input.Service.Name,
+				"scheduleSource": "cron", "enabled": true, "health": "healthy",
+				"lastSuccessAt": now.Add(-15 * time.Second).Format(time.RFC3339), "ageSeconds": 15,
+			}}, nil
+		}
 		return model.AdapterResult{OK: true, Summary: "开发状态检查完成", Data: map[string]any{
 			"currentVersion":      version,
 			"currentImage":        input.Service.Name + ":v" + version + "@sha256:demo",

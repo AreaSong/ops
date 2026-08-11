@@ -140,9 +140,84 @@ func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
 				},
 			},
 		},
+	}, AutomaticTasks: map[string]model.ServiceDefinition{
+		"collector": {
+			Name: "collector", ObjectID: "automatic-task:collector", DisplayName: "Collector",
+			Description: "test collector", Template: "automatic-task-v1", Adapter: "/tmp/collector",
+			Metadata: model.ObjectMetadata{Type: "automatic_task", Environment: "production", Owner: "operations",
+				Criticality: "important", Lifecycle: "active", Maturity: "manual_approval"},
+			AutomaticTask: &model.AutomaticTaskRuntime{Schedule: "每分钟", ScheduleSource: "cron", FreshnessSeconds: 180},
+			Actions: map[string]model.ActionDefinition{
+				"inspect": {Name: "inspect", DisplayName: "检查", Enabled: true, Risk: model.RiskReadOnly,
+					TargetMode: "none", Steps: []string{"inspect"}, TimeoutSeconds: 30,
+					Impact: "none", Rollback: "none", Scope: "collector"},
+				"rerun": {Name: "rerun", DisplayName: "补跑", Enabled: true, Risk: model.RiskLow,
+					TargetMode: "none", Steps: []string{"preflight", "run", "verify"}, TimeoutSeconds: 60,
+					ConfirmationTemplate: "补跑 {service}", Impact: "refresh metrics", Rollback: "keep old", Scope: "collector"},
+			},
+		},
 	}}
 	return NewEngine(catalog, database, executor, stateRoot,
 		WithAlertmanager(&fakeAlertmanager{})), database
+}
+
+func TestAutomaticTaskUsesManagedObjectPlanAndExecution(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	views := engine.AutomaticTasks(ctx)
+	if len(views) != 1 || views[0].ObjectID != "automatic-task:collector" || views[0].Schedule != "每分钟" {
+		t.Fatalf("views=%+v", views)
+	}
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{Service: "collector", Action: "rerun"})
+	if err != nil || plan.ConfirmationPhrase != "补跑 collector" {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+	finished, err := database.GetTask(ctx, task.ID)
+	if err != nil || finished.State != model.TaskSucceeded || finished.ProductionChanged || len(finished.Stages) != 3 {
+		t.Fatalf("task=%+v err=%v", finished, err)
+	}
+}
+
+func TestManagedObjectEndpointsRequireActor(t *testing.T) {
+	engine, database := testEngine(t, &fakeExecutor{})
+	handler := NewServer(engine, database)
+	for _, test := range []struct {
+		path     string
+		expected []string
+	}{
+		{path: "/v1/automatic-tasks", expected: []string{"automatic-task:collector"}},
+		{path: "/v1/objects", expected: []string{"service:demo", "automatic-task:collector"}},
+	} {
+		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("path=%s status=%d", test.path, response.Code)
+		}
+		request = httptest.NewRequest(http.MethodGet, test.path, nil)
+		request.Header.Set(actorHeader, actorHash())
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("path=%s status=%d body=%s", test.path, response.Code, response.Body.String())
+		}
+		for _, expected := range test.expected {
+			if !strings.Contains(response.Body.String(), expected) {
+				t.Fatalf("path=%s missing=%s body=%s", test.path, expected, response.Body.String())
+			}
+		}
+	}
 }
 
 func TestHighRiskTaskRequiresExactPhraseAndCompletes(t *testing.T) {

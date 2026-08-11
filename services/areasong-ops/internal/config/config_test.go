@@ -82,6 +82,88 @@ func TestProductionExampleCatalogIsValid(t *testing.T) {
 	if len(catalog.Services) != 2 {
 		t.Fatalf("services=%d", len(catalog.Services))
 	}
+	if len(catalog.AutomaticTasks) != 2 || len(catalog.Adapters) != 3 {
+		t.Fatalf("automaticTasks=%d adapters=%d", len(catalog.AutomaticTasks), len(catalog.Adapters))
+	}
+}
+
+func TestCatalogRejectsUntrustedAutomaticTaskAdapter(t *testing.T) {
+	catalog := &Catalog{
+		SchemaVersion: 4,
+		Adapters: map[string]model.AdapterDefinition{
+			"service-v1": {Path: "/usr/local/libexec/service", AllowedTypes: []string{"service"}},
+		},
+		Services: validComposeCatalog().Services,
+		AutomaticTasks: map[string]model.ServiceDefinition{
+			"collector": {
+				Name: "collector", ObjectID: "automatic-task:collector", DisplayName: "Collector",
+				Template: "automatic-task-v1", AdapterRef: "service-v1",
+				Metadata: model.ObjectMetadata{Type: "automatic_task", Environment: "production", Owner: "operations",
+					Criticality: "important", Lifecycle: "active", Maturity: "manual_approval"},
+				AutomaticTask: &model.AutomaticTaskRuntime{Schedule: "每分钟", ScheduleSource: "cron", FreshnessSeconds: 180},
+				Actions: map[string]model.ActionDefinition{"inspect": {
+					Name: "inspect", DisplayName: "检查", Enabled: true, Risk: model.RiskReadOnly,
+					TargetMode: "none", Steps: []string{"inspect"}, TimeoutSeconds: 30,
+					Impact: "无变更", Rollback: "无需回滚", Scope: "单任务",
+				}},
+			},
+		},
+	}
+	service := catalog.Services["demo"]
+	service.Adapter = ""
+	service.AdapterRef = "service-v1"
+	service.Metadata = model.ObjectMetadata{Type: "service", Environment: "production", Owner: "operations",
+		Criticality: "important", Lifecycle: "active", Maturity: "manual_approval"}
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("expected adapter type mismatch")
+	}
+}
+
+func TestSchemaFourRejectsDirectAdapterPath(t *testing.T) {
+	catalog := validComposeCatalog()
+	catalog.SchemaVersion = 4
+	catalog.Adapters = map[string]model.AdapterDefinition{
+		"service-v1": {Path: "/usr/local/libexec/service", AllowedTypes: []string{"service"}},
+	}
+	service := catalog.Services["demo"]
+	service.Metadata = model.ObjectMetadata{Type: "service", Environment: "production", Owner: "operations",
+		Criticality: "important", Lifecycle: "active", Maturity: "manual_approval"}
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("expected schema 4 direct adapter path to be rejected")
+	}
+}
+
+func TestProposedObjectCanOnlyExposeReadOnlyActions(t *testing.T) {
+	catalog := validComposeCatalog()
+	service := catalog.Services["demo"]
+	service.Metadata = model.ObjectMetadata{Type: "service", Environment: "production", Owner: "operations",
+		Criticality: "important", Lifecycle: "proposed", Maturity: "inspect_only"}
+	service.Actions["restart"] = model.ActionDefinition{
+		Name: "restart", DisplayName: "重启", Enabled: true, Risk: model.RiskMedium,
+		TargetMode: "none", Steps: []string{"restart"}, TimeoutSeconds: 60, ObservationSeconds: 300,
+		ConfirmationTemplate: "重启 {service}", Impact: "短暂中断", Rollback: "重新启动", Scope: "单服务",
+	}
+	service.AlertPolicy = model.AlertPolicyDefinition{
+		Matchers: map[string]string{"service": "demo"}, BlockingAlerts: []string{"AppHttpProbeFailed"},
+		MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+	}
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("expected proposed inspect-only object mutation to be rejected")
+	}
+}
+
+func TestRetiredObjectCannotExposeActions(t *testing.T) {
+	catalog := validComposeCatalog()
+	service := catalog.Services["demo"]
+	service.Metadata = model.ObjectMetadata{Type: "service", Environment: "production", Owner: "operations",
+		Criticality: "important", Lifecycle: "retired", Maturity: "manual_approval"}
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("expected retired object actions to be rejected")
+	}
 }
 
 func TestCatalogAcceptsReadOnlyAction(t *testing.T) {

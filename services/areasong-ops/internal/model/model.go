@@ -274,21 +274,45 @@ type ComposeServiceRuntime struct {
 	UpdateExecutable       string   `json:"updateExecutable,omitempty"`
 }
 
+type ObjectMetadata struct {
+	Type        string `json:"type"`
+	Environment string `json:"environment"`
+	Owner       string `json:"owner"`
+	Criticality string `json:"criticality"`
+	Lifecycle   string `json:"lifecycle"`
+	Maturity    string `json:"maturity"`
+}
+
+type AdapterDefinition struct {
+	Path         string   `json:"path"`
+	AllowedTypes []string `json:"allowedTypes"`
+}
+
+type AutomaticTaskRuntime struct {
+	Schedule         string `json:"schedule"`
+	ScheduleSource   string `json:"scheduleSource"`
+	FreshnessSeconds int    `json:"freshnessSeconds"`
+}
+
 type ServiceDefinition struct {
-	Name        string                      `json:"name"`
-	ObjectID    string                      `json:"objectId"`
-	DisplayName string                      `json:"displayName"`
-	Description string                      `json:"description"`
-	Template    string                      `json:"template"`
-	Adapter     string                      `json:"adapter"`
-	Runtime     *ComposeServiceRuntime      `json:"runtime,omitempty"`
-	AlertPolicy AlertPolicyDefinition       `json:"alertPolicy"`
-	Actions     map[string]ActionDefinition `json:"actions"`
+	Name          string                      `json:"name"`
+	ObjectID      string                      `json:"objectId"`
+	Metadata      ObjectMetadata              `json:"metadata"`
+	DisplayName   string                      `json:"displayName"`
+	Description   string                      `json:"description"`
+	Template      string                      `json:"template"`
+	Adapter       string                      `json:"adapter,omitempty"`
+	AdapterRef    string                      `json:"adapterRef,omitempty"`
+	Runtime       *ComposeServiceRuntime      `json:"runtime,omitempty"`
+	AutomaticTask *AutomaticTaskRuntime       `json:"automaticTask,omitempty"`
+	AlertPolicy   AlertPolicyDefinition       `json:"alertPolicy"`
+	Actions       map[string]ActionDefinition `json:"actions"`
 }
 
 type ServiceView struct {
 	Name                 string                      `json:"name"`
 	ObjectID             string                      `json:"objectId"`
+	Metadata             ObjectMetadata              `json:"metadata"`
 	DisplayName          string                      `json:"displayName"`
 	Description          string                      `json:"description"`
 	Actions              map[string]ActionDefinition `json:"actions"`
@@ -297,6 +321,25 @@ type ServiceView struct {
 	StatusError          string                      `json:"statusError,omitempty"`
 	ActiveTaskID         string                      `json:"activeTaskId,omitempty"`
 	RollbackSourceTaskID string                      `json:"rollbackSourceTaskId,omitempty"`
+}
+
+type ManagedObjectView struct {
+	Name         string                      `json:"name"`
+	ObjectID     string                      `json:"objectId"`
+	Metadata     ObjectMetadata              `json:"metadata"`
+	DisplayName  string                      `json:"displayName"`
+	Description  string                      `json:"description"`
+	Actions      map[string]ActionDefinition `json:"actions"`
+	Status       map[string]any              `json:"status,omitempty"`
+	StatusError  string                      `json:"statusError,omitempty"`
+	ActiveTaskID string                      `json:"activeTaskId,omitempty"`
+}
+
+type AutomaticTaskView struct {
+	ManagedObjectView
+	Schedule         string `json:"schedule"`
+	ScheduleSource   string `json:"scheduleSource"`
+	FreshnessSeconds int    `json:"freshnessSeconds"`
 }
 
 type Preview struct {

@@ -189,9 +189,9 @@ func (engine *Engine) inspect(ctx context.Context, service model.ServiceDefiniti
 func (engine *Engine) resolveAction(
 	serviceName, actionName, target string,
 ) (model.ServiceDefinition, model.ActionDefinition, error) {
-	service, ok := engine.catalog.Services[serviceName]
+	service, ok := engine.catalog.Object(serviceName)
 	if !ok {
-		return service, model.ActionDefinition{}, errors.New("服务未纳入控制面")
+		return service, model.ActionDefinition{}, errors.New("受管对象未纳入控制面")
 	}
 	action, ok := service.Actions[actionName]
 	if !ok || !action.Enabled {

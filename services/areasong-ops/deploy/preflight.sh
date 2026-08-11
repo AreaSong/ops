@@ -42,7 +42,8 @@ read_env_value() {
 for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
-jq -e '.schemaVersion == 3 and (.services | length > 0)' \
+jq -e '.schemaVersion == 4 and (.adapters | length > 0) and (.services | length > 0) and
+  (.automaticTasks | type == "object")' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
 
 revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"

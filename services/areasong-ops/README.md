@@ -27,12 +27,17 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 任务、审计和任务事件支持分页读取，前端不会把首批 100/200 条误当成完整保留记录。
 - 详细事件保留 30 天，任务和审计摘要保留 365 天，SQLite 快照及操作产物保留 30 天。
 - AreaForge 使用发布自带签名 manifest 与严格 V2 request guard；Sub2API 只接受已固定摘要并完成隔离迁移、恢复和旧镜像兼容演练的动态 prepared 目标。
+- `schemaVersion: 4` 将服务和自动任务统一为受管对象；对象通过 `adapterRef` 引用顶层受信适配器注册表，不能自行声明可执行路径。
+- 自动任务页只汇总既有 cron/systemd 任务的状态和新鲜度。调度配置仍以 cron/systemd 为权威，网页不能修改调度、unit、脚本、命令或参数。
+- 首批补跑白名单仅包含运行资产快照和 Docker 运行指标两个低风险采集器；备份、清理、发布、凭据、网络、权限和数据库任务不开放补跑。
 
 ## 通用服务模板
 
-`compose-service-v1` 把 Compose 应用的检查、备份、单服务重建、健康检查、发布发现和 prepared 门禁统一到一个适配器。新增服务通常只需要一份 `schemaVersion: 3` 服务声明；数据库恢复、迁移验证或认证 smoke 等服务特有逻辑通过少量 root-owned hook 接入。
+`compose-service-v1` 把 Compose 应用的检查、备份、单服务重建、健康检查、发布发现和 prepared 门禁统一到一个适配器。新增服务通常只需要一份 `schemaVersion: 4` 受管对象声明；数据库恢复、迁移验证或认证 smoke 等服务特有逻辑通过少量 root-owned hook 接入。Runner 仍兼容读取既有 schema 3 服务目录，schema 4 新声明必须使用受信适配器引用。
 
 模板字段、hook 契约、接入步骤和安全边界见 [deploy/service-template.md](deploy/service-template.md)。模板不会自动恢复生产数据库、修改公网流量或启用自动更新。
+
+自动任务的对象模型、固定补跑白名单和接入审查见 [deploy/automatic-task-template.md](deploy/automatic-task-template.md)。新任务默认只开放 `inspect`，经过风险审查后才能加入补跑白名单。
 
 ## 本地验证
 
@@ -64,7 +69,7 @@ docker build --target web -t areasong-ops-web:<commit> \
 
 生产 Compose 位于 `/opt/services/areasong-ops/compose.yml`，来源为 [deploy/compose.yml](deploy/compose.yml)。真实配置位于：
 
-- `/etc/areasong-ops/services.json`：root-only 服务能力声明。
+- `/etc/areasong-ops/services.json`：root-only 受管对象、受信适配器和能力声明。
 - `/etc/areasong-ops/web.env`：Access issuer、audience、允许邮箱、public origin 和 Grafana origin。
 - `/opt/services/areasong-ops/.env`：构建版本、commit 和 Runner 组 GID。
 

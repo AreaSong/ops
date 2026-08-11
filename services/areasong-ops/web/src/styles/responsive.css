@@ -10,13 +10,13 @@
   .metric-strip.operation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-strip > div:nth-child(2) { border-right: 0; }
   .metric-strip > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-  .metric-strip.operation-metrics > div:nth-child(3),
-  .metric-strip.operation-metrics > div:nth-child(4) { border-bottom: 1px solid var(--line); }
+  .metric-strip.operation-metrics > div:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
   .metric-strip.operation-metrics > div:nth-child(4) { border-right: 0; }
-  .metric-strip.operation-metrics > div:last-child { grid-column: 1 / -1; }
   .service-layout { grid-template-columns: 1fr; gap: 16px; }
   .service-selector { display: flex; overflow-x: auto; }
   .service-selector button { min-width: 170px; }
+  .automatic-task-row { grid-template-columns: minmax(220px, 1fr) auto 112px; }
+  .automatic-task-facts { grid-column: 1 / -1; grid-row: 2; }
   .identity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .identity-grid > div:nth-child(2n) { border-right: 0; }
   .identity-grid > div:nth-child(-n+6) { border-bottom: 1px solid var(--line); }
@@ -27,7 +27,7 @@
   .app-shell { display: block; padding-bottom: 60px; }
   .sidebar { position: fixed; inset: auto 0 0; z-index: 30; width: 100%; height: 58px; display: block; padding: 5px 8px; border-top: 1px solid #3a464a; }
   .brand, .sidebar-status { display: none; }
-  .navigation { height: 100%; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .navigation { height: 100%; grid-template-columns: repeat(5, 1fr); gap: 4px; }
   .nav-item { min-height: 48px; display: flex; flex-direction: column; justify-content: center; gap: 2px; font-size: 9px; }
   .nav-item span { display: block; }
   .topbar { height: 52px; padding: 0 16px; }
@@ -95,6 +95,12 @@
   .plan-band .button { grid-column: 2; grid-row: 1 / span 2; }
   .action-grid { grid-template-columns: 1fr; }
   .action-item { min-height: 66px; }
+  .automatic-task-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px 8px; }
+  .automatic-task-main { grid-column: 1 / -1; }
+  .automatic-task-main small { white-space: normal; }
+  .automatic-task-facts { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .automatic-task-facts > div:last-child { display: none; }
+  .automatic-task-action { width: auto; min-width: 104px; }
   .modal-backdrop { padding: 10px; align-items: flex-end; }
   .modal { max-height: calc(100vh - 20px); border-radius: 7px 7px 0 0; }
   .modal-header { grid-template-columns: minmax(0, 1fr) 34px; }

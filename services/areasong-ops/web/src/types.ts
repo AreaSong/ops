@@ -77,21 +77,40 @@ export interface ServiceStatus {
   postgresState?: string
   redisState?: string
   migrations?: number
-  health?: Record<string, unknown>
+  health?: Record<string, unknown> | 'healthy' | 'stale'
   [key: string]: unknown
 }
 
-export interface ServiceView {
+export interface ObjectMetadata {
+  type: 'service' | 'automatic_task'
+  environment: 'production'
+  owner: string
+  criticality: 'standard' | 'important' | 'critical'
+  lifecycle: 'proposed' | 'onboarding' | 'active' | 'maintenance' | 'retiring' | 'retired'
+  maturity: 'disabled' | 'inspect_only' | 'shadow' | 'manual_approval' | 'automated'
+}
+
+export interface ManagedObjectView {
   name: string
   objectId: string
+  metadata: ObjectMetadata
   displayName: string
   description: string
   actions: Record<string, ActionDefinition>
   status?: ServiceStatus
   statusError?: string
   activeTaskId?: string
+}
+
+export interface ServiceView extends ManagedObjectView {
   releaseDiscovery?: ReleaseDiscovery
   rollbackSourceTaskId?: string
+}
+
+export interface AutomaticTaskView extends ManagedObjectView {
+  schedule: string
+  scheduleSource: 'cron'
+  freshnessSeconds: number
 }
 
 export interface Preview {

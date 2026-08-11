@@ -38,6 +38,7 @@ func (engine *Engine) CreateReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, fmt.Errorf("创建计划前检查失败: %w", err)
 	}
+	snapshot = approvalSnapshot(service, snapshot)
 	if action.TargetMode == "controlled_rollback" {
 		if err := engine.validateRollbackSource(request.Service, request.Target, snapshot); err != nil {
 			return model.ReleasePlan{}, err
@@ -142,6 +143,7 @@ func (engine *Engine) ExecuteReleasePlan(
 	if err != nil {
 		return model.Task{}, false, fmt.Errorf("执行计划前检查失败: %w", err)
 	}
+	observed = approvalSnapshot(service, observed)
 	if plan.Action == "rollback" {
 		if err := engine.validateRollbackSource(plan.Service, plan.Target, observed); err != nil {
 			_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, err.Error())
@@ -203,6 +205,19 @@ func (engine *Engine) ExecuteReleasePlan(
 	return task, true, nil
 }
 
+func approvalSnapshot(object model.ServiceDefinition, observed map[string]any) map[string]any {
+	if object.Metadata.Type != "automatic_task" {
+		return observed
+	}
+	result := make(map[string]any)
+	for _, key := range []string{"objectId", "taskName", "scheduleSource", "enabled"} {
+		if value, exists := observed[key]; exists {
+			result[key] = value
+		}
+	}
+	return result
+}
+
 func actionAlertPolicy(service model.ServiceDefinition) model.AlertPolicyDefinition {
 	return model.AlertPolicyDefinition{
 		Matchers:          cloneStringMap(service.AlertPolicy.Matchers),
@@ -256,7 +271,7 @@ func (engine *Engine) CloseReleasePlan(
 	if err != nil || task.State != model.TaskSucceeded {
 		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "执行任务未成功，计划不能收口", nil)
 	}
-	service, ok := engine.catalog.Services[plan.Service]
+	service, ok := engine.catalog.Object(plan.Service)
 	if !ok {
 		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "受管对象声明不存在", nil)
 	}

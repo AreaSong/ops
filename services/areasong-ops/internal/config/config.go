@@ -15,7 +15,10 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
-const schemaVersion = 3
+const (
+	legacySchemaVersion = 3
+	schemaVersion       = 4
+)
 
 var (
 	namePattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
@@ -29,8 +32,10 @@ var (
 )
 
 type Catalog struct {
-	SchemaVersion int                                `json:"schemaVersion"`
-	Services      map[string]model.ServiceDefinition `json:"services"`
+	SchemaVersion  int                                `json:"schemaVersion"`
+	Adapters       map[string]model.AdapterDefinition `json:"adapters,omitempty"`
+	Services       map[string]model.ServiceDefinition `json:"services"`
+	AutomaticTasks map[string]model.ServiceDefinition `json:"automaticTasks,omitempty"`
 }
 
 func Load(path string, requireRoot bool) (*Catalog, error) {
@@ -56,52 +61,191 @@ func Load(path string, requireRoot bool) (*Catalog, error) {
 }
 
 func (catalog *Catalog) Validate(requireRoot bool) error {
-	if catalog.SchemaVersion != schemaVersion {
+	if catalog.SchemaVersion != legacySchemaVersion && catalog.SchemaVersion != schemaVersion {
 		return fmt.Errorf("不支持的服务声明版本: %d", catalog.SchemaVersion)
 	}
 	if len(catalog.Services) == 0 {
 		return errors.New("服务声明不能为空")
 	}
-	objectIDs := make(map[string]string, len(catalog.Services))
+	if catalog.SchemaVersion == schemaVersion && len(catalog.Adapters) == 0 {
+		return errors.New("受信适配器注册表不能为空")
+	}
+	if err := catalog.validateAdapters(requireRoot); err != nil {
+		return err
+	}
+	objectIDs := make(map[string]string, len(catalog.Services)+len(catalog.AutomaticTasks))
 	for key, service := range catalog.Services {
-		if key != service.Name || !namePattern.MatchString(key) {
-			return fmt.Errorf("服务名称无效: %q", key)
+		service = applyMetadataDefaults(service, "service")
+		if err := catalog.validateObject(key, &service, "service", objectIDs, requireRoot); err != nil {
+			return err
 		}
-		if service.DisplayName == "" || service.Adapter == "" || !filepath.IsAbs(service.Adapter) {
-			return fmt.Errorf("服务 %s 的名称或适配器无效", key)
+		catalog.Services[key] = service
+	}
+	for key, task := range catalog.AutomaticTasks {
+		task = applyMetadataDefaults(task, "automatic_task")
+		if err := catalog.validateObject(key, &task, "automatic_task", objectIDs, requireRoot); err != nil {
+			return err
 		}
-		if !objectIDPattern.MatchString(service.ObjectID) {
-			return fmt.Errorf("服务 %s 的稳定对象标识无效", key)
+		if task.AutomaticTask == nil || task.AutomaticTask.Schedule == "" ||
+			task.AutomaticTask.ScheduleSource != "cron" || task.AutomaticTask.FreshnessSeconds < 60 ||
+			task.AutomaticTask.FreshnessSeconds > 86400 {
+			return fmt.Errorf("自动任务 %s 的调度或新鲜度声明无效", key)
 		}
-		if owner, exists := objectIDs[service.ObjectID]; exists {
-			return fmt.Errorf("服务 %s 与 %s 使用了重复对象标识", key, owner)
+		if task.Runtime != nil || task.Template != "automatic-task-v1" {
+			return fmt.Errorf("自动任务 %s 的模板或运行配置无效", key)
 		}
-		objectIDs[service.ObjectID] = key
-		if service.Template != "custom" && service.Template != "compose-service-v1" {
-			return fmt.Errorf("服务 %s 的模板无效", key)
+		catalog.AutomaticTasks[key] = task
+	}
+	return nil
+}
+
+func (catalog *Catalog) validateObject(
+	key string,
+	service *model.ServiceDefinition,
+	expectedType string,
+	objectIDs map[string]string,
+	requireRoot bool,
+) error {
+	if key != service.Name || !namePattern.MatchString(key) {
+		return fmt.Errorf("受管对象名称无效: %q", key)
+	}
+	if service.DisplayName == "" || service.Metadata.Type != expectedType {
+		return fmt.Errorf("受管对象 %s 的显示名称或类型无效", key)
+	}
+	if err := validateMetadata(key, service.Metadata); err != nil {
+		return err
+	}
+	adapterPath, err := catalog.resolveAdapter(*service, expectedType)
+	if err != nil {
+		return fmt.Errorf("受管对象 %s: %w", key, err)
+	}
+	service.Adapter = adapterPath
+	if !objectIDPattern.MatchString(service.ObjectID) {
+		return fmt.Errorf("受管对象 %s 的稳定对象标识无效", key)
+	}
+	if owner, exists := objectIDs[service.ObjectID]; exists {
+		return fmt.Errorf("受管对象 %s 与 %s 使用了重复对象标识", key, owner)
+	}
+	objectIDs[service.ObjectID] = key
+	if expectedType == "service" && service.Template != "custom" && service.Template != "compose-service-v1" {
+		return fmt.Errorf("服务 %s 的模板无效", key)
+	}
+	if service.Template == "compose-service-v1" {
+		if err := validateComposeRuntime(key, service.Runtime, requireRoot); err != nil {
+			return err
 		}
-		if service.Template == "compose-service-v1" {
-			if err := validateComposeRuntime(key, service.Runtime, requireRoot); err != nil {
-				return err
+	} else if expectedType == "service" && service.Runtime != nil {
+		return fmt.Errorf("自定义服务 %s 不应声明通用 Compose 运行配置", key)
+	}
+	if requireRoot {
+		if err := verifySecureExecutable(adapterPath); err != nil {
+			return fmt.Errorf("服务 %s: %w", key, err)
+		}
+	}
+	if len(service.Actions) == 0 {
+		return fmt.Errorf("服务 %s 未声明任何能力", key)
+	}
+	for actionName, action := range service.Actions {
+		if err := validateAction(key, actionName, action); err != nil {
+			return err
+		}
+	}
+	if err := validateCapabilityState(key, service.Metadata, service.Actions); err != nil {
+		return err
+	}
+	if err := validateAlertPolicy(key, *service); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (catalog *Catalog) validateAdapters(requireRoot bool) error {
+	for name, adapter := range catalog.Adapters {
+		if !namePattern.MatchString(name) || !filepath.IsAbs(adapter.Path) || len(adapter.AllowedTypes) == 0 {
+			return fmt.Errorf("受信适配器 %s 声明无效", name)
+		}
+		seen := map[string]struct{}{}
+		for _, objectType := range adapter.AllowedTypes {
+			if objectType != "service" && objectType != "automatic_task" {
+				return fmt.Errorf("受信适配器 %s 的对象类型无效", name)
 			}
-		} else if service.Runtime != nil {
-			return fmt.Errorf("自定义服务 %s 不应声明通用 Compose 运行配置", key)
+			if _, exists := seen[objectType]; exists {
+				return fmt.Errorf("受信适配器 %s 的对象类型重复", name)
+			}
+			seen[objectType] = struct{}{}
 		}
 		if requireRoot {
-			if err := verifySecureExecutable(service.Adapter); err != nil {
-				return fmt.Errorf("服务 %s: %w", key, err)
+			if err := verifySecureExecutable(adapter.Path); err != nil {
+				return fmt.Errorf("受信适配器 %s: %w", name, err)
 			}
 		}
-		if len(service.Actions) == 0 {
-			return fmt.Errorf("服务 %s 未声明任何能力", key)
+	}
+	return nil
+}
+
+func (catalog *Catalog) resolveAdapter(service model.ServiceDefinition, objectType string) (string, error) {
+	if service.AdapterRef == "" {
+		if catalog.SchemaVersion != legacySchemaVersion || service.Adapter == "" || !filepath.IsAbs(service.Adapter) {
+			return "", errors.New("必须引用受信适配器")
 		}
-		for actionName, action := range service.Actions {
-			if err := validateAction(key, actionName, action); err != nil {
-				return err
-			}
+		return service.Adapter, nil
+	}
+	if service.Adapter != "" {
+		return "", errors.New("不能同时声明 adapter 和 adapterRef")
+	}
+	adapter, exists := catalog.Adapters[service.AdapterRef]
+	if !exists {
+		return "", errors.New("引用了未登记适配器")
+	}
+	for _, allowed := range adapter.AllowedTypes {
+		if allowed == objectType {
+			return adapter.Path, nil
 		}
-		if err := validateAlertPolicy(key, service); err != nil {
-			return err
+	}
+	return "", errors.New("适配器未授权该对象类型")
+}
+
+func applyMetadataDefaults(service model.ServiceDefinition, objectType string) model.ServiceDefinition {
+	if service.Metadata.Type == "" {
+		service.Metadata = model.ObjectMetadata{
+			Type: objectType, Environment: "production", Owner: "operations",
+			Criticality: "important", Lifecycle: "active", Maturity: "manual_approval",
+		}
+	}
+	return service
+}
+
+func validateMetadata(name string, metadata model.ObjectMetadata) error {
+	if metadata.Environment != "production" || metadata.Owner == "" {
+		return fmt.Errorf("受管对象 %s 的环境或责任域无效", name)
+	}
+	if metadata.Criticality != "standard" && metadata.Criticality != "important" && metadata.Criticality != "critical" {
+		return fmt.Errorf("受管对象 %s 的重要级别无效", name)
+	}
+	switch metadata.Lifecycle {
+	case "proposed", "onboarding", "active", "maintenance", "retiring", "retired":
+	default:
+		return fmt.Errorf("受管对象 %s 的生命周期无效", name)
+	}
+	switch metadata.Maturity {
+	case "disabled", "inspect_only", "shadow", "manual_approval", "automated":
+	default:
+		return fmt.Errorf("受管对象 %s 的能力成熟度无效", name)
+	}
+	return nil
+}
+
+func validateCapabilityState(name string, metadata model.ObjectMetadata, actions map[string]model.ActionDefinition) error {
+	for _, action := range actions {
+		if !action.Enabled {
+			continue
+		}
+		if metadata.Lifecycle == "retired" || metadata.Lifecycle == "retiring" || metadata.Maturity == "disabled" {
+			return fmt.Errorf("受管对象 %s 当前生命周期或成熟度不允许开放动作", name)
+		}
+		if (metadata.Lifecycle == "proposed" || metadata.Lifecycle == "onboarding" || metadata.Maturity == "inspect_only") &&
+			action.Risk != model.RiskReadOnly {
+			return fmt.Errorf("受管对象 %s 当前只能开放只读动作", name)
 		}
 	}
 	return nil
@@ -287,6 +431,29 @@ func (catalog *Catalog) ServiceNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func (catalog *Catalog) AutomaticTaskNames() []string {
+	names := make([]string, 0, len(catalog.AutomaticTasks))
+	for name := range catalog.AutomaticTasks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (catalog *Catalog) ObjectNames() []string {
+	names := append(catalog.ServiceNames(), catalog.AutomaticTaskNames()...)
+	sort.Strings(names)
+	return names
+}
+
+func (catalog *Catalog) Object(name string) (model.ServiceDefinition, bool) {
+	if service, exists := catalog.Services[name]; exists {
+		return service, true
+	}
+	task, exists := catalog.AutomaticTasks[name]
+	return task, exists
 }
 
 func verifySecureFile(path string) error {
