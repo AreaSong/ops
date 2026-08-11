@@ -76,7 +76,8 @@ case "$phase" in
   preflight)
     if [[ "$action" == prepare ]]; then
       [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || fail "target release tag is invalid"
-      target_reference="${IMAGE_REPOSITORY}:${target}"
+      image_tag="${target#v}"
+      target_reference="${IMAGE_REPOSITORY}:${image_tag}"
       docker pull "$target_reference" >/dev/null
       target_digest="$(docker image inspect "$target_reference" | jq -er --arg repository "$IMAGE_REPOSITORY" \
         '.[0].RepoDigests[] | select(startswith($repository+"@sha256:"))' | head -1)"

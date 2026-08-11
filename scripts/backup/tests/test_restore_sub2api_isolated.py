@@ -57,7 +57,7 @@ case "${1:-}:${2:-}" in
   pull:*) exit 0 ;;
   image:inspect)
     reference="$3"
-    if [[ "$reference" == 'weishaw/sub2api:v0.1.173' ]]; then
+    if [[ "$reference" == 'weishaw/sub2api:0.1.173' ]]; then
       jq -cn --arg digest "$target_digest" --arg id "$target_id" '[{Id:$id,RepoDigests:[$digest],Config:{Labels:{"org.opencontainers.image.version":"0.1.173","org.opencontainers.image.revision":"target-commit"}}}]'
     elif [[ "$reference" == "$target_digest" ]]; then
       jq -cn --arg id "$target_id" '[{Id:$id,Config:{Labels:{"org.opencontainers.image.version":"0.1.173","org.opencontainers.image.revision":"target-commit"}}}]'
