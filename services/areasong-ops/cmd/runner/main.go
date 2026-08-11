@@ -43,6 +43,11 @@ func run() error {
 		return err
 	}
 	defer database.Close()
+	if !development {
+		if err := enforceProductionStateRootMode(stateRoot); err != nil {
+			return err
+		}
+	}
 	if count, err := database.RecoverInterrupted(context.Background()); err != nil {
 		return err
 	} else if count > 0 {
@@ -80,6 +85,13 @@ func run() error {
 	defer cancel()
 	_ = server.Shutdown(shutdownContext)
 	engine.Wait()
+	return nil
+}
+
+func enforceProductionStateRootMode(path string) error {
+	if err := os.Chmod(path, 0o710); err != nil {
+		return fmt.Errorf("设置 Runner 状态根目录权限: %w", err)
+	}
 	return nil
 }
 
