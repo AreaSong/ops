@@ -196,6 +196,17 @@ printf '9999999999 %s\n' "$file"
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("target release tag is invalid", result.stderr)
 
+    def test_drill_uses_postgres_18_volume_layout_and_retains_diagnostics(self) -> None:
+        script = SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("pgdata:/var/lib/postgresql\n", script)
+        self.assertNotIn("pgdata:/var/lib/postgresql/data", script)
+        self.assertIn('isolated-compose.template.yml', script)
+        self.assertIn('capture_diagnostics postgres "$postgres_id"', script)
+        self.assertIn('capture_diagnostics redis "$redis_id"', script)
+        self.assertIn('capture_diagnostics target-app "$app_id"', script)
+        self.assertIn('capture_diagnostics old-app "$app_id"', script)
+
 
 if __name__ == "__main__":
     unittest.main()

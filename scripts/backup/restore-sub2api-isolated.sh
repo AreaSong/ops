@@ -132,6 +132,18 @@ case "$phase" in
     chmod 0700 "$work_dir"
     project="ops-sub2api-$(basename "$operation_dir" | tr -cd 'a-zA-Z0-9' | tail -c 24)"
     compose_file="$work_dir/compose.yml"
+    capture_diagnostics() {
+      local service="$1" container_id="$2"
+      local prefix="$operation_dir/isolated-${service}"
+      [[ -n "$container_id" ]] || return 0
+      docker inspect "$container_id" | jq '.[0] | {
+        name:.Name,
+        image:.Image,
+        state:(.State | {Status,Running,Restarting,OOMKilled,Dead,ExitCode,Error,StartedAt,FinishedAt})
+      }' >"${prefix}-state.json" 2>/dev/null || true
+      docker logs "$container_id" >"${prefix}.log" 2>&1 || true
+      chmod 0600 "${prefix}-state.json" "${prefix}.log" 2>/dev/null || true
+    }
     cleanup() {
       set +e
       docker compose --project-name "$project" --env-file "$ENV_FILE" -f "$compose_file" down -v --remove-orphans >/dev/null 2>&1
@@ -165,7 +177,7 @@ services:
       POSTGRES_DB: postgres
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     networks: [drill]
   redis:
     image: ${DRILL_REDIS_IMAGE}
@@ -208,6 +220,7 @@ networks:
   drill:
     internal: true
 YAML
+    install -m 0600 "$compose_file" "$operation_dir/isolated-compose.template.yml"
     export DRILL_POSTGRES_IMAGE="$postgres_image" DRILL_REDIS_IMAGE="$redis_image" DRILL_APP_IMAGE="$target_image"
     export DRILL_ENV_FILE="$ENV_FILE" DRILL_REDIS_DIR="$work_dir/redis/redis_data" DRILL_APP_DIR="$work_dir/app/data"
     drill_compose() {
@@ -218,14 +231,23 @@ YAML
     postgres_id="$(drill_compose ps -q postgres)"
     redis_id="$(drill_compose ps -q redis)"
     for _ in $(seq 1 90); do docker exec "$postgres_id" pg_isready -U postgres -d postgres >/dev/null 2>&1 && break; sleep 1; done
-    docker exec "$postgres_id" pg_isready -U postgres -d postgres >/dev/null || fail "isolated PostgreSQL did not become ready"
+    if ! docker exec "$postgres_id" pg_isready -U postgres -d postgres >/dev/null; then
+      capture_diagnostics postgres "$postgres_id"
+      fail "isolated PostgreSQL did not become ready; diagnostics retained in operation directory"
+    fi
     gzip -dc "$postgres_backup" | docker exec -i "$postgres_id" psql -v ON_ERROR_STOP=1 -U postgres -d postgres >/dev/null
     for _ in $(seq 1 60); do docker exec "$redis_id" redis-cli ping >/dev/null 2>&1 && break; sleep 1; done
-    docker exec "$redis_id" redis-cli ping >/dev/null || fail "isolated Redis did not become ready"
+    if ! docker exec "$redis_id" redis-cli ping >/dev/null; then
+      capture_diagnostics redis "$redis_id"
+      fail "isolated Redis did not become ready; diagnostics retained in operation directory"
+    fi
     drill_compose up -d app
     app_id="$(drill_compose ps -q app)"
     for _ in $(seq 1 180); do docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health >/dev/null 2>&1 && break; sleep 1; done
-    docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health || fail "target image did not become healthy"
+    if ! docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health; then
+      capture_diagnostics target-app "$app_id"
+      fail "target image did not become healthy; diagnostics retained in operation directory"
+    fi
     database="$(jq -er .productionDatabase.database "$state_file")"
     target_migrations="$(docker exec "$postgres_id" psql -v ON_ERROR_STOP=1 -U postgres -d "$database" -Atc 'SELECT count(*) FROM schema_migrations;')"
     [[ "$target_migrations" =~ ^[0-9]+$ ]] || fail "target migration count is invalid"
@@ -234,7 +256,10 @@ YAML
     drill_compose up -d --force-recreate app
     app_id="$(drill_compose ps -q app)"
     for _ in $(seq 1 180); do docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health >/dev/null 2>&1 && break; sleep 1; done
-    docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health || fail "old image is not healthy on migrated schema"
+    if ! docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/health; then
+      capture_diagnostics old-app "$app_id"
+      fail "old image is not healthy on migrated schema; diagnostics retained in operation directory"
+    fi
     docker exec "$app_id" wget -qO /dev/null http://127.0.0.1:8080/api/v1/settings/public || fail "old image public smoke failed"
     baseline="$(jq -er .baselineMigrations "$state_file")"
     {
