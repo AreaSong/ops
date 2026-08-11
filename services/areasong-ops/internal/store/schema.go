@@ -128,4 +128,12 @@ CREATE TABLE recovery_points (
 );
 CREATE INDEX idx_recovery_points_task ON recovery_points(task_id);
 CREATE INDEX idx_recovery_points_service_status ON recovery_points(service, status);`,
+	`ALTER TABLE release_plans ADD COLUMN observation_seconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE release_plans ADD COLUMN observation_started_at TEXT;
+ALTER TABLE release_plans ADD COLUMN observation_ends_at TEXT;
+ALTER TABLE release_plans ADD COLUMN closure_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_plans ADD COLUMN closure_idempotency_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_plans ADD COLUMN closed_at TEXT;
+CREATE UNIQUE INDEX idx_release_plans_closure_key
+    ON release_plans(closure_idempotency_key) WHERE closure_idempotency_key != '';`,
 }

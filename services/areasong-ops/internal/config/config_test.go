@@ -120,6 +120,27 @@ func TestCatalogAcceptsReadOnlyAction(t *testing.T) {
 	}
 }
 
+func TestCatalogRequiresBoundedObservationForProductionMutation(t *testing.T) {
+	catalog := validComposeCatalog()
+	service := catalog.Services["demo"]
+	service.Actions["restart"] = model.ActionDefinition{
+		Name: "restart", DisplayName: "重启", Enabled: true, Risk: model.RiskMedium,
+		TargetMode: "none", Steps: []string{"preflight", "restart", "health"}, TimeoutSeconds: 60,
+		ConfirmationTemplate: "重启 {service}", Impact: "短暂中断", Rollback: "重新启动", Scope: "单服务",
+	}
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("expected missing observation window to be rejected")
+	}
+	action := service.Actions["restart"]
+	action.ObservationSeconds = 300
+	service.Actions["restart"] = action
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err != nil {
+		t.Fatalf("valid observation window rejected: %v", err)
+	}
+}
+
 func TestCatalogRejectsUnsupportedSchema(t *testing.T) {
 	catalog := validComposeCatalog()
 	catalog.SchemaVersion = 1

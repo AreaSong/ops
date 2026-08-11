@@ -15,6 +15,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - Runner 独占 `/var/lib/areasong-ops/ops.db`，通过持久目录中的 `root:areasong-ops 0660` Socket 提供 API；Runner 重启不会使 Web 的 bind mount 失效。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
+- 生产变更任务成功后进入声明的观察窗口；到期后重新核对运行身份并原子写入收口审计，才将计划标记为完成。
 - 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
 - AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点，Runner 复核产物路径、大小和 SHA-256 后才允许进入更新阶段。
 - 服务页从 SQLite 恢复最近一次成功的发布发现结果；准备发布完成后同步恢复 prepared 门禁状态。

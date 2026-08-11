@@ -183,6 +183,13 @@ func validateAction(service, name string, action model.ActionDefinition) error {
 			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 缺少恢复阶段", service, name, phase)
 		}
 	}
+	requiresObservation := model.ActionRequiresObservation(action)
+	if requiresObservation && (action.ObservationSeconds < 60 || action.ObservationSeconds > 86400) {
+		return fmt.Errorf("生产变更动作 %s/%s 的观察时间必须为 60 到 86400 秒", service, name)
+	}
+	if !requiresObservation && action.ObservationSeconds != 0 {
+		return fmt.Errorf("非生产变更动作 %s/%s 不应声明观察时间", service, name)
+	}
 	switch action.Risk {
 	case model.RiskReadOnly:
 		if action.ConfirmationTemplate != "" {

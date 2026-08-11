@@ -54,8 +54,8 @@ export function Services({
   const discovery = discoveries[service.name] ?? service.releaseDiscovery
   const discoveredTarget = discovery?.latestTag ?? (discovery?.manifestVersion ? `v${discovery.manifestVersion}` : '')
   const updateAvailable = Boolean(discoveredTarget && discoveredTarget.replace(/^v/, '') !== service.status?.currentVersion)
-  const resumablePlan = plans.find((plan) => plan.service === service.name &&
-    (plan.state === 'pending_approval' || plan.state === 'approved'))
+  const activePlan = plans.find((plan) => plan.service === service.name &&
+    ['pending_approval', 'approved', 'observing'].includes(plan.state))
 
   return (
     <div className="page service-page">
@@ -113,14 +113,14 @@ export function Services({
             </section>
           )}
 
-          {resumablePlan && (
+          {activePlan && (
             <section className="plan-band">
               <div>
-                <strong>{resumablePlan.state === 'approved' ? '计划已批准' : '计划等待批准'}</strong>
-                <small>{resumablePlan.action} {resumablePlan.target || ''}</small>
+                <strong>{activePlan.state === 'observing' ? '计划正在观察' : activePlan.state === 'approved' ? '计划已批准' : '计划等待批准'}</strong>
+                <small>{activePlan.action} {activePlan.target || ''}</small>
               </div>
-              <code>{shortHash(resumablePlan.digest)}</code>
-              <button className="button secondary" type="button" onClick={() => onPlan(resumablePlan)}>查看计划</button>
+              <code>{shortHash(activePlan.digest)}</code>
+              <button className="button secondary" type="button" onClick={() => onPlan(activePlan)}>查看计划</button>
             </section>
           )}
 

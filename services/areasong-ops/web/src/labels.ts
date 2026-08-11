@@ -24,6 +24,8 @@ export const planStateLabel: Record<PlanState, string> = {
   pending_approval: '等待批准',
   approved: '等待执行',
   executing: '执行中',
+  observing: '观察中',
+  needs_attention: '待处理',
   completed: '已完成',
   invalidated: '已失效',
 }

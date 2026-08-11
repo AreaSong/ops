@@ -281,9 +281,32 @@ func (store *Store) CompleteTask(
 		return model.Event{}, err
 	}
 	if task.PlanID != "" {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE release_plans SET state = ?, updated_at = ? WHERE id = ? AND task_id = ?
-		`, model.PlanCompleted, timeText(now), task.PlanID, task.ID); err != nil {
+		var observationSeconds int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT observation_seconds FROM release_plans WHERE id = ? AND task_id = ?
+		`, task.PlanID, task.ID).Scan(&observationSeconds); err != nil {
+			return model.Event{}, err
+		}
+		planState := model.PlanNeedsAttention
+		closureReason := planClosureReason(state, errorMessage)
+		var observationStartedAt, observationEndsAt, closedAt any
+		if state == model.TaskSucceeded && observationSeconds > 0 {
+			planState = model.PlanObserving
+			closureReason = ""
+			observationStartedAt = timeText(now)
+			observationEndsAt = timeText(now.Add(time.Duration(observationSeconds) * time.Second))
+		} else if state == model.TaskSucceeded {
+			planState = model.PlanCompleted
+			closureReason = ""
+			closedAt = timeText(now)
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE release_plans SET state = ?, observation_started_at = ?, observation_ends_at = ?,
+				closure_reason = ?, closed_at = ?, updated_at = ?
+			WHERE id = ? AND task_id = ? AND state = ?
+		`, planState, observationStartedAt, observationEndsAt, closureReason, closedAt,
+			timeText(now), task.PlanID, task.ID, model.PlanExecuting)
+		if err = requireOne(result, err, "任务终态无法更新计划状态"); err != nil {
 			return model.Event{}, err
 		}
 	}
@@ -320,6 +343,16 @@ func (store *Store) CompleteTask(
 		return model.Event{}, err
 	}
 	return event, tx.Commit()
+}
+
+func planClosureReason(state model.TaskState, errorMessage string) string {
+	if state == model.TaskRolledBack {
+		return "执行失败后已回滚，计划需要人工核对"
+	}
+	if errorMessage != "" {
+		return errorMessage
+	}
+	return "执行未成功，计划需要人工处理"
 }
 
 func recoveryActions(task model.Task) []model.RecoveryAction {

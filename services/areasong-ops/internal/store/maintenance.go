@@ -71,9 +71,9 @@ func (store *Store) RecoverInterrupted(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET state = ?, updated_at = ?
+		UPDATE release_plans SET state = ?, closure_reason = ?, updated_at = ?
 		WHERE state = ? AND task_id IN (SELECT id FROM tasks WHERE state IN (?, ?))
-	`, model.PlanCompleted, now, model.PlanExecuting,
+	`, model.PlanNeedsAttention, "Runner 中断，计划需要人工处理", now, model.PlanExecuting,
 		model.TaskFailedRecoverable, model.TaskNeedsAttention); err != nil {
 		return 0, err
 	}

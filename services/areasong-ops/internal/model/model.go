@@ -67,6 +67,8 @@ const (
 	PlanPendingApproval PlanState = "pending_approval"
 	PlanApproved        PlanState = "approved"
 	PlanExecuting       PlanState = "executing"
+	PlanObserving       PlanState = "observing"
+	PlanNeedsAttention  PlanState = "needs_attention"
 	PlanCompleted       PlanState = "completed"
 	PlanInvalidated     PlanState = "invalidated"
 )
@@ -108,6 +110,7 @@ type ApprovalSummary struct {
 	Scope              string                    `json:"scope"`
 	Steps              []string                  `json:"steps"`
 	PhaseSemantics     map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
+	ObservationSeconds int                       `json:"observationSeconds,omitempty"`
 	ConfirmationPhrase string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore     map[string]any            `json:"expectedBefore"`
 	TargetEvidence     map[string]any            `json:"targetEvidence,omitempty"`
@@ -129,6 +132,11 @@ type ReleasePlan struct {
 	ApprovedAt           *time.Time      `json:"approvedAt,omitempty"`
 	InvalidatedReason    string          `json:"invalidatedReason,omitempty"`
 	TaskID               string          `json:"taskId,omitempty"`
+	ObservationSeconds   int             `json:"observationSeconds,omitempty"`
+	ObservationStartedAt *time.Time      `json:"observationStartedAt,omitempty"`
+	ObservationEndsAt    *time.Time      `json:"observationEndsAt,omitempty"`
+	ClosureReason        string          `json:"closureReason,omitempty"`
+	ClosedAt             *time.Time      `json:"closedAt,omitempty"`
 	CreatedAt            time.Time       `json:"createdAt"`
 	UpdatedAt            time.Time       `json:"updatedAt"`
 }
@@ -149,6 +157,7 @@ type ActionDefinition struct {
 	Rollback             string                    `json:"rollback"`
 	Scope                string                    `json:"scope"`
 	PhaseSemantics       map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
+	ObservationSeconds   int                       `json:"observationSeconds,omitempty"`
 }
 
 type PhaseSemantics struct {
@@ -157,6 +166,37 @@ type PhaseSemantics struct {
 	RequiresRecoveryPoint bool   `json:"requiresRecoveryPoint,omitempty"`
 	FailurePolicy         string `json:"failurePolicy"`
 	RecoveryPhase         string `json:"recoveryPhase,omitempty"`
+}
+
+func EffectivePhaseSemantics(action ActionDefinition, phase string) PhaseSemantics {
+	if semantics, ok := action.PhaseSemantics[phase]; ok {
+		return semantics
+	}
+	semantics := PhaseSemantics{Effect: "observe", FailurePolicy: "fail"}
+	switch phase {
+	case "backup":
+		semantics.Effect = "artifact_write"
+	case "migration":
+		semantics.Effect = "data_mutation"
+		semantics.FailurePolicy = "needs_attention"
+	case "apply", "restart":
+		semantics.Effect = "runtime_mutation"
+		if action.Name == "update" {
+			semantics.FailurePolicy = "rollback"
+			semantics.RecoveryPhase = "rollback"
+		}
+	}
+	return semantics
+}
+
+func ActionRequiresObservation(action ActionDefinition) bool {
+	for _, phase := range action.Steps {
+		effect := EffectivePhaseSemantics(action, phase).Effect
+		if effect == "runtime_mutation" || effect == "data_mutation" {
+			return true
+		}
+	}
+	return false
 }
 
 type RecoveryArtifact struct {
@@ -315,6 +355,10 @@ type ApprovePlanRequest struct {
 }
 
 type ExecutePlanRequest struct {
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type ClosePlanRequest struct {
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 

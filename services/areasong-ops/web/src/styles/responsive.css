@@ -7,8 +7,13 @@
   .sidebar-status { justify-content: center; padding-inline: 0; }
   .content { padding-inline: 22px; }
   .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric-strip.operation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-strip > div:nth-child(2) { border-right: 0; }
   .metric-strip > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .metric-strip.operation-metrics > div:nth-child(3),
+  .metric-strip.operation-metrics > div:nth-child(4) { border-bottom: 1px solid var(--line); }
+  .metric-strip.operation-metrics > div:nth-child(4) { border-right: 0; }
+  .metric-strip.operation-metrics > div:last-child { grid-column: 1 / -1; }
   .service-layout { grid-template-columns: 1fr; gap: 16px; }
   .service-selector { display: flex; overflow-x: auto; }
   .service-selector button { min-width: 170px; }

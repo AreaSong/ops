@@ -11,7 +11,14 @@ export type TaskState =
   | 'rolled_back'
   | 'recovery_uncertain'
 
-export type PlanState = 'pending_approval' | 'approved' | 'executing' | 'completed' | 'invalidated'
+export type PlanState =
+  | 'pending_approval'
+  | 'approved'
+  | 'executing'
+  | 'observing'
+  | 'needs_attention'
+  | 'completed'
+  | 'invalidated'
 export type StageState = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'rolled_back'
 
 export interface NavigationLinks {
@@ -36,6 +43,7 @@ export interface ActionDefinition {
   timeoutSeconds: number
   disabledReason?: string
   readinessGate?: 'prepared_release'
+  observationSeconds?: number
   impact: string
   rollback: string
   scope: string
@@ -99,6 +107,7 @@ export interface ApprovalSummary {
     failurePolicy: 'fail' | 'rollback' | 'needs_attention'
     recoveryPhase?: string
   }>
+  observationSeconds?: number
   confirmationPhrase?: string
   expectedBefore: ServiceStatus
   targetEvidence?: ReleaseDiscovery
@@ -120,6 +129,11 @@ export interface ReleasePlan {
   approvedAt?: string
   invalidatedReason?: string
   taskId?: string
+  observationSeconds?: number
+  observationStartedAt?: string
+  observationEndsAt?: string
+  closureReason?: string
+  closedAt?: string
   createdAt: string
   updatedAt: string
 }

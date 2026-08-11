@@ -23,6 +23,8 @@
 .badge-health-unknown { color: var(--muted); background: var(--gray-soft); }
 .badge-plan-pending_approval, .badge-plan-executing { color: var(--amber); background: var(--amber-soft); }
 .badge-plan-approved { color: var(--teal); background: var(--teal-soft); }
+.badge-plan-observing { color: var(--teal); background: var(--teal-soft); }
+.badge-plan-needs_attention { color: var(--red); background: var(--red-soft); }
 .badge-plan-completed { color: var(--green); background: var(--green-soft); }
 .badge-plan-invalidated { color: var(--muted); background: var(--gray-soft); }
 
@@ -49,6 +51,8 @@
 }
 .task-row:last-child { border-bottom: 0; }
 .task-row:hover { background: var(--surface-soft); }
+.task-row.static { cursor: default; }
+.task-row.static:hover { background: transparent; }
 .task-row strong, .task-row small { display: block; }
 .task-row strong { font-size: 12px; }
 .task-row small, .task-row time, .task-summary { margin-top: 2px; color: var(--muted); font-size: 11px; }

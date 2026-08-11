@@ -17,24 +17,7 @@ import (
 )
 
 func phaseSemantics(action model.ActionDefinition, phase string) model.PhaseSemantics {
-	if semantics, ok := action.PhaseSemantics[phase]; ok {
-		return semantics
-	}
-	semantics := model.PhaseSemantics{Effect: "observe", FailurePolicy: "fail"}
-	switch phase {
-	case "backup":
-		semantics.Effect = "artifact_write"
-	case "migration":
-		semantics.Effect = "data_mutation"
-		semantics.FailurePolicy = "needs_attention"
-	case "apply", "restart":
-		semantics.Effect = "runtime_mutation"
-		if action.Name == "update" {
-			semantics.FailurePolicy = "rollback"
-			semantics.RecoveryPhase = "rollback"
-		}
-	}
-	return semantics
+	return model.EffectivePhaseSemantics(action, phase)
 }
 
 func mutationSemantics(semantics model.PhaseSemantics) bool {

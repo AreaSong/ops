@@ -2,12 +2,51 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
+
+func TestOpenMigratesExistingPlanSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(migrations[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	var version int
+	if err := migrated.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != len(migrations) {
+		t.Fatalf("schema version=%d want=%d", version, len(migrations))
+	}
+	var column string
+	if err := migrated.db.QueryRow(`
+		SELECT name FROM pragma_table_info('release_plans') WHERE name = 'observation_ends_at'
+	`).Scan(&column); err != nil || column != "observation_ends_at" {
+		t.Fatalf("column=%q err=%v", column, err)
+	}
+}
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
@@ -153,10 +192,10 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	plan := model.ReleasePlan{
 		ID: "plan-1", ActorHash: "a", Service: "demo", Action: "update", Target: "v1.2.3",
 		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:abc",
-		ConfirmationPhrase: "更新 demo", RequiresConfirmation: true,
+		ConfirmationPhrase: "更新 demo", RequiresConfirmation: true, ObservationSeconds: 300,
 		ApprovalSummary: model.ApprovalSummary{
 			SchemaVersion: 1, Service: "demo", Action: "update", Target: "v1.2.3",
-			Risk: model.RiskHigh, Steps: []string{"preflight", "apply"},
+			Risk: model.RiskHigh, Steps: []string{"preflight", "apply"}, ObservationSeconds: 300,
 			ExpectedBefore: map[string]any{"currentVersion": "1.0.0"},
 		}, CreatedAt: now, UpdatedAt: now,
 	}
@@ -190,9 +229,73 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if err != nil || event.Sequence == 0 {
 		t.Fatalf("event=%+v err=%v", event, err)
 	}
-	completed, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || completed.State != model.PlanCompleted {
-		t.Fatalf("completed=%+v err=%v", completed, err)
+	observing, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || observing.State != model.PlanObserving || observing.ObservationStartedAt == nil ||
+		observing.ObservationEndsAt == nil || observing.ClosedAt != nil {
+		t.Fatalf("observing=%+v err=%v", observing, err)
+	}
+	closeAudit := model.AuditEntry{ActorHash: "a", Event: "plan.closed", Resource: plan.ID, Outcome: "completed"}
+	if _, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit); err == nil {
+		t.Fatal("observation closed before deadline")
+	}
+	now = now.Add(301 * time.Second)
+	closed, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit)
+	if err != nil || closed.State != model.PlanCompleted || closed.ClosedAt == nil {
+		t.Fatalf("closed=%+v err=%v", closed, err)
+	}
+	replayed, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit)
+	if err != nil || replayed.State != model.PlanCompleted {
+		t.Fatalf("replayed=%+v err=%v", replayed, err)
+	}
+	if _, err := database.CloseReleasePlan(ctx, plan.ID, "a", "other-idem", closeAudit); err != ErrIdempotency {
+		t.Fatalf("expected closure idempotency error, got %v", err)
+	}
+	auditEntries, err := database.ListAudit(ctx, 10, 0)
+	if err != nil || len(auditEntries) != 2 || auditEntries[0].Event != "plan.closed" {
+		t.Fatalf("audit=%+v err=%v", auditEntries, err)
+	}
+}
+
+func TestFailedPlanNeedsAttention(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	database.now = func() time.Time { return now }
+	plan := model.ReleasePlan{
+		ID: "plan-failed", ActorHash: "a", Service: "demo", Action: "restart",
+		Risk: model.RiskMedium, State: model.PlanPendingApproval, Digest: "sha256:failed",
+		ConfirmationPhrase: "重启 demo", RequiresConfirmation: true, ObservationSeconds: 60,
+		ApprovalSummary: model.ApprovalSummary{
+			SchemaVersion: 1, Service: "demo", Action: "restart", Risk: model.RiskMedium,
+			Steps: []string{"restart"}, ObservationSeconds: 60, ExpectedBefore: map[string]any{},
+		}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{
+		Plan: plan, ConfirmationHash: HashConfirmation("重启 demo"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "重启 demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := database.StartPlanTask(ctx, approved, "a", "failed-idem", "failed-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.CompleteTask(ctx, task.ID, model.TaskFailedRecoverable, "执行失败", "检查失败",
+		"adapter_failed", true, false, "", model.Event{TaskID: task.ID, Level: "error", Phase: "terminal",
+			Message: "failed", Data: map[string]any{"state": model.TaskFailedRecoverable}},
+		model.AuditEntry{ActorHash: "a", Event: "task.terminal", Resource: task.ID, Outcome: "failed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || failed.State != model.PlanNeedsAttention || failed.ClosureReason != "检查失败" {
+		t.Fatalf("plan=%+v err=%v", failed, err)
 	}
 }
 

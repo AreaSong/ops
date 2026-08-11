@@ -53,8 +53,9 @@ func (engine *Engine) CreateReleasePlan(
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: request.Target,
 		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
-		PhaseSemantics: action.PhaseSemantics, ConfirmationPhrase: phrase,
-		ExpectedBefore: snapshot, TargetEvidence: targetEvidence,
+		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds,
+		ConfirmationPhrase: phrase,
+		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
 	}
 	digest, err := approvalDigest(summary)
 	if err != nil {
@@ -69,7 +70,8 @@ func (engine *Engine) CreateReleasePlan(
 		ID: id, ActorHash: actorHash, Service: service.Name, Action: action.Name,
 		Target: request.Target, Risk: action.Risk, State: model.PlanPendingApproval,
 		Digest: digest, ApprovalSummary: summary, ConfirmationPhrase: phrase,
-		RequiresConfirmation: action.Risk != model.RiskReadOnly, CreatedAt: now, UpdatedAt: now,
+		RequiresConfirmation: action.Risk != model.RiskReadOnly,
+		ObservationSeconds:   action.ObservationSeconds, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := engine.store.CreateReleasePlan(ctx, store.ReleasePlanInput{
 		Plan: plan, ConfirmationHash: store.HashConfirmation(phrase),
@@ -118,7 +120,8 @@ func (engine *Engine) ExecuteReleasePlan(
 	if plan.ActorHash != actorHash {
 		return model.Task{}, false, store.ErrActorMismatch
 	}
-	if plan.State == model.PlanExecuting || plan.State == model.PlanCompleted {
+	if plan.State == model.PlanExecuting || plan.State == model.PlanObserving ||
+		plan.State == model.PlanNeedsAttention || plan.State == model.PlanCompleted {
 		task, taskErr := engine.store.GetTask(ctx, plan.TaskID)
 		if taskErr == nil && task.ActorHash == actorHash && task.PlanID == plan.ID &&
 			task.IdempotencyKey == request.IdempotencyKey {
@@ -153,7 +156,8 @@ func (engine *Engine) ExecuteReleasePlan(
 	currentSummary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: plan.Target,
 		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
-		Steps: append([]string(nil), action.Steps...), PhaseSemantics: action.PhaseSemantics,
+		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
+		ObservationSeconds: action.ObservationSeconds,
 		ConfirmationPhrase: renderConfirmation(action.ConfirmationTemplate, service.Name, plan.Target),
 		ExpectedBefore:     observed, TargetEvidence: targetEvidence,
 	}
@@ -180,6 +184,121 @@ func (engine *Engine) ExecuteReleasePlan(
 	}
 	engine.enqueue(task)
 	return task, true, nil
+}
+
+func resolvedPhaseSemantics(action model.ActionDefinition) map[string]model.PhaseSemantics {
+	result := make(map[string]model.PhaseSemantics, len(action.Steps))
+	for _, phase := range action.Steps {
+		result[phase] = model.EffectivePhaseSemantics(action, phase)
+	}
+	return result
+}
+
+func (engine *Engine) CloseReleasePlan(
+	ctx context.Context,
+	actorHash, id string,
+	request model.ClosePlanRequest,
+) (model.ReleasePlan, error) {
+	if !actorPattern.MatchString(actorHash) || !uuidPattern.MatchString(id) ||
+		!uuidPattern.MatchString(request.IdempotencyKey) {
+		return model.ReleasePlan{}, errors.New("收口计划请求标识无效")
+	}
+	plan, err := engine.store.GetReleasePlan(ctx, id)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if plan.ActorHash != actorHash {
+		return model.ReleasePlan{}, store.ErrActorMismatch
+	}
+	if plan.State == model.PlanCompleted {
+		return engine.store.CloseReleasePlan(ctx, id, actorHash, request.IdempotencyKey, model.AuditEntry{})
+	}
+	if plan.State != model.PlanObserving || plan.ObservationEndsAt == nil {
+		return model.ReleasePlan{}, errors.New("计划当前不能收口")
+	}
+	if time.Now().UTC().Before(*plan.ObservationEndsAt) {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "观察窗口尚未结束")
+	}
+	task, err := engine.store.GetTask(ctx, plan.TaskID)
+	if err != nil || task.State != model.TaskSucceeded {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "执行任务未成功，计划不能收口")
+	}
+	service, ok := engine.catalog.Services[plan.Service]
+	if !ok {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "受管对象声明不存在")
+	}
+	observed, err := engine.inspect(ctx, service)
+	if err != nil {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "收口身份检查失败: "+redactText(err.Error()))
+	}
+	if err := engine.verifyClosureIdentity(ctx, plan, observed); err != nil {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, err.Error())
+	}
+	audit := model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.closed", Resource: plan.ID, Outcome: "completed",
+		Detail: map[string]any{"taskId": plan.TaskID, "observationSeconds": plan.ObservationSeconds},
+	}
+	closed, err := engine.store.CloseReleasePlan(ctx, id, actorHash, request.IdempotencyKey, audit)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	return closed, nil
+}
+
+func (engine *Engine) blockPlanClosure(ctx context.Context, actorHash, id, reason string) error {
+	reason = redactText(reason)
+	audit := model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.close_rejected", Resource: id, Outcome: "rejected",
+		Detail: map[string]any{"reason": reason},
+	}
+	if err := engine.store.RecordPlanClosureBlocker(ctx, id, reason, audit); err != nil {
+		return fmt.Errorf("%s，且阻断原因写入失败: %w", reason, err)
+	}
+	return errors.New(reason)
+}
+
+func (engine *Engine) verifyClosureIdentity(
+	ctx context.Context,
+	plan model.ReleasePlan,
+	observed map[string]any,
+) error {
+	actualVersion, _ := observed["currentVersion"].(string)
+	switch plan.Action {
+	case "update":
+		if actualVersion == "" || actualVersion != strings.TrimPrefix(plan.Target, "v") {
+			return errors.New("当前版本与计划目标不一致")
+		}
+		if expectedImage, _ := plan.ApprovalSummary.TargetEvidence["webImageDigest"].(string); expectedImage != "" {
+			actualImage, _ := observed["currentImage"].(string)
+			if actualImage != expectedImage {
+				return errors.New("当前镜像与计划目标摘要不一致")
+			}
+		}
+	case "rollback":
+		source, err := engine.store.GetTask(ctx, plan.Target)
+		if err != nil {
+			return errors.New("回滚来源任务不可用")
+		}
+		if !sameRuntimeIdentity(source.Snapshot, observed) {
+			return errors.New("当前版本与回滚目标身份不一致")
+		}
+	default:
+		if !sameRuntimeIdentity(plan.ApprovalSummary.ExpectedBefore, observed) {
+			return errors.New("当前运行身份与计划预期不一致")
+		}
+	}
+	return nil
+}
+
+func sameRuntimeIdentity(expected, observed map[string]any) bool {
+	for _, field := range []string{"currentVersion", "currentImage", "currentImageId", "runtimeIdentityHash"} {
+		expectedValue, _ := expected[field].(string)
+		observedValue, _ := observed[field].(string)
+		if expectedValue == "" || observedValue != expectedValue {
+			return false
+		}
+	}
+	return true
 }
 
 func (engine *Engine) targetEvidence(ctx context.Context, service, targetMode, target string) (map[string]any, error) {

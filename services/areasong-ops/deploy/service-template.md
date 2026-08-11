@@ -43,7 +43,7 @@
 }
 ```
 
-动作仍在同一服务对象的 `actions` 中声明。更新动作使用 `targetMode: signed_release_tag` 和 `readinessGate: prepared_release`；准备动作使用相同目标格式并在成功后发布动态 prepared 记录。
+动作仍在同一服务对象的 `actions` 中声明。更新动作使用 `targetMode: signed_release_tag` 和 `readinessGate: prepared_release`；准备动作使用相同目标格式并在成功后发布动态 prepared 记录。包含 `runtime_mutation` 或 `data_mutation` 的生产变更动作必须声明 60 到 86400 秒的 `observationSeconds`，该值会进入不可变批准摘要。
 
 ## Hook 契约
 
@@ -62,6 +62,8 @@ Runner 以以下参数调用所有适配器和 hook：
 Runner 会拒绝动作/阶段身份不匹配、尾随第二个 JSON 或其他多余输出。错误说明写到 stderr，并以非零状态退出。hook 必须是 root 拥有的普通文件、不可由组或其他用户写入，并设置 owner execute。服务声明中的所有路径必须为绝对路径。
 
 变更动作应为每个阶段声明 `phaseSemantics`，明确 `effect`、`failurePolicy`、恢复点产消关系和回滚阶段。产生恢复点的备份阶段还需在顶层返回 `recoveryPoint`：它必须绑定当前 service/task，列出受控备份目录中的服务必需产物、大小和 SHA-256。Runner 完成二次验证并持久化后，`requiresRecoveryPoint` 阶段才会放行。
+
+生产变更任务成功只会让计划进入观察状态。观察窗口结束后，Runner 再次执行固定 inspect 并核对目标版本或运行身份；验证和收口审计在同一事务完成后，计划才进入完成状态。观察期间不得把任务成功当作计划已经收口。
 
 发布准备成功后，以原子方式写入：
 

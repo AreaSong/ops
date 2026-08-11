@@ -1,10 +1,14 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,6 +159,57 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	})
 	if err != nil || created || replayed.ID != task.ID {
 		t.Fatalf("replayed=%+v created=%v err=%v", replayed, created, err)
+	}
+}
+
+func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	service := engine.catalog.Services["demo"]
+	action := service.Actions["update"]
+	action.ObservationSeconds = 1
+	service.Actions["update"] = action
+	engine.catalog.Services["demo"] = service
+	discoverRelease(t, engine)
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "update", Target: "v1.1.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+	observing, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || observing.State != model.PlanObserving || task.ID != observing.TaskID {
+		t.Fatalf("plan=%+v err=%v", observing, err)
+	}
+	time.Sleep(time.Until(*observing.ObservationEndsAt) + 20*time.Millisecond)
+	payload, err := json.Marshal(model.ClosePlanRequest{IdempotencyKey: mustUUID(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/plans/"+plan.ID+"/close", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(actorHeader, actorHash())
+	response := httptest.NewRecorder()
+	NewServer(engine, database).ServeHTTP(response, request)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "当前版本与计划目标不一致") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	blocked, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || blocked.State != model.PlanObserving || blocked.ClosureReason == "" {
+		t.Fatalf("blocked=%+v err=%v", blocked, err)
 	}
 }
 

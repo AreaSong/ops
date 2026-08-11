@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { phaseLabel } from '../labels'
+import { formatTime, phaseLabel } from '../labels'
 import type { ReleasePlan } from '../types'
 import { StatusBadge } from './StatusBadge'
 
@@ -9,12 +9,15 @@ interface ConfirmationDialogProps {
   pending: boolean
   onCancel: () => void
   onConfirm: (value: string) => void
+  onClosePlan: () => void
 }
-export function ConfirmationDialog({ plan, pending, onCancel, onConfirm }: ConfirmationDialogProps) {
+export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClosePlan }: ConfirmationDialogProps) {
   const [value, setValue] = useState('')
   useEffect(() => setValue(''), [plan.id, plan.state])
   const phrase = plan.confirmationPhrase ?? ''
   const approving = plan.state === 'pending_approval'
+  const observing = plan.state === 'observing'
+  const canClose = Boolean(plan.observationEndsAt && Date.now() >= new Date(plan.observationEndsAt).getTime())
   const matches = !plan.requiresConfirmation || value === phrase
   const summary = plan.approvalSummary
 
@@ -27,7 +30,7 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm }: Confi
           <div className="modal-title-group">
             <span className="warning-icon"><AlertTriangle size={20} aria-hidden="true" /></span>
             <div>
-              <h2 id="confirm-title">{approving ? '批准发布计划' : '执行已批准计划'}</h2>
+              <h2 id="confirm-title">{observing ? '收口观察计划' : approving ? '批准发布计划' : '执行已批准计划'}</h2>
               <span>{plan.service} · {plan.action}</span>
             </div>
           </div>
@@ -44,6 +47,9 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm }: Confi
             <div><dt>影响范围</dt><dd>{summary.scope}</dd></div>
             <div><dt>预期影响</dt><dd>{summary.impact}</dd></div>
             <div><dt>失败处理</dt><dd>{summary.rollback}</dd></div>
+            {plan.observationStartedAt && <div><dt>观察开始</dt><dd>{formatTime(plan.observationStartedAt)}</dd></div>}
+            {plan.observationEndsAt && <div><dt>最早收口</dt><dd>{formatTime(plan.observationEndsAt)}</dd></div>}
+            {plan.closureReason && <div><dt>收口阻断</dt><dd>{plan.closureReason}</dd></div>}
           </dl>
           <div className="step-line" aria-label="执行阶段">
             {summary.steps.map((step, index) => (
@@ -71,12 +77,12 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm }: Confi
           <button type="button" className="button secondary" onClick={onCancel} disabled={pending}>取消</button>
           <button
             type="button"
-            className="button danger"
-            disabled={(approving && !matches) || pending}
-            onClick={() => onConfirm(value)}
+            className={observing ? 'button secondary' : 'button danger'}
+            disabled={(approving && !matches) || (observing && !canClose) || pending}
+            onClick={() => observing ? onClosePlan() : onConfirm(value)}
           >
             <Check size={17} aria-hidden="true" />
-            {pending ? '提交中' : approving ? '批准计划' : '执行计划'}
+            {pending ? '提交中' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? '批准计划' : '执行计划'}
           </button>
         </footer>
       </section>

@@ -87,7 +87,7 @@ export default function App() {
     if (previousAudit.length === 0) setAuditHasMore(auditData.hasMore)
     setSelectedTask((current) => current ? nextTasks.find((item) => item.id === current.id) ?? current : null)
     setSelectedPlan((current) => current
-      ? planData.items.find((item) => item.id === current.id && ['pending_approval', 'approved'].includes(item.state)) ?? null
+      ? planData.items.find((item) => item.id === current.id && ['pending_approval', 'approved', 'observing'].includes(item.state)) ?? null
       : null)
   }, [api, updateAudit, updateTasks])
 
@@ -181,7 +181,7 @@ export default function App() {
         const approved = await api.approvePlan(selectedPlan, value)
         setSelectedPlan(approved)
         setPlans((current) => current.map((item) => item.id === approved.id ? approved : item))
-      } else {
+      } else if (selectedPlan.state === 'approved') {
         const task = await api.executePlan(selectedPlan.id)
         registerTask(task)
         setSelectedPlan(null)
@@ -189,6 +189,22 @@ export default function App() {
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '执行提交失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function closePlan() {
+    if (!selectedPlan || selectedPlan.state !== 'observing') return
+    setPending(true)
+    setError('')
+    try {
+      const closed = await api.closePlan(selectedPlan.id)
+      setPlans((current) => current.map((item) => item.id === closed.id ? closed : item))
+      setSelectedPlan(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '计划收口失败')
+      await refresh().catch(() => undefined)
     } finally {
       setPending(false)
     }
@@ -332,7 +348,8 @@ export default function App() {
           onLoadMore={() => void loadMoreAudit()} />
       )}
       {selectedPlan && (
-        <ConfirmationDialog plan={selectedPlan} pending={pending} onCancel={() => setSelectedPlan(null)} onConfirm={confirmAction} />
+        <ConfirmationDialog plan={selectedPlan} pending={pending} onCancel={() => setSelectedPlan(null)}
+          onConfirm={confirmAction} onClosePlan={() => void closePlan()} />
       )}
       {selectedTask && (
         <TaskDrawer task={selectedTask} events={taskEvents} loading={taskEventsLoading}

@@ -63,6 +63,7 @@
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
 }
+.metric-strip.operation-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .metric-strip > div { min-height: 72px; display: flex; align-items: center; gap: 11px; padding: 14px 18px; border-right: 1px solid var(--line); }
 .metric-strip > div:last-child { border-right: 0; }
 .metric-strip svg { color: var(--muted); }

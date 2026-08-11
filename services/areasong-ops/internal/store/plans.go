@@ -19,7 +19,8 @@ type ReleasePlanInput struct {
 const planSelect = `
 	SELECT id, actor_hash, service, action, target, risk, state, digest,
 	       approval_summary_json, confirmation_phrase, approved_by_hash, approved_at,
-	       invalidated_reason, task_id, created_at, updated_at
+	       invalidated_reason, task_id, observation_seconds, observation_started_at,
+	       observation_ends_at, closure_reason, closed_at, created_at, updated_at
 	FROM release_plans`
 
 func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInput) error {
@@ -30,11 +31,13 @@ func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInpu
 	_, err = store.db.ExecContext(ctx, `
 		INSERT INTO release_plans (
 			id, actor_hash, service, action, target, risk, state, digest,
-			approval_summary_json, confirmation_hash, confirmation_phrase, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			approval_summary_json, confirmation_hash, confirmation_phrase,
+			observation_seconds, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Plan.ID, input.Plan.ActorHash, input.Plan.Service, input.Plan.Action,
 		input.Plan.Target, input.Plan.Risk, input.Plan.State, input.Plan.Digest,
 		summary, input.ConfirmationHash, input.Plan.ConfirmationPhrase,
+		input.Plan.ObservationSeconds,
 		timeText(input.Plan.CreatedAt), timeText(input.Plan.UpdatedAt))
 	return err
 }
@@ -42,10 +45,12 @@ func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInpu
 func scanPlan(row scanner) (model.ReleasePlan, error) {
 	var plan model.ReleasePlan
 	var risk, state, summaryJSON, createdAt, updatedAt string
-	var approvedAt sql.NullString
+	var approvedAt, observationStartedAt, observationEndsAt, closedAt sql.NullString
 	err := row.Scan(&plan.ID, &plan.ActorHash, &plan.Service, &plan.Action, &plan.Target,
 		&risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.InvalidatedReason, &plan.TaskID,
+		&plan.ObservationSeconds, &observationStartedAt, &observationEndsAt,
+		&plan.ClosureReason, &closedAt,
 		&createdAt, &updatedAt)
 	if err != nil {
 		return model.ReleasePlan{}, err
@@ -64,6 +69,18 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 		return model.ReleasePlan{}, parseErr
 	}
 	plan.ApprovedAt, parseErr = nullableTime(approvedAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.ObservationStartedAt, parseErr = nullableTime(observationStartedAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.ObservationEndsAt, parseErr = nullableTime(observationEndsAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.ClosedAt, parseErr = nullableTime(closedAt)
 	return plan, parseErr
 }
 
@@ -148,6 +165,117 @@ func (store *Store) InvalidateReleasePlan(ctx context.Context, id, reason string
 	`, model.PlanInvalidated, reason, timeText(store.now()), id,
 		model.PlanPendingApproval, model.PlanApproved)
 	return requireOne(result, err, "发布计划无法失效")
+}
+
+func (store *Store) RecordPlanClosureBlocker(
+	ctx context.Context,
+	id, reason string,
+	audit model.AuditEntry,
+) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := store.now()
+	result, err := tx.ExecContext(ctx, `
+		UPDATE release_plans SET closure_reason = ?, updated_at = ?
+		WHERE id = ? AND state = ?
+	`, reason, timeText(now), id, model.PlanObserving)
+	if err = requireOne(result, err, "计划收口阻断原因无法写入"); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) CloseReleasePlan(
+	ctx context.Context,
+	id, actorHash, idempotencyKey string,
+	audit model.AuditEntry,
+) (model.ReleasePlan, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	defer tx.Rollback()
+	plan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.ReleasePlan{}, ErrNotFound
+	}
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if plan.ActorHash != actorHash {
+		return model.ReleasePlan{}, ErrActorMismatch
+	}
+	var storedKey string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT closure_idempotency_key FROM release_plans WHERE id = ?
+	`, id).Scan(&storedKey); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if plan.State == model.PlanCompleted {
+		if storedKey == idempotencyKey && storedKey != "" {
+			return plan, nil
+		}
+		return model.ReleasePlan{}, ErrIdempotency
+	}
+	if plan.State != model.PlanObserving || plan.ObservationEndsAt == nil {
+		return model.ReleasePlan{}, errors.New("计划当前不能收口")
+	}
+	now := store.now()
+	if now.Before(*plan.ObservationEndsAt) {
+		return model.ReleasePlan{}, errors.New("观察窗口尚未结束")
+	}
+	var taskState model.TaskState
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM tasks WHERE id = ?`, plan.TaskID).Scan(&taskState); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if taskState != model.TaskSucceeded {
+		return model.ReleasePlan{}, errors.New("执行任务未成功，计划不能收口")
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE release_plans SET state = ?, closure_reason = '', closure_idempotency_key = ?,
+			closed_at = ?, updated_at = ? WHERE id = ? AND state = ?
+	`, model.PlanCompleted, idempotencyKey, timeText(now), timeText(now), id, model.PlanObserving)
+	if err = requireOne(result, err, "计划收口失败"); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	plan.State = model.PlanCompleted
+	plan.ClosureReason = ""
+	plan.ClosedAt = &now
+	plan.UpdatedAt = now
+	return plan, nil
+}
+
+func appendPlanAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	audit model.AuditEntry,
+	now time.Time,
+) error {
+	if audit.OccurredAt.IsZero() {
+		audit.OccurredAt = now
+	}
+	detail, err := encodeJSON(audit.Detail)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO audit_entries (occurred_at, actor_hash, event, resource, outcome, detail_json)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, timeText(audit.OccurredAt), audit.ActorHash, audit.Event, audit.Resource,
+		audit.Outcome, detail)
+	return err
 }
 
 func (store *Store) StartPlanTask(

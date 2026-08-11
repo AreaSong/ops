@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCheck, Clock3, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, CheckCheck, Clock3, Eye, ShieldCheck } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { formatTime } from '../labels'
 import type { ReleasePlan, ServiceView, Task } from '../types'
@@ -24,9 +24,13 @@ function serviceGate(service: ServiceView): 'healthy' | 'error' | 'warning' {
 export function Overview({ services, tasks, plans, onService, onTask, onPlan }: OverviewProps) {
   const pendingPlans = plans.filter((plan) => plan.state === 'pending_approval')
   const approvedPlans = plans.filter((plan) => plan.state === 'approved')
+  const observingPlans = plans.filter((plan) => plan.state === 'observing')
+  const attentionPlans = plans.filter((plan) => plan.state === 'needs_attention')
   const activeTasks = tasks.filter((task) => activeTaskStates.has(task.state))
   const attentionTasks = tasks.filter((task) => attentionTaskStates.has(task.state))
+  const orphanedAttentionPlans = attentionPlans.filter((plan) => !attentionTasks.some((task) => task.id === plan.taskId))
   const actionablePlans = [...pendingPlans, ...approvedPlans]
+  const handlingCount = actionablePlans.length + observingPlans.length + attentionTasks.length + orphanedAttentionPlans.length
 
   return (
     <div className="page">
@@ -34,26 +38,35 @@ export function Overview({ services, tasks, plans, onService, onTask, onPlan }: 
         <div><span className="eyebrow">受控生产操作</span><h1>操作总览</h1></div>
         <span className="last-updated">自动刷新 · SSE 实时事件</span>
       </header>
-      <section className="metric-strip" aria-label="操作状态">
+      <section className="metric-strip operation-metrics" aria-label="操作状态">
         <div><ShieldCheck size={18} aria-hidden="true" /><span><b>{pendingPlans.length}</b>待批准计划</span></div>
         <div><CheckCheck size={18} aria-hidden="true" /><span><b>{approvedPlans.length}</b>已批准待执行</span></div>
         <div><Clock3 size={18} aria-hidden="true" /><span><b>{activeTasks.length}</b>活动执行</span></div>
-        <div className={attentionTasks.length > 0 ? 'metric-alert' : ''}>
-          <AlertTriangle size={18} aria-hidden="true" /><span><b>{attentionTasks.length}</b>恢复待处理</span>
+        <div><Eye size={18} aria-hidden="true" /><span><b>{observingPlans.length}</b>观察中</span></div>
+        <div className={attentionTasks.length + orphanedAttentionPlans.length > 0 ? 'metric-alert' : ''}>
+          <AlertTriangle size={18} aria-hidden="true" /><span><b>{attentionTasks.length + orphanedAttentionPlans.length}</b>恢复待处理</span>
         </div>
       </section>
 
       <section className="page-section">
-        <div className="section-heading"><h2>需要处理</h2><span>{actionablePlans.length + attentionTasks.length} 项</span></div>
-        {actionablePlans.length === 0 && attentionTasks.length === 0 && (
+        <div className="section-heading"><h2>需要处理</h2><span>{handlingCount} 项</span></div>
+        {handlingCount === 0 && (
           <div className="empty-state compact">当前没有等待批准、执行或恢复核对的事项</div>
         )}
-        {(actionablePlans.length > 0 || attentionTasks.length > 0) && (
+        {handlingCount > 0 && (
           <div className="task-list compact-list">
             {actionablePlans.map((plan) => (
               <button key={plan.id} type="button" className="task-row" onClick={() => onPlan(plan)}>
                 <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>
                 <span className="task-summary">{plan.state === 'approved' ? '批准已绑定，等待执行' : '等待明确批准'}</span>
+                <time>{formatTime(plan.updatedAt)}</time>
+                <StatusBadge kind="plan" value={plan.state} />
+              </button>
+            ))}
+            {observingPlans.map((plan) => (
+              <button key={plan.id} type="button" className="task-row" onClick={() => onPlan(plan)}>
+                <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>
+                <span className="task-summary">{plan.closureReason || `观察至 ${formatTime(plan.observationEndsAt)}`}</span>
                 <time>{formatTime(plan.updatedAt)}</time>
                 <StatusBadge kind="plan" value={plan.state} />
               </button>
@@ -65,6 +78,14 @@ export function Overview({ services, tasks, plans, onService, onTask, onPlan }: 
                 <time>{formatTime(task.finishedAt ?? task.createdAt)}</time>
                 <StatusBadge kind="state" value={task.state} />
               </button>
+            ))}
+            {orphanedAttentionPlans.map((plan) => (
+              <div key={plan.id} className="task-row static">
+                <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>
+                <span className="task-summary">{plan.closureReason || '计划需要人工处理'}</span>
+                <time>{formatTime(plan.updatedAt)}</time>
+                <StatusBadge kind="plan" value={plan.state} />
+              </div>
             ))}
           </div>
         )}

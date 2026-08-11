@@ -34,6 +34,7 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/plans/{id}", server.plan)
 	mux.HandleFunc("POST /v1/plans/{id}/approve", server.approvePlan)
 	mux.HandleFunc("POST /v1/plans/{id}/execute", server.executePlan)
+	mux.HandleFunc("POST /v1/plans/{id}/close", server.closePlan)
 	mux.HandleFunc("POST /v1/tasks", server.startTask)
 	mux.HandleFunc("GET /v1/tasks", server.tasks)
 	mux.HandleFunc("GET /v1/tasks/{id}", server.task)
@@ -42,6 +43,24 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/audit", server.audit)
 	mux.HandleFunc("GET /v1/events", server.events)
 	return requestLimits(mux)
+}
+
+func (server *Server) closePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ClosePlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.CloseReleasePlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
 }
 
 func (server *Server) recoverTask(response http.ResponseWriter, request *http.Request) {

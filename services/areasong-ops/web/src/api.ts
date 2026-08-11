@@ -20,6 +20,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 export class OpsAPI {
   private csrfToken = ''
   private executionKeys = new Map<string, string>()
+  private closureKeys = new Map<string, string>()
 
   async session(): Promise<SessionResponse> {
     const response = await fetch('/api/session', { credentials: 'same-origin' })
@@ -73,6 +74,12 @@ export class OpsAPI {
     return this.mutate<Task>(`/api/plans/${encodeURIComponent(planID)}/execute`, {
       idempotencyKey,
     })
+  }
+
+  async closePlan(planID: string): Promise<ReleasePlan> {
+    const idempotencyKey = this.closureKeys.get(planID) ?? crypto.randomUUID()
+    this.closureKeys.set(planID, idempotencyKey)
+    return this.mutate<ReleasePlan>(`/api/plans/${encodeURIComponent(planID)}/close`, { idempotencyKey })
   }
 
   async recoverTask(taskID: string, action: string): Promise<ReleasePlan> {
