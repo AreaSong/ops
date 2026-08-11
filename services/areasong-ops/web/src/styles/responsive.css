@@ -81,6 +81,9 @@
   .identity-grid > div { padding-inline: 12px; }
   .release-band { align-items: flex-start; flex-wrap: wrap; gap: 7px 12px; }
   .release-band > div { width: 100%; }
+  .plan-band { grid-template-columns: minmax(0, 1fr) auto; }
+  .plan-band code { grid-column: 1; grid-row: 2; }
+  .plan-band .button { grid-column: 2; grid-row: 1 / span 2; }
   .action-grid { grid-template-columns: 1fr; }
   .action-item { min-height: 66px; }
   .modal-backdrop { padding: 10px; align-items: flex-end; }
@@ -90,6 +93,7 @@
   .modal-body { padding-inline: 15px; }
   .governance-list > div { grid-template-columns: 66px minmax(0, 1fr); gap: 10px; }
   .task-drawer { width: 100%; }
+  .task-stage-grid { grid-template-columns: 1fr; }
   .toast { top: 62px; right: 10px; width: calc(100vw - 20px); }
 }
 

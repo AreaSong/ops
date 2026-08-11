@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -92,18 +93,37 @@ func (store *Store) StartTask(
 	if subtle.ConstantTimeCompare([]byte(actualHash), []byte(confirmationHash)) != 1 {
 		return model.Task{}, false, ErrConfirmation
 	}
+	var activeID string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM tasks WHERE service = ? AND state IN (?, ?, ?, ?) LIMIT 1
+	`, preview.Service, model.TaskWaitingConfirmation, model.TaskQueued, model.TaskRunning,
+		model.TaskRollingBack).Scan(&activeID)
+	if err == nil {
+		return model.Task{}, false, fmt.Errorf("服务已有活动任务: %s", activeID)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return model.Task{}, false, err
+	}
 	now := store.now()
 	snapshot, err := encodeJSON(preview.Snapshot)
+	if err != nil {
+		return model.Task{}, false, err
+	}
+	stages := make([]model.TaskStage, 0, len(preview.Steps))
+	for _, step := range preview.Steps {
+		stages = append(stages, model.TaskStage{Name: step, State: model.StagePending})
+	}
+	stagesJSON, err := encodeJSON(stages)
 	if err != nil {
 		return model.Task{}, false, err
 	}
 	_, err = tx.ExecContext(ctx, `
 	        INSERT INTO tasks (
 	            id, idempotency_key, request_hash, actor_hash, service, action, target, risk,
-	            state, preview_id, snapshot_json, created_at
-	        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	            state, preview_id, snapshot_json, stages_json, created_at
+	        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	    `, taskID, request.IdempotencyKey, requestHash, actorHash, preview.Service, preview.Action,
-		preview.Target, preview.Risk, model.TaskQueued, preview.ID, snapshot, timeText(now))
+		preview.Target, preview.Risk, model.TaskQueued, preview.ID, snapshot, stagesJSON, timeText(now))
 	if err != nil {
 		return model.Task{}, false, fmt.Errorf("创建任务失败: %w", err)
 	}
@@ -124,7 +144,7 @@ func (store *Store) StartTask(
 		ID: taskID, IdempotencyKey: request.IdempotencyKey, RequestHash: requestHash, ActorHash: actorHash,
 		Service: preview.Service, Action: preview.Action, Target: preview.Target,
 		Risk: preview.Risk, State: model.TaskQueued, PreviewID: preview.ID,
-		Snapshot: preview.Snapshot, CreatedAt: now,
+		Snapshot: preview.Snapshot, Stages: stages, CreatedAt: now,
 	}
 	return task, true, nil
 }

@@ -165,6 +165,24 @@ func validateAction(service, name string, action model.ActionDefinition) error {
 		}
 		seen[step] = struct{}{}
 	}
+	for phase, semantics := range action.PhaseSemantics {
+		if _, exists := seen[phase]; !exists {
+			return fmt.Errorf("服务 %s 的动作 %s 为未知阶段 %s 声明语义", service, name, phase)
+		}
+		switch semantics.Effect {
+		case "observe", "artifact_write", "runtime_mutation", "data_mutation":
+		default:
+			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 副作用无效", service, name, phase)
+		}
+		switch semantics.FailurePolicy {
+		case "fail", "rollback", "needs_attention":
+		default:
+			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 失败策略无效", service, name, phase)
+		}
+		if semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase == "" {
+			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 缺少恢复阶段", service, name, phase)
+		}
+	}
 	switch action.Risk {
 	case model.RiskReadOnly:
 		if action.ConfirmationTemplate != "" {

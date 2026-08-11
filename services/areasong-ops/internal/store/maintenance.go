@@ -35,17 +35,52 @@ type FinishedTaskMetric struct {
 
 func (store *Store) RecoverInterrupted(ctx context.Context) (int64, error) {
 	now := timeText(store.now())
-	result, err := store.db.ExecContext(ctx, `
-        UPDATE tasks
-        SET state = ?, finished_at = ?, error = ?, summary = ?
-        WHERE state IN (?, ?)
-    `, model.TaskRecoveryUncertain, now,
-		"Runner 在任务完成前重启，禁止自动重试，必须人工核对",
-		"Runner 重启后等待人工核对", model.TaskQueued, model.TaskRunning)
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	defer tx.Rollback()
+	safe, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 1,
+			failure_code = 'runner_interrupted', heartbeat_at = NULL
+		WHERE state = ? OR (state = ? AND production_changed = 0
+			AND current_phase NOT IN ('migration', 'apply', 'restart'))
+	`, model.TaskFailedRecoverable, now,
+		"Runner 在任务完成前重启，尚无生产变更证据，可重新创建计划后执行",
+		"Runner 重启，任务可恢复", model.TaskQueued, model.TaskRunning)
+	if err != nil {
+		return 0, err
+	}
+	unsafe, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 0,
+			failure_code = 'runner_interrupted_after_change', rollback_available = (action = 'update'),
+			rollback_reason = 'Runner 中断时生产可能已改变，必须人工核对', heartbeat_at = NULL
+		WHERE state IN (?, ?)
+	`, model.TaskNeedsAttention, now,
+		"Runner 在生产可能改变后重启，禁止自动处理，必须人工核对",
+		"Runner 重启后等待人工核对", model.TaskRunning, model.TaskRollingBack)
+	if err != nil {
+		return 0, err
+	}
+	safeCount, err := safe.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	unsafeCount, err := unsafe.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE release_plans SET state = ?, updated_at = ?
+		WHERE state = ? AND task_id IN (SELECT id FROM tasks WHERE state IN (?, ?))
+	`, model.PlanCompleted, now, model.PlanExecuting,
+		model.TaskFailedRecoverable, model.TaskNeedsAttention); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return safeCount + unsafeCount, nil
 }
 
 func (store *Store) CollectMetrics(ctx context.Context) (Metrics, error) {
@@ -116,8 +151,8 @@ func (store *Store) CollectMetrics(ctx context.Context) (Metrics, error) {
 	}
 	var createdAt string
 	err = store.db.QueryRowContext(ctx, `
-        SELECT COALESCE(MIN(created_at), '') FROM tasks WHERE state IN (?, ?)
-    `, model.TaskQueued, model.TaskRunning).Scan(&createdAt)
+	    SELECT COALESCE(MIN(created_at), '') FROM tasks WHERE state IN (?, ?, ?, ?)
+	`, model.TaskWaitingConfirmation, model.TaskQueued, model.TaskRunning, model.TaskRollingBack).Scan(&createdAt)
 	if err != nil {
 		return metrics, err
 	}
@@ -154,6 +189,10 @@ func (store *Store) Prune(ctx context.Context, detailRetention, summaryRetention
 		{`DELETE FROM events WHERE occurred_at < ?`, detailBefore},
 		{`DELETE FROM previews WHERE expires_at < ?`, detailBefore},
 		{`DELETE FROM audit_entries WHERE occurred_at < ?`, summaryBefore},
+		{`DELETE FROM release_plans WHERE state IN ('completed', 'invalidated') AND updated_at < ?`, summaryBefore},
+		{`DELETE FROM recovery_points WHERE task_id IN (
+			SELECT id FROM tasks WHERE finished_at IS NOT NULL AND finished_at < ?
+		)`, summaryBefore},
 		{`DELETE FROM tasks WHERE finished_at IS NOT NULL AND finished_at < ?`, summaryBefore},
 	}
 	for _, statement := range statements {

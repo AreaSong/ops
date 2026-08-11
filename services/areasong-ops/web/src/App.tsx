@@ -8,8 +8,8 @@ import type {
   ActionDefinition,
   AuditEntry,
   OpsEvent,
-  Preview,
   ReleaseDiscovery,
+  ReleasePlan,
   ServiceView,
   Task,
 } from './types'
@@ -42,13 +42,14 @@ export default function App() {
   const [tasksLoadingMore, setTasksLoadingMore] = useState(false)
   const [auditLoadingMore, setAuditLoadingMore] = useState(false)
   const [discoveries, setDiscoveries] = useState<Record<string, ReleaseDiscovery>>({})
+  const [plans, setPlans] = useState<ReleasePlan[]>([])
   const [selectedService, setSelectedService] = useState('areaforge')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskEvents, setTaskEvents] = useState<OpsEvent[]>([])
   const [taskEventsLoading, setTaskEventsLoading] = useState(false)
   const [taskEventsHasMore, setTaskEventsHasMore] = useState(false)
   const [taskEventsLoadingMore, setTaskEventsLoadingMore] = useState(false)
-  const [preview, setPreview] = useState<Preview | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<ReleasePlan | null>(null)
   const [pending, setPending] = useState(false)
   const [busyAction, setBusyAction] = useState('')
   const [connected, setConnected] = useState(false)
@@ -66,12 +67,15 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const [serviceData, taskData, auditData] = await Promise.all([api.services(), api.tasks(), api.audit()])
+    const [serviceData, taskData, auditData, planData] = await Promise.all([
+      api.services(), api.tasks(), api.audit(), api.plans(),
+    ])
     const previousTasks = tasksRef.current
     const previousAudit = auditRef.current
     const nextTasks = mergeTasks(taskData.items, previousTasks)
     const nextAudit = mergeAudit(auditData.items, previousAudit)
     setServices(serviceData)
+    setPlans(planData.items)
     setDiscoveries(Object.fromEntries(serviceData
       .filter((service) => service.releaseDiscovery)
       .map((service) => [service.name, service.releaseDiscovery as ReleaseDiscovery])))
@@ -80,6 +84,9 @@ export default function App() {
     if (previousTasks.length === 0) setTasksHasMore(taskData.hasMore)
     if (previousAudit.length === 0) setAuditHasMore(auditData.hasMore)
     setSelectedTask((current) => current ? nextTasks.find((item) => item.id === current.id) ?? current : null)
+    setSelectedPlan((current) => current
+      ? planData.items.find((item) => item.id === current.id && ['pending_approval', 'approved'].includes(item.state)) ?? null
+      : null)
   }, [api, updateAudit, updateTasks])
 
   useEffect(() => {
@@ -146,29 +153,37 @@ export default function App() {
     setBusyAction(key)
     setError('')
     try {
-      const nextPreview = await api.preview(service.name, action.name, target)
-      if (nextPreview.requiresConfirmation) {
-        setPreview(nextPreview)
+      const plan = await api.createPlan(service.name, action.name, target)
+      setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)])
+      if (plan.requiresConfirmation) {
+        setSelectedPlan(plan)
       } else {
-        const task = await api.start(nextPreview.id)
+        const approved = await api.approvePlan(plan)
+        const task = await api.executePlan(approved.id)
         registerTask(task)
         void openTask(task)
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '操作预览失败')
+      setError(reason instanceof Error ? reason.message : '发布计划创建失败')
     } finally {
       setBusyAction('')
     }
   }
 
   async function confirmAction(value: string) {
-    if (!preview) return
+    if (!selectedPlan) return
     setPending(true)
     try {
-      const task = await api.start(preview.id, value)
-      registerTask(task)
-      setPreview(null)
-      void openTask(task)
+      if (selectedPlan.state === 'pending_approval') {
+        const approved = await api.approvePlan(selectedPlan, value)
+        setSelectedPlan(approved)
+        setPlans((current) => current.map((item) => item.id === approved.id ? approved : item))
+      } else {
+        const task = await api.executePlan(selectedPlan.id)
+        registerTask(task)
+        setSelectedPlan(null)
+        void openTask(task)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '任务提交失败')
     } finally {
@@ -182,7 +197,9 @@ export default function App() {
     setTaskEventsLoading(true)
     setTaskEventsHasMore(false)
     try {
-      const page = await api.taskEvents(task.id)
+      const [detail, page] = await Promise.all([api.task(task.id), api.taskEvents(task.id)])
+      setSelectedTask(detail)
+      updateTasks(tasksRef.current.map((item) => item.id === detail.id ? detail : item))
       setTaskEvents((current) => {
         const seen = new Set(page.items.map((event) => event.sequence))
         return [...page.items, ...current.filter((event) => !seen.has(event.sequence))]
@@ -192,6 +209,27 @@ export default function App() {
       setError(reason instanceof Error ? reason.message : '任务记录读取失败')
     } finally {
       setTaskEventsLoading(false)
+    }
+  }
+
+  async function recoverTask(task: Task, action: string) {
+    setPending(true)
+    setError('')
+    try {
+      const plan = await api.recoverTask(task.id, action)
+      setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)])
+      if (plan.requiresConfirmation) {
+        setSelectedPlan(plan)
+      } else {
+        const approved = await api.approvePlan(plan)
+        const recovered = await api.executePlan(approved.id)
+        registerTask(recovered)
+        void openTask(recovered)
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '恢复动作创建失败')
+    } finally {
+      setPending(false)
     }
   }
 
@@ -272,9 +310,11 @@ export default function App() {
           selected={selectedService}
           discoveries={discoveries}
           busyAction={busyAction}
+          plans={plans}
           onSelect={setSelectedService}
           onRefresh={() => void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : '刷新失败'))}
           onAction={beginAction}
+          onPlan={setSelectedPlan}
         />
       )}
       {view === 'tasks' && (
@@ -285,12 +325,13 @@ export default function App() {
         <Audit entries={audit} hasMore={auditHasMore} loadingMore={auditLoadingMore}
           onLoadMore={() => void loadMoreAudit()} />
       )}
-      {preview && (
-        <ConfirmationDialog preview={preview} pending={pending} onCancel={() => setPreview(null)} onConfirm={confirmAction} />
+      {selectedPlan && (
+        <ConfirmationDialog plan={selectedPlan} pending={pending} onCancel={() => setSelectedPlan(null)} onConfirm={confirmAction} />
       )}
       {selectedTask && (
         <TaskDrawer task={selectedTask} events={taskEvents} loading={taskEventsLoading}
           hasMore={taskEventsHasMore} loadingMore={taskEventsLoadingMore}
+          pending={pending} onRecovery={(action) => void recoverTask(selectedTask, action)}
           onLoadMore={() => void loadMoreTaskEvents()} onClose={() => setSelectedTask(null)} />
       )}
     </Shell>

@@ -14,38 +14,176 @@ const (
 type TaskState string
 
 const (
-	TaskQueued            TaskState = "queued"
-	TaskRunning           TaskState = "running"
-	TaskSucceeded         TaskState = "succeeded"
-	TaskFailed            TaskState = "failed"
-	TaskRolledBack        TaskState = "rolled_back"
-	TaskRecoveryUncertain TaskState = "recovery_uncertain"
+	TaskWaitingConfirmation TaskState = "waiting_confirmation"
+	TaskQueued              TaskState = "queued"
+	TaskRunning             TaskState = "running"
+	TaskRollingBack         TaskState = "rolling_back"
+	TaskSucceeded           TaskState = "succeeded"
+	TaskFailed              TaskState = "failed"
+	TaskFailedRecoverable   TaskState = "failed_recoverable"
+	TaskNeedsAttention      TaskState = "needs_attention"
+	TaskRolledBack          TaskState = "rolled_back"
+	TaskRecoveryUncertain   TaskState = "recovery_uncertain"
 )
 
-func (state TaskState) Terminal() bool {
+func (state TaskState) Active() bool {
 	switch state {
-	case TaskSucceeded, TaskFailed, TaskRolledBack, TaskRecoveryUncertain:
+	case TaskWaitingConfirmation, TaskQueued, TaskRunning, TaskRollingBack:
 		return true
 	default:
 		return false
 	}
 }
 
+func (state TaskState) Terminal() bool {
+	switch state {
+	case TaskSucceeded, TaskFailed, TaskFailedRecoverable, TaskNeedsAttention,
+		TaskRolledBack, TaskRecoveryUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
+func (state TaskState) CanTransition(next TaskState) bool {
+	switch state {
+	case TaskWaitingConfirmation:
+		return next == TaskQueued || next == TaskFailedRecoverable
+	case TaskQueued:
+		return next == TaskRunning || next == TaskFailedRecoverable || next == TaskNeedsAttention
+	case TaskRunning:
+		return next == TaskRollingBack || next == TaskSucceeded || next == TaskFailed ||
+			next == TaskFailedRecoverable || next == TaskNeedsAttention || next == TaskRecoveryUncertain
+	case TaskRollingBack:
+		return next == TaskRolledBack || next == TaskNeedsAttention || next == TaskRecoveryUncertain
+	default:
+		return false
+	}
+}
+
+type PlanState string
+
+const (
+	PlanPendingApproval PlanState = "pending_approval"
+	PlanApproved        PlanState = "approved"
+	PlanExecuting       PlanState = "executing"
+	PlanCompleted       PlanState = "completed"
+	PlanInvalidated     PlanState = "invalidated"
+)
+
+type StageState string
+
+const (
+	StagePending    StageState = "pending"
+	StageRunning    StageState = "running"
+	StageSucceeded  StageState = "succeeded"
+	StageFailed     StageState = "failed"
+	StageSkipped    StageState = "skipped"
+	StageRolledBack StageState = "rolled_back"
+)
+
+type TaskStage struct {
+	Name       string     `json:"name"`
+	State      StageState `json:"state"`
+	Summary    string     `json:"summary,omitempty"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+}
+
+type RecoveryAction struct {
+	Name    string `json:"name"`
+	Label   string `json:"label"`
+	Enabled bool   `json:"enabled"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type ApprovalSummary struct {
+	SchemaVersion      int                       `json:"schemaVersion"`
+	Service            string                    `json:"service"`
+	Action             string                    `json:"action"`
+	Target             string                    `json:"target,omitempty"`
+	Risk               Risk                      `json:"risk"`
+	Impact             string                    `json:"impact"`
+	Rollback           string                    `json:"rollback"`
+	Scope              string                    `json:"scope"`
+	Steps              []string                  `json:"steps"`
+	PhaseSemantics     map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
+	ConfirmationPhrase string                    `json:"confirmationPhrase,omitempty"`
+	ExpectedBefore     map[string]any            `json:"expectedBefore"`
+	TargetEvidence     map[string]any            `json:"targetEvidence,omitempty"`
+}
+
+type ReleasePlan struct {
+	ID                   string          `json:"id"`
+	ActorHash            string          `json:"actorHash"`
+	Service              string          `json:"service"`
+	Action               string          `json:"action"`
+	Target               string          `json:"target,omitempty"`
+	Risk                 Risk            `json:"risk"`
+	State                PlanState       `json:"state"`
+	Digest               string          `json:"digest"`
+	ApprovalSummary      ApprovalSummary `json:"approvalSummary"`
+	ConfirmationPhrase   string          `json:"confirmationPhrase,omitempty"`
+	RequiresConfirmation bool            `json:"requiresConfirmation"`
+	ApprovedByHash       string          `json:"approvedByHash,omitempty"`
+	ApprovedAt           *time.Time      `json:"approvedAt,omitempty"`
+	InvalidatedReason    string          `json:"invalidatedReason,omitempty"`
+	TaskID               string          `json:"taskId,omitempty"`
+	CreatedAt            time.Time       `json:"createdAt"`
+	UpdatedAt            time.Time       `json:"updatedAt"`
+}
+
 type ActionDefinition struct {
-	Name                 string   `json:"name"`
-	DisplayName          string   `json:"displayName"`
-	Enabled              bool     `json:"enabled"`
-	Risk                 Risk     `json:"risk"`
-	TargetMode           string   `json:"targetMode"`
-	AllowedTargets       []string `json:"allowedTargets,omitempty"`
-	Steps                []string `json:"steps"`
-	TimeoutSeconds       int      `json:"timeoutSeconds"`
-	ConfirmationTemplate string   `json:"confirmationTemplate,omitempty"`
-	DisabledReason       string   `json:"disabledReason,omitempty"`
-	ReadinessGate        string   `json:"readinessGate,omitempty"`
-	Impact               string   `json:"impact"`
-	Rollback             string   `json:"rollback"`
-	Scope                string   `json:"scope"`
+	Name                 string                    `json:"name"`
+	DisplayName          string                    `json:"displayName"`
+	Enabled              bool                      `json:"enabled"`
+	Risk                 Risk                      `json:"risk"`
+	TargetMode           string                    `json:"targetMode"`
+	AllowedTargets       []string                  `json:"allowedTargets,omitempty"`
+	Steps                []string                  `json:"steps"`
+	TimeoutSeconds       int                       `json:"timeoutSeconds"`
+	ConfirmationTemplate string                    `json:"confirmationTemplate,omitempty"`
+	DisabledReason       string                    `json:"disabledReason,omitempty"`
+	ReadinessGate        string                    `json:"readinessGate,omitempty"`
+	Impact               string                    `json:"impact"`
+	Rollback             string                    `json:"rollback"`
+	Scope                string                    `json:"scope"`
+	PhaseSemantics       map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
+}
+
+type PhaseSemantics struct {
+	Effect                string `json:"effect"`
+	ProducesRecoveryPoint bool   `json:"producesRecoveryPoint,omitempty"`
+	RequiresRecoveryPoint bool   `json:"requiresRecoveryPoint,omitempty"`
+	FailurePolicy         string `json:"failurePolicy"`
+	RecoveryPhase         string `json:"recoveryPhase,omitempty"`
+}
+
+type RecoveryArtifact struct {
+	Role      string `json:"role"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"sizeBytes"`
+	SHA256    string `json:"sha256"`
+}
+
+type RecoveryPointEvidence struct {
+	SchemaVersion int                `json:"schemaVersion"`
+	Service       string             `json:"service"`
+	TaskID        string             `json:"taskId"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	Artifacts     []RecoveryArtifact `json:"artifacts"`
+}
+
+type RecoveryPoint struct {
+	ID               string                `json:"id"`
+	TaskID           string                `json:"taskId"`
+	Service          string                `json:"service"`
+	Status           string                `json:"status"`
+	Evidence         RecoveryPointEvidence `json:"evidence"`
+	EvidenceDigest   string                `json:"evidenceDigest"`
+	CreatedAt        time.Time             `json:"createdAt"`
+	VerifiedAt       *time.Time            `json:"verifiedAt,omitempty"`
+	RecoverableUntil *time.Time            `json:"recoverableUntil,omitempty"`
 }
 
 type ComposeServiceRuntime struct {
@@ -107,23 +245,36 @@ type Preview struct {
 }
 
 type Task struct {
-	ID             string         `json:"id"`
-	IdempotencyKey string         `json:"-"`
-	RequestHash    string         `json:"-"`
-	ActorHash      string         `json:"actorHash"`
-	Service        string         `json:"service"`
-	Action         string         `json:"action"`
-	Target         string         `json:"target,omitempty"`
-	Risk           Risk           `json:"risk"`
-	State          TaskState      `json:"state"`
-	CurrentPhase   string         `json:"currentPhase,omitempty"`
-	Summary        string         `json:"summary,omitempty"`
-	Error          string         `json:"error,omitempty"`
-	PreviewID      string         `json:"previewId"`
-	Snapshot       map[string]any `json:"snapshot,omitempty"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	StartedAt      *time.Time     `json:"startedAt,omitempty"`
-	FinishedAt     *time.Time     `json:"finishedAt,omitempty"`
+	ID                string           `json:"id"`
+	IdempotencyKey    string           `json:"-"`
+	RequestHash       string           `json:"-"`
+	ActorHash         string           `json:"actorHash"`
+	Service           string           `json:"service"`
+	Action            string           `json:"action"`
+	Target            string           `json:"target,omitempty"`
+	Risk              Risk             `json:"risk"`
+	State             TaskState        `json:"state"`
+	CurrentPhase      string           `json:"currentPhase,omitempty"`
+	Summary           string           `json:"summary,omitempty"`
+	Error             string           `json:"error,omitempty"`
+	PreviewID         string           `json:"previewId"`
+	PlanID            string           `json:"planId,omitempty"`
+	PlanDigest        string           `json:"planDigest,omitempty"`
+	ParentTaskID      string           `json:"parentTaskId,omitempty"`
+	Snapshot          map[string]any   `json:"snapshot,omitempty"`
+	Stages            []TaskStage      `json:"stages,omitempty"`
+	RunnerOwner       string           `json:"-"`
+	HeartbeatAt       *time.Time       `json:"heartbeatAt,omitempty"`
+	ProductionChanged bool             `json:"productionChanged"`
+	Retryable         bool             `json:"retryable"`
+	FailureCode       string           `json:"failureCode,omitempty"`
+	RollbackAvailable bool             `json:"rollbackAvailable"`
+	RollbackReason    string           `json:"rollbackReason,omitempty"`
+	RecoveryPointID   string           `json:"recoveryPointId,omitempty"`
+	RecoveryActions   []RecoveryAction `json:"recoveryActions,omitempty"`
+	CreatedAt         time.Time        `json:"createdAt"`
+	StartedAt         *time.Time       `json:"startedAt,omitempty"`
+	FinishedAt        *time.Time       `json:"finishedAt,omitempty"`
 }
 
 type Event struct {
@@ -158,8 +309,25 @@ type StartTaskRequest struct {
 	IdempotencyKey string `json:"idempotencyKey"`
 }
 
+type ApprovePlanRequest struct {
+	Confirmation string `json:"confirmation,omitempty"`
+	Digest       string `json:"digest"`
+}
+
+type ExecutePlanRequest struct {
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type RecoveryRequest struct {
+	Action string `json:"action"`
+}
+
 type AdapterResult struct {
-	OK      bool           `json:"ok"`
-	Summary string         `json:"summary"`
-	Data    map[string]any `json:"data,omitempty"`
+	SchemaVersion int                    `json:"schemaVersion,omitempty"`
+	Action        string                 `json:"action,omitempty"`
+	Phase         string                 `json:"phase,omitempty"`
+	OK            bool                   `json:"ok"`
+	Summary       string                 `json:"summary"`
+	Data          map[string]any         `json:"data,omitempty"`
+	RecoveryPoint *RecoveryPointEvidence `json:"recoveryPoint,omitempty"`
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,20 +22,27 @@ var (
 )
 
 type Engine struct {
-	catalog   *config.Catalog
-	store     *store.Store
-	executor  Executor
-	broker    *Broker
-	stateRoot string
-	lockMu    sync.Mutex
-	locks     map[string]string
-	wait      sync.WaitGroup
+	catalog    *config.Catalog
+	store      *store.Store
+	executor   Executor
+	broker     *Broker
+	stateRoot  string
+	lockMu     sync.Mutex
+	locks      map[string]string
+	wait       sync.WaitGroup
+	owner      string
+	backupRoot string
 }
 
 func NewEngine(catalog *config.Catalog, database *store.Store, executor Executor, stateRoot string) *Engine {
+	owner, err := newUUID()
+	if err != nil {
+		owner = fmt.Sprintf("runner-%d", os.Getpid())
+	}
 	return &Engine{
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
-		stateRoot: stateRoot, locks: make(map[string]string),
+		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
+		backupRoot: "/var/backups/ops",
 	}
 }
 
@@ -66,16 +72,10 @@ func (engine *Engine) CreatePreview(
 		return model.Preview{}, fmt.Errorf("创建预览前检查失败: %w", err)
 	}
 	if action.TargetMode == "controlled_rollback" {
-		source, err := engine.store.GetTask(ctx, request.Target)
-		if err != nil || source.Service != service.Name || source.Action != "update" ||
-			source.State != model.TaskSucceeded {
-			return model.Preview{}, errors.New("回滚来源必须是同服务已成功的受控更新任务")
+		if err := engine.validateRollbackSource(service.Name, request.Target, snapshot); err != nil {
+			return model.Preview{}, err
 		}
-		sourceDir := filepath.Join(engine.stateRoot, "operations", source.ID)
-		if info, err := os.Lstat(sourceDir); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return model.Preview{}, errors.New("回滚来源产物不存在或不安全")
-		}
-		snapshot["rollbackSourceTaskId"] = source.ID
+		snapshot["rollbackSourceTaskId"] = request.Target
 	}
 	id, err := newUUID()
 	if err != nil {
@@ -96,7 +96,7 @@ func (engine *Engine) CreatePreview(
 	}); err != nil {
 		return model.Preview{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
+	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
 		ActorHash: actorHash, Event: "preview.created", Resource: service.Name + "/" + action.Name,
 		Outcome: "accepted", Detail: map[string]any{"target": request.Target, "risk": action.Risk},
 	})
@@ -127,9 +127,14 @@ func (engine *Engine) StartTask(
 	if !created {
 		return task, false, nil
 	}
-	engine.event(ctx, model.Event{TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列"})
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actorHash, Event: "task.accepted", Resource: task.ID,
+	engine.enqueue(task)
+	return task, true, nil
+}
+
+func (engine *Engine) enqueue(task model.Task) {
+	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列"})
+	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
+		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
 		Outcome: "accepted", Detail: map[string]any{"service": task.Service, "action": task.Action, "target": task.Target},
 	})
 	engine.wait.Add(1)
@@ -137,7 +142,6 @@ func (engine *Engine) StartTask(
 		defer engine.wait.Done()
 		engine.run(task)
 	}()
-	return task, true, nil
 }
 
 func (engine *Engine) Wait() {

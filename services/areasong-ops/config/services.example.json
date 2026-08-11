@@ -39,6 +39,11 @@
           "risk": "low",
           "targetMode": "none",
           "steps": ["preflight", "backup", "verify"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "backup": {"effect": "artifact_write", "producesRecoveryPoint": true, "failurePolicy": "fail"},
+            "verify": {"effect": "observe", "failurePolicy": "fail"}
+          },
           "timeoutSeconds": 3600,
           "confirmationTemplate": "备份 {service}",
           "impact": "执行现有 PostgreSQL 与卷分类备份，可能增加短时磁盘和 IO 负载。",
@@ -66,6 +71,14 @@
           "targetMode": "signed_release_tag",
           "readinessGate": "prepared_release",
           "steps": ["preflight", "backup", "apply", "health", "smoke", "identity"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "backup": {"effect": "artifact_write", "producesRecoveryPoint": true, "failurePolicy": "fail"},
+            "apply": {"effect": "data_mutation", "requiresRecoveryPoint": true, "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "health": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "smoke": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "identity": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"}
+          },
           "timeoutSeconds": 7200,
           "confirmationTemplate": "更新 {service} 到 {target}",
           "impact": "验证签名发布、执行 fresh backup、迁移并只重建 Web，期间可能短暂中断。",
@@ -159,6 +172,11 @@
           "risk": "low",
           "targetMode": "none",
           "steps": ["preflight", "backup", "verify"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "backup": {"effect": "artifact_write", "producesRecoveryPoint": true, "failurePolicy": "fail"},
+            "verify": {"effect": "observe", "failurePolicy": "fail"}
+          },
           "timeoutSeconds": 3600,
           "confirmationTemplate": "备份 {service}",
           "impact": "执行现有 PostgreSQL、Redis 与卷分类备份，可能增加短时磁盘和 IO 负载。",
@@ -199,6 +217,15 @@
           "targetMode": "signed_release_tag",
           "readinessGate": "prepared_release",
           "steps": ["preflight", "backup", "migration", "apply", "health", "smoke", "identity"],
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "failurePolicy": "fail"},
+            "backup": {"effect": "artifact_write", "producesRecoveryPoint": true, "failurePolicy": "fail"},
+            "migration": {"effect": "observe", "requiresRecoveryPoint": true, "failurePolicy": "fail"},
+            "apply": {"effect": "data_mutation", "requiresRecoveryPoint": true, "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "health": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "smoke": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"},
+            "identity": {"effect": "observe", "failurePolicy": "rollback", "recoveryPhase": "rollback"}
+          },
           "timeoutSeconds": 7200,
           "confirmationTemplate": "更新 {service} 到 {target}",
           "impact": "仅允许通过固定摘要、fresh backup、隔离迁移与旧镜像回滚演练的目标。",

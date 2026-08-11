@@ -31,7 +31,7 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 | 服务能力声明 | `/etc/areasong-ops/services.json`，`root:root 0600` |
 | Access 配置 | `/etc/areasong-ops/web.env`，`root:root 0600` |
 | Runner | `/usr/local/libexec/areasong-ops/areasong-ops-runner` |
-| Unix Socket | `/run/areasong-ops/runner.sock`，`root:areasong-ops 0660` |
+| Unix Socket | 宿主 `/var/lib/areasong-ops/run/runner.sock`，Web 容器内 `/run/areasong-ops/runner.sock`，`root:areasong-ops 0660` |
 | SQLite 与操作证据 | `/var/lib/areasong-ops` |
 | systemd 日志 | `journalctl -u areasong-ops-runner.service` |
 | Web Docker 日志 | 容器 `areasong-ops-web` |
@@ -55,8 +55,8 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 ```bash
 sudo systemctl status areasong-ops-runner.service --no-pager
 sudo journalctl -u areasong-ops-runner.service -n 200 --no-pager
-sudo stat -c '%a %U:%G %n' /run/areasong-ops/runner.sock
-sudo curl -fsS --unix-socket /run/areasong-ops/runner.sock http://runner/healthz
+sudo stat -c '%a %U:%G %n' /var/lib/areasong-ops/run/runner.sock
+sudo curl -fsS --unix-socket /var/lib/areasong-ops/run/runner.sock http://runner/healthz
 sudo docker inspect areasong-ops-web
 curl -fsS http://127.0.0.1:3200/healthz
 curl -fsS http://127.0.0.1:3200/metrics

@@ -26,9 +26,12 @@ BASE_URL="${AREAFORGE_OPS_BASE_URL:-http://127.0.0.1:3020}"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 result() {
-  local summary="$1" data="${2:-}"
+  local summary="$1" data="${2:-}" recovery_point="${3:-null}"
   [[ -n "$data" ]] || data='{}'
-  jq -cn --arg summary "$summary" --argjson data "$data" '{ok:true,summary:$summary,data:$data}'
+  jq -cn --arg action "$action" --arg phase "$phase" --arg summary "$summary" \
+    --argjson data "$data" --argjson recoveryPoint "$recovery_point" \
+    '{schemaVersion:2,action:$action,phase:$phase,ok:true,summary:$summary,data:$data}
+      + if $recoveryPoint == null then {} else {recoveryPoint:$recoveryPoint} end'
 }
 sha256_text() { printf '%s' "$1" | sha256sum | awk '{print "sha256:"$1}'; }
 epoch_ms() {
@@ -42,6 +45,31 @@ epoch_ms() {
 
 require_file() {
   [[ -f "$1" && ! -L "$1" ]] || fail "required regular file is missing: $1"
+}
+
+recovery_artifact() {
+  local role="$1" path="$2"
+  [[ "$path" == /var/backups/ops/* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
+  jq -cn --arg role "$role" --arg path "$path" --argjson sizeBytes "$(stat -c %s "$path")" \
+    --arg sha256 "sha256:$(sha256sum "$path" | awk '{print $1}')" \
+    '{role:$role,path:$path,sizeBytes:$sizeBytes,sha256:$sha256}'
+}
+
+write_recovery_point() {
+  local postgres_output="$1" volumes_output="$2" postgres uploads ops_state artifacts point
+  postgres="$(grep '/areaforge-postgres-' <<<"$postgres_output" | tail -n1)"
+  uploads="$(grep '/areaforge-uploads-' <<<"$volumes_output" | tail -n1)"
+  ops_state="$(grep '/areaforge-ops-state-' <<<"$volumes_output" | tail -n1)"
+  artifacts="$(jq -cn --argjson postgres "$(recovery_artifact postgres-areaforge "$postgres")" \
+    --argjson uploads "$(recovery_artifact volume-areaforge-uploads "$uploads")" \
+    --argjson opsState "$(recovery_artifact volume-areaforge-ops-state "$ops_state")" \
+    '[$postgres,$uploads,$opsState]')"
+  point="$(jq -cn --arg service "${OPS_SERVICE_NAME:-areaforge}" --arg taskId "$(basename "$operation_dir")" \
+    --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson artifacts "$artifacts" \
+    '{schemaVersion:1,service:$service,taskId:$taskId,createdAt:$createdAt,artifacts:$artifacts}')"
+  printf '%s\n' "$point" >"$operation_dir/recovery-point.json"
+  chmod 0600 "$operation_dir/recovery-point.json"
+  printf '%s\n' "$point"
 }
 
 updater_expected_before() {
@@ -382,9 +410,10 @@ case "$action:$phase" in
     result "备份前运行身份未漂移"
     ;;
   backup:backup)
-    "$BACKUP_POSTGRES" >/dev/null
-    "$BACKUP_VOLUMES" >/dev/null
-    result "PostgreSQL 与卷分类备份完成"
+    postgres_output="$("$BACKUP_POSTGRES")"
+    volumes_output="$("$BACKUP_VOLUMES")"
+    recovery_point="$(write_recovery_point "$postgres_output" "$volumes_output")"
+    result "PostgreSQL 与卷分类备份完成" '{}' "$recovery_point"
     ;;
   backup:verify)
     assert_expected_before
@@ -425,10 +454,11 @@ case "$action:$phase" in
     result "expected-before、签名发布、Compose 与依赖身份已核验"
     ;;
   update:backup)
-    "$BACKUP_POSTGRES" >/dev/null
-    "$BACKUP_VOLUMES" >/dev/null
+    postgres_output="$("$BACKUP_POSTGRES")"
+    volumes_output="$("$BACKUP_VOLUMES")"
     assert_expected_before
-    result "宿主机 PostgreSQL 与卷 fresh backup 完成"
+    recovery_point="$(write_recovery_point "$postgres_output" "$volumes_output")"
+    result "宿主机 PostgreSQL 与卷 fresh backup 完成" '{}' "$recovery_point"
     ;;
   update:apply)
     assert_expected_before

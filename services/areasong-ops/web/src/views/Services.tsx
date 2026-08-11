@@ -10,7 +10,7 @@ import {
   FlaskConical,
 } from 'lucide-react'
 import { shortHash } from '../labels'
-import type { ActionDefinition, ReleaseDiscovery, ServiceView } from '../types'
+import type { ActionDefinition, ReleaseDiscovery, ReleasePlan, ServiceView } from '../types'
 import { StatusBadge } from '../components/StatusBadge'
 
 interface ServicesProps {
@@ -18,9 +18,11 @@ interface ServicesProps {
   selected: string
   discoveries: Record<string, ReleaseDiscovery>
   busyAction: string
+  plans: ReleasePlan[]
   onSelect: (name: string) => void
   onRefresh: () => void
   onAction: (service: ServiceView, action: ActionDefinition, target?: string) => void
+  onPlan: (plan: ReleasePlan) => void
 }
 
 const actionIcons = {
@@ -41,15 +43,19 @@ export function Services({
   selected,
   discoveries,
   busyAction,
+  plans,
   onSelect,
   onRefresh,
   onAction,
+  onPlan,
 }: ServicesProps) {
   const service = services.find((item) => item.name === selected) ?? services[0]
   if (!service) return <div className="empty-state">没有已声明的服务</div>
   const discovery = discoveries[service.name] ?? service.releaseDiscovery
   const discoveredTarget = discovery?.latestTag ?? (discovery?.manifestVersion ? `v${discovery.manifestVersion}` : '')
   const updateAvailable = Boolean(discoveredTarget && discoveredTarget.replace(/^v/, '') !== service.status?.currentVersion)
+  const resumablePlan = plans.find((plan) => plan.service === service.name &&
+    (plan.state === 'pending_approval' || plan.state === 'approved'))
 
   return (
     <div className="page service-page">
@@ -104,6 +110,17 @@ export function Services({
               <div><ShieldCheck size={19} aria-hidden="true" /><span><strong>最新发布</strong><small>{discovery.latestTag ?? `v${discovery.manifestVersion}`}</small></span></div>
               <span>{updateAvailable ? '有新版本' : '已是最新'}</span>
               {discovery.prepared !== undefined && <span>{discovery.prepared ? '发布门禁已准备' : discovery.blockers?.[0] ?? '等待发布准备'}</span>}
+            </section>
+          )}
+
+          {resumablePlan && (
+            <section className="plan-band">
+              <div>
+                <strong>{resumablePlan.state === 'approved' ? '计划已批准' : '计划等待批准'}</strong>
+                <small>{resumablePlan.action} {resumablePlan.target || ''}</small>
+              </div>
+              <code>{shortHash(resumablePlan.digest)}</code>
+              <button className="button secondary" type="button" onClick={() => onPlan(resumablePlan)}>查看计划</button>
             </section>
           )}
 

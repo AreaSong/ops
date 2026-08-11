@@ -14,6 +14,9 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - Web 不接触 Docker Socket、SQLite、备份目录或业务卷。
 - Runner 独占 `/var/lib/areasong-ops/ops.db`，通过持久目录中的 `root:areasong-ops 0660` Socket 提供 API；Runner 重启不会使 Web 的 bind mount 失效。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
+- 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
+- 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
+- AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点，Runner 复核产物路径、大小和 SHA-256 后才允许进入更新阶段。
 - 服务页从 SQLite 恢复最近一次成功的发布发现结果；准备发布完成后同步恢复 prepared 门禁状态。
 - 任务、审计和任务事件支持分页读取，前端不会把首批 100/200 条误当成完整保留记录。
 - 详细事件保留 30 天，任务和审计摘要保留 365 天，SQLite 快照及操作产物保留 30 天。
@@ -82,7 +85,7 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 
 ## 回滚
 
-- Runner：恢复上一 commit 的二进制、adapter 和服务声明，只重启 `areasong-ops-runner.service`。
+- Runner：恢复上一 commit 的二进制、adapter 和服务声明，只重启 `areasong-ops-runner.service`。SQLite 迁移只增列和建表，旧版本不会读取新字段；回退前保留当前 SQLite 快照，不能用旧二进制写入新任务。
 - Web：恢复 Compose env 中上一 commit tag，只重建 `web`。
 - Nginx：恢复上一站点文件，`nginx -t` 后 reload。
 - Access：删除或禁用本 Application 前先确认不会留下公开源站；源站仍由 Cloudflare CIDR allowlist 保护。

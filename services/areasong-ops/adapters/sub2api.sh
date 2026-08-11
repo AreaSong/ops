@@ -26,9 +26,36 @@ BASE_URL="${SUB2API_OPS_BASE_URL:-http://127.0.0.1:8080}"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 result() {
-  local summary="$1" data="${2:-}"
+  local summary="$1" data="${2:-}" recovery_point="${3:-null}"
   [[ -n "$data" ]] || data='{}'
-  jq -cn --arg summary "$summary" --argjson data "$data" '{ok:true,summary:$summary,data:$data}'
+  jq -cn --arg action "$action" --arg phase "$phase" --arg summary "$summary" \
+    --argjson data "$data" --argjson recoveryPoint "$recovery_point" \
+    '{schemaVersion:2,action:$action,phase:$phase,ok:true,summary:$summary,data:$data}
+      + if $recoveryPoint == null then {} else {recoveryPoint:$recoveryPoint} end'
+}
+
+recovery_artifact() {
+  local role="$1" path="$2"
+  [[ "$path" == /var/backups/ops/* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
+  jq -cn --arg role "$role" --arg path "$path" --argjson sizeBytes "$(stat -c %s "$path")" \
+    --arg sha256 "sha256:$(sha256sum "$path" | awk '{print $1}')" \
+    '{role:$role,path:$path,sizeBytes:$sizeBytes,sha256:$sha256}'
+}
+
+write_recovery_point() {
+  local postgres_output="$1" redis_output="$2" volumes_output="$3" postgres redis data artifacts point
+  postgres="$(grep '/sub2api-postgres-' <<<"$postgres_output" | tail -n1)"
+  redis="$(grep '/redis-' <<<"$redis_output" | tail -n1)"
+  data="$(grep '/sub2api-data-' <<<"$volumes_output" | tail -n1)"
+  artifacts="$(jq -cn --argjson postgres "$(recovery_artifact postgres-sub2api "$postgres")" \
+    --argjson redis "$(recovery_artifact redis "$redis")" \
+    --argjson data "$(recovery_artifact volume-sub2api-data "$data")" '[$postgres,$redis,$data]')"
+  point="$(jq -cn --arg service "${OPS_SERVICE_NAME:-sub2api}" --arg taskId "$(basename "$operation_dir")" \
+    --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson artifacts "$artifacts" \
+    '{schemaVersion:1,service:$service,taskId:$taskId,createdAt:$createdAt,artifacts:$artifacts}')"
+  printf '%s\n' "$point" >"$operation_dir/recovery-point.json"
+  chmod 0600 "$operation_dir/recovery-point.json"
+  printf '%s\n' "$point"
 }
 
 [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail "operation directory is unsafe"
@@ -163,13 +190,19 @@ write_legacy_request() {
 }
 
 delegate_update_phase() {
-  local legacy_output
+  local legacy_output recovery_point
   activate_release_target "$target"
   [[ -f "$operation_dir/legacy-request.json" ]] || write_legacy_request
   legacy_output="$(SUB2API_UPDATE_CONTROL_RELEASES="$RELEASES" \
     "$LEGACY_ADAPTER" "$phase" "$operation_dir/legacy-request.json" "$operation_dir")"
   jq -e --arg phase "$phase" '.ok == true and .phase == $phase' <<<"$legacy_output" >/dev/null || fail "legacy adapter contract failed"
-  result "$(jq -r .detail <<<"$legacy_output")"
+  if [[ "$phase" == backup ]]; then
+    recovery_point="$(write_recovery_point "$(cat "$operation_dir/backup-postgres.log")" \
+      "$(cat "$operation_dir/backup-redis.log")" "$(cat "$operation_dir/backup-volumes.log")")"
+    result "$(jq -r .detail <<<"$legacy_output")" '{}' "$recovery_point"
+  else
+    result "$(jq -r .detail <<<"$legacy_output")"
+  fi
 }
 
 case "$action:$phase" in
@@ -195,10 +228,11 @@ case "$action:$phase" in
     result "备份前运行身份未漂移"
     ;;
   backup:backup)
-    "$BACKUP_POSTGRES" >/dev/null
-    "$BACKUP_REDIS" >/dev/null
-    "$BACKUP_VOLUMES" >/dev/null
-    result "PostgreSQL、Redis 与卷分类备份完成"
+    postgres_output="$("$BACKUP_POSTGRES")"
+    redis_output="$("$BACKUP_REDIS")"
+    volumes_output="$("$BACKUP_VOLUMES")"
+    recovery_point="$(write_recovery_point "$postgres_output" "$redis_output" "$volumes_output")"
+    result "PostgreSQL、Redis 与卷分类备份完成" '{}' "$recovery_point"
     ;;
   backup:verify)
     assert_expected_before

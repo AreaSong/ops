@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -45,11 +46,40 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("初始化 SQLite 失败: %w", err)
 	}
+	if err := store.migrate(context.Background()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("迁移 SQLite 失败: %w", err)
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("收紧 SQLite 权限失败: %w", err)
 	}
 	return store, nil
+}
+
+func (store *Store) migrate(ctx context.Context) error {
+	var version int
+	if err := store.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	for index := version; index < len(migrations); index++ {
+		tx, err := store.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, migrations[index]); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("执行迁移 %d 失败: %w", index+1, err)
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, index+1)); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (store *Store) Close() error {

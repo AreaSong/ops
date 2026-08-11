@@ -8,10 +8,14 @@ export const riskLabel: Record<Risk, string> = {
 }
 
 export const stateLabel: Record<TaskState, string> = {
+  waiting_confirmation: '等待确认',
   queued: '排队中',
   running: '执行中',
+  rolling_back: '回滚中',
   succeeded: '成功',
   failed: '失败',
+  failed_recoverable: '可恢复失败',
+  needs_attention: '需要人工处理',
   rolled_back: '已回滚',
   recovery_uncertain: '恢复待核对',
 }

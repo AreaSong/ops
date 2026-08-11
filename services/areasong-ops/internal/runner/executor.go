@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -83,6 +84,12 @@ func (CommandExecutor) Execute(ctx context.Context, input ExecuteInput) (model.A
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
 		return model.AdapterResult{}, fmt.Errorf("适配器阶段 %s 返回无效 JSON: %w", input.Phase, err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return model.AdapterResult{}, fmt.Errorf("适配器阶段 %s 返回了多余输出", input.Phase)
+	}
+	if result.SchemaVersion != 0 && (result.SchemaVersion != 2 || result.Action != input.Action || result.Phase != input.Phase) {
+		return model.AdapterResult{}, fmt.Errorf("适配器阶段 %s 返回契约身份不匹配", input.Phase)
 	}
 	if !result.OK || strings.TrimSpace(result.Summary) == "" {
 		return model.AdapterResult{}, fmt.Errorf("适配器阶段 %s 返回失败契约", input.Phase)

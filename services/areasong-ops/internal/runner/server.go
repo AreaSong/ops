@@ -29,13 +29,128 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /metrics", server.metrics)
 	mux.HandleFunc("GET /v1/services", server.services)
 	mux.HandleFunc("POST /v1/previews", server.createPreview)
+	mux.HandleFunc("POST /v1/plans", server.createPlan)
+	mux.HandleFunc("GET /v1/plans", server.plans)
+	mux.HandleFunc("GET /v1/plans/{id}", server.plan)
+	mux.HandleFunc("POST /v1/plans/{id}/approve", server.approvePlan)
+	mux.HandleFunc("POST /v1/plans/{id}/execute", server.executePlan)
 	mux.HandleFunc("POST /v1/tasks", server.startTask)
 	mux.HandleFunc("GET /v1/tasks", server.tasks)
 	mux.HandleFunc("GET /v1/tasks/{id}", server.task)
 	mux.HandleFunc("GET /v1/tasks/{id}/events", server.taskEvents)
+	mux.HandleFunc("POST /v1/tasks/{id}/recovery", server.recoverTask)
 	mux.HandleFunc("GET /v1/audit", server.audit)
 	mux.HandleFunc("GET /v1/events", server.events)
 	return requestLimits(mux)
+}
+
+func (server *Server) recoverTask(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.RecoveryRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.CreateRecoveryPlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusCreated, plan)
+}
+
+func (server *Server) createPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.PreviewRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.CreateReleasePlan(request.Context(), actor, input)
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusCreated, plan)
+}
+
+func (server *Server) plans(response http.ResponseWriter, request *http.Request) {
+	if _, ok := requireActor(response, request); !ok {
+		return
+	}
+	limit := queryLimit(request, 50, 200)
+	plans, err := server.store.ListReleasePlans(request.Context(), limit+1, queryOffset(request))
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "读取发布计划失败")
+		return
+	}
+	hasMore := len(plans) > limit
+	if hasMore {
+		plans = plans[:limit]
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"plans": plans, "hasMore": hasMore})
+}
+
+func (server *Server) plan(response http.ResponseWriter, request *http.Request) {
+	if _, ok := requireActor(response, request); !ok {
+		return
+	}
+	plan, err := server.store.GetReleasePlan(request.Context(), request.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(response, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "读取发布计划失败")
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) approvePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ApprovePlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.ApproveReleasePlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) executePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ExecutePlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	task, created, err := server.engine.ExecuteReleasePlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+	}
+	writeJSON(response, status, task)
 }
 
 func requestLimits(next http.Handler) http.Handler {

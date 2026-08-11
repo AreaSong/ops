@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDot, CircleX, X } from 'lucide-react'
+import { CircleCheck, CircleDot, CircleX, RotateCcw, SearchCheck, X } from 'lucide-react'
 import { formatTime, phaseLabel } from '../labels'
 import type { OpsEvent, Task } from '../types'
 import { StatusBadge } from './StatusBadge'
@@ -9,10 +9,12 @@ interface TaskDrawerProps {
   loading: boolean
   hasMore: boolean
   loadingMore: boolean
+  pending: boolean
   onClose: () => void
   onLoadMore: () => void
+  onRecovery: (action: string) => void
 }
-export function TaskDrawer({ task, events, loading, hasMore, loadingMore, onClose, onLoadMore }: TaskDrawerProps) {
+export function TaskDrawer({ task, events, loading, hasMore, loadingMore, pending, onClose, onLoadMore, onRecovery }: TaskDrawerProps) {
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.currentTarget === event.target) onClose()
@@ -33,9 +35,42 @@ export function TaskDrawer({ task, events, loading, hasMore, loadingMore, onClos
             <div><dt>任务 ID</dt><dd><code>{task.id}</code></dd></div>
             <div><dt>目标</dt><dd>{task.target || '—'}</dd></div>
             <div><dt>创建时间</dt><dd>{formatTime(task.createdAt)}</dd></div>
+            {task.planDigest && <div><dt>计划摘要</dt><dd><code>{task.planDigest}</code></dd></div>}
+            <div><dt>生产变更</dt><dd>{task.productionChanged ? '已发生或按已发生处理' : '无变更证据'}</dd></div>
           </dl>
         </div>
         {task.error && <div className="error-block">{task.error}</div>}
+        {task.stages && task.stages.length > 0 && (
+          <section className="task-stage-section">
+            <h3>执行阶段</h3>
+            <div className="task-stage-grid">
+              {task.stages.map((stage) => (
+                <div key={stage.name} className={`task-stage task-stage-${stage.state}`}>
+                  <span>{phaseLabel[stage.name] ?? stage.name}</span>
+                  <strong>{stage.state}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {task.recoveryActions && task.recoveryActions.length > 0 && (
+          <section className="recovery-section">
+            <h3>恢复处理</h3>
+            <div className="recovery-actions">
+              {task.recoveryActions.map((action) => {
+                const Icon = action.name === 'inspect' ? SearchCheck : RotateCcw
+                return (
+                  <button key={action.name} className="button secondary" type="button"
+                    disabled={!action.enabled || pending || action.name === 'reconcile'}
+                    title={action.reason || (action.name === 'reconcile' ? '按运行手册人工核对后处置' : action.label)}
+                    onClick={() => onRecovery(action.name)}>
+                    <Icon size={16} aria-hidden="true" />{action.label}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
         <section className="timeline-section">
           <h3>执行记录</h3>
           {loading && <div className="empty-state compact">读取中</div>}

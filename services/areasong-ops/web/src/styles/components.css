@@ -17,8 +17,8 @@
 .badge { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .badge-risk-read_only { color: #445155; background: var(--gray-soft); }
 .badge-risk-low, .badge-state-succeeded, .badge-health-healthy { color: var(--green); background: var(--green-soft); }
-.badge-risk-medium, .badge-state-queued, .badge-state-running, .badge-health-warning { color: var(--amber); background: var(--amber-soft); }
-.badge-risk-high, .badge-state-failed, .badge-state-recovery_uncertain, .badge-health-error { color: var(--red); background: var(--red-soft); }
+.badge-risk-medium, .badge-state-waiting_confirmation, .badge-state-queued, .badge-state-running, .badge-state-rolling_back, .badge-health-warning { color: var(--amber); background: var(--amber-soft); }
+.badge-risk-high, .badge-state-failed, .badge-state-failed_recoverable, .badge-state-needs_attention, .badge-state-recovery_uncertain, .badge-health-error { color: var(--red); background: var(--red-soft); }
 .badge-state-rolled_back { color: var(--teal); background: var(--teal-soft); }
 .badge-health-unknown { color: var(--muted); background: var(--gray-soft); }
 
@@ -66,6 +66,12 @@
 .release-band strong { font-size: 11px; }
 .release-band small { margin-top: 2px; font-size: 13px; font-weight: 700; }
 .release-band > span { font-size: 11px; white-space: nowrap; }
+
+.plan-band { min-height: 54px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; margin-top: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.plan-band strong, .plan-band small { display: block; }
+.plan-band strong { font-size: 11px; }
+.plan-band small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.plan-band code { color: var(--muted); font-size: 9px; }
 
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .action-item {
@@ -129,6 +135,15 @@ button.data-table-row:hover { background: var(--surface-soft); }
 .drawer-summary dl > div { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 10px; }
 .drawer-summary dt { color: var(--muted); font-size: 10px; }
 .drawer-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 11px; }
+.task-stage-section, .recovery-section { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.task-stage-section h3, .recovery-section h3 { margin-bottom: 11px; font-size: 12px; }
+.task-stage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.task-stage { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; }
+.task-stage strong { color: var(--muted); font-size: 9px; }
+.task-stage-running { border-color: #dfc586; background: var(--amber-soft); }
+.task-stage-succeeded { border-color: #abd1ba; background: var(--green-soft); }
+.task-stage-failed { border-color: #e0b2b2; background: var(--red-soft); }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .timeline-section { padding: 18px; }
 .timeline-section h3 { margin-bottom: 14px; }
 .timeline { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }

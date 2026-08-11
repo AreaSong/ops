@@ -108,8 +108,91 @@ func TestRecoverInterruptedFailsClosed(t *testing.T) {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	task, err := store.GetTask(ctx, "task-3")
-	if err != nil || task.State != model.TaskRecoveryUncertain {
+	if err != nil || task.State != model.TaskFailedRecoverable || !task.Retryable {
 		t.Fatalf("task=%+v err=%v", task, err)
+	}
+}
+
+func TestRecoverInterruptedAfterMutationNeedsAttention(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	database.now = func() time.Time { return now }
+	preview := testPreview(now)
+	if err := database.CreatePreview(ctx, PreviewInput{
+		Preview: preview, ConfirmationHash: HashConfirmation("重启 demo"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-mutated",
+	}, "task-mutated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkProductionChanged(ctx, task.ID, false, "restart"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.RecoverInterrupted(ctx); err != nil {
+		t.Fatal(err)
+	}
+	finished, err := database.GetTask(ctx, task.ID)
+	if err != nil || finished.State != model.TaskNeedsAttention || finished.Retryable {
+		t.Fatalf("task=%+v err=%v", finished, err)
+	}
+}
+
+func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	database.now = func() time.Time { return now }
+	plan := model.ReleasePlan{
+		ID: "plan-1", ActorHash: "a", Service: "demo", Action: "update", Target: "v1.2.3",
+		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:abc",
+		ConfirmationPhrase: "更新 demo", RequiresConfirmation: true,
+		ApprovalSummary: model.ApprovalSummary{
+			SchemaVersion: 1, Service: "demo", Action: "update", Target: "v1.2.3",
+			Risk: model.RiskHigh, Steps: []string{"preflight", "apply"},
+			ExpectedBefore: map[string]any{"currentVersion": "1.0.0"},
+		}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{
+		Plan: plan, ConfirmationHash: HashConfirmation("更新 demo"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", "sha256:changed", "更新 demo"); err == nil {
+		t.Fatal("changed digest was approved")
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "更新 demo")
+	if err != nil || approved.State != model.PlanApproved || approved.ApprovedAt == nil {
+		t.Fatalf("plan=%+v err=%v", approved, err)
+	}
+	task, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "plan-task")
+	if err != nil || !created || task.PlanID != plan.ID || len(task.Stages) != 2 {
+		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+	}
+	again, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "other-task")
+	if err != nil || created || again.ID != task.ID {
+		t.Fatalf("again=%+v created=%v err=%v", again, created, err)
+	}
+	if err := database.MarkRunningOwned(ctx, task.ID, "preflight", "runner"); err != nil {
+		t.Fatal(err)
+	}
+	event, err := database.CompleteTask(ctx, task.ID, model.TaskSucceeded, "完成", "", "", false, false, "",
+		model.Event{TaskID: task.ID, Level: "info", Phase: "terminal", Message: "succeeded",
+			Data: map[string]any{"state": model.TaskSucceeded}},
+		model.AuditEntry{ActorHash: "a", Event: "task.terminal", Resource: task.ID, Outcome: "succeeded"})
+	if err != nil || event.Sequence == 0 {
+		t.Fatalf("event=%+v err=%v", event, err)
+	}
+	completed, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || completed.State != model.PlanCompleted {
+		t.Fatalf("completed=%+v err=%v", completed, err)
 	}
 }
 
@@ -289,6 +372,12 @@ func TestDiscoveryRollbackSourceAndPagination(t *testing.T) {
 	after, err := database.ListTaskEvents(ctx, check.ID, events[0].Sequence, 1)
 	if err != nil || len(after) != 0 {
 		t.Fatalf("after=%+v err=%v", after, err)
+	}
+	if err := database.MarkRunning(ctx, "task-queued", "inspect"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinishTask(ctx, "task-queued", model.TaskSucceeded, "完成", ""); err != nil {
+		t.Fatal(err)
 	}
 
 	prepare := createTask("prepare", "prepare", string(model.TaskSucceeded), base.Add(3*time.Minute))

@@ -56,10 +56,12 @@ Runner 以以下参数调用所有适配器和 hook：
 成功时 stdout 必须只输出一个 JSON 对象：
 
 ```json
-{"ok":true,"summary":"阶段完成","data":{}}
+{"schemaVersion":2,"action":"update","phase":"health","ok":true,"summary":"阶段完成","data":{}}
 ```
 
-错误说明写到 stderr，并以非零状态退出。hook 必须是 root 拥有的普通文件、不可由组或其他用户写入，并设置 owner execute。服务声明中的所有路径必须为绝对路径。
+Runner 会拒绝动作/阶段身份不匹配、尾随第二个 JSON 或其他多余输出。错误说明写到 stderr，并以非零状态退出。hook 必须是 root 拥有的普通文件、不可由组或其他用户写入，并设置 owner execute。服务声明中的所有路径必须为绝对路径。
+
+变更动作应为每个阶段声明 `phaseSemantics`，明确 `effect`、`failurePolicy`、恢复点产消关系和回滚阶段。产生恢复点的备份阶段还需在顶层返回 `recoveryPoint`：它必须绑定当前 service/task，列出受控备份目录中的服务必需产物、大小和 SHA-256。Runner 完成二次验证并持久化后，`requiresRecoveryPoint` 阶段才会放行。
 
 发布准备成功后，以原子方式写入：
 

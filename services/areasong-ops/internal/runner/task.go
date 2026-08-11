@@ -3,7 +3,9 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,19 +41,26 @@ func (engine *Engine) run(task model.Task) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(action.TimeoutSeconds)*time.Second)
 	defer cancel()
-	if err := engine.store.MarkRunning(ctx, task.ID, action.Steps[0]); err != nil {
+	if err := engine.store.MarkRunningOwned(ctx, task.ID, action.Steps[0], engine.owner); err != nil {
 		engine.failBeforeRun(task, err)
 		return
 	}
+	heartbeatDone := make(chan struct{})
+	defer close(heartbeatDone)
+	go engine.heartbeat(task.ID, heartbeatDone)
 	engine.event(ctx, model.Event{TaskID: task.ID, Level: "info", Phase: action.Steps[0], Message: "任务开始执行"})
-	mutated := false
+	productionChanged := false
+	recoveryPointReady := false
 	lastSummary := ""
 	for _, phase := range action.Steps {
-		if phase == "apply" || phase == "restart" {
-			mutated = true
+		semantics := phaseSemantics(action, phase)
+		if semantics.RequiresRecoveryPoint && !recoveryPointReady {
+			engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary,
+				errors.New("变更阶段缺少已验证恢复点，已拒绝执行"))
+			return
 		}
 		if err := engine.store.SetPhase(ctx, task.ID, phase, lastSummary); err != nil {
-			engine.finishFailure(task, service, operationDir, mutated, lastSummary, err)
+			engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary, err)
 			return
 		}
 		result, err := engine.executor.Execute(ctx, ExecuteInput{
@@ -60,8 +69,28 @@ func (engine *Engine) run(task model.Task) {
 			SourceDir: engine.sourceDir(task),
 		})
 		if err != nil {
-			engine.finishFailure(task, service, operationDir, mutated, lastSummary, err)
+			engine.finishFailure(task, service, operationDir, productionChanged, mutationSemantics(semantics), lastSummary, err)
 			return
+		}
+		if semantics.ProducesRecoveryPoint {
+			point, err := engine.persistRecoveryPoint(context.Background(), task, result.RecoveryPoint)
+			if err != nil {
+				engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary, err)
+				return
+			}
+			recoveryPointReady = true
+			if result.Data == nil {
+				result.Data = make(map[string]any)
+			}
+			result.Data["recoveryPointId"] = point.ID
+			result.Data["recoveryPointDigest"] = point.EvidenceDigest
+		}
+		changed, explicit := result.Data["productionChanged"].(bool)
+		if changed || (!explicit && mutationSemantics(semantics)) {
+			productionChanged = true
+			rollbackAvailable := task.Action == "update"
+			_ = engine.store.MarkProductionChanged(context.Background(), task.ID, rollbackAvailable,
+				"仅回滚应用版本和 Compose，不自动恢复业务数据库")
 		}
 		lastSummary = result.Summary
 		engine.event(ctx, model.Event{
@@ -69,18 +98,22 @@ func (engine *Engine) run(task model.Task) {
 			Message: result.Summary, Data: result.Data,
 		})
 	}
-	if err := engine.store.FinishTask(ctx, task.ID, model.TaskSucceeded, lastSummary, ""); err != nil {
-		engine.event(context.Background(), model.Event{
-			TaskID: task.ID, Level: "error", Phase: "terminal", Message: redactText(err.Error()),
-			Data: map[string]any{"state": model.TaskRecoveryUncertain},
-		})
-		return
+	engine.completeTask(task, model.TaskSucceeded, lastSummary, "", "", false, false, "")
+}
+
+func (engine *Engine) heartbeat(taskID string, done <-chan struct{}) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = engine.store.Heartbeat(ctx, taskID, engine.owner)
+			cancel()
+		}
 	}
-	engine.event(context.Background(), model.Event{
-		TaskID: task.ID, Level: "info", Phase: "terminal", Message: "任务执行成功",
-		Data: map[string]any{"state": model.TaskSucceeded},
-	})
-	engine.auditTerminal(task, model.TaskSucceeded, "")
 }
 
 func writeTaskContract(operationDir string, task model.Task) error {
@@ -106,14 +139,28 @@ func (engine *Engine) finishFailure(
 	task model.Task,
 	service model.ServiceDefinition,
 	operationDir string,
-	mutated bool,
+	productionChanged bool,
+	mutationUncertain bool,
 	lastSummary string,
 	failure error,
 ) {
 	message := redactText(failure.Error())
 	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "error", Phase: "failed", Message: message})
-	state := model.TaskFailed
-	if mutated && task.Action == "update" {
+	state := model.TaskFailedRecoverable
+	retryable := !productionChanged && !mutationUncertain
+	rollbackAvailable := false
+	rollbackReason := ""
+	if productionChanged || mutationUncertain {
+		_ = engine.store.MarkProductionChanged(context.Background(), task.ID, task.Action == "update",
+			"变更阶段失败，生产是否已改变需按已改变处理")
+	}
+	if (productionChanged || mutationUncertain) && task.Action == "update" {
+		if err := engine.store.StartRollback(context.Background(), task.ID, message); err != nil {
+			message += "; 无法进入回滚状态: " + redactText(err.Error())
+			engine.completeTask(task, model.TaskNeedsAttention, lastSummary, message,
+				"rollback_transition_failed", false, true, "需人工核对更新产物")
+			return
+		}
 		rollbackCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		result, err := engine.executor.Execute(rollbackCtx, ExecuteInput{
@@ -125,31 +172,27 @@ func (engine *Engine) finishFailure(
 			lastSummary = result.Summary
 			engine.event(rollbackCtx, model.Event{TaskID: task.ID, Level: "warning", Phase: "rollback", Message: result.Summary, Data: result.Data})
 		} else {
-			state = model.TaskRecoveryUncertain
+			state = model.TaskNeedsAttention
 			message += "; 回滚失败: " + redactText(err.Error())
+			rollbackAvailable = false
+			rollbackReason = "自动回滚失败，禁止自动重试，必须人工核对"
 		}
-	} else if mutated {
-		state = model.TaskRecoveryUncertain
+	} else if productionChanged || mutationUncertain {
+		state = model.TaskNeedsAttention
+		retryable = false
+		rollbackReason = "生产可能已改变，必须人工核对"
 	}
 	if lastSummary == "" {
 		lastSummary = "任务执行失败"
 	}
-	_ = engine.store.FinishTask(context.Background(), task.ID, state, lastSummary, message)
-	engine.event(context.Background(), model.Event{
-		TaskID: task.ID, Level: "error", Phase: "terminal", Message: string(state),
-		Data: map[string]any{"state": state},
-	})
-	engine.auditTerminal(task, state, message)
+	engine.completeTask(task, state, lastSummary, message, "adapter_phase_failed",
+		retryable, rollbackAvailable, rollbackReason)
 }
 
 func (engine *Engine) failBeforeRun(task model.Task, err error) {
 	message := redactText(err.Error())
-	_ = engine.store.FinishTask(context.Background(), task.ID, model.TaskFailed, "任务未开始", message)
-	engine.event(context.Background(), model.Event{
-		TaskID: task.ID, Level: "error", Phase: "terminal", Message: message,
-		Data: map[string]any{"state": model.TaskFailed},
-	})
-	engine.auditTerminal(task, model.TaskFailed, message)
+	engine.completeTask(task, model.TaskFailedRecoverable, "任务未开始", message,
+		"preflight_failed", true, false, "")
 }
 
 func (engine *Engine) sourceDir(task model.Task) string {
@@ -161,7 +204,7 @@ func (engine *Engine) sourceDir(task model.Task) string {
 
 func lockResources(service, action string) []string {
 	resources := []string{"service:" + service}
-	if action == "backup" || action == "update" || action == "restore-drill" {
+	if action == "backup" || action == "update" || action == "rollback" || action == "restore-drill" {
 		resources = append(resources, "backup:global")
 	}
 	sort.Strings(resources)
@@ -196,6 +239,35 @@ func (engine *Engine) event(ctx context.Context, event model.Event) {
 	persisted, err := engine.store.AppendEvent(ctx, event)
 	if err == nil {
 		engine.broker.Publish(persisted.Sequence)
+	} else {
+		slog.Error("任务事件持久化失败", "task", event.TaskID, "phase", event.Phase, "error", err)
+	}
+}
+
+func (engine *Engine) completeTask(
+	task model.Task,
+	state model.TaskState,
+	summary, message, failureCode string,
+	retryable, rollbackAvailable bool,
+	rollbackReason string,
+) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	level := "info"
+	if state != model.TaskSucceeded {
+		level = "error"
+	}
+	event, err := engine.store.CompleteTask(ctx, task.ID, state, summary, message, failureCode,
+		retryable, rollbackAvailable, rollbackReason,
+		model.Event{TaskID: task.ID, Level: level, Phase: "terminal", Message: string(state),
+			Data: map[string]any{"state": state}},
+		model.AuditEntry{ActorHash: task.ActorHash, Event: "task.terminal", Resource: task.ID,
+			Outcome: string(state), Detail: map[string]any{"service": task.Service, "action": task.Action, "error": message}},
+	)
+	if err == nil {
+		engine.broker.Publish(event.Sequence)
+	} else {
+		slog.Error("任务终态事务提交失败", "task", task.ID, "state", state, "error", err)
 	}
 }
 

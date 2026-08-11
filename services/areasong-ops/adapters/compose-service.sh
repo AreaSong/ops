@@ -19,7 +19,8 @@ fail() {
 result() {
   local summary="$1"
   local data="${2:-\{\}}"
-  jq -cn --arg summary "$summary" --argjson data "$data" '{ok:true,summary:$summary,data:$data}'
+  jq -cn --arg action "$action" --arg phase "$phase" --arg summary "$summary" --argjson data "$data" \
+    '{schemaVersion:2,action:$action,phase:$phase,ok:true,summary:$summary,data:$data}'
 }
 
 [[ "$service" =~ ^[a-z][a-z0-9-]{1,39}$ ]] || fail "service name is invalid"

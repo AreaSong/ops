@@ -1,4 +1,4 @@
-import type { AuditEntry, OpsEvent, Page, Preview, ServiceView, Task } from './types'
+import type { AuditEntry, OpsEvent, Page, Preview, ReleasePlan, ServiceView, Task } from './types'
 
 interface SessionResponse {
   email: string
@@ -24,6 +24,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 export class OpsAPI {
   private csrfToken = ''
+  private executionKeys = new Map<string, string>()
 
   async session(): Promise<SessionResponse> {
     const response = await fetch('/api/session', { credentials: 'same-origin' })
@@ -47,6 +48,40 @@ export class OpsAPI {
     const response = await fetch(`/api/tasks/${encodeURIComponent(taskID)}/events?limit=200&after=${after}`)
     const payload = await parseResponse<{ events: OpsEvent[]; hasMore: boolean }>(response)
     return { items: payload.events ?? [], hasMore: payload.hasMore }
+  }
+
+  async task(taskID: string): Promise<Task> {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(taskID)}`)
+    return parseResponse<Task>(response)
+  }
+
+  async plans(offset = 0): Promise<Page<ReleasePlan>> {
+    const response = await fetch(`/api/plans?limit=100&offset=${offset}`)
+    const payload = await parseResponse<{ plans: ReleasePlan[]; hasMore: boolean }>(response)
+    return { items: payload.plans ?? [], hasMore: payload.hasMore }
+  }
+
+  async createPlan(service: string, action: string, target = ''): Promise<ReleasePlan> {
+    return this.mutate<ReleasePlan>('/api/plans', { service, action, target })
+  }
+
+  async approvePlan(plan: ReleasePlan, confirmation = ''): Promise<ReleasePlan> {
+    return this.mutate<ReleasePlan>(`/api/plans/${encodeURIComponent(plan.id)}/approve`, {
+      confirmation,
+      digest: plan.digest,
+    })
+  }
+
+  async executePlan(planID: string): Promise<Task> {
+    const idempotencyKey = this.executionKeys.get(planID) ?? crypto.randomUUID()
+    this.executionKeys.set(planID, idempotencyKey)
+    return this.mutate<Task>(`/api/plans/${encodeURIComponent(planID)}/execute`, {
+      idempotencyKey,
+    })
+  }
+
+  async recoverTask(taskID: string, action: string): Promise<ReleasePlan> {
+    return this.mutate<ReleasePlan>(`/api/tasks/${encodeURIComponent(taskID)}/recovery`, { action })
   }
 
   async audit(offset = 0): Promise<Page<AuditEntry>> {
