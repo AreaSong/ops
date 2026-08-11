@@ -10,10 +10,10 @@ interface AuditProps {
 export function Audit({ entries, hasMore, loadingMore, onLoadMore }: AuditProps) {
   return (
     <div className="page">
-      <header className="page-header"><div><span className="eyebrow">365 天摘要</span><h1>操作审计</h1></div><span>{entries.length} 项</span></header>
+      <header className="page-header"><div><span className="eyebrow">治理行为摘要</span><h1>变更审计</h1></div><span>{entries.length} 项</span></header>
       <section className="page-section no-top-gap">
         {entries.length === 0 && <div className="empty-state">暂无审计记录</div>}
-        <div className="data-table audit-table" role="table" aria-label="操作审计">
+        <div className="data-table audit-table" role="table" aria-label="变更审计">
           <div className="data-table-head" role="row">
             <span>时间</span><span>事件</span><span>资源</span><span>操作者哈希</span><span>结果</span>
           </div>

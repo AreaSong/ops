@@ -323,7 +323,7 @@ func (store *Store) CompleteTask(
 }
 
 func recoveryActions(task model.Task) []model.RecoveryAction {
-	actions := []model.RecoveryAction{{Name: "inspect", Label: "运行检查", Enabled: task.State.Terminal()}}
+	actions := []model.RecoveryAction{{Name: "inspect", Label: "执行前检查", Enabled: task.State.Terminal()}}
 	if task.State == model.TaskFailedRecoverable {
 		actions = append(actions, model.RecoveryAction{Name: "retry", Label: "重新执行", Enabled: task.Retryable})
 	}

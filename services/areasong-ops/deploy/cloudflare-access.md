@@ -24,6 +24,7 @@ OPS_ALLOWED_EMAIL=song80184@gmail.com
 OPS_ACCESS_ISSUER=https://areasong.cloudflareaccess.com
 OPS_ACCESS_AUDIENCE=<AreaSong Ops Application AUD>
 OPS_PUBLIC_ORIGIN=https://ops.areasong.top
+OPS_GRAFANA_URL=https://monitor.areasong.top
 ```
 
 文件必须为 `root:root 0600`，AUD 不是密码，但仍由配置文件统一管理。

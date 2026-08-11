@@ -1,4 +1,4 @@
-import type { Risk, TaskState } from './types'
+import type { PlanState, Risk, TaskState } from './types'
 
 export const riskLabel: Record<Risk, string> = {
   read_only: '只读',
@@ -18,6 +18,14 @@ export const stateLabel: Record<TaskState, string> = {
   needs_attention: '需要人工处理',
   rolled_back: '已回滚',
   recovery_uncertain: '恢复待核对',
+}
+
+export const planStateLabel: Record<PlanState, string> = {
+  pending_approval: '等待批准',
+  approved: '等待执行',
+  executing: '执行中',
+  completed: '已完成',
+  invalidated: '已失效',
 }
 
 export const phaseLabel: Record<string, string> = {

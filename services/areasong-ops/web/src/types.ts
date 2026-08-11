@@ -14,6 +14,17 @@ export type TaskState =
 export type PlanState = 'pending_approval' | 'approved' | 'executing' | 'completed' | 'invalidated'
 export type StageState = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'rolled_back'
 
+export interface NavigationLinks {
+  grafana?: string
+  alerts?: string
+}
+
+export interface SessionResponse {
+  email: string
+  csrfToken: string
+  links?: NavigationLinks
+}
+
 export interface ActionDefinition {
   name: string
   displayName: string

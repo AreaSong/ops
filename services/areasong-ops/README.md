@@ -59,7 +59,7 @@ docker build --target web -t areasong-ops-web:<commit> \
 生产 Compose 位于 `/opt/services/areasong-ops/compose.yml`，来源为 [deploy/compose.yml](deploy/compose.yml)。真实配置位于：
 
 - `/etc/areasong-ops/services.json`：root-only 服务能力声明。
-- `/etc/areasong-ops/web.env`：Access issuer、audience、允许邮箱和 public origin。
+- `/etc/areasong-ops/web.env`：Access issuer、audience、允许邮箱、public origin 和 Grafana origin。
 - `/opt/services/areasong-ops/.env`：构建版本、commit 和 Runner 组 GID。
 
 `/opt/ops/services/areasong-ops` 是 Git 管理的受控源码；`/opt/services/areasong-ops`

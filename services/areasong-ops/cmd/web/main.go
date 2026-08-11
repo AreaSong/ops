@@ -46,7 +46,12 @@ func run() error {
 	handler, err := webapi.NewServer(
 		authenticator,
 		webapi.NewRunnerClient(envOr("OPS_RUNNER_SOCKET", "/run/areasong-ops/runner.sock")),
-		envOr("OPS_PUBLIC_ORIGIN", "https://ops.areasong.top"), development, assets,
+		webapi.ServerOptions{
+			PublicOrigin: envOr("OPS_PUBLIC_ORIGIN", "https://ops.areasong.top"),
+			GrafanaURL:   os.Getenv("OPS_GRAFANA_URL"),
+			Development:  development,
+		},
+		assets,
 	)
 	if err != nil {
 		return err

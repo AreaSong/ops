@@ -21,6 +21,10 @@
 .badge-risk-high, .badge-state-failed, .badge-state-failed_recoverable, .badge-state-needs_attention, .badge-state-recovery_uncertain, .badge-health-error { color: var(--red); background: var(--red-soft); }
 .badge-state-rolled_back { color: var(--teal); background: var(--teal-soft); }
 .badge-health-unknown { color: var(--muted); background: var(--gray-soft); }
+.badge-plan-pending_approval, .badge-plan-executing { color: var(--amber); background: var(--amber-soft); }
+.badge-plan-approved { color: var(--teal); background: var(--teal-soft); }
+.badge-plan-completed { color: var(--green); background: var(--green-soft); }
+.badge-plan-invalidated { color: var(--muted); background: var(--gray-soft); }
 
 .service-table { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
 .service-row {

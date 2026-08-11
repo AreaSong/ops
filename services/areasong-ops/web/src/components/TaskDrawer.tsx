@@ -23,7 +23,7 @@ export function TaskDrawer({ task, events, loading, hasMore, loadingMore, pendin
         <header className="drawer-header">
           <div>
             <span className="eyebrow">{task.service} · {task.action}</span>
-            <h2 id="task-title">任务详情</h2>
+            <h2 id="task-title">执行详情</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} title="关闭">
             <X size={18} aria-hidden="true" />
@@ -32,7 +32,7 @@ export function TaskDrawer({ task, events, loading, hasMore, loadingMore, pendin
         <div className="drawer-summary">
           <StatusBadge kind="state" value={task.state} />
           <dl>
-            <div><dt>任务 ID</dt><dd><code>{task.id}</code></dd></div>
+            <div><dt>执行 ID</dt><dd><code>{task.id}</code></dd></div>
             <div><dt>目标</dt><dd>{task.target || '—'}</dd></div>
             <div><dt>创建时间</dt><dd>{formatTime(task.createdAt)}</dd></div>
             {task.planDigest && <div><dt>计划摘要</dt><dd><code>{task.planDigest}</code></dd></div>}

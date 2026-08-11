@@ -6,6 +6,7 @@
 - [ ] `127.0.0.1:3200` 未占用。
 - [ ] `areasong-ops` 组已创建，并记录 GID 到 Compose env。
 - [ ] Cloudflare Access Application AUD 已写入 `/etc/areasong-ops/web.env`。
+- [ ] Grafana HTTPS origin 已写入 `OPS_GRAFANA_URL`，且不包含路径、查询或认证信息。
 - [ ] 当前 Runner、Compose、Nginx 和 Web image 身份已保存为回滚点。
 - [ ] 最近完整备份 manifest 与 R2 校验均有效。
 

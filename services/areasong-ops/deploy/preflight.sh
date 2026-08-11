@@ -63,6 +63,8 @@ group_gid="$(cut -d: -f3 <<<"$group_record")"
 
 require_owner_mode "$CONFIG_DIR/services.json" root root 600
 require_owner_mode "$CONFIG_DIR/web.env" root root 600
+grafana_url="$(read_env_value OPS_GRAFANA_URL "$CONFIG_DIR/web.env")"
+[[ "$grafana_url" =~ ^https://[^/?#]+/?$ ]] || fail "Grafana URL must be an HTTPS origin"
 require_owner_mode "$RUNNER_ROOT/areasong-ops-runner" root root 755
 require_owner_mode "$UNIT_PATH" root root 644
 for adapter in "$RUNNER_ROOT"/adapters/*.sh; do

@@ -1,9 +1,4 @@
-import type { AuditEntry, OpsEvent, Page, Preview, ReleasePlan, ServiceView, Task } from './types'
-
-interface SessionResponse {
-  email: string
-  csrfToken: string
-}
+import type { AuditEntry, OpsEvent, Page, Preview, ReleasePlan, ServiceView, SessionResponse, Task } from './types'
 
 class APIError extends Error {
   status: number

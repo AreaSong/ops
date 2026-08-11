@@ -10,7 +10,7 @@
       "actions": {
         "inspect": {
           "name": "inspect",
-          "displayName": "运行检查",
+          "displayName": "执行前检查",
           "enabled": true,
           "risk": "read_only",
           "targetMode": "none",
@@ -143,7 +143,7 @@
       "actions": {
         "inspect": {
           "name": "inspect",
-          "displayName": "运行检查",
+          "displayName": "执行前检查",
           "enabled": true,
           "risk": "read_only",
           "targetMode": "none",

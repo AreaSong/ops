@@ -7,6 +7,7 @@ import { TaskDrawer } from './components/TaskDrawer'
 import type {
   ActionDefinition,
   AuditEntry,
+  NavigationLinks,
   OpsEvent,
   ReleaseDiscovery,
   ReleasePlan,
@@ -31,6 +32,7 @@ function mergeAudit(primary: AuditEntry[], secondary: AuditEntry[]): AuditEntry[
 export default function App() {
   const api = useRef(new OpsAPI()).current
   const [email, setEmail] = useState('')
+  const [links, setLinks] = useState<NavigationLinks>({})
   const [view, setView] = useState<ViewName>('overview')
   const [services, setServices] = useState<ServiceView[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -96,6 +98,7 @@ export default function App() {
         const session = await api.session()
         if (!active) return
         setEmail(session.email)
+        setLinks(session.links ?? {})
         await refresh()
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : '初始化失败')
@@ -185,7 +188,7 @@ export default function App() {
         void openTask(task)
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '任务提交失败')
+      setError(reason instanceof Error ? reason.message : '执行提交失败')
     } finally {
       setPending(false)
     }
@@ -206,7 +209,7 @@ export default function App() {
       })
       setTaskEventsHasMore(page.hasMore)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '任务记录读取失败')
+      setError(reason instanceof Error ? reason.message : '执行记录读取失败')
     } finally {
       setTaskEventsLoading(false)
     }
@@ -246,7 +249,7 @@ export default function App() {
       updateTasks(mergeTasks(tasksRef.current, page.items))
       setTasksHasMore(page.hasMore)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '更多任务读取失败')
+      setError(reason instanceof Error ? reason.message : '更多执行记录读取失败')
     } finally {
       setTasksLoadingMore(false)
     }
@@ -276,7 +279,7 @@ export default function App() {
       })
       setTaskEventsHasMore(page.hasMore)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '更多任务记录读取失败')
+      setError(reason instanceof Error ? reason.message : '更多执行记录读取失败')
     } finally {
       setTaskEventsLoadingMore(false)
     }
@@ -296,14 +299,17 @@ export default function App() {
   }
 
   return (
-    <Shell view={view} onView={setView} email={email} connected={connected}>
+    <Shell view={view} onView={setView} email={email} connected={connected} links={links}>
       {error && (
         <div className="toast error-toast" role="alert">
           <AlertCircle size={17} aria-hidden="true" /><span>{error}</span>
           <button type="button" onClick={() => setError('')} title="关闭"><X size={16} /></button>
         </div>
       )}
-      {view === 'overview' && <Overview services={services} tasks={tasks} onService={openService} onTask={openTask} />}
+      {view === 'overview' && (
+        <Overview services={services} tasks={tasks} plans={plans}
+          onService={openService} onTask={openTask} onPlan={setSelectedPlan} />
+      )}
       {view === 'services' && (
         <Services
           services={services}

@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -25,27 +26,42 @@ const (
 )
 
 type Server struct {
-	auth         Authenticator
-	runner       *RunnerClient
-	publicOrigin string
-	development  bool
-	assets       fs.FS
+	auth          Authenticator
+	runner        *RunnerClient
+	publicOrigin  string
+	externalLinks ExternalLinks
+	development   bool
+	assets        fs.FS
+}
+
+type ServerOptions struct {
+	PublicOrigin string
+	GrafanaURL   string
+	Development  bool
+}
+
+type ExternalLinks struct {
+	Grafana string `json:"grafana,omitempty"`
+	Alerts  string `json:"alerts,omitempty"`
 }
 
 func NewServer(
 	auth Authenticator,
 	runner *RunnerClient,
-	publicOrigin string,
-	development bool,
+	options ServerOptions,
 	assets embed.FS,
 ) (http.Handler, error) {
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		return nil, err
 	}
+	links, err := buildExternalLinks(options.GrafanaURL, options.Development)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
-		auth: auth, runner: runner, publicOrigin: strings.TrimSuffix(publicOrigin, "/"),
-		development: development, assets: static,
+		auth: auth, runner: runner, publicOrigin: strings.TrimSuffix(options.PublicOrigin, "/"),
+		externalLinks: links, development: options.Development, assets: static,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", server.health)
@@ -97,7 +113,27 @@ func (server *Server) session(response http.ResponseWriter, request *http.Reques
 		Name: csrfCookie, Value: token, Path: "/", Secure: !server.development,
 		HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 1800,
 	})
-	writeJSON(response, http.StatusOK, map[string]any{"email": session.Email, "csrfToken": token})
+	writeJSON(response, http.StatusOK, map[string]any{
+		"email": session.Email, "csrfToken": token, "links": server.externalLinks,
+	})
+}
+
+func buildExternalLinks(rawURL string, development bool) (ExternalLinks, error) {
+	if rawURL == "" {
+		return ExternalLinks{}, nil
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return ExternalLinks{}, errors.New("Grafana URL 无效")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return ExternalLinks{}, errors.New("Grafana URL 必须是 origin")
+	}
+	if parsed.Scheme != "https" && !(development && parsed.Scheme == "http") {
+		return ExternalLinks{}, errors.New("Grafana URL 必须使用 HTTPS")
+	}
+	origin := strings.TrimSuffix(parsed.String(), "/")
+	return ExternalLinks{Grafana: origin, Alerts: origin + "/alerting/list"}, nil
 }
 
 func (server *Server) api(response http.ResponseWriter, request *http.Request) {

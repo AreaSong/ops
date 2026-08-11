@@ -60,7 +60,7 @@ export function Services({
   return (
     <div className="page service-page">
       <header className="page-header">
-        <div><span className="eyebrow">受控能力</span><h1>服务运维</h1></div>
+        <div><span className="eyebrow">执行门禁与受控能力</span><h1>服务操作</h1></div>
         <button className="icon-button bordered" type="button" onClick={onRefresh} title="刷新全部服务状态">
           <RefreshCw size={18} aria-hidden="true" />
         </button>
@@ -86,7 +86,7 @@ export function Services({
               <StatusBadge
                 kind="health"
                 value={service.statusError ? 'error' : service.activeTaskId ? 'warning' : 'healthy'}
-                label={service.statusError ? '检查失败' : service.activeTaskId ? '任务执行中' : '运行正常'}
+                label={service.statusError ? '门禁检查失败' : service.activeTaskId ? '执行任务占用' : '执行门禁可用'}
               />
             </div>
             {service.statusError ? (
@@ -125,7 +125,7 @@ export function Services({
           )}
 
           <section className="page-section action-section">
-            <div className="section-heading"><h2>允许的操作</h2><span>逐项授权</span></div>
+            <div className="section-heading"><h2>受控操作</h2><span>逐项授权</span></div>
             <div className="action-grid">
               {Object.values(service.actions)
                 .sort((left, right) => actionOrder.indexOf(left.name) - actionOrder.indexOf(right.name))
