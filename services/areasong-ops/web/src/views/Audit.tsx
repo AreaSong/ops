@@ -3,8 +3,11 @@ import type { AuditEntry } from '../types'
 
 interface AuditProps {
   entries: AuditEntry[]
+  hasMore: boolean
+  loadingMore: boolean
+  onLoadMore: () => void
 }
-export function Audit({ entries }: AuditProps) {
+export function Audit({ entries, hasMore, loadingMore, onLoadMore }: AuditProps) {
   return (
     <div className="page">
       <header className="page-header"><div><span className="eyebrow">365 天摘要</span><h1>操作审计</h1></div><span>{entries.length} 项</span></header>
@@ -24,6 +27,13 @@ export function Audit({ entries }: AuditProps) {
             </div>
           ))}
         </div>
+        {hasMore && (
+          <div className="load-more-row">
+            <button className="button secondary" type="button" onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? '读取中' : '加载更多'}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   )

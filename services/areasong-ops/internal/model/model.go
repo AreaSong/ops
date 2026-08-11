@@ -77,13 +77,15 @@ type ServiceDefinition struct {
 }
 
 type ServiceView struct {
-	Name         string                      `json:"name"`
-	DisplayName  string                      `json:"displayName"`
-	Description  string                      `json:"description"`
-	Actions      map[string]ActionDefinition `json:"actions"`
-	Status       map[string]any              `json:"status,omitempty"`
-	StatusError  string                      `json:"statusError,omitempty"`
-	ActiveTaskID string                      `json:"activeTaskId,omitempty"`
+	Name                 string                      `json:"name"`
+	DisplayName          string                      `json:"displayName"`
+	Description          string                      `json:"description"`
+	Actions              map[string]ActionDefinition `json:"actions"`
+	Status               map[string]any              `json:"status,omitempty"`
+	ReleaseDiscovery     map[string]any              `json:"releaseDiscovery,omitempty"`
+	StatusError          string                      `json:"statusError,omitempty"`
+	ActiveTaskID         string                      `json:"activeTaskId,omitempty"`
+	RollbackSourceTaskID string                      `json:"rollbackSourceTaskId,omitempty"`
 }
 
 type Preview struct {

@@ -7,9 +7,12 @@ interface TaskDrawerProps {
   task: Task
   events: OpsEvent[]
   loading: boolean
+  hasMore: boolean
+  loadingMore: boolean
   onClose: () => void
+  onLoadMore: () => void
 }
-export function TaskDrawer({ task, events, loading, onClose }: TaskDrawerProps) {
+export function TaskDrawer({ task, events, loading, hasMore, loadingMore, onClose, onLoadMore }: TaskDrawerProps) {
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.currentTarget === event.target) onClose()
@@ -57,6 +60,13 @@ export function TaskDrawer({ task, events, loading, onClose }: TaskDrawerProps) 
               )
             })}
           </ol>
+          {hasMore && (
+            <div className="load-more-row compact">
+              <button className="button secondary" type="button" onClick={onLoadMore} disabled={loadingMore}>
+                {loadingMore ? '读取中' : '加载更早之后的记录'}
+              </button>
+            </div>
+          )}
         </section>
       </aside>
     </div>

@@ -44,6 +44,8 @@ export interface ServiceView {
   status?: ServiceStatus
   statusError?: string
   activeTaskId?: string
+  releaseDiscovery?: ReleaseDiscovery
+  rollbackSourceTaskId?: string
 }
 
 export interface Preview {
@@ -108,4 +110,9 @@ export interface ReleaseDiscovery {
   webImageDigest?: string
   blockers?: string[]
   preparationSteps?: Array<{ name: string; state: 'pending' | 'running' | 'succeeded' | 'failed'; detail?: string }>
+}
+
+export interface Page<T> {
+  items: T[]
+  hasMore: boolean
 }

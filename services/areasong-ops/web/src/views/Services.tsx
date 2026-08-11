@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArchiveRestore,
   DatabaseBackup,
   History,
@@ -9,14 +10,13 @@ import {
   FlaskConical,
 } from 'lucide-react'
 import { shortHash } from '../labels'
-import type { ActionDefinition, ReleaseDiscovery, ServiceView, Task } from '../types'
+import type { ActionDefinition, ReleaseDiscovery, ServiceView } from '../types'
 import { StatusBadge } from '../components/StatusBadge'
 
 interface ServicesProps {
   services: ServiceView[]
   selected: string
   discoveries: Record<string, ReleaseDiscovery>
-  tasks: Task[]
   busyAction: string
   onSelect: (name: string) => void
   onRefresh: () => void
@@ -24,6 +24,7 @@ interface ServicesProps {
 }
 
 const actionIcons = {
+  inspect: Activity,
   check: SearchCheck,
   backup: DatabaseBackup,
   restart: RotateCcw,
@@ -33,13 +34,12 @@ const actionIcons = {
   'restore-drill': ArchiveRestore,
 }
 
-const actionOrder = ['check', 'backup', 'restart', 'prepare', 'update', 'rollback', 'restore-drill']
+const actionOrder = ['inspect', 'check', 'backup', 'restart', 'prepare', 'update', 'rollback', 'restore-drill']
 
 export function Services({
   services,
   selected,
   discoveries,
-  tasks,
   busyAction,
   onSelect,
   onRefresh,
@@ -47,11 +47,9 @@ export function Services({
 }: ServicesProps) {
   const service = services.find((item) => item.name === selected) ?? services[0]
   if (!service) return <div className="empty-state">没有已声明的服务</div>
-  const discovery = discoveries[service.name]
+  const discovery = discoveries[service.name] ?? service.releaseDiscovery
   const discoveredTarget = discovery?.latestTag ?? (discovery?.manifestVersion ? `v${discovery.manifestVersion}` : '')
   const updateAvailable = Boolean(discoveredTarget && discoveredTarget.replace(/^v/, '') !== service.status?.currentVersion)
-  const rollbackSource = tasks.find((task) =>
-    task.service === service.name && task.action === 'update' && task.state === 'succeeded')
 
   return (
     <div className="page service-page">
@@ -113,7 +111,6 @@ export function Services({
             <div className="section-heading"><h2>允许的操作</h2><span>逐项授权</span></div>
             <div className="action-grid">
               {Object.values(service.actions)
-                .filter((action) => action.name !== 'inspect')
                 .sort((left, right) => actionOrder.indexOf(left.name) - actionOrder.indexOf(right.name))
                 .map((action) => {
                   const Icon = actionIcons[action.name as keyof typeof actionIcons] ?? RefreshCw
@@ -139,7 +136,7 @@ export function Services({
                     }
                   }
                   if (action.name === 'rollback') {
-                    target = rollbackSource?.id ?? ''
+                    target = service.rollbackSourceTaskId ?? ''
                     if (!target) {
                       unavailable = true
                       disabledReason = '没有本控制面产生的成功更新记录'

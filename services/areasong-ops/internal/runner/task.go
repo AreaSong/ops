@@ -70,10 +70,16 @@ func (engine *Engine) run(task model.Task) {
 		})
 	}
 	if err := engine.store.FinishTask(ctx, task.ID, model.TaskSucceeded, lastSummary, ""); err != nil {
-		engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "error", Phase: "terminal", Message: redactText(err.Error())})
+		engine.event(context.Background(), model.Event{
+			TaskID: task.ID, Level: "error", Phase: "terminal", Message: redactText(err.Error()),
+			Data: map[string]any{"state": model.TaskRecoveryUncertain},
+		})
 		return
 	}
-	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "info", Phase: "terminal", Message: "任务执行成功"})
+	engine.event(context.Background(), model.Event{
+		TaskID: task.ID, Level: "info", Phase: "terminal", Message: "任务执行成功",
+		Data: map[string]any{"state": model.TaskSucceeded},
+	})
 	engine.auditTerminal(task, model.TaskSucceeded, "")
 }
 
@@ -129,14 +135,20 @@ func (engine *Engine) finishFailure(
 		lastSummary = "任务执行失败"
 	}
 	_ = engine.store.FinishTask(context.Background(), task.ID, state, lastSummary, message)
-	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "error", Phase: "terminal", Message: string(state)})
+	engine.event(context.Background(), model.Event{
+		TaskID: task.ID, Level: "error", Phase: "terminal", Message: string(state),
+		Data: map[string]any{"state": state},
+	})
 	engine.auditTerminal(task, state, message)
 }
 
 func (engine *Engine) failBeforeRun(task model.Task, err error) {
 	message := redactText(err.Error())
 	_ = engine.store.FinishTask(context.Background(), task.ID, model.TaskFailed, "任务未开始", message)
-	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "error", Phase: "terminal", Message: message})
+	engine.event(context.Background(), model.Event{
+		TaskID: task.ID, Level: "error", Phase: "terminal", Message: message,
+		Data: map[string]any{"state": model.TaskFailed},
+	})
 	engine.auditTerminal(task, model.TaskFailed, message)
 }
 

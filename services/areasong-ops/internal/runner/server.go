@@ -115,12 +115,17 @@ func (server *Server) tasks(response http.ResponseWriter, request *http.Request)
 	if _, ok := requireActor(response, request); !ok {
 		return
 	}
-	tasks, err := server.store.ListTasks(request.Context(), queryLimit(request, 50))
+	limit := queryLimit(request, 50, 200)
+	tasks, err := server.store.ListTasks(request.Context(), limit+1, queryOffset(request))
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, "读取任务失败")
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"tasks": tasks})
+	hasMore := len(tasks) > limit
+	if hasMore {
+		tasks = tasks[:limit]
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"tasks": tasks, "hasMore": hasMore})
 }
 
 func (server *Server) task(response http.ResponseWriter, request *http.Request) {
@@ -150,24 +155,35 @@ func (server *Server) taskEvents(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusInternalServerError, "读取任务失败")
 		return
 	}
-	events, err := server.store.ListTaskEvents(request.Context(), request.PathValue("id"), queryLimit(request, 200))
+	limit := queryLimit(request, 200, 500)
+	after, _ := strconv.ParseInt(request.URL.Query().Get("after"), 10, 64)
+	events, err := server.store.ListTaskEvents(request.Context(), request.PathValue("id"), after, limit+1)
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, "读取任务事件失败")
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"events": events})
+	hasMore := len(events) > limit
+	if hasMore {
+		events = events[:limit]
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"events": events, "hasMore": hasMore})
 }
 
 func (server *Server) audit(response http.ResponseWriter, request *http.Request) {
 	if _, ok := requireActor(response, request); !ok {
 		return
 	}
-	entries, err := server.store.ListAudit(request.Context(), queryLimit(request, 50))
+	limit := queryLimit(request, 50, 200)
+	entries, err := server.store.ListAudit(request.Context(), limit+1, queryOffset(request))
 	if err != nil {
 		writeError(response, http.StatusInternalServerError, "读取审计记录失败")
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"entries": entries})
+	hasMore := len(entries) > limit
+	if hasMore {
+		entries = entries[:limit]
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"entries": entries, "hasMore": hasMore})
 }
 
 func requireActor(response http.ResponseWriter, request *http.Request) (string, bool) {
@@ -194,10 +210,21 @@ func decodeBody(request *http.Request, target any) error {
 	return nil
 }
 
-func queryLimit(request *http.Request, fallback int) int {
+func queryLimit(request *http.Request, fallback, maximum int) int {
 	value, err := strconv.Atoi(request.URL.Query().Get("limit"))
 	if err != nil || value <= 0 {
 		return fallback
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func queryOffset(request *http.Request) int {
+	value, err := strconv.Atoi(request.URL.Query().Get("offset"))
+	if err != nil || value < 0 {
+		return 0
 	}
 	return value
 }

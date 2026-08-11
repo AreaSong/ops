@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -126,6 +127,65 @@ func TestPostApplyFailureRunsRollbackAndRedactsError(t *testing.T) {
 	defer executor.mu.Unlock()
 	if executor.calls[len(executor.calls)-1].Phase != "rollback" {
 		t.Fatalf("last phase=%s", executor.calls[len(executor.calls)-1].Phase)
+	}
+}
+
+func TestServicesRestoresDiscoveryAndSafeRollbackSource(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	now := time.Now().UTC()
+	preview := model.Preview{
+		ID: "preview-check", ActorHash: actorHash(), Service: "demo", Action: "check",
+		Risk: model.RiskReadOnly, Impact: "none", Rollback: "none", Scope: "demo",
+		Steps: []string{"discover"}, Snapshot: map[string]any{}, CreatedAt: now,
+		ExpiresAt: now.Add(5 * time.Minute),
+	}
+	if err := database.CreatePreview(ctx, store.PreviewInput{
+		Preview: preview, ConfirmationHash: store.HashConfirmation(""),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	check, _, err := database.StartTask(ctx, actorHash(), model.StartTaskRequest{
+		PreviewID: preview.ID, IdempotencyKey: "check-idempotency",
+	}, "task-check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkRunning(ctx, check.ID, "discover"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinishTask(ctx, check.ID, model.TaskSucceeded, "完成", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.AppendEvent(ctx, model.Event{
+		TaskID: check.ID, Level: "info", Phase: "discover", Message: "完成",
+		Data: map[string]any{"latestTag": "v1.1.0", "prepared": true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	updatePreview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "update", Target: "v1.0.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idempotency, _ := newUUID()
+	updated, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
+		PreviewID: updatePreview.ID, IdempotencyKey: idempotency,
+		Confirmation: updatePreview.ConfirmationPhrase,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+
+	views := engine.Services(ctx)
+	if len(views) != 1 || views[0].ReleaseDiscovery["latestTag"] != "v1.1.0" {
+		t.Fatalf("views=%+v", views)
+	}
+	if views[0].RollbackSourceTaskID != updated.ID {
+		t.Fatalf("rollback source=%q want=%q", views[0].RollbackSourceTaskID, updated.ID)
 	}
 }
 

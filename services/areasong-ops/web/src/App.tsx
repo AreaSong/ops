@@ -18,6 +18,16 @@ import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Tasks } from './views/Tasks'
 
+function mergeTasks(primary: Task[], secondary: Task[]): Task[] {
+  const seen = new Set(primary.map((task) => task.id))
+  return [...primary, ...secondary.filter((task) => !seen.has(task.id))]
+}
+
+function mergeAudit(primary: AuditEntry[], secondary: AuditEntry[]): AuditEntry[] {
+  const seen = new Set(primary.map((entry) => entry.sequence))
+  return [...primary, ...secondary.filter((entry) => !seen.has(entry.sequence))]
+}
+
 export default function App() {
   const api = useRef(new OpsAPI()).current
   const [email, setEmail] = useState('')
@@ -26,11 +36,18 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const tasksRef = useRef<Task[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
+  const auditRef = useRef<AuditEntry[]>([])
+  const [tasksHasMore, setTasksHasMore] = useState(false)
+  const [auditHasMore, setAuditHasMore] = useState(false)
+  const [tasksLoadingMore, setTasksLoadingMore] = useState(false)
+  const [auditLoadingMore, setAuditLoadingMore] = useState(false)
   const [discoveries, setDiscoveries] = useState<Record<string, ReleaseDiscovery>>({})
   const [selectedService, setSelectedService] = useState('areaforge')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskEvents, setTaskEvents] = useState<OpsEvent[]>([])
   const [taskEventsLoading, setTaskEventsLoading] = useState(false)
+  const [taskEventsHasMore, setTaskEventsHasMore] = useState(false)
+  const [taskEventsLoadingMore, setTaskEventsLoadingMore] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [pending, setPending] = useState(false)
   const [busyAction, setBusyAction] = useState('')
@@ -43,13 +60,27 @@ export default function App() {
     setTasks(next)
   }, [])
 
+  const updateAudit = useCallback((next: AuditEntry[]) => {
+    auditRef.current = next
+    setAudit(next)
+  }, [])
+
   const refresh = useCallback(async () => {
     const [serviceData, taskData, auditData] = await Promise.all([api.services(), api.tasks(), api.audit()])
+    const previousTasks = tasksRef.current
+    const previousAudit = auditRef.current
+    const nextTasks = mergeTasks(taskData.items, previousTasks)
+    const nextAudit = mergeAudit(auditData.items, previousAudit)
     setServices(serviceData)
-    updateTasks(taskData)
-    setAudit(auditData)
-    setSelectedTask((current) => current ? taskData.find((item) => item.id === current.id) ?? current : null)
-  }, [api, updateTasks])
+    setDiscoveries(Object.fromEntries(serviceData
+      .filter((service) => service.releaseDiscovery)
+      .map((service) => [service.name, service.releaseDiscovery as ReleaseDiscovery])))
+    updateTasks(nextTasks)
+    updateAudit(nextAudit)
+    if (previousTasks.length === 0) setTasksHasMore(taskData.hasMore)
+    if (previousAudit.length === 0) setAuditHasMore(auditData.hasMore)
+    setSelectedTask((current) => current ? nextTasks.find((item) => item.id === current.id) ?? current : null)
+  }, [api, updateAudit, updateTasks])
 
   useEffect(() => {
     let active = true
@@ -72,6 +103,22 @@ export default function App() {
     if (!email) return undefined
     return api.events((event) => {
       const task = tasksRef.current.find((item) => item.id === event.taskId)
+      if (task) {
+        const terminalState = event.data?.state
+        const state: Task['state'] = event.phase === 'queued'
+          ? 'queued'
+          : event.phase === 'terminal' && typeof terminalState === 'string'
+            ? terminalState as Task['state']
+            : event.phase === 'terminal' ? task.state : 'running'
+        const updated = {
+          ...task,
+          state,
+          currentPhase: event.phase ?? task.currentPhase,
+          summary: event.phase === 'queued' || event.phase === 'terminal' ? task.summary : event.message,
+        }
+        updateTasks(tasksRef.current.map((item) => item.id === updated.id ? updated : item))
+        setSelectedTask((current) => current?.id === updated.id ? updated : current)
+      }
       if (event.phase === 'discover' && task && event.data) {
         setDiscoveries((current) => ({ ...current, [task.service]: event.data as ReleaseDiscovery }))
       }
@@ -79,10 +126,12 @@ export default function App() {
         setTaskEvents((current) => current.some((item) => item.sequence === event.sequence) ? current : [...current, event])
       }
       if (event.phase === 'terminal') {
+        setServices((current) => current.map((service) =>
+          service.activeTaskId === event.taskId ? { ...service, activeTaskId: undefined } : service))
         void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : '刷新失败'))
       }
     }, setConnected)
-  }, [api, email, refresh, selectedTask?.id])
+  }, [api, email, refresh, selectedTask?.id, updateTasks])
 
   useEffect(() => {
     if (!email) return undefined
@@ -102,7 +151,7 @@ export default function App() {
         setPreview(nextPreview)
       } else {
         const task = await api.start(nextPreview.id)
-        updateTasks([task, ...tasksRef.current.filter((item) => item.id !== task.id)])
+        registerTask(task)
         void openTask(task)
       }
     } catch (reason) {
@@ -117,7 +166,7 @@ export default function App() {
     setPending(true)
     try {
       const task = await api.start(preview.id, value)
-      updateTasks([task, ...tasksRef.current.filter((item) => item.id !== task.id)])
+      registerTask(task)
       setPreview(null)
       void openTask(task)
     } catch (reason) {
@@ -131,12 +180,67 @@ export default function App() {
     setSelectedTask(task)
     setTaskEvents([])
     setTaskEventsLoading(true)
+    setTaskEventsHasMore(false)
     try {
-      setTaskEvents(await api.taskEvents(task.id))
+      const page = await api.taskEvents(task.id)
+      setTaskEvents((current) => {
+        const seen = new Set(page.items.map((event) => event.sequence))
+        return [...page.items, ...current.filter((event) => !seen.has(event.sequence))]
+      })
+      setTaskEventsHasMore(page.hasMore)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '任务记录读取失败')
     } finally {
       setTaskEventsLoading(false)
+    }
+  }
+
+  function registerTask(task: Task) {
+    updateTasks([task, ...tasksRef.current.filter((item) => item.id !== task.id)])
+    setServices((current) => current.map((service) =>
+      service.name === task.service ? { ...service, activeTaskId: task.id } : service))
+  }
+
+  async function loadMoreTasks() {
+    setTasksLoadingMore(true)
+    try {
+      const page = await api.tasks(tasksRef.current.length)
+      updateTasks(mergeTasks(tasksRef.current, page.items))
+      setTasksHasMore(page.hasMore)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '更多任务读取失败')
+    } finally {
+      setTasksLoadingMore(false)
+    }
+  }
+
+  async function loadMoreAudit() {
+    setAuditLoadingMore(true)
+    try {
+      const page = await api.audit(auditRef.current.length)
+      updateAudit(mergeAudit(auditRef.current, page.items))
+      setAuditHasMore(page.hasMore)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '更多审计记录读取失败')
+    } finally {
+      setAuditLoadingMore(false)
+    }
+  }
+
+  async function loadMoreTaskEvents() {
+    if (!selectedTask || taskEvents.length === 0) return
+    setTaskEventsLoadingMore(true)
+    try {
+      const page = await api.taskEvents(selectedTask.id, taskEvents[taskEvents.length - 1].sequence)
+      setTaskEvents((current) => {
+        const seen = new Set(current.map((event) => event.sequence))
+        return [...current, ...page.items.filter((event) => !seen.has(event.sequence))]
+      })
+      setTaskEventsHasMore(page.hasMore)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '更多任务记录读取失败')
+    } finally {
+      setTaskEventsLoadingMore(false)
     }
   }
 
@@ -167,20 +271,27 @@ export default function App() {
           services={services}
           selected={selectedService}
           discoveries={discoveries}
-          tasks={tasks}
           busyAction={busyAction}
           onSelect={setSelectedService}
           onRefresh={() => void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : '刷新失败'))}
           onAction={beginAction}
         />
       )}
-      {view === 'tasks' && <Tasks tasks={tasks} onTask={openTask} />}
-      {view === 'audit' && <Audit entries={audit} />}
+      {view === 'tasks' && (
+        <Tasks tasks={tasks} hasMore={tasksHasMore} loadingMore={tasksLoadingMore}
+          onTask={openTask} onLoadMore={() => void loadMoreTasks()} />
+      )}
+      {view === 'audit' && (
+        <Audit entries={audit} hasMore={auditHasMore} loadingMore={auditLoadingMore}
+          onLoadMore={() => void loadMoreAudit()} />
+      )}
       {preview && (
         <ConfirmationDialog preview={preview} pending={pending} onCancel={() => setPreview(null)} onConfirm={confirmAction} />
       )}
       {selectedTask && (
-        <TaskDrawer task={selectedTask} events={taskEvents} loading={taskEventsLoading} onClose={() => setSelectedTask(null)} />
+        <TaskDrawer task={selectedTask} events={taskEvents} loading={taskEventsLoading}
+          hasMore={taskEventsHasMore} loadingMore={taskEventsLoadingMore}
+          onLoadMore={() => void loadMoreTaskEvents()} onClose={() => setSelectedTask(null)} />
       )}
     </Shell>
   )

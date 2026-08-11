@@ -208,3 +208,101 @@ func TestPruneRemovesExpiredPreviewDetailButRetainsTaskSummary(t *testing.T) {
 		t.Fatalf("retained task summary is unreadable: %v", err)
 	}
 }
+
+func TestDiscoveryRollbackSourceAndPagination(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	base := time.Date(2026, 8, 11, 5, 0, 0, 0, time.UTC)
+	database.now = func() time.Time { return base }
+
+	createTask := func(id, action, state string, createdAt time.Time) model.Task {
+		t.Helper()
+		database.now = func() time.Time { return createdAt }
+		preview := testPreview(createdAt)
+		preview.ID = "preview-" + id
+		preview.Action = action
+		if err := database.CreatePreview(ctx, PreviewInput{
+			Preview: preview, ConfirmationHash: HashConfirmation("重启 demo"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+			PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-" + id,
+		}, "task-"+id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state != string(model.TaskQueued) {
+			if err := database.MarkRunning(ctx, task.ID, action); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.FinishTask(ctx, task.ID, model.TaskState(state), "完成", ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return task
+	}
+
+	check := createTask("check", "check", string(model.TaskSucceeded), base)
+	if _, err := database.AppendEvent(ctx, model.Event{
+		TaskID: check.ID, Level: "info", Phase: "discover", Message: "发现完成",
+		Data: map[string]any{"latestTag": "v1.2.3", "prepared": false},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	discovery, found, err := database.LatestSuccessfulDiscovery(ctx, "demo")
+	if err != nil || !found || discovery["latestTag"] != "v1.2.3" || discovery["prepared"] != false {
+		t.Fatalf("discovery=%v found=%v err=%v", discovery, found, err)
+	}
+
+	update := createTask("update", "update", string(model.TaskSucceeded), base.Add(time.Minute))
+	source, found, err := database.LatestSucceededUpdate(ctx, "demo")
+	if err != nil || !found || source.ID != update.ID {
+		t.Fatalf("source=%+v found=%v err=%v", source, found, err)
+	}
+	createTask("queued", "inspect", string(model.TaskQueued), base.Add(2*time.Minute))
+	first, err := database.ListTasks(ctx, 2, 0)
+	if err != nil || len(first) != 2 || first[0].ID != "task-queued" || first[1].ID != update.ID {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	second, err := database.ListTasks(ctx, 2, 2)
+	if err != nil || len(second) != 1 || second[0].ID != check.ID {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+
+	for index := 0; index < 3; index++ {
+		if _, err := database.AppendAudit(ctx, model.AuditEntry{
+			ActorHash: "a", Event: "test", Resource: "item", Outcome: "accepted",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	audit, err := database.ListAudit(ctx, 2, 2)
+	if err != nil || len(audit) != 1 || audit[0].Sequence != 1 {
+		t.Fatalf("audit=%+v err=%v", audit, err)
+	}
+
+	events, err := database.ListTaskEvents(ctx, check.ID, 0, 1)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events=%+v err=%v", events, err)
+	}
+	after, err := database.ListTaskEvents(ctx, check.ID, events[0].Sequence, 1)
+	if err != nil || len(after) != 0 {
+		t.Fatalf("after=%+v err=%v", after, err)
+	}
+
+	prepare := createTask("prepare", "prepare", string(model.TaskSucceeded), base.Add(3*time.Minute))
+	if _, err := database.db.ExecContext(ctx, `UPDATE tasks SET target = 'v1.2.3' WHERE id = ?`, prepare.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.AppendEvent(ctx, model.Event{
+		TaskID: prepare.ID, Level: "info", Phase: "publish", Message: "准备完成",
+		Data: map[string]any{"tag": "v1.2.3", "status": "prepared"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	discovery, found, err = database.LatestSuccessfulDiscovery(ctx, "demo")
+	if err != nil || !found || discovery["prepared"] != true {
+		t.Fatalf("prepared discovery=%v found=%v err=%v", discovery, found, err)
+	}
+}

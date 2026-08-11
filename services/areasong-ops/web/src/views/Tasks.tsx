@@ -4,9 +4,12 @@ import { StatusBadge } from '../components/StatusBadge'
 
 interface TasksProps {
   tasks: Task[]
+  hasMore: boolean
+  loadingMore: boolean
   onTask: (task: Task) => void
+  onLoadMore: () => void
 }
-export function Tasks({ tasks, onTask }: TasksProps) {
+export function Tasks({ tasks, hasMore, loadingMore, onTask, onLoadMore }: TasksProps) {
   return (
     <div className="page">
       <header className="page-header"><div><span className="eyebrow">状态机</span><h1>任务记录</h1></div><span>{tasks.length} 项</span></header>
@@ -25,6 +28,13 @@ export function Tasks({ tasks, onTask }: TasksProps) {
             </button>
           ))}
         </div>
+        {hasMore && (
+          <div className="load-more-row">
+            <button className="button secondary" type="button" onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? '读取中' : '加载更多'}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   )

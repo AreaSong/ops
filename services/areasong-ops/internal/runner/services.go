@@ -2,6 +2,9 @@ package runner
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -28,6 +31,17 @@ func (engine *Engine) Services(ctx context.Context) []model.ServiceView {
 			}
 			if active, found, err := engine.store.ActiveTask(ctx, service.Name); err == nil && found {
 				view.ActiveTaskID = active.ID
+			}
+			if discovery, found, err := engine.store.LatestSuccessfulDiscovery(ctx, service.Name); err == nil && found {
+				view.ReleaseDiscovery = discovery
+			}
+			if source, found, err := engine.store.LatestSucceededUpdate(ctx, service.Name); err == nil && found {
+				sourceDir := filepath.Join(engine.stateRoot, "operations", source.ID)
+				currentVersion, _ := view.Status["currentVersion"].(string)
+				if info, err := os.Lstat(sourceDir); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 &&
+					currentVersion == strings.TrimPrefix(source.Target, "v") {
+					view.RollbackSourceTaskID = source.ID
+				}
 			}
 			views[index] = view
 		}()

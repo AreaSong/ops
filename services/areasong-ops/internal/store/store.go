@@ -95,3 +95,10 @@ func clampLimit(limit, maximum int) int {
 	}
 	return limit
 }
+
+func nonNegative(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}

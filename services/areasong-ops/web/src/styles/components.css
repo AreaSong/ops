@@ -92,6 +92,8 @@ button.data-table-row:hover { background: var(--surface-soft); }
 .data-table-row strong { font-size: 12px; }
 .data-table-row small { margin-top: 3px; color: var(--muted); }
 .data-table-row code { font-size: 10px; }
+.load-more-row { display: flex; justify-content: center; padding-top: 14px; }
+.load-more-row.compact { padding-top: 0; }
 .outcome { font-weight: 700; }
 .outcome-accepted, .outcome-succeeded { color: var(--green); }
 .outcome-rejected, .outcome-failed, .outcome-recovery_uncertain { color: var(--red); }

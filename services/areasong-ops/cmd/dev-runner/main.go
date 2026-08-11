@@ -46,7 +46,10 @@ func (executor *demoExecutor) Execute(ctx context.Context, input runner.ExecuteI
 	}
 	if input.Action == "check" && input.Phase == "discover" {
 		latest := "v1.2.0"
-		data := map[string]any{"currentVersion": version, "latestTag": latest, "updateAvailable": version != "1.2.0"}
+		data := map[string]any{
+			"currentVersion": version, "latestTag": latest,
+			"updateAvailable": version != "1.2.0", "prepared": true,
+		}
 		if input.Service.Name == "sub2api" {
 			data = map[string]any{"currentVersion": version, "latestTag": "v0.1.170", "updateAvailable": true, "prepared": false}
 		}

@@ -66,8 +66,9 @@ func (store *Store) GetTask(ctx context.Context, id string) (model.Task, error) 
 	return task, err
 }
 
-func (store *Store) ListTasks(ctx context.Context, limit int) ([]model.Task, error) {
-	rows, err := store.db.QueryContext(ctx, taskSelect+` ORDER BY created_at DESC LIMIT ?`, clampLimit(limit, 200))
+func (store *Store) ListTasks(ctx context.Context, limit, offset int) ([]model.Task, error) {
+	rows, err := store.db.QueryContext(ctx, taskSelect+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+		clampLimit(limit, 201), nonNegative(offset))
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +82,16 @@ func (store *Store) ListTasks(ctx context.Context, limit int) ([]model.Task, err
 		tasks = append(tasks, task)
 	}
 	return tasks, rows.Err()
+}
+
+func (store *Store) LatestSucceededUpdate(ctx context.Context, service string) (model.Task, bool, error) {
+	task, err := scanTask(store.db.QueryRowContext(ctx, taskSelect+`
+		WHERE service = ? AND action = 'update' AND state = ?
+		ORDER BY created_at DESC, id DESC LIMIT 1`, service, model.TaskSucceeded))
+	if err == sql.ErrNoRows {
+		return model.Task{}, false, nil
+	}
+	return task, err == nil, err
 }
 
 func (store *Store) ActiveTask(ctx context.Context, service string) (model.Task, bool, error) {

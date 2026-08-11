@@ -1,4 +1,4 @@
-import type { AuditEntry, OpsEvent, Preview, ServiceView, Task } from './types'
+import type { AuditEntry, OpsEvent, Page, Preview, ServiceView, Task } from './types'
 
 interface SessionResponse {
   email: string
@@ -37,19 +37,22 @@ export class OpsAPI {
     return (await parseResponse<{ services: ServiceView[] }>(response)).services ?? []
   }
 
-  async tasks(): Promise<Task[]> {
-    const response = await fetch('/api/tasks?limit=100')
-    return (await parseResponse<{ tasks: Task[] }>(response)).tasks ?? []
+  async tasks(offset = 0): Promise<Page<Task>> {
+    const response = await fetch(`/api/tasks?limit=100&offset=${offset}`)
+    const payload = await parseResponse<{ tasks: Task[]; hasMore: boolean }>(response)
+    return { items: payload.tasks ?? [], hasMore: payload.hasMore }
   }
 
-  async taskEvents(taskID: string): Promise<OpsEvent[]> {
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskID)}/events?limit=200`)
-    return (await parseResponse<{ events: OpsEvent[] }>(response)).events ?? []
+  async taskEvents(taskID: string, after = 0): Promise<Page<OpsEvent>> {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(taskID)}/events?limit=200&after=${after}`)
+    const payload = await parseResponse<{ events: OpsEvent[]; hasMore: boolean }>(response)
+    return { items: payload.events ?? [], hasMore: payload.hasMore }
   }
 
-  async audit(): Promise<AuditEntry[]> {
-    const response = await fetch('/api/audit?limit=100')
-    return (await parseResponse<{ entries: AuditEntry[] }>(response)).entries ?? []
+  async audit(offset = 0): Promise<Page<AuditEntry>> {
+    const response = await fetch(`/api/audit?limit=100&offset=${offset}`)
+    const payload = await parseResponse<{ entries: AuditEntry[]; hasMore: boolean }>(response)
+    return { items: payload.entries ?? [], hasMore: payload.hasMore }
   }
 
   async preview(service: string, action: string, target = ''): Promise<Preview> {

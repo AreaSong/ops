@@ -55,11 +55,11 @@ func (store *Store) ListEvents(ctx context.Context, after int64, limit int) ([]m
 	return events, rows.Err()
 }
 
-func (store *Store) ListTaskEvents(ctx context.Context, taskID string, limit int) ([]model.Event, error) {
+func (store *Store) ListTaskEvents(ctx context.Context, taskID string, after int64, limit int) ([]model.Event, error) {
 	rows, err := store.db.QueryContext(ctx, `
         SELECT sequence, task_id, occurred_at, level, phase, message, data_json
-        FROM events WHERE task_id = ? ORDER BY sequence ASC LIMIT ?
-    `, taskID, clampLimit(limit, 500))
+		FROM events WHERE task_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?
+	`, taskID, after, clampLimit(limit, 501))
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +83,48 @@ func (store *Store) ListTaskEvents(ctx context.Context, taskID string, limit int
 	return events, rows.Err()
 }
 
+func (store *Store) LatestSuccessfulDiscovery(ctx context.Context, service string) (map[string]any, bool, error) {
+	var sequence int64
+	var data string
+	err := store.db.QueryRowContext(ctx, `
+		SELECT events.sequence, events.data_json
+		FROM events
+		JOIN tasks ON tasks.id = events.task_id
+		WHERE tasks.service = ? AND tasks.action = 'check' AND tasks.state = ?
+		  AND events.phase = 'discover' AND events.level = 'info' AND events.data_json != '{}'
+		ORDER BY events.sequence DESC LIMIT 1
+	`, service, model.TaskSucceeded).Scan(&sequence, &data)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	result := make(map[string]any)
+	if err := decodeJSON(data, &result); err != nil {
+		return nil, false, err
+	}
+	var prepareSequence int64
+	var prepareTarget string
+	err = store.db.QueryRowContext(ctx, `
+		SELECT events.sequence, tasks.target
+		FROM events
+		JOIN tasks ON tasks.id = events.task_id
+		WHERE tasks.service = ? AND tasks.action = 'prepare' AND tasks.state = ?
+		  AND events.phase = 'publish' AND events.level = 'info'
+		ORDER BY events.sequence DESC LIMIT 1
+	`, service, model.TaskSucceeded).Scan(&prepareSequence, &prepareTarget)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, false, err
+	}
+	latestTag, _ := result["latestTag"].(string)
+	if prepareSequence > sequence && prepareTarget == latestTag {
+		result["prepared"] = true
+		result["blockers"] = []any{}
+	}
+	return result, true, nil
+}
+
 func (store *Store) AppendAudit(ctx context.Context, entry model.AuditEntry) (model.AuditEntry, error) {
 	if entry.OccurredAt.IsZero() {
 		entry.OccurredAt = store.now()
@@ -103,11 +145,11 @@ func (store *Store) AppendAudit(ctx context.Context, entry model.AuditEntry) (mo
 	return entry, err
 }
 
-func (store *Store) ListAudit(ctx context.Context, limit int) ([]model.AuditEntry, error) {
+func (store *Store) ListAudit(ctx context.Context, limit, offset int) ([]model.AuditEntry, error) {
 	rows, err := store.db.QueryContext(ctx, `
         SELECT sequence, occurred_at, actor_hash, event, resource, outcome, detail_json
-        FROM audit_entries ORDER BY sequence DESC LIMIT ?
-    `, clampLimit(limit, 200))
+		FROM audit_entries ORDER BY sequence DESC LIMIT ? OFFSET ?
+	`, clampLimit(limit, 201), nonNegative(offset))
 	if err != nil {
 		return nil, err
 	}

@@ -14,6 +14,8 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - Web 不接触 Docker Socket、SQLite、备份目录或业务卷。
 - Runner 独占 `/var/lib/areasong-ops/ops.db`，通过持久目录中的 `root:areasong-ops 0660` Socket 提供 API；Runner 重启不会使 Web 的 bind mount 失效。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
+- 服务页从 SQLite 恢复最近一次成功的发布发现结果；准备发布完成后同步恢复 prepared 门禁状态。
+- 任务、审计和任务事件支持分页读取，前端不会把首批 100/200 条误当成完整保留记录。
 - 详细事件保留 30 天，任务和审计摘要保留 365 天，SQLite 快照及操作产物保留 30 天。
 - AreaForge 使用发布自带签名 manifest 与严格 V2 request guard；Sub2API 只接受已固定摘要并完成隔离迁移、恢复和旧镜像兼容演练的动态 prepared 目标。
 
