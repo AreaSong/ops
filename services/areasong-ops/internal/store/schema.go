@@ -136,4 +136,8 @@ ALTER TABLE release_plans ADD COLUMN closure_idempotency_key TEXT NOT NULL DEFAU
 ALTER TABLE release_plans ADD COLUMN closed_at TEXT;
 CREATE UNIQUE INDEX idx_release_plans_closure_key
     ON release_plans(closure_idempotency_key) WHERE closure_idempotency_key != '';`,
+	`ALTER TABLE release_plans ADD COLUMN maintenance_silence_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE release_plans ADD COLUMN maintenance_silence_ends_at TEXT;
+ALTER TABLE release_plans ADD COLUMN maintenance_silence_released_at TEXT;
+ALTER TABLE release_plans ADD COLUMN blocking_alert_fingerprints_json TEXT NOT NULL DEFAULT '[]';`,
 }

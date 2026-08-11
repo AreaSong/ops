@@ -5,6 +5,7 @@ import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { Shell, type ViewName } from './components/Shell'
 import { TaskDrawer } from './components/TaskDrawer'
 import type {
+  ActiveAlert,
   ActionDefinition,
   AuditEntry,
   NavigationLinks,
@@ -35,6 +36,8 @@ export default function App() {
   const [links, setLinks] = useState<NavigationLinks>({})
   const [view, setView] = useState<ViewName>('overview')
   const [services, setServices] = useState<ServiceView[]>([])
+  const [alerts, setAlerts] = useState<ActiveAlert[]>([])
+  const [alertsError, setAlertsError] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const tasksRef = useRef<Task[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
@@ -69,14 +72,22 @@ export default function App() {
   }, [])
 
   const refresh = useCallback(async () => {
-    const [serviceData, taskData, auditData, planData] = await Promise.all([
+    const [serviceData, taskData, auditData, planData, alertData] = await Promise.all([
       api.services(), api.tasks(), api.audit(), api.plans(),
+      api.alerts()
+        .then((items) => ({ items, error: '' }))
+        .catch((reason) => ({
+          items: [] as ActiveAlert[],
+          error: reason instanceof Error ? reason.message : 'Alertmanager 活动告警不可用',
+        })),
     ])
     const previousTasks = tasksRef.current
     const previousAudit = auditRef.current
     const nextTasks = mergeTasks(taskData.items, previousTasks)
     const nextAudit = mergeAudit(auditData.items, previousAudit)
     setServices(serviceData)
+    setAlerts(alertData.items)
+    setAlertsError(alertData.error)
     setPlans(planData.items)
     setDiscoveries(Object.fromEntries(serviceData
       .filter((service) => service.releaseDiscovery)
@@ -323,7 +334,8 @@ export default function App() {
         </div>
       )}
       {view === 'overview' && (
-        <Overview services={services} tasks={tasks} plans={plans}
+        <Overview services={services} tasks={tasks} plans={plans} alerts={alerts}
+          alertsError={alertsError} alertsURL={links.alerts}
           onService={openService} onTask={openTask} onPlan={setSelectedPlan} />
       )}
       {view === 'services' && (

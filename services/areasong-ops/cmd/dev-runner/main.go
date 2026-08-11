@@ -25,6 +25,48 @@ type demoExecutor struct {
 	versions map[string]string
 }
 
+type demoAlertmanager struct {
+	mode string
+}
+
+func (manager demoAlertmanager) ListAlerts(context.Context, bool) ([]model.ActiveAlert, error) {
+	switch manager.mode {
+	case "sample":
+		now := time.Now().UTC()
+		return []model.ActiveAlert{
+			{
+				Fingerprint: "abcdef1234567890", AlertName: "BusinessHttp5xxHigh", Severity: "critical",
+				Summary:    "AreaForge 五分钟错误率超过阈值，需要先诊断再执行变更",
+				GrafanaURL: "https://grafana.areasong.top/alerting/list",
+				Labels:     map[string]string{"alertname": "BusinessHttp5xxHigh", "service": "areaforge"},
+				StartsAt:   now.Add(-20 * time.Minute),
+			},
+			{
+				Fingerprint: "1234567890abcdef", AlertName: "AppHttpProbeFailed", Severity: "warning",
+				Summary:  "Sub2API 应用健康探针失败",
+				Labels:   map[string]string{"alertname": "AppHttpProbeFailed", "service": "sub2api"},
+				StartsAt: now.Add(-10 * time.Minute),
+			},
+		}, nil
+	case "error":
+		return nil, errors.New("development Alertmanager unavailable")
+	default:
+		return []model.ActiveAlert{}, nil
+	}
+}
+
+func (demoAlertmanager) CreateSilence(
+	_ context.Context,
+	_ map[string]string,
+	_ []string,
+	_, endsAt time.Time,
+	_ string,
+) (model.MaintenanceSilence, error) {
+	return model.MaintenanceSilence{ID: "development-silence", EndsAt: endsAt}, nil
+}
+
+func (demoAlertmanager) ExpireSilence(context.Context, string) error { return nil }
+
 func (executor *demoExecutor) Execute(ctx context.Context, input runner.ExecuteInput) (model.AdapterResult, error) {
 	select {
 	case <-ctx.Done():
@@ -88,7 +130,8 @@ func main() {
 	}
 	defer database.Close()
 	executor := &demoExecutor{versions: map[string]string{"areaforge": "1.1.1", "sub2api": "0.1.168"}}
-	engine := runner.NewEngine(catalog, database, executor, stateRoot)
+	engine := runner.NewEngine(catalog, database, executor, stateRoot,
+		runner.WithAlertmanager(demoAlertmanager{mode: os.Getenv("OPS_DEV_ALERTS")}))
 	socket := envOr("OPS_RUNNER_SOCKET", "/tmp/areasong-ops-dev.sock")
 	_ = os.Remove(socket)
 	listener, err := net.Listen("unix", socket)

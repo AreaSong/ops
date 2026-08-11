@@ -38,6 +38,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	alertmanager, err := runner.NewAlertmanagerClient(envOr("OPS_ALERTMANAGER_URL", "http://127.0.0.1:9093"))
+	if err != nil {
+		return err
+	}
 	database, err := store.Open(filepath.Join(stateRoot, "ops.db"))
 	if err != nil {
 		return err
@@ -53,7 +57,8 @@ func run() error {
 	} else if count > 0 {
 		slog.Warn("检测到未完成任务，已转为人工核对", "count", count)
 	}
-	engine := runner.NewEngine(catalog, database, runner.CommandExecutor{}, stateRoot)
+	engine := runner.NewEngine(catalog, database, runner.CommandExecutor{}, stateRoot,
+		runner.WithAlertmanager(alertmanager))
 	listener, err := unixListener(socketPath)
 	if err != nil {
 		return err

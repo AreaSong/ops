@@ -19,7 +19,8 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 - Web 不挂载 Docker Socket、SQLite、备份目录、业务卷，不提供 Shell 或文件管理。
 - Runner 独占 SQLite 和 root 权限，只执行 `services.json` 中声明的服务、动作和适配器。
 - 适配器不能从请求接收命令、脚本、Compose 路径、环境文件路径、镜像引用或批量目标。
-- Prometheus 是唯一告警规则源；Grafana 只查看 Prometheus 告警和 Alertmanager 静默。
+- Prometheus 是唯一告警规则源；Alertmanager 是告警和静默的唯一权威；Grafana 负责诊断，不执行生产变更。
+- Runner 只通过 loopback Alertmanager v2 API 查询 Git 映射的活动阻断告警，并创建声明限定的短期维护静默；不提供通用告警规则或静默编辑器。
 
 ## 关键路径
 
@@ -41,9 +42,11 @@ Cloudflare Access -> Nginx -> 非 root Web -> root:areasong-ops Unix Socket -> r
 1. 在 Web 选择单个服务和类型化动作。
 2. Web 请求 Runner 执行只读预检，展示真实当前身份、影响、风险、步骤和回滚说明。
 3. 操作者核对预览，在有效期内输入精确确认短语。
-4. Runner 再核对操作者哈希、预览快照、幂等键、服务锁和全局备份锁。
-5. Runner 按固定阶段执行并持续记录事件；Web 只轮询任务和事件。
-6. 任务成功后核对健康、运行身份、告警和日志；失败时按适配器契约回滚。
+4. Runner 再核对操作者哈希、预览快照、幂等键、服务锁和全局备份锁，并查询包括人工静默覆盖项在内的活动阻断告警。
+5. 告警门禁通过后，Runner 按声明创建最长 4 小时的精确维护静默，并与任务启动和审计原子关联。
+6. Runner 按固定阶段执行并持续记录事件；Web 只轮询任务和事件。失败时按适配器契约回滚、提前解除静默并标记人工关注。
+7. 任务成功后进入观察期；到期收口时先解除维护静默，再查询活动阻断告警并核对运行身份。
+8. 告警和身份均通过后原子写入收口审计；否则保存阻断告警指纹或身份差异，计划保持待处理。
 
 同一幂等键只能重放完全相同的请求。出现 `recovery_uncertain`、身份漂移、阶段输出不完整
 或进程中断时，停止自动重试，先核对容器、Compose、数据库 migration、备份和任务证据。
@@ -132,6 +135,15 @@ sudo /opt/ops/scripts/backup/restore_areasong_ops_isolated.py \
 
 `AreaSongOpsAccessProbeTargetDown` 优先检查共享 Blackbox Exporter 和 Prometheus 抓取路径，
 不要误判为 Access 策略本身失效。
+
+### Alertmanager 不可用或维护静默遗留
+
+1. 只读检查 `curl -fsS http://127.0.0.1:9093/-/ready` 和 Alertmanager 日志；不要绕过告警门禁执行中高风险生产变更。
+2. Web 的“告警数据不可用”只表示告警投影降级，服务状态、任务和审计仍应可读；若同时不可读，按 Runner 故障排查。
+3. 在 Alertmanager 按精确 `service` matcher、计划注释和到期时间定位静默，核对 SQLite 中的 silence ID、计划状态及任务事件。
+4. 观察中的计划恢复后从网页重新收口；Runner 会先幂等解除维护静默，再复核包括其他静默覆盖项在内的活动阻断告警。
+5. 任务已失败但静默仍活跃时，保留证据并优先恢复 Runner 自动解除路径；只有确认计划与静默身份完全一致后，才在 Alertmanager 手工解除该单个静默。
+6. 不扩大 matcher、不延长至 4 小时以上，不静默 Blackbox 抓取链路、备份、审计、通知链路、控制面或恢复失败告警。
 
 ## 备份与恢复边界
 

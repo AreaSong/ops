@@ -7,6 +7,8 @@
 - [ ] `areasong-ops` 组已创建，并记录 GID 到 Compose env。
 - [ ] Cloudflare Access Application AUD 已写入 `/etc/areasong-ops/web.env`。
 - [ ] Grafana HTTPS origin 已写入 `OPS_GRAFANA_URL`，且不包含路径、查询或认证信息。
+- [ ] 本机 `http://127.0.0.1:9093/-/ready` 返回成功，Runner 只连接 loopback Alertmanager v2 API。
+- [ ] schema 3 服务声明的 `objectId` 稳定，告警 matcher 精确，维护静默白名单为阻断映射子集。
 - [ ] 当前 Runner、Compose、Nginx 和 Web image 身份已保存为回滚点。
 - [ ] 最近完整备份 manifest 与 R2 校验均有效。
 
@@ -28,6 +30,10 @@
 - [ ] Web、Runner `/metrics` 可由本机 Prometheus 抓取。
 - [ ] Cloudflare Access 未登录、错误邮箱、正确邮箱三条路径符合策略。
 - [ ] AreaForge/Sub2API inspect 与 check 为只读，返回真实生产身份。
+- [ ] `/v1/alerts` 只投影声明映射的活动阻断告警；Alertmanager 不可用时明确返回 `503`，其他只读页面仍可用。
+- [ ] 在隔离验收中证明：活动阻断告警拒绝生产执行，映射外告警不阻断，静默 matcher 与最长到期时间符合声明。
+- [ ] 在隔离验收中证明：任务失败提前解除静默；任务成功进入观察，收口前解除静默并复核被其他静默覆盖的活动告警。
+- [ ] 删除已不存在的静默按幂等成功处理；遗留静默可在 Alertmanager 以计划注释和精确 matcher 定位。
 - [ ] 不执行 update、rollback、restart、backup 或 restore-drill 作为首次部署 smoke。
 - [ ] Prometheus 规则、中文告警、Grafana 自监控面板通过。
 - [ ] inventory、端口、备份覆盖与 runbook 已更新并提交。

@@ -54,6 +54,7 @@ func (engine *Engine) CreateReleasePlan(
 		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
 		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds,
+		AlertPolicy:        service.AlertPolicy,
 		ConfirmationPhrase: phrase,
 		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
 	}
@@ -158,6 +159,7 @@ func (engine *Engine) ExecuteReleasePlan(
 		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
 		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
 		ObservationSeconds: action.ObservationSeconds,
+		AlertPolicy:        actionAlertPolicy(service),
 		ConfirmationPhrase: renderConfirmation(action.ConfirmationTemplate, service.Name, plan.Target),
 		ExpectedBefore:     observed, TargetEvidence: targetEvidence,
 	}
@@ -174,16 +176,47 @@ func (engine *Engine) ExecuteReleasePlan(
 		}
 		return model.Task{}, false, errors.New(reason + "，请重新创建计划")
 	}
-	taskID, err := newUUID()
+	silence, err := engine.prepareMaintenanceSilence(ctx, plan, service, action)
 	if err != nil {
 		return model.Task{}, false, err
 	}
-	task, created, err := engine.store.StartPlanTask(ctx, plan, actorHash, request.IdempotencyKey, taskID)
+	taskID, err := newUUID()
+	if err != nil {
+		if silence != nil {
+			_ = engine.alertmanager.ExpireSilence(context.Background(), silence.ID)
+		}
+		return model.Task{}, false, err
+	}
+	task, created, err := engine.store.StartPlanTask(ctx, plan, actorHash, request.IdempotencyKey, taskID, silence)
 	if err != nil || !created {
+		if silence != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cleanupErr := engine.alertmanager.ExpireSilence(cleanupCtx, silence.ID)
+			cancel()
+			if cleanupErr != nil && err != nil {
+				return model.Task{}, false, fmt.Errorf("%w，且临时维护静默解除失败: %v", err, cleanupErr)
+			}
+		}
 		return task, created, err
 	}
 	engine.enqueue(task)
 	return task, true, nil
+}
+
+func actionAlertPolicy(service model.ServiceDefinition) model.AlertPolicyDefinition {
+	return model.AlertPolicyDefinition{
+		Matchers:          cloneStringMap(service.AlertPolicy.Matchers),
+		BlockingAlerts:    append([]string(nil), service.AlertPolicy.BlockingAlerts...),
+		MaintenanceAlerts: append([]string(nil), service.AlertPolicy.MaintenanceAlerts...),
+	}
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	result := make(map[string]string, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
 }
 
 func resolvedPhaseSemantics(action model.ActionDefinition) map[string]model.PhaseSemantics {
@@ -217,22 +250,35 @@ func (engine *Engine) CloseReleasePlan(
 		return model.ReleasePlan{}, errors.New("计划当前不能收口")
 	}
 	if time.Now().UTC().Before(*plan.ObservationEndsAt) {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "观察窗口尚未结束")
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "观察窗口尚未结束", nil)
 	}
 	task, err := engine.store.GetTask(ctx, plan.TaskID)
 	if err != nil || task.State != model.TaskSucceeded {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "执行任务未成功，计划不能收口")
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "执行任务未成功，计划不能收口", nil)
 	}
 	service, ok := engine.catalog.Services[plan.Service]
 	if !ok {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "受管对象声明不存在")
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "受管对象声明不存在", nil)
+	}
+	if err := engine.releasePlanSilence(ctx, actorHash, &plan); err != nil {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID,
+			"维护静默无法解除: "+redactText(err.Error()), nil)
+	}
+	blockers, err := engine.blockingAlerts(ctx, service)
+	if err != nil {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID,
+			"收口无法读取 Alertmanager: "+redactText(err.Error()), nil)
+	}
+	if len(blockers) > 0 {
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID,
+			"关联阻断告警仍在触发: "+alertNames(blockers), alertFingerprints(blockers))
 	}
 	observed, err := engine.inspect(ctx, service)
 	if err != nil {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "收口身份检查失败: "+redactText(err.Error()))
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "收口身份检查失败: "+redactText(err.Error()), nil)
 	}
 	if err := engine.verifyClosureIdentity(ctx, plan, observed); err != nil {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, err.Error())
+		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, err.Error(), nil)
 	}
 	audit := model.AuditEntry{
 		ActorHash: actorHash, Event: "plan.closed", Resource: plan.ID, Outcome: "completed",
@@ -245,16 +291,44 @@ func (engine *Engine) CloseReleasePlan(
 	return closed, nil
 }
 
-func (engine *Engine) blockPlanClosure(ctx context.Context, actorHash, id, reason string) error {
+func (engine *Engine) blockPlanClosure(
+	ctx context.Context,
+	actorHash, id, reason string,
+	blockingAlertFingerprints []string,
+) error {
 	reason = redactText(reason)
 	audit := model.AuditEntry{
 		ActorHash: actorHash, Event: "plan.close_rejected", Resource: id, Outcome: "rejected",
 		Detail: map[string]any{"reason": reason},
 	}
-	if err := engine.store.RecordPlanClosureBlocker(ctx, id, reason, audit); err != nil {
+	if err := engine.store.RecordPlanClosureBlocker(ctx, id, reason, blockingAlertFingerprints, audit); err != nil {
 		return fmt.Errorf("%s，且阻断原因写入失败: %w", reason, err)
 	}
 	return errors.New(reason)
+}
+
+func (engine *Engine) releasePlanSilence(
+	ctx context.Context,
+	actorHash string,
+	plan *model.ReleasePlan,
+) error {
+	if plan.MaintenanceSilenceID == "" || plan.MaintenanceSilenceReleasedAt != nil {
+		return nil
+	}
+	if err := engine.alertmanager.ExpireSilence(ctx, plan.MaintenanceSilenceID); err != nil {
+		return err
+	}
+	audit := model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.maintenance_silence_released",
+		Resource: plan.ID, Outcome: "released",
+		Detail: map[string]any{"silenceId": plan.MaintenanceSilenceID},
+	}
+	if err := engine.store.RecordPlanSilenceReleased(ctx, plan.ID, audit); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	plan.MaintenanceSilenceReleasedAt = &now
+	return nil
 }
 
 func (engine *Engine) verifyClosureIdentity(

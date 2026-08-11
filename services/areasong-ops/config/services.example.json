@@ -1,12 +1,25 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "services": {
     "areaforge": {
       "name": "areaforge",
+      "objectId": "service:areaforge",
       "displayName": "AreaForge",
       "description": "AreaForge Web 与 PostgreSQL",
       "template": "custom",
       "adapter": "/usr/local/libexec/areasong-ops/adapters/areaforge.sh",
+      "alertPolicy": {
+        "matchers": {"service": "areaforge"},
+        "blockingAlerts": [
+          "AppHttpProbeFailed",
+          "AppBlackboxTargetDown",
+          "BusinessHttpProbeFailed",
+          "BusinessBlackboxTargetDown",
+          "BusinessHttp5xxHigh",
+          "SyntheticSloFastBurnCritical"
+        ],
+        "maintenanceAlerts": ["AppHttpProbeFailed", "BusinessHttpProbeFailed", "BusinessHttp5xxHigh"]
+      },
       "actions": {
         "inspect": {
           "name": "inspect",
@@ -118,10 +131,23 @@
     },
     "sub2api": {
       "name": "sub2api",
+      "objectId": "service:sub2api",
       "displayName": "Sub2API",
       "description": "Sub2API、PostgreSQL 与 Redis",
       "template": "compose-service-v1",
       "adapter": "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
+      "alertPolicy": {
+        "matchers": {"service": "sub2api"},
+        "blockingAlerts": [
+          "AppHttpProbeFailed",
+          "AppBlackboxTargetDown",
+          "BusinessHttpProbeFailed",
+          "BusinessBlackboxTargetDown",
+          "BusinessHttp5xxHigh",
+          "SyntheticSloFastBurnCritical"
+        ],
+        "maintenanceAlerts": ["AppHttpProbeFailed", "BusinessHttpProbeFailed", "BusinessHttp5xxHigh"]
+      },
       "runtime": {
         "controlledCompose": "/opt/ops/services/sub2api/compose.yml",
         "runtimeCompose": "/opt/services/sub2api/compose.yml",

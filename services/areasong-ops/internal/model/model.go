@@ -111,34 +111,39 @@ type ApprovalSummary struct {
 	Steps              []string                  `json:"steps"`
 	PhaseSemantics     map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
 	ObservationSeconds int                       `json:"observationSeconds,omitempty"`
+	AlertPolicy        AlertPolicyDefinition     `json:"alertPolicy,omitempty"`
 	ConfirmationPhrase string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore     map[string]any            `json:"expectedBefore"`
 	TargetEvidence     map[string]any            `json:"targetEvidence,omitempty"`
 }
 
 type ReleasePlan struct {
-	ID                   string          `json:"id"`
-	ActorHash            string          `json:"actorHash"`
-	Service              string          `json:"service"`
-	Action               string          `json:"action"`
-	Target               string          `json:"target,omitempty"`
-	Risk                 Risk            `json:"risk"`
-	State                PlanState       `json:"state"`
-	Digest               string          `json:"digest"`
-	ApprovalSummary      ApprovalSummary `json:"approvalSummary"`
-	ConfirmationPhrase   string          `json:"confirmationPhrase,omitempty"`
-	RequiresConfirmation bool            `json:"requiresConfirmation"`
-	ApprovedByHash       string          `json:"approvedByHash,omitempty"`
-	ApprovedAt           *time.Time      `json:"approvedAt,omitempty"`
-	InvalidatedReason    string          `json:"invalidatedReason,omitempty"`
-	TaskID               string          `json:"taskId,omitempty"`
-	ObservationSeconds   int             `json:"observationSeconds,omitempty"`
-	ObservationStartedAt *time.Time      `json:"observationStartedAt,omitempty"`
-	ObservationEndsAt    *time.Time      `json:"observationEndsAt,omitempty"`
-	ClosureReason        string          `json:"closureReason,omitempty"`
-	ClosedAt             *time.Time      `json:"closedAt,omitempty"`
-	CreatedAt            time.Time       `json:"createdAt"`
-	UpdatedAt            time.Time       `json:"updatedAt"`
+	ID                           string          `json:"id"`
+	ActorHash                    string          `json:"actorHash"`
+	Service                      string          `json:"service"`
+	Action                       string          `json:"action"`
+	Target                       string          `json:"target,omitempty"`
+	Risk                         Risk            `json:"risk"`
+	State                        PlanState       `json:"state"`
+	Digest                       string          `json:"digest"`
+	ApprovalSummary              ApprovalSummary `json:"approvalSummary"`
+	ConfirmationPhrase           string          `json:"confirmationPhrase,omitempty"`
+	RequiresConfirmation         bool            `json:"requiresConfirmation"`
+	ApprovedByHash               string          `json:"approvedByHash,omitempty"`
+	ApprovedAt                   *time.Time      `json:"approvedAt,omitempty"`
+	InvalidatedReason            string          `json:"invalidatedReason,omitempty"`
+	TaskID                       string          `json:"taskId,omitempty"`
+	ObservationSeconds           int             `json:"observationSeconds,omitempty"`
+	ObservationStartedAt         *time.Time      `json:"observationStartedAt,omitempty"`
+	ObservationEndsAt            *time.Time      `json:"observationEndsAt,omitempty"`
+	ClosureReason                string          `json:"closureReason,omitempty"`
+	MaintenanceSilenceID         string          `json:"maintenanceSilenceId,omitempty"`
+	MaintenanceSilenceEndsAt     *time.Time      `json:"maintenanceSilenceEndsAt,omitempty"`
+	MaintenanceSilenceReleasedAt *time.Time      `json:"maintenanceSilenceReleasedAt,omitempty"`
+	BlockingAlertFingerprints    []string        `json:"blockingAlertFingerprints,omitempty"`
+	ClosedAt                     *time.Time      `json:"closedAt,omitempty"`
+	CreatedAt                    time.Time       `json:"createdAt"`
+	UpdatedAt                    time.Time       `json:"updatedAt"`
 }
 
 type ActionDefinition struct {
@@ -158,6 +163,31 @@ type ActionDefinition struct {
 	Scope                string                    `json:"scope"`
 	PhaseSemantics       map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
 	ObservationSeconds   int                       `json:"observationSeconds,omitempty"`
+}
+
+type AlertPolicyDefinition struct {
+	Matchers          map[string]string `json:"matchers,omitempty"`
+	BlockingAlerts    []string          `json:"blockingAlerts,omitempty"`
+	MaintenanceAlerts []string          `json:"maintenanceAlerts,omitempty"`
+}
+
+type ActiveAlert struct {
+	Fingerprint string            `json:"fingerprint"`
+	ObjectID    string            `json:"objectId"`
+	Service     string            `json:"service"`
+	AlertName   string            `json:"alertName"`
+	Severity    string            `json:"severity"`
+	Summary     string            `json:"summary"`
+	RunbookURL  string            `json:"runbookUrl,omitempty"`
+	GrafanaURL  string            `json:"grafanaUrl,omitempty"`
+	Labels      map[string]string `json:"-"`
+	Silenced    bool              `json:"silenced"`
+	StartsAt    time.Time         `json:"startsAt"`
+}
+
+type MaintenanceSilence struct {
+	ID     string    `json:"id"`
+	EndsAt time.Time `json:"endsAt"`
 }
 
 type PhaseSemantics struct {
@@ -246,16 +276,19 @@ type ComposeServiceRuntime struct {
 
 type ServiceDefinition struct {
 	Name        string                      `json:"name"`
+	ObjectID    string                      `json:"objectId"`
 	DisplayName string                      `json:"displayName"`
 	Description string                      `json:"description"`
 	Template    string                      `json:"template"`
 	Adapter     string                      `json:"adapter"`
 	Runtime     *ComposeServiceRuntime      `json:"runtime,omitempty"`
+	AlertPolicy AlertPolicyDefinition       `json:"alertPolicy"`
 	Actions     map[string]ActionDefinition `json:"actions"`
 }
 
 type ServiceView struct {
 	Name                 string                      `json:"name"`
+	ObjectID             string                      `json:"objectId"`
 	DisplayName          string                      `json:"displayName"`
 	Description          string                      `json:"description"`
 	Actions              map[string]ActionDefinition `json:"actions"`

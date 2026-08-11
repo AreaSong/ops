@@ -42,7 +42,7 @@ read_env_value() {
 for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
-jq -e '.schemaVersion == 2 and (.services | length > 0)' \
+jq -e '.schemaVersion == 3 and (.services | length > 0)' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
 
 revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
@@ -95,6 +95,7 @@ systemctl is-active --quiet areasong-ops-runner.service || fail "Runner service 
 [ "$(stat -c '%a %U:%G' "$SOCKET_PATH")" = "660 root:areasong-ops" ] ||
   fail "Runner socket owner or mode is invalid"
 curl -fsS --unix-socket "$SOCKET_PATH" http://runner/healthz >/dev/null || fail "Runner health failed"
+curl -fsS http://127.0.0.1:9093/-/ready >/dev/null || fail "Alertmanager readiness failed"
 
 docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$revision" '
   length == 1 and

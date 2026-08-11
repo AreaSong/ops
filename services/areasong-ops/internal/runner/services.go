@@ -20,7 +20,7 @@ func (engine *Engine) Services(ctx context.Context) []model.ServiceView {
 		go func() {
 			defer wait.Done()
 			view := model.ServiceView{
-				Name: service.Name, DisplayName: service.DisplayName,
+				Name: service.Name, ObjectID: service.ObjectID, DisplayName: service.DisplayName,
 				Description: service.Description, Actions: service.Actions,
 			}
 			status, err := engine.inspect(ctx, service)

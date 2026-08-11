@@ -28,6 +28,7 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /healthz", server.health)
 	mux.HandleFunc("GET /metrics", server.metrics)
 	mux.HandleFunc("GET /v1/services", server.services)
+	mux.HandleFunc("GET /v1/alerts", server.alerts)
 	mux.HandleFunc("POST /v1/previews", server.createPreview)
 	mux.HandleFunc("POST /v1/plans", server.createPlan)
 	mux.HandleFunc("GET /v1/plans", server.plans)
@@ -43,6 +44,18 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/audit", server.audit)
 	mux.HandleFunc("GET /v1/events", server.events)
 	return requestLimits(mux)
+}
+
+func (server *Server) alerts(response http.ResponseWriter, request *http.Request) {
+	if _, ok := requireActor(response, request); !ok {
+		return
+	}
+	alerts, err := server.engine.ActiveAlerts(request.Context())
+	if err != nil {
+		writeError(response, http.StatusServiceUnavailable, "Alertmanager 活动告警当前不可用")
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"alerts": alerts})
 }
 
 func (server *Server) closePlan(response http.ResponseWriter, request *http.Request) {

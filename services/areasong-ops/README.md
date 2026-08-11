@@ -8,6 +8,8 @@ AreaSong Ops 是 `ops.areasong.top` 的受控交互式运维控制面。它只�
 Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
                                                                   |
                                       固定适配器 -> Docker/备份/更新器
+                                                                  |
+                                            loopback Alertmanager v2 API
 ```
 
 - Web 只接收并校验 Cloudflare Access JWT，向 Runner 传递邮箱 SHA-256。
@@ -16,6 +18,9 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
 - 生产变更任务成功后进入声明的观察窗口；到期后重新核对运行身份并原子写入收口审计，才将计划标记为完成。
+- Runner 从本机 Alertmanager 只读投影 Git 声明映射的活动阻断告警；Prometheus 仍是唯一告警规则源，Alertmanager 仍是告警和静默的唯一权威。
+- 中高风险生产变更执行前必须通过告警门禁。Runner 只按声明创建最长 4 小时的精确维护静默，操作者不能输入 matcher、告警名或时长。
+- 任务失败时提前解除维护静默；任务成功时保留到观察期结束。收口先解除静默，再复核包括被其他静默覆盖的活动阻断告警和运行身份。
 - 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
 - AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点，Runner 复核产物路径、大小和 SHA-256 后才允许进入更新阶段。
 - 服务页从 SQLite 恢复最近一次成功的发布发现结果；准备发布完成后同步恢复 prepared 门禁状态。
@@ -25,7 +30,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 ## 通用服务模板
 
-`compose-service-v1` 把 Compose 应用的检查、备份、单服务重建、健康检查、发布发现和 prepared 门禁统一到一个适配器。新增服务通常只需要一份 `schemaVersion: 2` 服务声明；数据库恢复、迁移验证或认证 smoke 等服务特有逻辑通过少量 root-owned hook 接入。
+`compose-service-v1` 把 Compose 应用的检查、备份、单服务重建、健康检查、发布发现和 prepared 门禁统一到一个适配器。新增服务通常只需要一份 `schemaVersion: 3` 服务声明；数据库恢复、迁移验证或认证 smoke 等服务特有逻辑通过少量 root-owned hook 接入。
 
 模板字段、hook 契约、接入步骤和安全边界见 [deploy/service-template.md](deploy/service-template.md)。模板不会自动恢复生产数据库、修改公网流量或启用自动更新。
 

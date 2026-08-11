@@ -20,7 +20,9 @@ const planSelect = `
 	SELECT id, actor_hash, service, action, target, risk, state, digest,
 	       approval_summary_json, confirmation_phrase, approved_by_hash, approved_at,
 	       invalidated_reason, task_id, observation_seconds, observation_started_at,
-	       observation_ends_at, closure_reason, closed_at, created_at, updated_at
+	       observation_ends_at, closure_reason, maintenance_silence_id,
+	       maintenance_silence_ends_at, maintenance_silence_released_at,
+	       blocking_alert_fingerprints_json, closed_at, created_at, updated_at
 	FROM release_plans`
 
 func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInput) error {
@@ -45,12 +47,14 @@ func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInpu
 func scanPlan(row scanner) (model.ReleasePlan, error) {
 	var plan model.ReleasePlan
 	var risk, state, summaryJSON, createdAt, updatedAt string
-	var approvedAt, observationStartedAt, observationEndsAt, closedAt sql.NullString
+	var approvedAt, observationStartedAt, observationEndsAt, silenceEndsAt, silenceReleasedAt, closedAt sql.NullString
+	var blockingAlertsJSON string
 	err := row.Scan(&plan.ID, &plan.ActorHash, &plan.Service, &plan.Action, &plan.Target,
 		&risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.InvalidatedReason, &plan.TaskID,
 		&plan.ObservationSeconds, &observationStartedAt, &observationEndsAt,
-		&plan.ClosureReason, &closedAt,
+		&plan.ClosureReason, &plan.MaintenanceSilenceID, &silenceEndsAt, &silenceReleasedAt,
+		&blockingAlertsJSON, &closedAt,
 		&createdAt, &updatedAt)
 	if err != nil {
 		return model.ReleasePlan{}, err
@@ -78,6 +82,17 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	}
 	plan.ObservationEndsAt, parseErr = nullableTime(observationEndsAt)
 	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.MaintenanceSilenceEndsAt, parseErr = nullableTime(silenceEndsAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.MaintenanceSilenceReleasedAt, parseErr = nullableTime(silenceReleasedAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	if parseErr = decodeJSON(blockingAlertsJSON, &plan.BlockingAlertFingerprints); parseErr != nil {
 		return model.ReleasePlan{}, parseErr
 	}
 	plan.ClosedAt, parseErr = nullableTime(closedAt)
@@ -170,6 +185,35 @@ func (store *Store) InvalidateReleasePlan(ctx context.Context, id, reason string
 func (store *Store) RecordPlanClosureBlocker(
 	ctx context.Context,
 	id, reason string,
+	blockingAlertFingerprints []string,
+	audit model.AuditEntry,
+) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := store.now()
+	blockingAlertsJSON, err := encodeJSON(blockingAlertFingerprints)
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE release_plans SET closure_reason = ?, blocking_alert_fingerprints_json = ?, updated_at = ?
+		WHERE id = ? AND state = ?
+	`, reason, blockingAlertsJSON, timeText(now), id, model.PlanObserving)
+	if err = requireOne(result, err, "计划收口阻断原因无法写入"); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) RecordPlanSilenceReleased(
+	ctx context.Context,
+	id string,
 	audit model.AuditEntry,
 ) error {
 	tx, err := store.db.BeginTx(ctx, nil)
@@ -179,10 +223,10 @@ func (store *Store) RecordPlanClosureBlocker(
 	defer tx.Rollback()
 	now := store.now()
 	result, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET closure_reason = ?, updated_at = ?
-		WHERE id = ? AND state = ?
-	`, reason, timeText(now), id, model.PlanObserving)
-	if err = requireOne(result, err, "计划收口阻断原因无法写入"); err != nil {
+		UPDATE release_plans SET maintenance_silence_released_at = ?, updated_at = ?
+		WHERE id = ? AND maintenance_silence_id != '' AND maintenance_silence_released_at IS NULL
+	`, timeText(now), timeText(now), id)
+	if err = requireOne(result, err, "维护静默解除状态无法写入"); err != nil {
 		return err
 	}
 	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
@@ -238,7 +282,8 @@ func (store *Store) CloseReleasePlan(
 		return model.ReleasePlan{}, errors.New("执行任务未成功，计划不能收口")
 	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET state = ?, closure_reason = '', closure_idempotency_key = ?,
+		UPDATE release_plans SET state = ?, closure_reason = '', blocking_alert_fingerprints_json = '[]',
+			closure_idempotency_key = ?,
 			closed_at = ?, updated_at = ? WHERE id = ? AND state = ?
 	`, model.PlanCompleted, idempotencyKey, timeText(now), timeText(now), id, model.PlanObserving)
 	if err = requireOne(result, err, "计划收口失败"); err != nil {
@@ -252,6 +297,7 @@ func (store *Store) CloseReleasePlan(
 	}
 	plan.State = model.PlanCompleted
 	plan.ClosureReason = ""
+	plan.BlockingAlertFingerprints = nil
 	plan.ClosedAt = &now
 	plan.UpdatedAt = now
 	return plan, nil
@@ -282,6 +328,7 @@ func (store *Store) StartPlanTask(
 	ctx context.Context,
 	plan model.ReleasePlan,
 	actorHash, idempotencyKey, taskID string,
+	silence *model.MaintenanceSilence,
 ) (model.Task, bool, error) {
 	requestHash := HashConfirmation(plan.ID + "\x00" + plan.Digest)
 	tx, err := store.db.BeginTx(ctx, nil)
@@ -343,12 +390,29 @@ func (store *Store) StartPlanTask(
 	if err != nil {
 		return model.Task{}, false, err
 	}
+	var silenceID string
+	var silenceEndsAt any
+	if silence != nil {
+		silenceID = silence.ID
+		silenceEndsAt = timeText(silence.EndsAt)
+	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET state = ?, task_id = ?, updated_at = ?
+		UPDATE release_plans SET state = ?, task_id = ?, maintenance_silence_id = ?,
+			maintenance_silence_ends_at = ?, maintenance_silence_released_at = NULL, updated_at = ?
 		WHERE id = ? AND state = ? AND digest = ?
-	`, model.PlanExecuting, taskID, timeText(now), plan.ID, model.PlanApproved, plan.Digest)
+	`, model.PlanExecuting, taskID, silenceID, silenceEndsAt, timeText(now),
+		plan.ID, model.PlanApproved, plan.Digest)
 	if err = requireOne(result, err, "发布计划无法进入执行状态"); err != nil {
 		return model.Task{}, false, err
+	}
+	if silence != nil {
+		if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+			ActorHash: actorHash, Event: "plan.maintenance_silence_created",
+			Resource: plan.ID, Outcome: "created",
+			Detail: map[string]any{"silenceId": silence.ID, "endsAt": silence.EndsAt},
+		}, now); err != nil {
+			return model.Task{}, false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return model.Task{}, false, err

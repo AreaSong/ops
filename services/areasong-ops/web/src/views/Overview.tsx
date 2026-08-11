@@ -1,12 +1,15 @@
-import { AlertTriangle, CheckCheck, Clock3, Eye, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, BellRing, CheckCheck, Clock3, Eye, ShieldCheck } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { formatTime } from '../labels'
-import type { ReleasePlan, ServiceView, Task } from '../types'
+import type { ActiveAlert, ReleasePlan, ServiceView, Task } from '../types'
 
 interface OverviewProps {
   services: ServiceView[]
   tasks: Task[]
   plans: ReleasePlan[]
+  alerts: ActiveAlert[]
+  alertsError: string
+  alertsURL?: string
   onService: (name: string) => void
   onTask: (task: Task) => void
   onPlan: (plan: ReleasePlan) => void
@@ -21,7 +24,9 @@ function serviceGate(service: ServiceView): 'healthy' | 'error' | 'warning' {
   return 'healthy'
 }
 
-export function Overview({ services, tasks, plans, onService, onTask, onPlan }: OverviewProps) {
+export function Overview({
+  services, tasks, plans, alerts, alertsError, alertsURL, onService, onTask, onPlan,
+}: OverviewProps) {
   const pendingPlans = plans.filter((plan) => plan.state === 'pending_approval')
   const approvedPlans = plans.filter((plan) => plan.state === 'approved')
   const observingPlans = plans.filter((plan) => plan.state === 'observing')
@@ -30,7 +35,7 @@ export function Overview({ services, tasks, plans, onService, onTask, onPlan }: 
   const attentionTasks = tasks.filter((task) => attentionTaskStates.has(task.state))
   const orphanedAttentionPlans = attentionPlans.filter((plan) => !attentionTasks.some((task) => task.id === plan.taskId))
   const actionablePlans = [...pendingPlans, ...approvedPlans]
-  const handlingCount = actionablePlans.length + observingPlans.length + attentionTasks.length + orphanedAttentionPlans.length
+  const handlingCount = alerts.length + actionablePlans.length + observingPlans.length + attentionTasks.length + orphanedAttentionPlans.length
 
   return (
     <div className="page">
@@ -50,11 +55,29 @@ export function Overview({ services, tasks, plans, onService, onTask, onPlan }: 
 
       <section className="page-section">
         <div className="section-heading"><h2>需要处理</h2><span>{handlingCount} 项</span></div>
-        {handlingCount === 0 && (
+        {handlingCount === 0 && !alertsError && (
           <div className="empty-state compact">当前没有等待批准、执行或恢复核对的事项</div>
         )}
+        {alertsError && <div className="inline-error compact"><AlertTriangle size={16} />告警数据不可用</div>}
         {handlingCount > 0 && (
           <div className="task-list compact-list">
+            {alerts.map((alert) => {
+              const alertURL = alert.grafanaUrl || alertsURL
+              const content = <>
+                <span><strong>{alert.service}</strong><small>{alert.alertName}</small></span>
+                <span className="task-summary">{alert.summary || '活动告警需要处理'}</span>
+                <time>{formatTime(alert.startsAt)}</time>
+                <span className={`badge badge-alert-${alert.severity || 'unknown'}`}>
+                  <BellRing size={12} aria-hidden="true" />{alert.severity === 'critical' ? '严重' : '警告'}
+                </span>
+              </>
+              return alertURL ? (
+                <a key={alert.fingerprint} className="task-row alert-row"
+                  href={alertURL} target="_blank" rel="noreferrer">{content}</a>
+              ) : (
+                <div key={alert.fingerprint} className="task-row alert-row static">{content}</div>
+              )
+            })}
             {actionablePlans.map((plan) => (
               <button key={plan.id} type="button" className="task-row" onClick={() => onPlan(plan)}>
                 <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>

@@ -23,6 +23,7 @@ Environment=OPS_STATE_ROOT=/var/lib/areasong-ops
 Environment=OPS_LEGACY_STATE_ROOT=/var/lib/ops/update-control
 Environment=OPS_SERVICE_CATALOG=/etc/areasong-ops/services.json
 Environment=OPS_RUNNER_SOCKET=/var/lib/areasong-ops/run/runner.sock
+Environment=OPS_ALERTMANAGER_URL=http://127.0.0.1:9093
 Environment=TMPDIR=/var/lib/areasong-ops/tmp
 Environment=HOME=/var/lib/areasong-ops
 Environment=XDG_CACHE_HOME=/var/lib/areasong-ops/cache

@@ -15,12 +15,16 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 var (
 	namePattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
 	actionPattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
 	stepPattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
+	objectIDPattern   = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}:[a-z][a-z0-9-]{1,39}$`)
+	labelNamePattern  = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
+	labelValuePattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,128}$`)
+	alertNamePattern  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{1,79}$`)
 	repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 )
 
@@ -58,6 +62,7 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 	if len(catalog.Services) == 0 {
 		return errors.New("服务声明不能为空")
 	}
+	objectIDs := make(map[string]string, len(catalog.Services))
 	for key, service := range catalog.Services {
 		if key != service.Name || !namePattern.MatchString(key) {
 			return fmt.Errorf("服务名称无效: %q", key)
@@ -65,6 +70,13 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 		if service.DisplayName == "" || service.Adapter == "" || !filepath.IsAbs(service.Adapter) {
 			return fmt.Errorf("服务 %s 的名称或适配器无效", key)
 		}
+		if !objectIDPattern.MatchString(service.ObjectID) {
+			return fmt.Errorf("服务 %s 的稳定对象标识无效", key)
+		}
+		if owner, exists := objectIDs[service.ObjectID]; exists {
+			return fmt.Errorf("服务 %s 与 %s 使用了重复对象标识", key, owner)
+		}
+		objectIDs[service.ObjectID] = key
 		if service.Template != "custom" && service.Template != "compose-service-v1" {
 			return fmt.Errorf("服务 %s 的模板无效", key)
 		}
@@ -88,8 +100,68 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 				return err
 			}
 		}
+		if err := validateAlertPolicy(key, service); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func validateAlertPolicy(name string, service model.ServiceDefinition) error {
+	requiresPolicy := false
+	for _, action := range service.Actions {
+		if action.Enabled && model.ActionRequiresObservation(action) {
+			requiresPolicy = true
+			break
+		}
+	}
+	policy := service.AlertPolicy
+	if !requiresPolicy && len(policy.Matchers) == 0 && len(policy.BlockingAlerts) == 0 &&
+		len(policy.MaintenanceAlerts) == 0 {
+		return nil
+	}
+	if len(policy.Matchers) == 0 || len(policy.Matchers) > 4 || policy.Matchers["service"] != name {
+		return fmt.Errorf("服务 %s 的告警策略必须使用精确 service matcher", name)
+	}
+	for key, value := range policy.Matchers {
+		if !labelNamePattern.MatchString(key) || !labelValuePattern.MatchString(value) {
+			return fmt.Errorf("服务 %s 的告警 matcher 无效", name)
+		}
+	}
+	blocking, err := validateAlertNames(name, "阻断", policy.BlockingAlerts)
+	if err != nil {
+		return err
+	}
+	if requiresPolicy && len(blocking) == 0 {
+		return fmt.Errorf("服务 %s 的生产变更缺少阻断告警映射", name)
+	}
+	maintenance, err := validateAlertNames(name, "维护静默", policy.MaintenanceAlerts)
+	if err != nil {
+		return err
+	}
+	for alertName := range maintenance {
+		if _, exists := blocking[alertName]; !exists {
+			return fmt.Errorf("服务 %s 的维护静默告警 %s 必须同时是阻断告警", name, alertName)
+		}
+	}
+	return nil
+}
+
+func validateAlertNames(service, purpose string, names []string) (map[string]struct{}, error) {
+	if len(names) > 24 {
+		return nil, fmt.Errorf("服务 %s 的%s告警数量过多", service, purpose)
+	}
+	result := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if !alertNamePattern.MatchString(name) {
+			return nil, fmt.Errorf("服务 %s 的%s告警名称无效", service, purpose)
+		}
+		if _, exists := result[name]; exists {
+			return nil, fmt.Errorf("服务 %s 的%s告警名称重复", service, purpose)
+		}
+		result[name] = struct{}{}
+	}
+	return result, nil
 }
 
 func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime, requireRoot bool) error {

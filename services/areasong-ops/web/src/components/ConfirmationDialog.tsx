@@ -49,6 +49,12 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
             <div><dt>失败处理</dt><dd>{summary.rollback}</dd></div>
             {plan.observationStartedAt && <div><dt>观察开始</dt><dd>{formatTime(plan.observationStartedAt)}</dd></div>}
             {plan.observationEndsAt && <div><dt>最早收口</dt><dd>{formatTime(plan.observationEndsAt)}</dd></div>}
+            {plan.maintenanceSilenceEndsAt && (
+              <div><dt>维护静默</dt><dd>{plan.maintenanceSilenceReleasedAt ? '已解除' : `至 ${formatTime(plan.maintenanceSilenceEndsAt)}`}</dd></div>
+            )}
+            {plan.blockingAlertFingerprints && plan.blockingAlertFingerprints.length > 0 && (
+              <div><dt>阻断告警</dt><dd>{plan.blockingAlertFingerprints.length} 项仍在触发</dd></div>
+            )}
             {plan.closureReason && <div><dt>收口阻断</dt><dd>{plan.closureReason}</dd></div>}
           </dl>
           <div className="step-line" aria-label="执行阶段">

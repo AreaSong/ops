@@ -42,8 +42,8 @@ func TestOpenMigratesExistingPlanSchema(t *testing.T) {
 	}
 	var column string
 	if err := migrated.db.QueryRow(`
-		SELECT name FROM pragma_table_info('release_plans') WHERE name = 'observation_ends_at'
-	`).Scan(&column); err != nil || column != "observation_ends_at" {
+		SELECT name FROM pragma_table_info('release_plans') WHERE name = 'maintenance_silence_id'
+	`).Scan(&column); err != nil || column != "maintenance_silence_id" {
 		t.Fatalf("column=%q err=%v", column, err)
 	}
 }
@@ -211,11 +211,17 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if err != nil || approved.State != model.PlanApproved || approved.ApprovedAt == nil {
 		t.Fatalf("plan=%+v err=%v", approved, err)
 	}
-	task, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "plan-task")
+	silenceEndsAt := now.Add(20 * time.Minute)
+	silence := &model.MaintenanceSilence{ID: "silence-1", EndsAt: silenceEndsAt}
+	task, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "plan-task", silence)
 	if err != nil || !created || task.PlanID != plan.ID || len(task.Stages) != 2 {
 		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
 	}
-	again, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "other-task")
+	executing, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || executing.MaintenanceSilenceID != silence.ID || executing.MaintenanceSilenceEndsAt == nil {
+		t.Fatalf("executing=%+v err=%v", executing, err)
+	}
+	again, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "other-task", nil)
 	if err != nil || created || again.ID != task.ID {
 		t.Fatalf("again=%+v created=%v err=%v", again, created, err)
 	}
@@ -234,6 +240,11 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 		observing.ObservationEndsAt == nil || observing.ClosedAt != nil {
 		t.Fatalf("observing=%+v err=%v", observing, err)
 	}
+	if err := database.RecordPlanSilenceReleased(ctx, plan.ID, model.AuditEntry{
+		ActorHash: "a", Event: "plan.maintenance_silence_released", Resource: plan.ID, Outcome: "released",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	closeAudit := model.AuditEntry{ActorHash: "a", Event: "plan.closed", Resource: plan.ID, Outcome: "completed"}
 	if _, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit); err == nil {
 		t.Fatal("observation closed before deadline")
@@ -251,7 +262,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 		t.Fatalf("expected closure idempotency error, got %v", err)
 	}
 	auditEntries, err := database.ListAudit(ctx, 10, 0)
-	if err != nil || len(auditEntries) != 2 || auditEntries[0].Event != "plan.closed" {
+	if err != nil || len(auditEntries) != 4 || auditEntries[0].Event != "plan.closed" {
 		t.Fatalf("audit=%+v err=%v", auditEntries, err)
 	}
 }
@@ -279,7 +290,7 @@ func TestFailedPlanNeedsAttention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartPlanTask(ctx, approved, "a", "failed-idem", "failed-task")
+	task, _, err := database.StartPlanTask(ctx, approved, "a", "failed-idem", "failed-task", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

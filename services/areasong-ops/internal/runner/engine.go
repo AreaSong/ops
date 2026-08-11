@@ -22,28 +22,49 @@ var (
 )
 
 type Engine struct {
-	catalog    *config.Catalog
-	store      *store.Store
-	executor   Executor
-	broker     *Broker
-	stateRoot  string
-	lockMu     sync.Mutex
-	locks      map[string]string
-	wait       sync.WaitGroup
-	owner      string
-	backupRoot string
+	catalog      *config.Catalog
+	store        *store.Store
+	executor     Executor
+	broker       *Broker
+	stateRoot    string
+	lockMu       sync.Mutex
+	locks        map[string]string
+	wait         sync.WaitGroup
+	owner        string
+	backupRoot   string
+	alertmanager Alertmanager
 }
 
-func NewEngine(catalog *config.Catalog, database *store.Store, executor Executor, stateRoot string) *Engine {
+type EngineOption func(*Engine)
+
+func WithAlertmanager(alertmanager Alertmanager) EngineOption {
+	return func(engine *Engine) {
+		if alertmanager != nil {
+			engine.alertmanager = alertmanager
+		}
+	}
+}
+
+func NewEngine(
+	catalog *config.Catalog,
+	database *store.Store,
+	executor Executor,
+	stateRoot string,
+	options ...EngineOption,
+) *Engine {
 	owner, err := newUUID()
 	if err != nil {
 		owner = fmt.Sprintf("runner-%d", os.Getpid())
 	}
-	return &Engine{
+	engine := &Engine{
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
 		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
-		backupRoot: "/var/backups/ops",
+		backupRoot: "/var/backups/ops", alertmanager: unavailableAlertmanager{},
 	}
+	for _, option := range options {
+		option(engine)
+	}
+	return engine
 }
 
 func (engine *Engine) Broker() *Broker {

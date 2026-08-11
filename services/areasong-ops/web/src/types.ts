@@ -26,6 +26,19 @@ export interface NavigationLinks {
   alerts?: string
 }
 
+export interface ActiveAlert {
+  fingerprint: string
+  objectId: string
+  service: string
+  alertName: string
+  severity: string
+  summary: string
+  runbookUrl?: string
+  grafanaUrl?: string
+  silenced: boolean
+  startsAt: string
+}
+
 export interface SessionResponse {
   email: string
   csrfToken: string
@@ -48,6 +61,12 @@ export interface ActionDefinition {
   rollback: string
   scope: string
 }
+
+export interface AlertPolicyDefinition {
+  matchers?: Record<string, string>
+  blockingAlerts?: string[]
+  maintenanceAlerts?: string[]
+}
 export interface ServiceStatus {
   currentVersion?: string
   currentImage?: string
@@ -64,6 +83,7 @@ export interface ServiceStatus {
 
 export interface ServiceView {
   name: string
+  objectId: string
   displayName: string
   description: string
   actions: Record<string, ActionDefinition>
@@ -108,6 +128,7 @@ export interface ApprovalSummary {
     recoveryPhase?: string
   }>
   observationSeconds?: number
+  alertPolicy?: AlertPolicyDefinition
   confirmationPhrase?: string
   expectedBefore: ServiceStatus
   targetEvidence?: ReleaseDiscovery
@@ -133,6 +154,10 @@ export interface ReleasePlan {
   observationStartedAt?: string
   observationEndsAt?: string
   closureReason?: string
+  maintenanceSilenceId?: string
+  maintenanceSilenceEndsAt?: string
+  maintenanceSilenceReleasedAt?: string
+  blockingAlertFingerprints?: string[]
   closedAt?: string
   createdAt: string
   updatedAt: string

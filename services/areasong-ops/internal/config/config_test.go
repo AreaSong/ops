@@ -10,9 +10,9 @@ import (
 )
 
 func validComposeCatalog() *Catalog {
-	return &Catalog{SchemaVersion: 2, Services: map[string]model.ServiceDefinition{
+	return &Catalog{SchemaVersion: 3, Services: map[string]model.ServiceDefinition{
 		"demo": {
-			Name: "demo", DisplayName: "Demo", Description: "test", Template: "compose-service-v1",
+			Name: "demo", ObjectID: "service:demo", DisplayName: "Demo", Description: "test", Template: "compose-service-v1",
 			Adapter: "/usr/local/libexec/demo.sh",
 			Runtime: &model.ComposeServiceRuntime{
 				ControlledCompose: "/opt/ops/demo/compose.yml", RuntimeCompose: "/opt/services/demo/compose.yml",
@@ -34,10 +34,11 @@ func TestCatalogRejectsEnabledAllowlistWithoutTargets(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "services.json")
 	content := `{
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "services": {
     "demo": {
       "name": "demo",
+      "objectId": "service:demo",
       "displayName": "Demo",
       "description": "test",
       "template": "custom",
@@ -87,10 +88,11 @@ func TestCatalogAcceptsReadOnlyAction(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "services.json")
 	content := `{
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "services": {
     "demo": {
       "name": "demo",
+      "objectId": "service:demo",
       "displayName": "Demo",
       "description": "test",
       "template": "custom",
@@ -135,6 +137,11 @@ func TestCatalogRequiresBoundedObservationForProductionMutation(t *testing.T) {
 	action := service.Actions["restart"]
 	action.ObservationSeconds = 300
 	service.Actions["restart"] = action
+	service.AlertPolicy = model.AlertPolicyDefinition{
+		Matchers:          map[string]string{"service": "demo"},
+		BlockingAlerts:    []string{"AppHttpProbeFailed"},
+		MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+	}
 	catalog.Services["demo"] = service
 	if err := catalog.Validate(false); err != nil {
 		t.Fatalf("valid observation window rejected: %v", err)
@@ -147,6 +154,49 @@ func TestCatalogRejectsUnsupportedSchema(t *testing.T) {
 	if err := catalog.Validate(false); err == nil {
 		t.Fatal("expected schema validation error")
 	}
+}
+
+func TestCatalogRejectsInvalidAlertPolicy(t *testing.T) {
+	newCatalog := func() *Catalog {
+		catalog := validComposeCatalog()
+		service := catalog.Services["demo"]
+		service.Actions["restart"] = model.ActionDefinition{
+			Name: "restart", DisplayName: "重启", Enabled: true, Risk: model.RiskMedium,
+			TargetMode: "none", Steps: []string{"restart"}, ObservationSeconds: 300,
+			TimeoutSeconds: 60, ConfirmationTemplate: "重启 {service}",
+			Impact: "短暂中断", Rollback: "重新启动", Scope: "单服务",
+		}
+		catalog.Services["demo"] = service
+		return catalog
+	}
+
+	t.Run("matcher 必须精确匹配服务", func(t *testing.T) {
+		catalog := newCatalog()
+		service := catalog.Services["demo"]
+		service.AlertPolicy = model.AlertPolicyDefinition{
+			Matchers:          map[string]string{"service": "other"},
+			BlockingAlerts:    []string{"AppHttpProbeFailed"},
+			MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+		}
+		catalog.Services["demo"] = service
+		if err := catalog.Validate(false); err == nil {
+			t.Fatal("expected mismatched service matcher to be rejected")
+		}
+	})
+
+	t.Run("维护静默必须属于阻断映射", func(t *testing.T) {
+		catalog := newCatalog()
+		service := catalog.Services["demo"]
+		service.AlertPolicy = model.AlertPolicyDefinition{
+			Matchers:          map[string]string{"service": "demo"},
+			BlockingAlerts:    []string{"AppHttpProbeFailed"},
+			MaintenanceAlerts: []string{"BusinessHttpProbeFailed"},
+		}
+		catalog.Services["demo"] = service
+		if err := catalog.Validate(false); err == nil {
+			t.Fatal("expected unmapped maintenance alert to be rejected")
+		}
+	})
 }
 
 func TestCatalogRejectsComposeTemplateWithoutRuntime(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +28,50 @@ type fakeExecutor struct {
 	failPhase string
 }
 
+type fakeAlertmanager struct {
+	mu       sync.Mutex
+	alerts   []model.ActiveAlert
+	created  []model.MaintenanceSilence
+	expired  []string
+	listErr  error
+	writeErr error
+}
+
+func (manager *fakeAlertmanager) ListAlerts(_ context.Context, _ bool) ([]model.ActiveAlert, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return append([]model.ActiveAlert(nil), manager.alerts...), manager.listErr
+}
+
+func (manager *fakeAlertmanager) CreateSilence(
+	_ context.Context,
+	_ map[string]string,
+	_ []string,
+	_, endsAt time.Time,
+	_ string,
+) (model.MaintenanceSilence, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if manager.writeErr != nil {
+		return model.MaintenanceSilence{}, manager.writeErr
+	}
+	silence := model.MaintenanceSilence{ID: "test-silence-" + mustTestID(len(manager.created)+1), EndsAt: endsAt}
+	manager.created = append(manager.created, silence)
+	return silence, nil
+}
+
+func (manager *fakeAlertmanager) ExpireSilence(_ context.Context, id string) error {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if manager.writeErr != nil {
+		return manager.writeErr
+	}
+	manager.expired = append(manager.expired, id)
+	return nil
+}
+
+func mustTestID(value int) string { return fmt.Sprintf("%d", value) }
+
 func (executor *fakeExecutor) Execute(_ context.Context, input ExecuteInput) (model.AdapterResult, error) {
 	executor.mu.Lock()
 	executor.calls = append(executor.calls, input)
@@ -35,7 +80,10 @@ func (executor *fakeExecutor) Execute(_ context.Context, input ExecuteInput) (mo
 		return model.AdapterResult{}, errors.New("适配器阶段 health 失败: password=secret failure")
 	}
 	if input.Action == "inspect" {
-		return model.AdapterResult{OK: true, Summary: "checked", Data: map[string]any{"currentVersion": "1.0.0"}}, nil
+		return model.AdapterResult{OK: true, Summary: "checked", Data: map[string]any{
+			"currentVersion": "1.0.0", "currentImage": "demo:v1.0.0@sha256:test",
+			"currentImageId": "sha256:image", "runtimeIdentityHash": "sha256:runtime",
+		}}, nil
 	}
 	if input.Action == "check" && input.Phase == "discover" {
 		return model.AdapterResult{OK: true, Summary: "discovered", Data: map[string]any{
@@ -53,9 +101,14 @@ func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	catalog := &config.Catalog{SchemaVersion: 2, Services: map[string]model.ServiceDefinition{
+	catalog := &config.Catalog{SchemaVersion: 3, Services: map[string]model.ServiceDefinition{
 		"demo": {
-			Name: "demo", DisplayName: "Demo", Description: "test", Template: "custom", Adapter: "/tmp/demo",
+			Name: "demo", ObjectID: "service:demo", DisplayName: "Demo", Description: "test", Template: "custom", Adapter: "/tmp/demo",
+			AlertPolicy: model.AlertPolicyDefinition{
+				Matchers:          map[string]string{"service": "demo"},
+				BlockingAlerts:    []string{"AppHttpProbeFailed"},
+				MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+			},
 			Actions: map[string]model.ActionDefinition{
 				"inspect": {
 					Name: "inspect", DisplayName: "检查", Enabled: true, Risk: model.RiskReadOnly,
@@ -70,19 +123,26 @@ func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
 				"update": {
 					Name: "update", DisplayName: "更新", Enabled: true, Risk: model.RiskHigh,
 					TargetMode: "signed_release_tag", Steps: []string{"preflight", "backup", "apply", "health", "identity"},
-					TimeoutSeconds: 60, ConfirmationTemplate: "更新 {service} 到 {target}",
+					ObservationSeconds: 1, TimeoutSeconds: 60, ConfirmationTemplate: "更新 {service} 到 {target}",
 					Impact: "update", Rollback: "rollback", Scope: "demo",
 				},
 				"rollback": {
 					Name: "rollback", DisplayName: "回滚", Enabled: true, Risk: model.RiskHigh,
 					TargetMode: "controlled_rollback", Steps: []string{"preflight", "apply", "health", "identity"},
-					TimeoutSeconds: 60, ConfirmationTemplate: "回滚 {service} 使用任务 {target}",
+					ObservationSeconds: 1, TimeoutSeconds: 60, ConfirmationTemplate: "回滚 {service} 使用任务 {target}",
 					Impact: "rollback", Rollback: "manual", Scope: "demo",
+				},
+				"restart": {
+					Name: "restart", DisplayName: "重启", Enabled: true, Risk: model.RiskMedium,
+					TargetMode: "none", Steps: []string{"preflight", "restart", "health"},
+					ObservationSeconds: 1, TimeoutSeconds: 60, ConfirmationTemplate: "重启 {service}",
+					Impact: "restart", Rollback: "restart", Scope: "demo",
 				},
 			},
 		},
 	}}
-	return NewEngine(catalog, database, executor, stateRoot), database
+	return NewEngine(catalog, database, executor, stateRoot,
+		WithAlertmanager(&fakeAlertmanager{})), database
 }
 
 func TestHighRiskTaskRequiresExactPhraseAndCompletes(t *testing.T) {
@@ -210,6 +270,118 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	blocked, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || blocked.State != model.PlanObserving || blocked.ClosureReason == "" {
 		t.Fatalf("blocked=%+v err=%v", blocked, err)
+	}
+}
+
+func TestPlanExecutionRejectsActiveBlockingAlert(t *testing.T) {
+	ctx := context.Background()
+	engine, _ := testEngine(t, &fakeExecutor{})
+	manager := engine.alertmanager.(*fakeAlertmanager)
+	manager.alerts = []model.ActiveAlert{{
+		Fingerprint: "abcdef1234567890", AlertName: "AppHttpProbeFailed",
+		Severity: "critical", Labels: map[string]string{
+			"alertname": "AppHttpProbeFailed", "service": "demo", "severity": "critical",
+		},
+	}}
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "restart",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err == nil || !strings.Contains(err.Error(), "存在阻断告警") || len(manager.created) != 0 {
+		t.Fatalf("err=%v silences=%+v", err, manager.created)
+	}
+}
+
+func TestActiveAlertsOnlyProjectsGitMappedObjects(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{})
+	manager := engine.alertmanager.(*fakeAlertmanager)
+	manager.alerts = []model.ActiveAlert{
+		{Fingerprint: "abcdef1234567890", AlertName: "AppHttpProbeFailed", Labels: map[string]string{
+			"alertname": "AppHttpProbeFailed", "service": "demo", "severity": "critical",
+		}},
+		{Fingerprint: "1234567890abcdef", AlertName: "BackupJobFailed", Labels: map[string]string{
+			"alertname": "BackupJobFailed", "service": "demo", "severity": "warning",
+		}},
+	}
+	alerts, err := engine.ActiveAlerts(context.Background())
+	if err != nil || len(alerts) != 1 || alerts[0].ObjectID != "service:demo" || alerts[0].Service != "demo" {
+		t.Fatalf("alerts=%+v err=%v", alerts, err)
+	}
+}
+
+func TestAlertsEndpointReportsAlertmanagerUnavailable(t *testing.T) {
+	engine, database := testEngine(t, &fakeExecutor{})
+	manager := engine.alertmanager.(*fakeAlertmanager)
+	manager.listErr = errors.New("connection refused")
+	request := httptest.NewRequest(http.MethodGet, "/v1/alerts", nil)
+	request.Header.Set(actorHeader, actorHash())
+	response := httptest.NewRecorder()
+	NewServer(engine, database).ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "活动告警当前不可用") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestPlanClosureReleasesSilenceAndChecksAlerts(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	manager := engine.alertmanager.(*fakeAlertmanager)
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "restart",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+	observing, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || observing.MaintenanceSilenceID == "" || observing.MaintenanceSilenceEndsAt == nil {
+		t.Fatalf("plan=%+v err=%v", observing, err)
+	}
+	manager.alerts = []model.ActiveAlert{{
+		Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed",
+		Labels: map[string]string{"alertname": "AppHttpProbeFailed", "service": "demo"},
+	}}
+	time.Sleep(time.Until(*observing.ObservationEndsAt) + 20*time.Millisecond)
+	_, err = engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err == nil || !strings.Contains(err.Error(), "关联阻断告警仍在触发") {
+		t.Fatalf("err=%v", err)
+	}
+	blocked, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || blocked.MaintenanceSilenceReleasedAt == nil ||
+		len(blocked.BlockingAlertFingerprints) != 1 || len(manager.expired) != 1 {
+		t.Fatalf("plan=%+v expired=%v err=%v", blocked, manager.expired, err)
+	}
+	manager.alerts = nil
+	closed, err := engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil || closed.State != model.PlanCompleted {
+		t.Fatalf("plan=%+v err=%v", closed, err)
 	}
 }
 

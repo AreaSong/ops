@@ -266,6 +266,17 @@ func (engine *Engine) completeTask(
 	)
 	if err == nil {
 		engine.broker.Publish(event.Sequence)
+		if state != model.TaskSucceeded && task.PlanID != "" {
+			plan, planErr := engine.store.GetReleasePlan(context.Background(), task.PlanID)
+			if planErr == nil {
+				releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				planErr = engine.releasePlanSilence(releaseCtx, task.ActorHash, &plan)
+				cancel()
+			}
+			if planErr != nil {
+				slog.Error("失败计划维护静默解除失败", "plan", task.PlanID, "error", planErr)
+			}
+		}
 	} else {
 		slog.Error("任务终态事务提交失败", "task", task.ID, "state", state, "error", err)
 	}

@@ -27,6 +27,9 @@
 .badge-plan-needs_attention { color: var(--red); background: var(--red-soft); }
 .badge-plan-completed { color: var(--green); background: var(--green-soft); }
 .badge-plan-invalidated { color: var(--muted); background: var(--gray-soft); }
+.badge-alert-critical { color: var(--red); background: var(--red-soft); }
+.badge-alert-warning, .badge-alert-unknown { color: var(--amber); background: var(--amber-soft); }
+.badge-alert-critical, .badge-alert-warning, .badge-alert-unknown { display: inline-flex; align-items: center; gap: 4px; }
 
 .service-table { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
 .service-row {
@@ -53,6 +56,7 @@
 .task-row:hover { background: var(--surface-soft); }
 .task-row.static { cursor: default; }
 .task-row.static:hover { background: transparent; }
+.task-row.alert-row { color: inherit; text-decoration: none; }
 .task-row strong, .task-row small { display: block; }
 .task-row strong { font-size: 12px; }
 .task-row small, .task-row time, .task-summary { margin-top: 2px; color: var(--muted); font-size: 11px; }
