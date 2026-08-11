@@ -30,6 +30,10 @@
       "description": "AreaForge Web 与 PostgreSQL",
       "template": "custom",
       "adapterRef": "areaforge-v1",
+      "recoveryPointPolicy": {
+        "requiredArtifactRoles": ["postgres-areaforge", "volume-areaforge-uploads", "volume-areaforge-ops-state"],
+        "recoverableSeconds": 604800
+      },
       "alertPolicy": {
         "matchers": {"service": "areaforge"},
         "blockingAlerts": [
@@ -166,6 +170,10 @@
       "description": "Sub2API、PostgreSQL 与 Redis",
       "template": "compose-service-v1",
       "adapterRef": "compose-service-v1",
+      "recoveryPointPolicy": {
+        "requiredArtifactRoles": ["postgres-sub2api", "redis", "volume-sub2api-data"],
+        "recoverableSeconds": 604800
+      },
       "alertPolicy": {
         "matchers": {"service": "sub2api"},
         "blockingAlerts": [
@@ -190,6 +198,7 @@
         "releaseCatalog": "/opt/ops/scripts/deploy/update-control/releases/sub2api.json",
         "preparedReleaseDir": "/var/lib/areasong-ops/prepared-releases/sub2api",
         "inspectExecutable": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh",
+        "backupEvidenceExecutable": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh",
         "backupExecutables": [
           "/opt/ops/scripts/backup/backup-postgres.sh",
           "/opt/ops/scripts/backup/backup-redis.sh",

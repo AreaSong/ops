@@ -21,14 +21,15 @@ const (
 )
 
 var (
-	namePattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
-	actionPattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
-	stepPattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
-	objectIDPattern   = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}:[a-z][a-z0-9-]{1,39}$`)
-	labelNamePattern  = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
-	labelValuePattern = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,128}$`)
-	alertNamePattern  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{1,79}$`)
-	repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	namePattern         = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
+	actionPattern       = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
+	stepPattern         = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}$`)
+	objectIDPattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{1,31}:[a-z][a-z0-9-]{1,39}$`)
+	labelNamePattern    = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
+	labelValuePattern   = regexp.MustCompile(`^[a-zA-Z0-9_.:-]{1,128}$`)
+	alertNamePattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{1,79}$`)
+	repositoryPattern   = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	artifactRolePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
 )
 
 type Catalog struct {
@@ -120,6 +121,10 @@ func (catalog *Catalog) validateObject(
 		return fmt.Errorf("受管对象 %s: %w", key, err)
 	}
 	service.Adapter = adapterPath
+	service.AdapterContractVersion = 1
+	if catalog.SchemaVersion == schemaVersion {
+		service.AdapterContractVersion = 2
+	}
 	if !objectIDPattern.MatchString(service.ObjectID) {
 		return fmt.Errorf("受管对象 %s 的稳定对象标识无效", key)
 	}
@@ -150,11 +155,68 @@ func (catalog *Catalog) validateObject(
 			return err
 		}
 	}
+	if err := validateRecoveryPointPolicy(key, service.RecoveryPointPolicy, service.Actions); err != nil {
+		return err
+	}
+	if service.Template == "compose-service-v1" && service.RecoveryPointPolicy != nil &&
+		service.Runtime.BackupEvidenceExecutable == "" {
+		return fmt.Errorf("服务 %s 的通用 Compose 恢复点缺少备份证据 hook", key)
+	}
 	if err := validateCapabilityState(key, service.Metadata, service.Actions); err != nil {
 		return err
 	}
 	if err := validateAlertPolicy(key, *service); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateRecoveryPointPolicy(
+	service string,
+	policy *model.RecoveryPointPolicy,
+	actions map[string]model.ActionDefinition,
+) error {
+	usesRecoveryPoint := false
+	for actionName, action := range actions {
+		produced := false
+		for _, phase := range action.Steps {
+			semantics := model.EffectivePhaseSemantics(action, phase)
+			if semantics.ProducesRecoveryPoint {
+				usesRecoveryPoint = true
+				produced = true
+			}
+			if semantics.RequiresRecoveryPoint {
+				usesRecoveryPoint = true
+				if !produced {
+					return fmt.Errorf("服务 %s 的动作 %s 在产生恢复点前要求恢复点", service, actionName)
+				}
+			}
+		}
+	}
+	if !usesRecoveryPoint {
+		if policy != nil {
+			return fmt.Errorf("服务 %s 未使用恢复点却声明了恢复点策略", service)
+		}
+		return nil
+	}
+	if policy == nil {
+		return fmt.Errorf("服务 %s 使用恢复点但缺少恢复点策略", service)
+	}
+	if len(policy.RequiredArtifactRoles) == 0 || len(policy.RequiredArtifactRoles) > 16 {
+		return fmt.Errorf("服务 %s 的恢复点必需角色数量无效", service)
+	}
+	if policy.RecoverableSeconds < 3600 || policy.RecoverableSeconds > 7*24*60*60 {
+		return fmt.Errorf("服务 %s 的恢复点有效期必须为 1 小时到 7 天", service)
+	}
+	seen := make(map[string]struct{}, len(policy.RequiredArtifactRoles))
+	for _, role := range policy.RequiredArtifactRoles {
+		if !artifactRolePattern.MatchString(role) {
+			return fmt.Errorf("服务 %s 的恢复点角色无效: %q", service, role)
+		}
+		if _, exists := seen[role]; exists {
+			return fmt.Errorf("服务 %s 的恢复点角色重复: %s", service, role)
+		}
+		seen[role] = struct{}{}
 	}
 	return nil
 }
@@ -317,6 +379,9 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 	if runtime.RestoreDrillExecutable != "" {
 		paths = append(paths, runtime.RestoreDrillExecutable)
 	}
+	if runtime.BackupEvidenceExecutable != "" {
+		paths = append(paths, runtime.BackupEvidenceExecutable)
+	}
 	if runtime.PrepareExecutable != "" {
 		paths = append(paths, runtime.PrepareExecutable)
 	}
@@ -338,7 +403,7 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 		return fmt.Errorf("服务 %s 的健康地址必须是本机 HTTP 地址", service)
 	}
 	if requireRoot {
-		executables := []string{runtime.InspectExecutable}
+		executables := []string{runtime.InspectExecutable, runtime.BackupEvidenceExecutable}
 		executables = append(executables, runtime.BackupExecutables...)
 		executables = append(executables, runtime.RestoreDrillExecutable, runtime.PrepareExecutable, runtime.UpdateExecutable)
 		for _, executable := range executables {
@@ -397,6 +462,9 @@ func validateAction(service, name string, action model.ActionDefinition) error {
 		}
 		if semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase == "" {
 			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 缺少恢复阶段", service, name, phase)
+		}
+		if semantics.RecoveryPhase != "" && !stepPattern.MatchString(semantics.RecoveryPhase) {
+			return fmt.Errorf("服务 %s 的动作 %s 阶段 %s 恢复阶段无效", service, name, phase)
 		}
 	}
 	requiresObservation := model.ActionRequiresObservation(action)

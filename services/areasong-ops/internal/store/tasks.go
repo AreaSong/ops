@@ -180,7 +180,7 @@ func (store *Store) TransitionTask(ctx context.Context, id string, from, to mode
 	return requireOne(result, err, "任务状态已变化")
 }
 
-func (store *Store) StartRollback(ctx context.Context, id, failureSummary string) error {
+func (store *Store) StartRecovery(ctx context.Context, id, phase, failureSummary string) error {
 	task, err := store.GetTask(ctx, id)
 	if err != nil {
 		return err
@@ -197,16 +197,16 @@ func (store *Store) StartRollback(ctx context.Context, id, failureSummary string
 		}
 	}
 	task.Stages = append(task.Stages, model.TaskStage{
-		Name: "rollback", State: model.StageRunning, StartedAt: &now,
+		Name: phase, State: model.StageRunning, StartedAt: &now,
 	})
 	stagesJSON, err := encodeJSON(task.Stages)
 	if err != nil {
 		return err
 	}
 	result, err := store.db.ExecContext(ctx, `
-		UPDATE tasks SET state = ?, current_phase = 'rollback', stages_json = ?, heartbeat_at = ?
+		UPDATE tasks SET state = ?, current_phase = ?, stages_json = ?, heartbeat_at = ?
 		WHERE id = ? AND state = ?
-	`, model.TaskRollingBack, stagesJSON, timeText(now), id, model.TaskRunning)
+	`, model.TaskRollingBack, phase, stagesJSON, timeText(now), id, model.TaskRunning)
 	return requireOne(result, err, "任务无法进入回滚状态")
 }
 

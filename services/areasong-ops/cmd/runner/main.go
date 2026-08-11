@@ -15,6 +15,7 @@ import (
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/maintenance"
+	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/runner"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
@@ -52,7 +53,7 @@ func run() error {
 			return err
 		}
 	}
-	if count, err := database.RecoverInterrupted(context.Background()); err != nil {
+	if count, err := database.RecoverInterrupted(context.Background(), interruptionClassifier(catalog)); err != nil {
 		return err
 	} else if count > 0 {
 		slog.Warn("检测到未完成任务，已转为人工核对", "count", count)
@@ -93,6 +94,36 @@ func run() error {
 	return nil
 }
 
+func interruptionClassifier(catalog *config.Catalog) store.InterruptionClassifier {
+	return func(serviceName, actionName, phase string, productionChanged bool) (bool, bool) {
+		service, exists := catalog.Services[serviceName]
+		if !exists {
+			service, exists = catalog.AutomaticTasks[serviceName]
+		}
+		action, actionExists := service.Actions[actionName]
+		if !exists || !actionExists {
+			return true, false
+		}
+		phaseExists := false
+		for _, step := range action.Steps {
+			if step == phase {
+				phaseExists = true
+				break
+			}
+		}
+		if !phaseExists {
+			return true, false
+		}
+		semantics := model.EffectivePhaseSemantics(action, phase)
+		failureSemantics := model.EffectiveFailureSemantics(
+			action, phase, productionChanged || semantics.Effect == "runtime_mutation" || semantics.Effect == "data_mutation",
+		)
+		mutationUncertain := semantics.Effect == "runtime_mutation" || semantics.Effect == "data_mutation"
+		rollbackAvailable := failureSemantics.FailurePolicy == "rollback" && failureSemantics.RecoveryPhase != ""
+		return mutationUncertain, rollbackAvailable
+	}
+}
+
 func enforceProductionStateRootMode(path string) error {
 	if err := os.Chmod(path, 0o710); err != nil {
 		return fmt.Errorf("设置 Runner 状态根目录权限: %w", err)
@@ -131,19 +162,31 @@ func unixListener(path string) (net.Listener, error) {
 
 func maintain(ctx context.Context, database *store.Store, stateRoot, legacyStateRoot string) {
 	run := func() {
+		now := time.Now().UTC()
 		if err := database.Prune(ctx, 30*24*time.Hour, 365*24*time.Hour); err != nil {
 			slog.Error("清理审计留存失败", "error", err)
 		} else {
 			slog.Info("数据库留存清理完成")
 		}
-		pruned, err := maintenance.PruneArtifacts(
-			stateRoot, legacyStateRoot, 30*24*time.Hour, time.Now().UTC(),
-		)
-		if err != nil {
-			slog.Error("清理任务产物失败", "error", err)
+		if expired, err := database.ExpireRecoveryPoints(ctx, now); err != nil {
+			slog.Error("标记过期恢复点失败", "error", err)
 		} else {
-			slog.Info("任务产物清理完成", "operations", pruned.OperationDirectories,
-				"snapshots", pruned.Snapshots, "sensitive_files", pruned.SensitiveFiles)
+			slog.Info("恢复点过期检查完成", "expired", expired)
+		}
+		protected, err := database.ProtectedOperationIDs(ctx, now)
+		if err != nil {
+			slog.Error("读取受保护任务产物失败，跳过清理", "error", err)
+		} else {
+			pruned, pruneErr := maintenance.PruneArtifacts(
+				stateRoot, legacyStateRoot, 30*24*time.Hour, now, protected,
+			)
+			if pruneErr != nil {
+				slog.Error("清理任务产物失败", "error", pruneErr)
+			} else {
+				slog.Info("任务产物清理完成", "operations", pruned.OperationDirectories,
+					"protected", len(protected), "snapshots", pruned.Snapshots,
+					"sensitive_files", pruned.SensitiveFiles)
+			}
 		}
 		path, err := database.Snapshot(ctx, filepath.Join(stateRoot, "snapshots"))
 		if err != nil {

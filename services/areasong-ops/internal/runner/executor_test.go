@@ -37,3 +37,24 @@ func TestCommandExecutorRejectsTrailingJSONAndContractMismatch(t *testing.T) {
 		})
 	}
 }
+
+func TestCommandExecutorEnforcesSchemaFourContractAndKeepsSchemaThreeCompatibility(t *testing.T) {
+	directory := t.TempDir()
+	script := filepath.Join(directory, "adapter.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' '{\"ok\":true,\"summary\":\"legacy\"}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	executor := CommandExecutor{}
+	input := ExecuteInput{
+		Service: model.ServiceDefinition{Name: "demo", Adapter: script, AdapterContractVersion: 2},
+		Action:  "inspect", Phase: "inspect", OperationDir: directory,
+	}
+	if _, err := executor.Execute(context.Background(), input); err == nil || !strings.Contains(err.Error(), "身份不匹配") {
+		t.Fatalf("schema 4 legacy output err=%v", err)
+	}
+	input.Service.AdapterContractVersion = 0
+	result, err := executor.Execute(context.Background(), input)
+	if err != nil || result.Summary != "legacy" {
+		t.Fatalf("schema 3 result=%+v err=%v", result, err)
+	}
+}

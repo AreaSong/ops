@@ -112,6 +112,40 @@ class ComposeServiceAdapterTests(unittest.TestCase):
         self.assertTrue(payload["data"]["prepared"])
         self.assertEqual(payload["data"]["blockers"], [])
 
+    def test_backup_phases_delegate_to_evidence_adapter(self) -> None:
+        calls = self.root / "backup-calls.txt"
+        evidence = self.root / "backup-evidence.sh"
+        evidence.write_text(
+            "#!/bin/sh\n"
+            f"printf '%s %s\\n' \"$1\" \"$2\" >>'{calls}'\n"
+            "printf '{\"schemaVersion\":2,\"action\":\"%s\",\"phase\":\"%s\","
+            "\"ok\":true,\"summary\":\"delegated\"}\\n' \"$1\" \"$2\"\n",
+            encoding="utf-8",
+        )
+        evidence.chmod(0o755)
+        catalog = json.loads(self.catalog.read_text(encoding="utf-8"))
+        catalog["services"]["demo"]["runtime"]["backupEvidenceExecutable"] = str(evidence)
+        self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
+        environment = os.environ.copy()
+        environment.update(
+            {"OPS_SERVICE_NAME": "demo", "OPS_SERVICE_CATALOG": str(self.catalog)}
+        )
+        for phase in ("preflight", "backup", "verify"):
+            result = subprocess.run(
+                [str(ADAPTER), "backup", phase, str(self.operation), "", ""],
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["phase"], phase)
+        self.assertEqual(
+            calls.read_text(encoding="utf-8").splitlines(),
+            ["backup preflight", "backup backup", "backup verify"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

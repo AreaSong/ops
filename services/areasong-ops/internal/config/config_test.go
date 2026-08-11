@@ -87,6 +87,46 @@ func TestProductionExampleCatalogIsValid(t *testing.T) {
 	}
 }
 
+func TestRecoveryPointPolicyRequiresCompleteOrderedContract(t *testing.T) {
+	action := model.ActionDefinition{
+		Name: "update", Steps: []string{"backup", "apply"},
+		PhaseSemantics: map[string]model.PhaseSemantics{
+			"backup": {Effect: "artifact_write", ProducesRecoveryPoint: true, FailurePolicy: "fail"},
+			"apply": {
+				Effect: "runtime_mutation", RequiresRecoveryPoint: true,
+				FailurePolicy: "rollback", RecoveryPhase: "rollback",
+			},
+		},
+	}
+	actions := map[string]model.ActionDefinition{"update": action}
+	valid := &model.RecoveryPointPolicy{
+		RequiredArtifactRoles: []string{"postgres-demo", "volume-demo-data"}, RecoverableSeconds: 3600,
+	}
+	if err := validateRecoveryPointPolicy("demo", valid, actions); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRecoveryPointPolicy("demo", nil, actions); err == nil {
+		t.Fatal("missing policy was accepted")
+	}
+	duplicate := &model.RecoveryPointPolicy{
+		RequiredArtifactRoles: []string{"postgres-demo", "postgres-demo"}, RecoverableSeconds: 3600,
+	}
+	if err := validateRecoveryPointPolicy("demo", duplicate, actions); err == nil {
+		t.Fatal("duplicate role was accepted")
+	}
+	expired := &model.RecoveryPointPolicy{
+		RequiredArtifactRoles: []string{"postgres-demo"}, RecoverableSeconds: 3599,
+	}
+	if err := validateRecoveryPointPolicy("demo", expired, actions); err == nil {
+		t.Fatal("unbounded recovery window was accepted")
+	}
+	action.Steps = []string{"apply", "backup"}
+	actions["update"] = action
+	if err := validateRecoveryPointPolicy("demo", valid, actions); err == nil {
+		t.Fatal("recovery point requirement before production was accepted")
+	}
+}
+
 func TestCatalogRejectsUntrustedAutomaticTaskAdapter(t *testing.T) {
 	catalog := &Catalog{
 		SchemaVersion: 4,

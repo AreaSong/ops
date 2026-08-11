@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,42 +34,33 @@ type FinishedTaskMetric struct {
 	FinishedEpoch float64
 }
 
-func (store *Store) RecoverInterrupted(ctx context.Context) (int64, error) {
+type InterruptionClassifier func(service, action, phase string, productionChanged bool) (bool, bool)
+
+type interruptedTask struct {
+	id, service, action, phase string
+	state                      model.TaskState
+	productionChanged          bool
+	rollbackAvailable          bool
+}
+
+func (store *Store) RecoverInterrupted(ctx context.Context, classify InterruptionClassifier) (int64, error) {
+	if classify == nil {
+		classify = func(string, string, string, bool) (bool, bool) { return true, false }
+	}
 	now := timeText(store.now())
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	safe, err := tx.ExecContext(ctx, `
-		UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 1,
-			failure_code = 'runner_interrupted', heartbeat_at = NULL
-		WHERE state = ? OR (state = ? AND production_changed = 0
-			AND current_phase NOT IN ('migration', 'apply', 'restart'))
-	`, model.TaskFailedRecoverable, now,
-		"Runner 在任务完成前重启，尚无生产变更证据，可重新创建计划后执行",
-		"Runner 重启，任务可恢复", model.TaskQueued, model.TaskRunning)
+	interrupted, err := listInterruptedTasks(ctx, tx)
 	if err != nil {
 		return 0, err
 	}
-	unsafe, err := tx.ExecContext(ctx, `
-		UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 0,
-			failure_code = 'runner_interrupted_after_change', rollback_available = (action = 'update'),
-			rollback_reason = 'Runner 中断时生产可能已改变，必须人工核对', heartbeat_at = NULL
-		WHERE state IN (?, ?)
-	`, model.TaskNeedsAttention, now,
-		"Runner 在生产可能改变后重启，禁止自动处理，必须人工核对",
-		"Runner 重启后等待人工核对", model.TaskRunning, model.TaskRollingBack)
-	if err != nil {
-		return 0, err
-	}
-	safeCount, err := safe.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-	unsafeCount, err := unsafe.RowsAffected()
-	if err != nil {
-		return 0, err
+	for _, task := range interrupted {
+		if err := recoverInterruptedTask(ctx, tx, task, now, classify); err != nil {
+			return 0, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE release_plans SET state = ?, closure_reason = ?, updated_at = ?
@@ -80,7 +72,62 @@ func (store *Store) RecoverInterrupted(ctx context.Context) (int64, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	return safeCount + unsafeCount, nil
+	return int64(len(interrupted)), nil
+}
+
+func listInterruptedTasks(ctx context.Context, tx *sql.Tx) ([]interruptedTask, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, service, action, state, current_phase, production_changed, rollback_available
+		FROM tasks WHERE state IN (?, ?, ?)
+	`, model.TaskQueued, model.TaskRunning, model.TaskRollingBack)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var interrupted []interruptedTask
+	for rows.Next() {
+		var task interruptedTask
+		if err := rows.Scan(&task.id, &task.service, &task.action, &task.state, &task.phase,
+			&task.productionChanged, &task.rollbackAvailable); err != nil {
+			return nil, err
+		}
+		interrupted = append(interrupted, task)
+	}
+	return interrupted, rows.Err()
+}
+
+func recoverInterruptedTask(
+	ctx context.Context,
+	tx *sql.Tx,
+	task interruptedTask,
+	now string,
+	classify InterruptionClassifier,
+) error {
+	mutationUncertain, configuredRollback := classify(
+		task.service, task.action, task.phase, task.productionChanged,
+	)
+	unsafe := task.state != model.TaskQueued &&
+		(task.state == model.TaskRollingBack || task.productionChanged || mutationUncertain)
+	if !unsafe {
+		_, err := tx.ExecContext(ctx, `
+			UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 1,
+				failure_code = 'runner_interrupted', heartbeat_at = NULL
+			WHERE id = ? AND state = ?
+		`, model.TaskFailedRecoverable, now,
+			"Runner 在任务完成前重启，尚无生产变更证据，可重新创建计划后执行",
+			"Runner 重启，任务可恢复", task.id, task.state)
+		return err
+	}
+	rollbackAvailable := task.rollbackAvailable || configuredRollback
+	_, err := tx.ExecContext(ctx, `
+		UPDATE tasks SET state = ?, finished_at = ?, error = ?, summary = ?, retryable = 0,
+			failure_code = 'runner_interrupted_after_change', rollback_available = ?,
+			rollback_reason = 'Runner 中断时生产可能已改变，必须人工核对', heartbeat_at = NULL
+		WHERE id = ? AND state = ?
+	`, model.TaskNeedsAttention, now,
+		"Runner 在生产可能改变后重启，禁止自动处理，必须人工核对",
+		"Runner 重启后等待人工核对", rollbackAvailable, task.id, task.state)
+	return err
 }
 
 func (store *Store) CollectMetrics(ctx context.Context) (Metrics, error) {

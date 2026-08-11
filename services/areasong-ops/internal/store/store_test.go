@@ -46,6 +46,13 @@ func TestOpenMigratesExistingPlanSchema(t *testing.T) {
 	`).Scan(&column); err != nil || column != "maintenance_silence_id" {
 		t.Fatalf("column=%q err=%v", column, err)
 	}
+	for _, expected := range []string{"expected_before_digest", "required_roles_json"} {
+		if err := migrated.db.QueryRow(`
+			SELECT name FROM pragma_table_info('recovery_points') WHERE name = ?
+		`, expected).Scan(&column); err != nil || column != expected {
+			t.Fatalf("column=%q expected=%q err=%v", column, expected, err)
+		}
+	}
 }
 
 func openTestStore(t *testing.T) *Store {
@@ -56,6 +63,68 @@ func openTestStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { store.Close() })
 	return store
+}
+
+func TestRecoveryPointExpiryControlsOperationProtection(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	database.now = func() time.Time { return now }
+	preview := testPreview(now)
+	if err := database.CreatePreview(ctx, PreviewInput{
+		Preview: preview, ConfirmationHash: HashConfirmation("重启 demo"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "recovery-protection",
+	}, "task-recovery-protection")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MarkRunning(ctx, task.ID, "backup"); err != nil {
+		t.Fatal(err)
+	}
+	verifiedAt := now
+	recoverableUntil := now.Add(time.Hour)
+	point := model.RecoveryPoint{
+		ID: "point-protection", TaskID: task.ID, Service: task.Service, Status: "verified",
+		Evidence:       model.RecoveryPointEvidence{SchemaVersion: 1, Service: task.Service, TaskID: task.ID, CreatedAt: now},
+		EvidenceDigest: "sha256:evidence", ExpectedBeforeDigest: "sha256:before",
+		RequiredArtifactRoles: []string{"postgres-demo"}, CreatedAt: now,
+		VerifiedAt: &verifiedAt, RecoverableUntil: &recoverableUntil,
+	}
+	if err := database.SaveRecoveryPoint(ctx, point); err != nil {
+		t.Fatal(err)
+	}
+	protected, err := database.ProtectedOperationIDs(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := protected[task.ID]; !exists {
+		t.Fatal("verified recovery point did not protect operation")
+	}
+	count, err := database.ExpireRecoveryPoints(ctx, now.Add(2*time.Hour))
+	if err != nil || count != 1 {
+		t.Fatalf("expired=%d err=%v", count, err)
+	}
+	protected, err = database.ProtectedOperationIDs(ctx, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := protected[task.ID]; exists {
+		t.Fatal("expired recovery point still protects operation")
+	}
+	if err := database.MarkProductionChanged(ctx, task.ID, true, "rollback source"); err != nil {
+		t.Fatal(err)
+	}
+	protected, err = database.ProtectedOperationIDs(ctx, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := protected[task.ID]; !exists {
+		t.Fatal("rollback source did not protect operation")
+	}
 }
 
 func testPreview(now time.Time) model.Preview {
@@ -142,7 +211,9 @@ func TestRecoverInterruptedFailsClosed(t *testing.T) {
 	if _, _, err := store.StartTask(ctx, "a", request, "task-3"); err != nil {
 		t.Fatal(err)
 	}
-	count, err := store.RecoverInterrupted(ctx)
+	count, err := store.RecoverInterrupted(ctx, func(string, string, string, bool) (bool, bool) {
+		return true, false
+	})
 	if err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
@@ -175,7 +246,9 @@ func TestRecoverInterruptedAfterMutationNeedsAttention(t *testing.T) {
 	if err := database.MarkProductionChanged(ctx, task.ID, false, "restart"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.RecoverInterrupted(ctx); err != nil {
+	if _, err := database.RecoverInterrupted(ctx, func(string, string, string, bool) (bool, bool) {
+		return false, false
+	}); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := database.GetTask(ctx, task.ID)

@@ -43,7 +43,7 @@ func TestPruneArtifactsScrubsSensitiveFilesAndExpiresKnownArtifacts(t *testing.T
 		t.Fatal(err)
 	}
 
-	result, err := PruneArtifacts(stateRoot, legacyRoot, 30*24*time.Hour, now)
+	result, err := PruneArtifacts(stateRoot, legacyRoot, 30*24*time.Hour, now, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +71,35 @@ func TestPruneArtifactsRejectsSymlinkedOperation(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PruneArtifacts(root, "", 30*24*time.Hour, time.Now()); err == nil {
+	if _, err := PruneArtifacts(root, "", 30*24*time.Hour, time.Now(), nil); err == nil {
 		t.Fatal("expected symlink rejection")
 	}
+}
+
+func TestPruneArtifactsPreservesProtectedOperation(t *testing.T) {
+	now := time.Date(2026, 8, 9, 6, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	id := "123e4567-e89b-42d3-a456-426614174000"
+	operation := filepath.Join(root, "operations", id)
+	if err := os.MkdirAll(operation, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(operation, "task-contract.json"), "protected")
+	writeFile(t, filepath.Join(operation, "http-admin-settings.json"), "secret")
+	oldTime := now.Add(-31 * 24 * time.Hour)
+	if err := os.Chtimes(operation, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := PruneArtifacts(root, "", 30*24*time.Hour, now, map[string]struct{}{id: {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OperationDirectories != 0 || result.SensitiveFiles != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	assertExists(t, operation)
+	assertMissing(t, filepath.Join(operation, "http-admin-settings.json"))
 }
 
 func TestPruneArtifactsRejectsSymlinkedRoot(t *testing.T) {
@@ -83,7 +109,7 @@ func TestPruneArtifactsRejectsSymlinkedRoot(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PruneArtifacts(link, "", 30*24*time.Hour, time.Now()); err == nil {
+	if _, err := PruneArtifacts(link, "", 30*24*time.Hour, time.Now(), nil); err == nil {
 		t.Fatal("expected root symlink rejection")
 	}
 }

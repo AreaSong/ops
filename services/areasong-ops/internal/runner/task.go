@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -50,17 +49,20 @@ func (engine *Engine) run(task model.Task) {
 	go engine.heartbeat(task.ID, heartbeatDone)
 	engine.event(ctx, model.Event{TaskID: task.ID, Level: "info", Phase: action.Steps[0], Message: "任务开始执行"})
 	productionChanged := false
-	recoveryPointReady := false
+	recoveryPointID := ""
 	lastSummary := ""
 	for _, phase := range action.Steps {
 		semantics := phaseSemantics(action, phase)
-		if semantics.RequiresRecoveryPoint && !recoveryPointReady {
-			engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary,
-				errors.New("变更阶段缺少已验证恢复点，已拒绝执行"))
-			return
+		failureSemantics := model.EffectiveFailureSemantics(action, phase, productionChanged)
+		if semantics.RequiresRecoveryPoint {
+			if err := engine.verifyRecoveryPoint(context.Background(), task, service, recoveryPointID); err != nil {
+				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary,
+					fmt.Errorf("恢复点复验失败，已拒绝执行: %w", err))
+				return
+			}
 		}
 		if err := engine.store.SetPhase(ctx, task.ID, phase, lastSummary); err != nil {
-			engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary, err)
+			engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary, err)
 			return
 		}
 		result, err := engine.executor.Execute(ctx, ExecuteInput{
@@ -69,16 +71,16 @@ func (engine *Engine) run(task model.Task) {
 			SourceDir: engine.sourceDir(task),
 		})
 		if err != nil {
-			engine.finishFailure(task, service, operationDir, productionChanged, mutationSemantics(semantics), lastSummary, err)
+			engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, mutationSemantics(semantics), lastSummary, err)
 			return
 		}
 		if semantics.ProducesRecoveryPoint {
-			point, err := engine.persistRecoveryPoint(context.Background(), task, result.RecoveryPoint)
+			point, err := engine.persistRecoveryPoint(context.Background(), task, service, result.RecoveryPoint)
 			if err != nil {
-				engine.finishFailure(task, service, operationDir, productionChanged, false, lastSummary, err)
+				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary, err)
 				return
 			}
-			recoveryPointReady = true
+			recoveryPointID = point.ID
 			if result.Data == nil {
 				result.Data = make(map[string]any)
 			}
@@ -88,7 +90,7 @@ func (engine *Engine) run(task model.Task) {
 		changed, explicit := result.Data["productionChanged"].(bool)
 		if changed || (!explicit && mutationSemantics(semantics)) {
 			productionChanged = true
-			rollbackAvailable := task.Action == "update"
+			rollbackAvailable := semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase != ""
 			_ = engine.store.MarkProductionChanged(context.Background(), task.ID, rollbackAvailable,
 				"仅回滚应用版本和 Compose，不自动恢复业务数据库")
 		}
@@ -138,6 +140,8 @@ func writeTaskContract(operationDir string, task model.Task) error {
 func (engine *Engine) finishFailure(
 	task model.Task,
 	service model.ServiceDefinition,
+	action model.ActionDefinition,
+	semantics model.PhaseSemantics,
 	operationDir string,
 	productionChanged bool,
 	mutationUncertain bool,
@@ -151,11 +155,12 @@ func (engine *Engine) finishFailure(
 	rollbackAvailable := false
 	rollbackReason := ""
 	if productionChanged || mutationUncertain {
-		_ = engine.store.MarkProductionChanged(context.Background(), task.ID, task.Action == "update",
+		_ = engine.store.MarkProductionChanged(context.Background(), task.ID,
+			semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase != "",
 			"变更阶段失败，生产是否已改变需按已改变处理")
 	}
-	if (productionChanged || mutationUncertain) && task.Action == "update" {
-		if err := engine.store.StartRollback(context.Background(), task.ID, message); err != nil {
+	if (productionChanged || mutationUncertain) && semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase != "" {
+		if err := engine.store.StartRecovery(context.Background(), task.ID, semantics.RecoveryPhase, message); err != nil {
 			message += "; 无法进入回滚状态: " + redactText(err.Error())
 			engine.completeTask(task, model.TaskNeedsAttention, lastSummary, message,
 				"rollback_transition_failed", false, true, "需人工核对更新产物")
@@ -164,20 +169,20 @@ func (engine *Engine) finishFailure(
 		rollbackCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		result, err := engine.executor.Execute(rollbackCtx, ExecuteInput{
-			Service: service, Action: "update", Phase: "rollback",
+			Service: service, Action: action.Name, Phase: semantics.RecoveryPhase,
 			OperationDir: operationDir, Target: task.Target,
 		})
 		if err == nil {
 			state = model.TaskRolledBack
 			lastSummary = result.Summary
-			engine.event(rollbackCtx, model.Event{TaskID: task.ID, Level: "warning", Phase: "rollback", Message: result.Summary, Data: result.Data})
+			engine.event(rollbackCtx, model.Event{TaskID: task.ID, Level: "warning", Phase: semantics.RecoveryPhase, Message: result.Summary, Data: result.Data})
 		} else {
 			state = model.TaskNeedsAttention
 			message += "; 回滚失败: " + redactText(err.Error())
 			rollbackAvailable = false
 			rollbackReason = "自动回滚失败，禁止自动重试，必须人工核对"
 		}
-	} else if productionChanged || mutationUncertain {
+	} else if (productionChanged || mutationUncertain) || semantics.FailurePolicy == "needs_attention" {
 		state = model.TaskNeedsAttention
 		retryable = false
 		rollbackReason = "生产可能已改变，必须人工核对"

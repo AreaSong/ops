@@ -9,6 +9,8 @@
 - [ ] Grafana HTTPS origin 已写入 `OPS_GRAFANA_URL`，且不包含路径、查询或认证信息。
 - [ ] 本机 `http://127.0.0.1:9093/-/ready` 返回成功，Runner 只连接 loopback Alertmanager v2 API。
 - [ ] schema 4 目录包含受信适配器注册表，服务与自动任务的 `objectId`、metadata 和 `adapterRef` 稳定；告警 matcher 精确，维护静默白名单为阻断映射子集。
+- [ ] schema 4 适配器及全部服务 hook 只输出带匹配 `schemaVersion: 2`、action 和 phase 的单个 JSON 对象。
+- [ ] 使用恢复点的服务声明完整 `requiredArtifactRoles` 和 1 小时至 7 天有效期；通用 Compose 服务配置专属 `backupEvidenceExecutable`。
 - [ ] 自动任务调度仍由现有 cron/systemd 管理；补跑只包含已审查的固定采集器，不接受 unit、脚本、命令、参数、target 或 source 输入。
 - [ ] 当前 Runner、Compose、Nginx 和 Web image 身份已保存为回滚点。
 - [ ] 最近完整备份 manifest 与 R2 校验均有效。
@@ -36,6 +38,8 @@
 - [ ] `/v1/alerts` 只投影声明映射的活动阻断告警；Alertmanager 不可用时明确返回 `503`，其他只读页面仍可用。
 - [ ] 在隔离验收中证明：活动阻断告警拒绝生产执行，映射外告警不阻断，静默 matcher 与最长到期时间符合声明。
 - [ ] 在隔离验收中证明：任务失败提前解除静默；任务成功进入观察，收口前解除静默并复核被其他静默覆盖的活动告警。
+- [ ] 在隔离验收中证明：缺失必需备份角色、expected-before 漂移、备份文件篡改或恢复点过期都会在生产变更前失败关闭。
+- [ ] SQLite 增量迁移后恢复点包含 expected-before 摘要与必需角色；有效恢复点和可回滚任务的操作目录不会被 30 天清理误删。
 - [ ] 删除已不存在的静默按幂等成功处理；遗留静默可在 Alertmanager 以计划注释和精确 matcher 定位。
 - [ ] 不执行 update、rollback、restart、backup 或 restore-drill 作为首次部署 smoke。
 - [ ] 不以首次部署 smoke 执行自动任务补跑；首次补跑必须另行批准，并核对原指标保留、flock 互斥和原子发布证据。

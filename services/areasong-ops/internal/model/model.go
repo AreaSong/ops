@@ -219,6 +219,23 @@ func EffectivePhaseSemantics(action ActionDefinition, phase string) PhaseSemanti
 	return semantics
 }
 
+func EffectiveFailureSemantics(action ActionDefinition, phase string, productionChanged bool) PhaseSemantics {
+	semantics := EffectivePhaseSemantics(action, phase)
+	if _, explicit := action.PhaseSemantics[phase]; explicit || !productionChanged {
+		return semantics
+	}
+	for _, candidate := range action.Steps {
+		if candidate == phase {
+			break
+		}
+		candidateSemantics := EffectivePhaseSemantics(action, candidate)
+		if candidateSemantics.Effect == "runtime_mutation" || candidateSemantics.Effect == "data_mutation" {
+			semantics = candidateSemantics
+		}
+	}
+	return semantics
+}
+
 func ActionRequiresObservation(action ActionDefinition) bool {
 	for _, phase := range action.Steps {
 		effect := EffectivePhaseSemantics(action, phase).Effect
@@ -244,34 +261,42 @@ type RecoveryPointEvidence struct {
 	Artifacts     []RecoveryArtifact `json:"artifacts"`
 }
 
+type RecoveryPointPolicy struct {
+	RequiredArtifactRoles []string `json:"requiredArtifactRoles"`
+	RecoverableSeconds    int      `json:"recoverableSeconds"`
+}
+
 type RecoveryPoint struct {
-	ID               string                `json:"id"`
-	TaskID           string                `json:"taskId"`
-	Service          string                `json:"service"`
-	Status           string                `json:"status"`
-	Evidence         RecoveryPointEvidence `json:"evidence"`
-	EvidenceDigest   string                `json:"evidenceDigest"`
-	CreatedAt        time.Time             `json:"createdAt"`
-	VerifiedAt       *time.Time            `json:"verifiedAt,omitempty"`
-	RecoverableUntil *time.Time            `json:"recoverableUntil,omitempty"`
+	ID                    string                `json:"id"`
+	TaskID                string                `json:"taskId"`
+	Service               string                `json:"service"`
+	Status                string                `json:"status"`
+	Evidence              RecoveryPointEvidence `json:"evidence"`
+	EvidenceDigest        string                `json:"evidenceDigest"`
+	ExpectedBeforeDigest  string                `json:"expectedBeforeDigest"`
+	RequiredArtifactRoles []string              `json:"requiredArtifactRoles"`
+	CreatedAt             time.Time             `json:"createdAt"`
+	VerifiedAt            *time.Time            `json:"verifiedAt,omitempty"`
+	RecoverableUntil      *time.Time            `json:"recoverableUntil,omitempty"`
 }
 
 type ComposeServiceRuntime struct {
-	ControlledCompose      string   `json:"controlledCompose"`
-	RuntimeCompose         string   `json:"runtimeCompose"`
-	EnvFile                string   `json:"envFile"`
-	ApplicationService     string   `json:"applicationService"`
-	ApplicationContainer   string   `json:"applicationContainer"`
-	DependencyContainers   []string `json:"dependencyContainers,omitempty"`
-	HealthURL              string   `json:"healthUrl"`
-	ReleaseRepository      string   `json:"releaseRepository"`
-	ReleaseCatalog         string   `json:"releaseCatalog"`
-	PreparedReleaseDir     string   `json:"preparedReleaseDir"`
-	InspectExecutable      string   `json:"inspectExecutable"`
-	BackupExecutables      []string `json:"backupExecutables,omitempty"`
-	RestoreDrillExecutable string   `json:"restoreDrillExecutable,omitempty"`
-	PrepareExecutable      string   `json:"prepareExecutable,omitempty"`
-	UpdateExecutable       string   `json:"updateExecutable,omitempty"`
+	ControlledCompose        string   `json:"controlledCompose"`
+	RuntimeCompose           string   `json:"runtimeCompose"`
+	EnvFile                  string   `json:"envFile"`
+	ApplicationService       string   `json:"applicationService"`
+	ApplicationContainer     string   `json:"applicationContainer"`
+	DependencyContainers     []string `json:"dependencyContainers,omitempty"`
+	HealthURL                string   `json:"healthUrl"`
+	ReleaseRepository        string   `json:"releaseRepository"`
+	ReleaseCatalog           string   `json:"releaseCatalog"`
+	PreparedReleaseDir       string   `json:"preparedReleaseDir"`
+	InspectExecutable        string   `json:"inspectExecutable"`
+	BackupExecutables        []string `json:"backupExecutables,omitempty"`
+	BackupEvidenceExecutable string   `json:"backupEvidenceExecutable,omitempty"`
+	RestoreDrillExecutable   string   `json:"restoreDrillExecutable,omitempty"`
+	PrepareExecutable        string   `json:"prepareExecutable,omitempty"`
+	UpdateExecutable         string   `json:"updateExecutable,omitempty"`
 }
 
 type ObjectMetadata struct {
@@ -295,18 +320,20 @@ type AutomaticTaskRuntime struct {
 }
 
 type ServiceDefinition struct {
-	Name          string                      `json:"name"`
-	ObjectID      string                      `json:"objectId"`
-	Metadata      ObjectMetadata              `json:"metadata"`
-	DisplayName   string                      `json:"displayName"`
-	Description   string                      `json:"description"`
-	Template      string                      `json:"template"`
-	Adapter       string                      `json:"adapter,omitempty"`
-	AdapterRef    string                      `json:"adapterRef,omitempty"`
-	Runtime       *ComposeServiceRuntime      `json:"runtime,omitempty"`
-	AutomaticTask *AutomaticTaskRuntime       `json:"automaticTask,omitempty"`
-	AlertPolicy   AlertPolicyDefinition       `json:"alertPolicy"`
-	Actions       map[string]ActionDefinition `json:"actions"`
+	Name                   string                      `json:"name"`
+	ObjectID               string                      `json:"objectId"`
+	Metadata               ObjectMetadata              `json:"metadata"`
+	DisplayName            string                      `json:"displayName"`
+	Description            string                      `json:"description"`
+	Template               string                      `json:"template"`
+	Adapter                string                      `json:"adapter,omitempty"`
+	AdapterRef             string                      `json:"adapterRef,omitempty"`
+	AdapterContractVersion int                         `json:"-"`
+	Runtime                *ComposeServiceRuntime      `json:"runtime,omitempty"`
+	AutomaticTask          *AutomaticTaskRuntime       `json:"automaticTask,omitempty"`
+	RecoveryPointPolicy    *RecoveryPointPolicy        `json:"recoveryPointPolicy,omitempty"`
+	AlertPolicy            AlertPolicyDefinition       `json:"alertPolicy"`
+	Actions                map[string]ActionDefinition `json:"actions"`
 }
 
 type ServiceView struct {

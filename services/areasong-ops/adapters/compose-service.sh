@@ -43,6 +43,7 @@ inspect_executable="$(value '.inspectExecutable')"
 restore_executable="$(jq -r '.restoreDrillExecutable // ""' <<<"$spec")"
 prepare_executable="$(jq -r '.prepareExecutable // ""' <<<"$spec")"
 update_executable="$(jq -r '.updateExecutable // ""' <<<"$spec")"
+backup_evidence_executable="$(jq -r '.backupEvidenceExecutable // ""' <<<"$spec")"
 
 require_regular_file() {
   [[ -f "$1" && ! -L "$1" ]] || fail "required file is missing or unsafe: $1"
@@ -124,6 +125,10 @@ case "$action:$phase" in
         blockers:$blockers,updateAvailable:($latestTag != ("v"+$currentVersion))}')"
     ;;
   backup:preflight)
+    if [[ -n "$backup_evidence_executable" ]]; then
+      delegate "$backup_evidence_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
+      exit 0
+    fi
     require_regular_file "$controlled_compose"
     require_regular_file "$runtime_compose"
     require_regular_file "$env_file"
@@ -131,6 +136,10 @@ case "$action:$phase" in
     result "备份前 Compose 双副本一致"
     ;;
   backup:backup)
+    if [[ -n "$backup_evidence_executable" ]]; then
+      delegate "$backup_evidence_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
+      exit 0
+    fi
     mapfile -t backup_executables < <(jq -r '.backupExecutables[]?' <<<"$spec")
     [[ "${#backup_executables[@]}" -gt 0 ]] || fail "backup executables are not configured"
     for executable in "${backup_executables[@]}"; do
@@ -140,6 +149,10 @@ case "$action:$phase" in
     result "受控备份作业全部完成"
     ;;
   backup:verify)
+    if [[ -n "$backup_evidence_executable" ]]; then
+      delegate "$backup_evidence_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
+      exit 0
+    fi
     delegate "$inspect_executable" inspect inspect "$operation_dir" "" "" >/dev/null
     result "备份后服务运行身份检查通过"
     ;;

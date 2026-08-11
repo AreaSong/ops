@@ -140,4 +140,8 @@ CREATE UNIQUE INDEX idx_release_plans_closure_key
 ALTER TABLE release_plans ADD COLUMN maintenance_silence_ends_at TEXT;
 ALTER TABLE release_plans ADD COLUMN maintenance_silence_released_at TEXT;
 ALTER TABLE release_plans ADD COLUMN blocking_alert_fingerprints_json TEXT NOT NULL DEFAULT '[]';`,
+	`ALTER TABLE recovery_points ADD COLUMN expected_before_digest TEXT NOT NULL DEFAULT '';
+ALTER TABLE recovery_points ADD COLUMN required_roles_json TEXT NOT NULL DEFAULT '[]';
+CREATE INDEX idx_recovery_points_status_expiry
+    ON recovery_points(status, recoverable_until);`,
 }

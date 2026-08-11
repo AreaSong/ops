@@ -23,7 +23,12 @@ type PruneResult struct {
 	SensitiveFiles       int
 }
 
-func PruneArtifacts(stateRoot, legacyStateRoot string, retention time.Duration, now time.Time) (PruneResult, error) {
+func PruneArtifacts(
+	stateRoot, legacyStateRoot string,
+	retention time.Duration,
+	now time.Time,
+	protectedOperationIDs map[string]struct{},
+) (PruneResult, error) {
 	var result PruneResult
 	if retention <= 0 {
 		return result, errors.New("artifact retention must be positive")
@@ -37,7 +42,7 @@ func PruneArtifacts(stateRoot, legacyStateRoot string, retention time.Duration, 
 			return result, err
 		}
 		removedDirectories, removedSensitive, err := pruneOperations(
-			filepath.Join(root, "operations"), now.Add(-retention),
+			filepath.Join(root, "operations"), now.Add(-retention), protectedOperationIDs,
 		)
 		result.OperationDirectories += removedDirectories
 		result.SensitiveFiles += removedSensitive
@@ -65,7 +70,11 @@ func validateRoot(path string) error {
 	return nil
 }
 
-func pruneOperations(root string, cutoff time.Time) (int, int, error) {
+func pruneOperations(
+	root string,
+	cutoff time.Time,
+	protectedOperationIDs map[string]struct{},
+) (int, int, error) {
 	entries, err := readSecureDirectory(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -91,6 +100,9 @@ func pruneOperations(root string, cutoff time.Time) (int, int, error) {
 		removedSensitive += count
 		if err != nil {
 			return removedDirectories, removedSensitive, err
+		}
+		if _, protected := protectedOperationIDs[entry.Name()]; protected {
+			continue
 		}
 		if originalModTime.Before(cutoff) {
 			if err := os.RemoveAll(path); err != nil {

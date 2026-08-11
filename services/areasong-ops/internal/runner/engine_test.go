@@ -516,7 +516,11 @@ func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
 	if err := database.MarkRunningOwned(ctx, task.ID, "backup", engine.owner); err != nil {
 		t.Fatal(err)
 	}
-	point, err := engine.persistRecoveryPoint(ctx, task, &model.RecoveryPointEvidence{
+	service := engine.catalog.Services["demo"]
+	service.RecoveryPointPolicy = &model.RecoveryPointPolicy{
+		RequiredArtifactRoles: []string{"postgres-demo"}, RecoverableSeconds: 604800,
+	}
+	point, err := engine.persistRecoveryPoint(ctx, task, service, &model.RecoveryPointEvidence{
 		SchemaVersion: 1, Service: task.Service, TaskID: task.ID, CreatedAt: now,
 		Artifacts: []model.RecoveryArtifact{{
 			Role: "postgres-demo", Path: artifactPath, SizeBytes: int64(len(content)),
@@ -529,6 +533,40 @@ func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
 	stored, err := database.GetTask(ctx, task.ID)
 	if err != nil || stored.RecoveryPointID != point.ID {
 		t.Fatalf("task=%+v err=%v", stored, err)
+	}
+
+	missingRoleService := service
+	missingRoleService.RecoveryPointPolicy = &model.RecoveryPointPolicy{
+		RequiredArtifactRoles: []string{"postgres-demo", "volume-demo"}, RecoverableSeconds: 604800,
+	}
+	if _, err := engine.persistRecoveryPoint(ctx, task, missingRoleService, &point.Evidence); err == nil ||
+		!strings.Contains(err.Error(), "缺少必需产物角色") {
+		t.Fatalf("missing role err=%v", err)
+	}
+
+	driftedTask := task
+	driftedTask.Snapshot = map[string]any{"currentVersion": "changed"}
+	if err := engine.verifyRecoveryPoint(ctx, driftedTask, service, point.ID); err == nil ||
+		!strings.Contains(err.Error(), "未绑定当前变更前身份") {
+		t.Fatalf("identity drift err=%v", err)
+	}
+
+	if err := os.WriteFile(artifactPath, []byte("tampered-backup"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.verifyRecoveryPoint(ctx, task, service, point.ID); err == nil ||
+		!strings.Contains(err.Error(), "恢复点产物") {
+		t.Fatalf("tampered artifact err=%v", err)
+	}
+	if err := os.WriteFile(artifactPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExpireRecoveryPoints(ctx, now.Add(8*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.verifyRecoveryPoint(ctx, task, service, point.ID); err == nil ||
+		!strings.Contains(err.Error(), "状态或身份") {
+		t.Fatalf("expired point err=%v", err)
 	}
 }
 

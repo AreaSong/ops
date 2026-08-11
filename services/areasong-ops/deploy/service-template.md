@@ -33,6 +33,10 @@
   "description": "Demo Web 与 PostgreSQL",
   "template": "compose-service-v1",
   "adapterRef": "compose-service-v1",
+  "recoveryPointPolicy": {
+    "requiredArtifactRoles": ["postgres-demo", "volume-demo-data"],
+    "recoverableSeconds": 604800
+  },
   "alertPolicy": {
     "matchers": {"service": "demo"},
     "blockingAlerts": ["AppHttpProbeFailed", "AppBlackboxTargetDown"],
@@ -50,7 +54,7 @@
     "releaseCatalog": "/opt/ops/services/demo/releases.json",
     "preparedReleaseDir": "/var/lib/areasong-ops/prepared-releases/demo",
     "inspectExecutable": "/usr/local/libexec/areasong-ops/hooks/demo-inspect.sh",
-    "backupExecutables": ["/opt/ops/scripts/backup/backup-demo.sh"],
+    "backupEvidenceExecutable": "/usr/local/libexec/areasong-ops/hooks/demo-backup.sh",
     "prepareExecutable": "/usr/local/libexec/areasong-ops/hooks/demo-prepare.sh",
     "updateExecutable": "/usr/local/libexec/areasong-ops/hooks/demo-update.sh"
   }
@@ -76,15 +80,24 @@ Runner 以以下参数调用所有适配器和 hook：
 <action> <phase> <operation-dir> <target> <source-dir>
 ```
 
-成功时 stdout 必须只输出一个 JSON 对象：
+schema 4 对象成功时 stdout 必须只输出一个 v2 JSON 对象：
 
 ```json
 {"schemaVersion":2,"action":"update","phase":"health","ok":true,"summary":"阶段完成","data":{}}
 ```
 
-Runner 会拒绝动作/阶段身份不匹配、尾随第二个 JSON 或其他多余输出。错误说明写到 stderr，并以非零状态退出。hook 必须是 root 拥有的普通文件、不可由组或其他用户写入，并设置 owner execute。服务声明中的所有路径必须为绝对路径。
+Runner 会拒绝缺少 v2 身份、动作/阶段身份不匹配、尾随第二个 JSON 或其他多余输出。schema 3 旧目录暂时兼容 legacy 输出，但不能作为新接入方式。错误说明写到 stderr，并以非零状态退出。hook 必须是 root 拥有的普通文件、不可由组或其他用户写入，并设置 owner execute。服务声明中的所有路径必须为绝对路径。
 
-变更动作应为每个阶段声明 `phaseSemantics`，明确 `effect`、`failurePolicy`、恢复点产消关系和回滚阶段。产生恢复点的备份阶段还需在顶层返回 `recoveryPoint`：它必须绑定当前 service/task，列出受控备份目录中的服务必需产物、大小和 SHA-256。Runner 完成二次验证并持久化后，`requiresRecoveryPoint` 阶段才会放行。
+变更动作应为每个阶段声明 `phaseSemantics`，明确 `effect`、`failurePolicy`、恢复点产消关系和回滚阶段。Runner 按阶段策略决定失败、人工关注或执行声明的恢复阶段，不再按动作名称推断。schema 3 未声明阶段语义时只保留兼容默认值。
+
+产生恢复点的备份阶段还需在顶层返回 `recoveryPoint`：它必须绑定当前 service/task，列出受控备份目录中的产物角色、绝对路径、大小和 SHA-256。`recoveryPointPolicy.requiredArtifactRoles` 声明服务的完整备份集合，`recoverableSeconds` 必须为 3600 至 604800 秒。Runner 会：
+
+1. 校验全部必需角色、文件路径、普通文件属性、证据时间、大小和 SHA-256。
+2. 将证据摘要与任务的 `expected-before` 规范摘要一起持久化。
+3. 在每个 `requiresRecoveryPoint` 阶段前重新读取并复验恢复点与文件。
+4. 在有效期内保护恢复点所属操作目录；仍可回滚的任务目录同样不被清理。
+
+`compose-service-v1` 配置恢复点策略后必须设置 `backupEvidenceExecutable`。通用适配器会把 `backup:preflight`、`backup:backup` 和 `backup:verify` 原样委托给该服务专属 hook；此时 `backupExecutables` 不参与这三个阶段。没有数据库或恢复点要求的简单服务才使用通用 `backupExecutables`。
 
 中高风险生产变更执行前，Runner 从本机 Alertmanager 查询活动告警，包括已被人工静默覆盖的告警。
 命中 `blockingAlerts` 或 Alertmanager 不可用时拒绝执行；通过后才创建精确维护静默并与任务原子关联。
