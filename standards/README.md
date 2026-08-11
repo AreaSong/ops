@@ -16,6 +16,7 @@
 | 07 | patching.md | 补丁与漏洞管理 |
 | 08 | observability.md | 监控、告警、日志 |
 | 09 | server-ops-handbook.md | 服务器全生命周期运维大全（单文件自包含总纲，31 章 + 4 附录） |
+| 10 | operations-control-plane.md | 观测、告警、诊断、处置、执行与审计职责边界 |
 
 ## 仓库禁止入库的内容
 
@@ -36,4 +37,5 @@ cd /opt/ops && git pull --ff-only
 
 修订记录：
 
+- 2026-08-11 增加运维观测与控制面职责边界规范索引。
 - 2026-07-02 初版，拆分为八大域规范体系

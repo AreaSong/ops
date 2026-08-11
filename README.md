@@ -71,6 +71,7 @@ docker compose up -d
 | 备份恢复 | [standards/06-backup-dr.md](standards/06-backup-dr.md) |
 | 补丁管理 | [standards/07-patching.md](standards/07-patching.md) |
 | 监控告警 | [standards/08-observability.md](standards/08-observability.md) |
+| 运维观测与控制面职责 | [standards/10-operations-control-plane.md](standards/10-operations-control-plane.md) |
 
 ## 服务器同步
 
