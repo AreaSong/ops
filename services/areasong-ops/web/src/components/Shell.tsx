@@ -6,6 +6,7 @@ import {
   History,
   LayoutDashboard,
   ServerCog,
+	KeyRound,
   TimerReset,
   Wifi,
   WifiOff,
@@ -13,7 +14,7 @@ import {
 import type { ReactNode } from 'react'
 import type { NavigationLinks } from '../types'
 
-export type ViewName = 'overview' | 'services' | 'automatic-tasks' | 'tasks' | 'audit'
+export type ViewName = 'overview' | 'services' | 'automatic-tasks' | 'credentials' | 'tasks' | 'audit'
 
 interface ShellProps {
   view: ViewName
@@ -27,6 +28,7 @@ const navigation = [
   { id: 'overview' as const, label: '操作总览', icon: LayoutDashboard },
   { id: 'services' as const, label: '服务操作', icon: ServerCog },
   { id: 'automatic-tasks' as const, label: '自动任务', icon: TimerReset },
+  { id: 'credentials' as const, label: '凭据轮换', icon: KeyRound },
   { id: 'tasks' as const, label: '执行记录', icon: ClipboardList },
   { id: 'audit' as const, label: '变更审计', icon: History },
 ]

@@ -120,6 +120,7 @@ add_spec optional configuration etc/default/ufw
 add_external_secret '/etc/ops/*.env'
 add_external_secret '/etc/observability/*secret*'
 add_external_secret '/etc/areasong-ops/web.env'
+add_external_secret '/var/lib/areasong-ops/credentials/alertmanager-github.env'
 add_external_secret '/etc/letsencrypt/**/privkey*.pem'
 add_external_secret '/root/.acme.sh/**/*.key'
 

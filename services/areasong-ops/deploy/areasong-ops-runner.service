@@ -11,6 +11,7 @@ User=root
 Group=areasong-ops
 UMask=0077
 ExecStartPre=/usr/bin/install -d -m 0700 -o root -g areasong-ops /var/lib/areasong-ops/tmp /var/lib/areasong-ops/cache /var/lib/areasong-ops/restore-drill
+ExecStartPre=/usr/bin/install -d -m 0700 -o root -g root /var/lib/areasong-ops/credentials /var/lib/areasong-ops/credential-rollbacks
 ExecStartPre=/usr/bin/install -d -m 0750 -o root -g areasong-ops /var/lib/areasong-ops/run
 ExecStart=/usr/local/libexec/areasong-ops/areasong-ops-runner
 Restart=on-failure

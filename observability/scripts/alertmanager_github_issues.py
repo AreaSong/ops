@@ -146,7 +146,9 @@ def read_env_file(path: Path) -> dict[str, str]:
 
 def load_config(args: argparse.Namespace) -> Config:
     values = dict(os.environ)
-    config_path = args.config or os.environ.get("ALERTMANAGER_GITHUB_CONFIG", "/etc/ops/alertmanager-github.env")
+    config_path = args.config or os.environ.get(
+        "ALERTMANAGER_GITHUB_CONFIG", "/var/lib/areasong-ops/credentials/alertmanager-github.env"
+    )
     allow_env = os.environ.get("ALERTMANAGER_GITHUB_ALLOW_ENV_CONFIG") == "true"
     if config_path and Path(config_path).is_file():
         values.update(read_env_file(Path(config_path)))

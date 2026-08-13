@@ -243,7 +243,7 @@ services:
     observability:
       prometheus_jobs: [prometheus, alertmanager, loki, promtail, node, blackbox_https]
       dashboards: [losangeles-host-overview, losangeles-services-backups, losangeles-service-overview, losangeles-observability-selfcheck]
-      notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/etc/ops/alertmanager-github.env root:root 0600，fine-grained PAT 仅 AreaSong/ops Issues RW，2026-08-19 到期需轮换；5 分钟 cron + 每月演练）；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
+      notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/var/lib/areasong-ops/credentials/alertmanager-github.env root:root 0600，由 AreaSong Ops 类型化轮换，fine-grained PAT 仅 AreaSong/ops Issues RW；5 分钟 cron + 每月演练）；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
 
   - service_id: areasong-ops
     name: AreaSong Ops control plane

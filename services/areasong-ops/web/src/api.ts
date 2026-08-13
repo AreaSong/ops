@@ -1,5 +1,5 @@
 import type {
-  ActiveAlert, AuditEntry, AutomaticTaskView, ManagedObjectView, OpsEvent, Page, Preview,
+  ActiveAlert, AuditEntry, AutomaticTaskView, CredentialProfile, CredentialRotation, ManagedObjectView, OpsEvent, Page, Preview,
   ReleasePlan, ServiceView, SessionResponse, Task,
 } from './types'
 
@@ -24,6 +24,8 @@ export class OpsAPI {
   private csrfToken = ''
   private executionKeys = new Map<string, string>()
   private closureKeys = new Map<string, string>()
+  private credentialRotationKey = ''
+  private credentialClosureKeys = new Map<string, string>()
 
   async session(): Promise<SessionResponse> {
     const response = await fetch('/api/session', { credentials: 'same-origin' })
@@ -50,6 +52,36 @@ export class OpsAPI {
   async alerts(): Promise<ActiveAlert[]> {
     const response = await fetch('/api/alerts')
     return (await parseResponse<{ alerts: ActiveAlert[] }>(response)).alerts ?? []
+  }
+
+  async credentialProfile(): Promise<CredentialProfile> {
+    const response = await fetch('/api/credentials/github-alertmanager', { cache: 'no-store' })
+    return parseResponse<CredentialProfile>(response)
+  }
+
+  async rotateCredential(secret: string, expiresAt: string, confirmation: string): Promise<CredentialRotation> {
+    if (!this.credentialRotationKey) this.credentialRotationKey = crypto.randomUUID()
+    try {
+      const rotation = await this.mutate<CredentialRotation>('/api/credentials/github-alertmanager/rotate', {
+        credentialType: 'github_alertmanager', secret, expiresAt, confirmation,
+        idempotencyKey: this.credentialRotationKey,
+      })
+      this.credentialRotationKey = ''
+      return rotation
+    } catch (reason) {
+      if (reason instanceof APIError) this.credentialRotationKey = ''
+      throw reason
+    } finally {
+      secret = ''
+    }
+  }
+
+  async closeCredentialRotation(rotationID: string, confirmation: string): Promise<CredentialRotation> {
+    const key = this.credentialClosureKeys.get(rotationID) ?? crypto.randomUUID()
+    this.credentialClosureKeys.set(rotationID, key)
+    return this.mutate<CredentialRotation>(`/api/credential-rotations/${encodeURIComponent(rotationID)}/close`, {
+      confirmation, idempotencyKey: key,
+    })
   }
 
   async tasks(offset = 0): Promise<Page<Task>> {

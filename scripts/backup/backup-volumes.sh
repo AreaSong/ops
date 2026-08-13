@@ -118,6 +118,9 @@ if age < -60 or age > max_age:
     raise SystemExit(f"AreaSong Ops snapshot age is outside the allowed window: {int(age)}s")
 connection = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
 try:
+    schema_version = connection.execute("PRAGMA user_version").fetchone()
+    if schema_version != (5,):
+        raise SystemExit(f"AreaSong Ops snapshot schema version is not current: {schema_version}")
     result = connection.execute("PRAGMA integrity_check").fetchone()
     if result != ("ok",):
         raise SystemExit("AreaSong Ops snapshot integrity_check failed")
@@ -128,6 +131,7 @@ try:
         "tasks": {"id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"},
         "events": {"sequence", "task_id", "occurred_at", "level", "message", "data_json"},
         "audit_entries": {"sequence", "occurred_at", "actor_hash", "event", "resource", "outcome", "detail_json"},
+        "credential_rotations": {"id", "actor_hash", "credential_type", "target", "state", "fingerprint", "expires_at", "created_at"},
         "metadata": {"key", "value"},
     }
     tables = {row[0] for row in connection.execute(

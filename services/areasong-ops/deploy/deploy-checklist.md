@@ -13,6 +13,7 @@
 - [ ] 使用恢复点的服务声明完整 `requiredArtifactRoles` 和 1 小时至 7 天有效期；通用 Compose 服务配置专属 `backupEvidenceExecutable`。
 - [ ] 自动任务调度仍由现有 cron/systemd 管理；补跑只包含已审查的固定采集器，不接受 unit、脚本、命令、参数、target 或 source 输入。
 - [ ] 当前 Runner、Compose、Nginx 和 Web image 身份已保存为回滚点。
+- [ ] 将现有 `/etc/ops/alertmanager-github.env` 以 `0600 root:root` 原子复制到 `/var/lib/areasong-ops/credentials/alertmanager-github.env`，验证内容摘要后再切换 cron；旧文件只作为部署回滚点保留，不能进入普通备份。
 - [ ] 最近完整备份 manifest 与 R2 校验均有效。
 
 ## 离线门禁
@@ -36,6 +37,8 @@
 - [ ] `/v1/objects` 汇总全部受管对象，`/v1/services` 保持旧客户端兼容，`/v1/automatic-tasks` 返回调度来源、新鲜度和最近成功证据。
 - [ ] 自动任务页面可查看既有调度状态；只对运行资产快照和 Docker 运行指标显示固定补跑入口，运行期间正确锁定动作。
 - [ ] `/v1/alerts` 只投影声明映射的活动阻断告警；Alertmanager 不可用时明确返回 `503`，其他只读页面仍可用。
+- [ ] 凭据页只显示类型、目标、短指纹、到期日和轮换摘要；浏览器 localStorage/sessionStorage、Runner 日志、SQLite、审计和 API 响应均不包含 Token。
+- [ ] 隔离验收证明：身份/固定仓库访问/Issues 权限/到期日任一验证失败都不切换；真实同步或到期指标失败会恢复旧配置；旧 Token 未撤销时拒绝收口。
 - [ ] 在隔离验收中证明：活动阻断告警拒绝生产执行，映射外告警不阻断，静默 matcher 与最长到期时间符合声明。
 - [ ] 在隔离验收中证明：任务失败提前解除静默；任务成功进入观察，收口前解除静默并复核被其他静默覆盖的活动告警。
 - [ ] 在隔离验收中证明：缺失必需备份角色、expected-before 漂移、备份文件篡改或恢复点过期都会在生产变更前失败关闭。
@@ -53,3 +56,4 @@
 - [ ] 将 Compose env 恢复为上一 Web commit tag并只重建 Web。
 - [ ] 如 Nginx 新站点异常，恢复配置后 `nginx -t` 再 reload。
 - [ ] 保留 `/var/lib/areasong-ops` 和审计证据，不恢复任何业务数据库。
+- [ ] 如凭据路径迁移异常，暂停两条 GitHub Issue cron，恢复旧 cron/config 路径和旧 Runner；确认同步指标恢复后再解除暂停。

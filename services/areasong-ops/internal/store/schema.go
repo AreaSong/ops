@@ -144,4 +144,26 @@ ALTER TABLE release_plans ADD COLUMN blocking_alert_fingerprints_json TEXT NOT N
 ALTER TABLE recovery_points ADD COLUMN required_roles_json TEXT NOT NULL DEFAULT '[]';
 CREATE INDEX idx_recovery_points_status_expiry
     ON recovery_points(status, recoverable_until);`,
+	`CREATE TABLE credential_rotations (
+    id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    closure_idempotency_key TEXT NOT NULL DEFAULT '',
+    actor_hash TEXT NOT NULL,
+    credential_type TEXT NOT NULL,
+    target TEXT NOT NULL,
+    state TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    validation_result TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT '',
+    rollback_result TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    closed_at TEXT
+);
+CREATE INDEX idx_credential_rotations_created_at ON credential_rotations(created_at DESC);
+CREATE UNIQUE INDEX idx_credential_rotations_active_type ON credential_rotations(credential_type)
+    WHERE state IN ('running', 'switched_pending_revocation', 'revocation_verified', 'needs_attention');
+CREATE UNIQUE INDEX idx_credential_rotations_closure_key
+    ON credential_rotations(closure_idempotency_key) WHERE closure_idempotency_key != '';`,
 }

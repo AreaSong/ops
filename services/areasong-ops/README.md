@@ -31,6 +31,8 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - `schemaVersion: 4` 将服务和自动任务统一为受管对象；对象通过 `adapterRef` 引用顶层受信适配器注册表，不能自行声明可执行路径，适配器输出必须包含匹配的 v2 动作和阶段身份。
 - 自动任务页只汇总既有 cron/systemd 任务的状态和新鲜度。调度配置仍以 cron/systemd 为权威，网页不能修改调度、unit、脚本、命令或参数。
 - 首批补跑白名单仅包含运行资产快照和 Docker 运行指标两个低风险采集器；备份、清理、发布、凭据、网络、权限和数据库任务不开放补跑。
+- 凭据页仅开放固定的 GitHub 告警 Issue 同步 Token。新值只经 HTTPS、Unix Socket 与 Runner 内存传递，不进入浏览器持久化、SQLite、事件、日志、Git 或普通备份；验证身份、GitHub 签发方到期日、固定仓库访问与 Issues 读写能力后原子切换并执行真实同步，失败自动恢复旧配置。
+- 成功切换后轮换状态保持为“等待撤销旧凭据”；只有 GitHub API 确认旧 Token 已失效，Runner 才删除隔离回滚副本并将轮换标记为完成。
 
 ## 通用服务模板
 
@@ -73,6 +75,7 @@ docker build --target web -t areasong-ops-web:<commit> \
 - `/etc/areasong-ops/services.json`：root-only 受管对象、受信适配器和能力声明。
 - `/etc/areasong-ops/web.env`：Access issuer、audience、允许邮箱、public origin 和 Grafana origin。
 - `/opt/services/areasong-ops/.env`：构建版本、commit 和 Runner 组 GID。
+- `/var/lib/areasong-ops/credentials/alertmanager-github.env`：root-only 类型化凭据配置，由 Runner 原子维护。
 
 `/opt/ops/services/areasong-ops` 是 Git 管理的受控源码；`/opt/services/areasong-ops`
 只保存运行 Compose 和非敏感构建参数。部署前后分别执行只读预检：
@@ -86,12 +89,13 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 
 1. 备份当前配置、二进制、镜像身份并确认完整备份集。
 2. 创建 `areasong-ops` 系统组和 root-only 目录。
-3. 构建并安装 Runner，安装 adapter 和 `services.json`。
-4. `systemd-analyze verify` 后启动 Runner，核对 Socket owner/mode 与 `/healthz`。
-5. `docker compose config --quiet` 后构建、启动 Web，只验证 loopback health。
-6. 安装 Nginx 站点，`nginx -t` 通过后 reload。
-7. 创建 Cloudflare DNS/Access 并完成邮箱、JWT、CSRF 与源站限制验收。
-8. 接入 Prometheus、告警、Grafana、备份和 inventory 后再宣布完成。
+3. 将既有 GitHub 告警同步凭据安全迁移到 Runner 专用凭据目录，切换两条 cron 的固定配置与锁路径。
+4. 构建并安装 Runner，安装 adapter 和 `services.json`。
+5. `systemd-analyze verify` 后启动 Runner，核对 Socket owner/mode 与 `/healthz`。
+6. `docker compose config --quiet` 后构建、启动 Web，只验证 loopback health。
+7. 安装 Nginx 站点，`nginx -t` 通过后 reload。
+8. 创建 Cloudflare DNS/Access 并完成邮箱、JWT、CSRF 与源站限制验收。
+9. 接入 Prometheus、告警、Grafana、备份和 inventory 后再宣布完成。
 
 每一步都是独立生产变更，必须说明影响与回滚并单独批准。首次部署只运行 inspect/check，不用 restart/update/rollback/backup/restore-drill 做 smoke。
 

@@ -11,6 +11,71 @@ const (
 	RiskHigh     Risk = "high"
 )
 
+const GitHubAlertmanagerCredential = "github_alertmanager"
+
+type CredentialRotationState string
+
+const (
+	CredentialRotationRunning                   CredentialRotationState = "running"
+	CredentialRotationFailed                    CredentialRotationState = "failed"
+	CredentialRotationRolledBack                CredentialRotationState = "rolled_back"
+	CredentialRotationNeedsAttention            CredentialRotationState = "needs_attention"
+	CredentialRotationSwitchedPendingRevocation CredentialRotationState = "switched_pending_revocation"
+	CredentialRotationRevocationVerified        CredentialRotationState = "revocation_verified"
+	CredentialRotationCompleted                 CredentialRotationState = "completed"
+)
+
+type CredentialProfileView struct {
+	Type               string              `json:"type"`
+	DisplayName        string              `json:"displayName"`
+	Target             string              `json:"target"`
+	Repository         string              `json:"repository"`
+	Risk               Risk                `json:"risk"`
+	ConfirmationPhrase string              `json:"confirmationPhrase"`
+	Configured         bool                `json:"configured"`
+	Fingerprint        string              `json:"fingerprint,omitempty"`
+	ExpiresAt          string              `json:"expiresAt,omitempty"`
+	LastRotation       *CredentialRotation `json:"lastRotation,omitempty"`
+}
+
+type CredentialRotation struct {
+	ID                    string                  `json:"id"`
+	IdempotencyKey        string                  `json:"-"`
+	ClosureIdempotencyKey string                  `json:"-"`
+	ActorHash             string                  `json:"actorHash"`
+	CredentialType        string                  `json:"credentialType"`
+	Target                string                  `json:"target"`
+	State                 CredentialRotationState `json:"state"`
+	Fingerprint           string                  `json:"fingerprint"`
+	ExpiresAt             string                  `json:"expiresAt"`
+	ValidationResult      string                  `json:"validationResult,omitempty"`
+	Outcome               string                  `json:"outcome,omitempty"`
+	RollbackResult        string                  `json:"rollbackResult,omitempty"`
+	CreatedAt             time.Time               `json:"createdAt"`
+	FinishedAt            *time.Time              `json:"finishedAt,omitempty"`
+	ClosedAt              *time.Time              `json:"closedAt,omitempty"`
+}
+
+type CredentialRotationRequest struct {
+	CredentialType string `json:"credentialType"`
+	Secret         string `json:"secret"`
+	ExpiresAt      string `json:"expiresAt"`
+	Confirmation   string `json:"confirmation"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type CredentialRotationCloseRequest struct {
+	Confirmation   string `json:"confirmation"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type CredentialRotationResult struct {
+	State            CredentialRotationState
+	ValidationResult string
+	Outcome          string
+	RollbackResult   string
+}
+
 type TaskState string
 
 const (

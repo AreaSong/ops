@@ -17,7 +17,6 @@ import backup_manifest
 
 ROLE = "volume-areasong-ops-state"
 DATABASE_MEMBER = "areasong-ops-state/ops.db"
-REQUIRED_TABLES = ("previews", "tasks", "events", "audit_entries", "metadata")
 REQUIRED_COLUMNS = {
     "previews": {"id", "actor_hash", "service", "action", "confirmation_hash", "created_at", "expires_at"},
     "tasks": {"id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"},
@@ -82,6 +81,9 @@ def inspect_database(path: Path) -> dict[str, int]:
     connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
     try:
         connection.execute("PRAGMA query_only = ON")
+        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        if schema_version not in {4, 5}:
+            raise ValueError(f"AreaSong Ops 备份 schema 版本不受支持: {schema_version}")
         integrity = connection.execute("PRAGMA integrity_check").fetchall()
         if integrity != [("ok",)]:
             raise ValueError("AreaSong Ops 恢复数据库 integrity_check 失败")
@@ -93,10 +95,16 @@ def inspect_database(path: Path) -> dict[str, int]:
                 "SELECT name FROM sqlite_master WHERE type = 'table'",
             )
         }
-        missing = set(REQUIRED_TABLES) - tables
+        required_columns = dict(REQUIRED_COLUMNS)
+        if schema_version >= 5:
+            required_columns["credential_rotations"] = {
+                "id", "actor_hash", "credential_type", "target", "state",
+                "fingerprint", "expires_at", "created_at",
+            }
+        missing = set(required_columns) - tables
         if missing:
             raise ValueError(f"AreaSong Ops 恢复数据库缺少关键表: {', '.join(sorted(missing))}")
-        for table, required in REQUIRED_COLUMNS.items():
+        for table, required in required_columns.items():
             columns = {
                 row[1]
                 for row in connection.execute(f'PRAGMA table_info("{table}")')
@@ -109,7 +117,7 @@ def inspect_database(path: Path) -> dict[str, int]:
                 )
         return {
             table: int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
-            for table in REQUIRED_TABLES
+            for table in required_columns
         }
     finally:
         connection.close()
@@ -133,7 +141,7 @@ def write_metrics(path: Path, started_at: float, database_path: Path, counts: di
     ]
     lines.extend(
         f'areasong_ops_restore_drill_table_rows{{table="{table}"}} {counts[table]}'
-        for table in REQUIRED_TABLES
+        for table in counts
     )
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -190,7 +198,7 @@ def main() -> int:
     except (OSError, RuntimeError, ValueError, sqlite3.DatabaseError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    summary = " ".join(f"{table}={counts[table]}" for table in REQUIRED_TABLES)
+    summary = " ".join(f"{table}={count}" for table, count in counts.items())
     print(f"AreaSong Ops 隔离恢复演练成功：{summary}")
     return 0
 

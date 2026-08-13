@@ -8,8 +8,9 @@ import (
 )
 
 type RunnerClient struct {
-	normal *http.Client
-	stream *http.Client
+	normal     *http.Client
+	credential *http.Client
+	stream     *http.Client
 }
 
 func NewRunnerClient(socketPath string) *RunnerClient {
@@ -25,7 +26,8 @@ func NewRunnerClient(socketPath string) *RunnerClient {
 		}
 	}
 	return &RunnerClient{
-		normal: &http.Client{Transport: transport(), Timeout: 45 * time.Second},
-		stream: &http.Client{Transport: transport()},
+		normal:     &http.Client{Transport: transport(), Timeout: 45 * time.Second},
+		credential: &http.Client{Transport: transport(), Timeout: 95 * time.Second},
+		stream:     &http.Client{Transport: transport()},
 	}
 }

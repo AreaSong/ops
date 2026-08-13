@@ -82,7 +82,12 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         managed = set(self.play["vars"]["cron_files"] + self.play["vars"]["alertmanager_github_cron_files"])
         for cron_name in managed - {"ops-daily-ops-audit"}:
             cron = (REPO_ROOT / "observability" / "cron" / cron_name).read_text(encoding="utf-8")
-            self.assertIn("/usr/bin/flock -n /run/lock/", cron, cron_name)
+            lock_root = (
+                "/var/lib/areasong-ops/run/"
+                if cron_name.startswith("ops-alertmanager-github-")
+                else "/run/lock/"
+            )
+            self.assertIn(f"/usr/bin/flock -n {lock_root}", cron, cron_name)
 
     def test_heavy_collectors_are_staggered_inside_flock(self) -> None:
         delays = {

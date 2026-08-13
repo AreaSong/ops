@@ -31,6 +31,9 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/objects", server.objects)
 	mux.HandleFunc("GET /v1/automatic-tasks", server.automaticTasks)
 	mux.HandleFunc("GET /v1/alerts", server.alerts)
+	mux.HandleFunc("GET /v1/credentials/github-alertmanager", server.credentialProfile)
+	mux.HandleFunc("POST /v1/credentials/github-alertmanager/rotate", server.rotateCredential)
+	mux.HandleFunc("POST /v1/credential-rotations/{id}/close", server.closeCredentialRotation)
 	mux.HandleFunc("POST /v1/previews", server.createPreview)
 	mux.HandleFunc("POST /v1/plans", server.createPlan)
 	mux.HandleFunc("GET /v1/plans", server.plans)
@@ -46,6 +49,71 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/audit", server.audit)
 	mux.HandleFunc("GET /v1/events", server.events)
 	return requestLimits(mux)
+}
+
+func (server *Server) credentialProfile(response http.ResponseWriter, request *http.Request) {
+	if _, ok := requireActor(response, request); !ok {
+		return
+	}
+	profile, err := server.engine.CredentialProfile(request.Context())
+	if err != nil {
+		writeError(response, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, profile)
+}
+
+func (server *Server) rotateCredential(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.CredentialRotationRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	rotation, created, err := server.engine.RotateCredential(request.Context(), actor, input)
+	input.Secret = ""
+	if err != nil {
+		status := http.StatusConflict
+		if rotation.ID == "" {
+			writeError(response, status, err.Error())
+			return
+		}
+		writeJSON(response, status, map[string]any{
+			"error": redactText(err.Error()), "rotation": rotation,
+		})
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(response, status, rotation)
+}
+
+func (server *Server) closeCredentialRotation(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.CredentialRotationCloseRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	rotation, _, err := server.engine.CloseCredentialRotation(
+		request.Context(), actor, request.PathValue("id"), input)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(response, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(response, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, rotation)
 }
 
 func (server *Server) objects(response http.ResponseWriter, request *http.Request) {

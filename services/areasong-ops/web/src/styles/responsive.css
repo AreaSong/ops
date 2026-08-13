@@ -27,7 +27,7 @@
   .app-shell { display: block; padding-bottom: 60px; }
   .sidebar { position: fixed; inset: auto 0 0; z-index: 30; width: 100%; height: 58px; display: block; padding: 5px 8px; border-top: 1px solid #3a464a; }
   .brand, .sidebar-status { display: none; }
-  .navigation { height: 100%; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .navigation { height: 100%; grid-template-columns: repeat(6, 1fr); gap: 3px; }
   .nav-item { min-height: 48px; display: flex; flex-direction: column; justify-content: center; gap: 2px; font-size: 9px; }
   .nav-item span { display: block; }
   .topbar { height: 52px; padding: 0 16px; }
@@ -110,6 +110,13 @@
   .task-drawer { width: 100%; }
   .task-stage-grid { grid-template-columns: 1fr; }
   .toast { top: 62px; right: 10px; width: calc(100vw - 20px); }
+  .credential-heading { padding-inline: 12px; }
+  .credential-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credential-facts > div:nth-child(2n) { border-right: 0; }
+  .credential-facts > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .credential-form, .credential-closure { grid-template-columns: 1fr; padding: 13px; }
+  .credential-confirmation, .credential-boundary, .credential-form > .button { grid-column: 1; }
+  .credential-form > .button, .credential-closure > .button { width: 100%; justify-self: stretch; }
 }
 
 @media (prefers-reduced-motion: reduce) {

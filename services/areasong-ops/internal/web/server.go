@@ -194,6 +194,10 @@ func (server *Server) runnerRequest(
 		request.Header.Set(actorHeader, actor)
 	}
 	client := server.runner.normal
+	if strings.HasPrefix(requestPath, "/v1/credentials/") ||
+		strings.HasPrefix(requestPath, "/v1/credential-rotations/") {
+		client = server.runner.credential
+	}
 	if stream {
 		client = server.runner.stream
 	}
