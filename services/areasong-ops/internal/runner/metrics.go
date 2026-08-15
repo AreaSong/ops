@@ -50,6 +50,18 @@ func (server *Server) metrics(response http.ResponseWriter, request *http.Reques
 	output.WriteString("# HELP areasong_ops_last_sqlite_snapshot_timestamp_seconds 最近 SQLite 快照时间。\n")
 	output.WriteString("# TYPE areasong_ops_last_sqlite_snapshot_timestamp_seconds gauge\n")
 	fmt.Fprintf(&output, "areasong_ops_last_sqlite_snapshot_timestamp_seconds %.0f\n", metrics.LastSnapshotEpoch)
+	output.WriteString("# HELP areasong_ops_credential_rotation_active 当前活动凭据轮换状态。\n")
+	output.WriteString("# TYPE areasong_ops_credential_rotation_active gauge\n")
+	for _, item := range metrics.ActiveCredentialRotations {
+		fmt.Fprintf(&output, "areasong_ops_credential_rotation_active{credential_type=%q,state=%q} 1\n",
+			item.CredentialType, item.State)
+	}
+	output.WriteString("# HELP areasong_ops_credential_rotation_age_seconds 当前活动凭据轮换状态持续时间。\n")
+	output.WriteString("# TYPE areasong_ops_credential_rotation_age_seconds gauge\n")
+	for _, item := range metrics.ActiveCredentialRotations {
+		fmt.Fprintf(&output, "areasong_ops_credential_rotation_age_seconds{credential_type=%q,state=%q} %.0f\n",
+			item.CredentialType, item.State, item.AgeSeconds)
+	}
 	output.WriteString("# HELP areasong_ops_service_action_enabled 服务能力是否开放。\n")
 	output.WriteString("# TYPE areasong_ops_service_action_enabled gauge\n")
 	names := server.engine.catalog.ServiceNames()

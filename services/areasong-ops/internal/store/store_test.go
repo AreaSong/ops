@@ -486,6 +486,42 @@ func TestCollectMetricsIncludesTaskDimensionsAndFinishTime(t *testing.T) {
 	}
 }
 
+func TestCollectMetricsIncludesActiveCredentialRotationAge(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Date(2026, 8, 16, 4, 5, 6, 0, time.UTC)
+	started := now.Add(-25 * time.Hour)
+	database.now = func() time.Time { return started }
+	rotation := model.CredentialRotation{
+		ID: "metrics-rotation", IdempotencyKey: "metrics-rotation-key",
+		ActorHash: strings.Repeat("a", 64), CredentialType: model.GitHubAlertmanagerCredential,
+		Target: "fixed target", State: model.CredentialRotationRunning,
+		Fingerprint: "sha256:0123456789ab", ExpiresAt: "2027-08-12", CreatedAt: started,
+	}
+	if _, _, err := database.StartCredentialRotation(ctx, rotation); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinishCredentialRotation(ctx, rotation.ID, model.CredentialRotationResult{
+		State: model.CredentialRotationSwitchedPendingRevocation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	database.now = func() time.Time { return now }
+	metrics, err := database.CollectMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.ActiveCredentialRotations) != 1 {
+		t.Fatalf("unexpected credential metrics: %+v", metrics.ActiveCredentialRotations)
+	}
+	item := metrics.ActiveCredentialRotations[0]
+	if item.CredentialType != model.GitHubAlertmanagerCredential ||
+		item.State != model.CredentialRotationSwitchedPendingRevocation ||
+		item.AgeSeconds != (25*time.Hour).Seconds() {
+		t.Fatalf("unexpected credential metric: %+v", item)
+	}
+}
+
 func TestPruneRemovesExpiredPreviewDetailButRetainsTaskSummary(t *testing.T) {
 	ctx := context.Background()
 	database := openTestStore(t)

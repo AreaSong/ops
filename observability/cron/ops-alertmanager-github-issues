@@ -1,4 +1,4 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-*/5 * * * * root /usr/bin/flock -n /var/lib/areasong-ops/run/alertmanager-github-issues.lock /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py --config /var/lib/areasong-ops/credentials/alertmanager-github.env >>/var/log/observability/alertmanager-github-issues.log 2>&1
+*/5 * * * * root /usr/bin/flock -n /run/lock/ops-alertmanager-github-issues.lock /usr/bin/flock -n /var/lib/areasong-ops/run/alertmanager-github-issues.lock /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py --config /var/lib/areasong-ops/credentials/alertmanager-github.env >>/var/log/observability/alertmanager-github-issues.log 2>&1

@@ -138,6 +138,20 @@ sudo /opt/ops/scripts/backup/restore_areasong_ops_isolated.py \
 脚本只在临时目录恢复 `ops.db` 并检查完整性、外键、关键表、关键列并记录行数；不覆盖生产 SQLite、
 不启动 Runner、不绑定端口。失败时保留旧成功时间戳，依据错误修复备份链后重新批准演练。
 
+### `AreaSongOpsCredentialRevocationOverdue`
+
+1. 在凭据页核对轮换 ID、短指纹、到期日和“等待撤销旧凭据”状态，不从日志、SQLite 或备份寻找 Token。
+2. 在 GitHub 中撤销与隔离回滚副本对应的旧 Token；不要撤销网页所示短指纹对应的当前 Token。
+3. 回到同一轮换记录执行撤销验证和收口；只有 GitHub API 确认旧 Token 失效后，Runner 才清除隔离副本。
+4. 告警恢复前核对真实 Issue 同步及到期指标正常，禁止通过删除 SQLite 记录或手工删除回滚副本伪造收口。
+
+### `AreaSongOpsCredentialRotationNeedsAttention`
+
+1. 停止新的凭据轮换，保留当前配置、`credential-rollbacks` 和 Runner 审计证据。
+2. 对照当前短指纹、GitHub Token 列表、真实 Issue 同步和到期指标，判断生产正在使用新凭据还是旧凭据。
+3. 若自动恢复旧配置失败，不手工覆盖目标文件；先隔离验证安全迁移工具、固定 8 键配置和旧锁、新锁互斥顺序。
+4. 只有当前有效凭据、旧凭据撤销状态和隔离副本三者均可证明后，才通过网页继续撤销验证或收口。
+
 ### `AreaSongOpsAccessPolicyProbeFailed`
 
 1. 从外部确认未认证请求是否仍为 Access 登录 `302`。

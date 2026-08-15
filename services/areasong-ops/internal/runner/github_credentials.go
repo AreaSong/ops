@@ -34,6 +34,11 @@ var credentialConfigKeys = map[string]struct{}{
 	"ALERTMANAGER_HTTP_TIMEOUT_SECONDS":  {},
 }
 
+const (
+	legacyCredentialLockPath  = "/run/lock/ops-alertmanager-github-issues.lock"
+	managedCredentialLockPath = "/var/lib/areasong-ops/run/alertmanager-github-issues.lock"
+)
+
 type GitHubCredentialRotatorOptions struct {
 	ConfigPath     string
 	RollbackRoot   string
@@ -426,13 +431,17 @@ func verifyCredentialMetric(path, expiresAt string) error {
 type commandCredentialSmoke struct{}
 
 func (commandCredentialSmoke) Run(ctx context.Context, configPath string) error {
-	command := exec.CommandContext(ctx, "/usr/bin/flock", "-w", "30",
-		"/var/lib/areasong-ops/run/alertmanager-github-issues.lock", "/usr/bin/python3",
-		"/var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py",
-		"--config", configPath, "--require-enabled")
+	command := newCredentialSmokeCommand(ctx, configPath)
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "PYTHONDONTWRITEBYTECODE=1"}
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("GitHub Issue 同步 smoke 失败: %w (%s)", err, redactText(string(output)))
 	}
 	return nil
+}
+
+func newCredentialSmokeCommand(ctx context.Context, configPath string) *exec.Cmd {
+	return exec.CommandContext(ctx, "/usr/bin/flock", "-w", "30", legacyCredentialLockPath,
+		"/usr/bin/flock", "-w", "30", managedCredentialLockPath, "/usr/bin/python3",
+		"/var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_github_issues.py",
+		"--config", configPath, "--require-enabled")
 }

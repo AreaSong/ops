@@ -33,6 +33,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 首批补跑白名单仅包含运行资产快照和 Docker 运行指标两个低风险采集器；备份、清理、发布、凭据、网络、权限和数据库任务不开放补跑。
 - 凭据页仅开放固定的 GitHub 告警 Issue 同步 Token。新值只经 HTTPS、Unix Socket 与 Runner 内存传递，不进入浏览器持久化、SQLite、事件、日志、Git 或普通备份；验证身份、GitHub 签发方到期日、固定仓库访问与 Issues 读写能力后原子切换并执行真实同步，失败自动恢复旧配置。
 - 成功切换后轮换状态保持为“等待撤销旧凭据”；只有 GitHub API 确认旧 Token 已失效，Runner 才删除隔离回滚副本并将轮换标记为完成。
+- Runner 暴露活动轮换状态及持续时间；等待撤销超过 24 小时或进入人工关注状态时，由 Prometheus 唯一规则源告警。
 
 ## 通用服务模板
 
@@ -89,7 +90,7 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 
 1. 备份当前配置、二进制、镜像身份并确认完整备份集。
 2. 创建 `areasong-ops` 系统组和 root-only 目录。
-3. 将既有 GitHub 告警同步凭据安全迁移到 Runner 专用凭据目录，切换两条 cron 的固定配置与锁路径。
+3. 使用 `deploy/migrate_github_credential.py` 校验旧凭据并将旧 4 键规范化为固定 8 键；迁移工具、两条 cron 与 Runner smoke 都按旧锁、新锁顺序互斥，目标已存在且不一致时禁止覆盖。
 4. 构建并安装 Runner，安装 adapter 和 `services.json`。
 5. `systemd-analyze verify` 后启动 Runner，核对 Socket owner/mode 与 `/healthz`。
 6. `docker compose config --quiet` 后构建、启动 Web，只验证 loopback health。

@@ -56,6 +56,32 @@ groups:
           description: "Runner 超过 25 小时没有生成新的 SQLite 快照；控制面状态备份将无法满足 24 小时 RPO。"
           grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-30h&to=now"
 
+      - alert: AreaSongOpsCredentialRevocationOverdue
+        expr: areasong_ops_credential_rotation_age_seconds{job="areasong_ops",state="switched_pending_revocation"} > 86400
+        for: 5m
+        labels:
+          owner: areasong-ops
+          severity: warning
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 凭据轮换等待撤销超时"
+          description: "凭据 {{ $labels.credential_type }} 已切换超过 24 小时，但旧凭据仍未完成撤销验证和隔离回滚副本清理。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-30h&to=now"
+
+      - alert: AreaSongOpsCredentialRotationNeedsAttention
+        expr: areasong_ops_credential_rotation_active{job="areasong_ops",state="needs_attention"} == 1
+        for: 5m
+        labels:
+          owner: areasong-ops
+          severity: critical
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 凭据轮换需要人工处理"
+          description: "凭据 {{ $labels.credential_type }} 的切换或自动回滚状态无法证明安全，禁止继续轮换并立即核对当前配置、真实同步和隔离回滚副本。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
       - alert: AreaSongOpsRestoreDrillStale
         expr: absent(areasong_ops_restore_drill_last_success_timestamp_seconds) or time() - areasong_ops_restore_drill_last_success_timestamp_seconds > 35 * 86400
         for: 1h

@@ -241,6 +241,16 @@ func TestCredentialConfigRejectsOversizedFile(t *testing.T) {
 	}
 }
 
+func TestCredentialSmokeAcquiresLegacyThenManagedLock(t *testing.T) {
+	command := newCredentialSmokeCommand(context.Background(), "/credential.env")
+	joined := strings.Join(command.Args, " ")
+	legacyOffset := strings.Index(joined, legacyCredentialLockPath)
+	managedOffset := strings.Index(joined, managedCredentialLockPath)
+	if legacyOffset < 0 || managedOffset < 0 || legacyOffset >= managedOffset {
+		t.Fatalf("unexpected credential smoke lock order: %v", command.Args)
+	}
+}
+
 func writeTestCredential(t *testing.T, path, token, expiresAt, metricPath string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

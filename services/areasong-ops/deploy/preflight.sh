@@ -43,6 +43,7 @@ read_env_value() {
 for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
+require_regular_file "$SOURCE_DIR/deploy/migrate_github_credential.py"
 jq -e '.schemaVersion == 4 and (.adapters | length > 0) and (.services | length > 0) and
   (.automaticTasks | type == "object")' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
@@ -56,7 +57,7 @@ if [ "$mode" = source ]; then
 fi
 
 [ "$(uname -s)" = Linux ] || fail "installed checks require Linux"
-for command_name in getent stat systemd-analyze systemctl curl sha256sum; do require_command "$command_name"; done
+for command_name in getent stat systemd-analyze systemctl curl sha256sum python3; do require_command "$command_name"; done
 [ "$(id -u)" -eq 0 ] || fail "installed checks require root"
 
 group_record="$(getent group areasong-ops)" || fail "areasong-ops group is missing"
@@ -66,6 +67,8 @@ group_gid="$(cut -d: -f3 <<<"$group_record")"
 require_owner_mode "$CONFIG_DIR/services.json" root root 600
 require_owner_mode "$CONFIG_DIR/web.env" root root 600
 require_owner_mode "$GITHUB_CREDENTIAL_PATH" root root 600
+python3 "$SOURCE_DIR/deploy/migrate_github_credential.py" --validate-destination \
+  --destination-path "$GITHUB_CREDENTIAL_PATH" >/dev/null || fail "GitHub credential schema is invalid"
 grafana_url="$(read_env_value OPS_GRAFANA_URL "$CONFIG_DIR/web.env")"
 [[ "$grafana_url" =~ ^https://[^/?#]+/?$ ]] || fail "Grafana URL must be an HTTPS origin"
 require_owner_mode "$RUNNER_ROOT/areasong-ops-runner" root root 755

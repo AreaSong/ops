@@ -13,11 +13,12 @@ import (
 )
 
 type Metrics struct {
-	TasksByState      map[model.TaskState]int64
-	TasksByService    []TaskMetric
-	LastFinishedTasks []FinishedTaskMetric
-	OldestActiveAge   float64
-	LastSnapshotEpoch float64
+	TasksByState              map[model.TaskState]int64
+	TasksByService            []TaskMetric
+	LastFinishedTasks         []FinishedTaskMetric
+	ActiveCredentialRotations []CredentialRotationMetric
+	OldestActiveAge           float64
+	LastSnapshotEpoch         float64
 }
 
 type TaskMetric struct {
@@ -32,6 +33,12 @@ type FinishedTaskMetric struct {
 	Action        string
 	State         model.TaskState
 	FinishedEpoch float64
+}
+
+type CredentialRotationMetric struct {
+	CredentialType string
+	State          model.CredentialRotationState
+	AgeSeconds     float64
 }
 
 type InterruptionClassifier func(service, action, phase string, productionChanged bool) (bool, bool)
@@ -223,7 +230,45 @@ func (store *Store) CollectMetrics(ctx context.Context) (Metrics, error) {
 		}
 		metrics.LastSnapshotEpoch = float64(value.Unix())
 	}
+	metrics.ActiveCredentialRotations, err = store.collectCredentialRotationMetrics(ctx)
+	if err != nil {
+		return metrics, err
+	}
 	return metrics, nil
+}
+
+func (store *Store) collectCredentialRotationMetrics(
+	ctx context.Context,
+) ([]CredentialRotationMetric, error) {
+	rows, err := store.db.QueryContext(ctx, `
+		SELECT credential_type, state, COALESCE(finished_at, created_at)
+		FROM credential_rotations
+		WHERE state IN (?, ?, ?, ?)
+		ORDER BY credential_type, state
+	`, model.CredentialRotationRunning, model.CredentialRotationSwitchedPendingRevocation,
+		model.CredentialRotationRevocationVerified, model.CredentialRotationNeedsAttention)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []CredentialRotationMetric
+	for rows.Next() {
+		var item CredentialRotationMetric
+		var sinceText string
+		if err := rows.Scan(&item.CredentialType, &item.State, &sinceText); err != nil {
+			return nil, err
+		}
+		since, err := time.Parse(time.RFC3339Nano, sinceText)
+		if err != nil {
+			return nil, err
+		}
+		item.AgeSeconds = store.now().Sub(since).Seconds()
+		if item.AgeSeconds < 0 {
+			item.AgeSeconds = 0
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func (store *Store) Prune(ctx context.Context, detailRetention, summaryRetention time.Duration) error {
