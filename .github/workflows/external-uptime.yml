@@ -36,7 +36,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     steps:
       - name: Check out repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -47,19 +47,38 @@ jobs:
         id: check
         continue-on-error: true
         env:
+          GH_TOKEN: ${{ github.token }}
           SIMULATION_MODE: ${{ inputs.simulation_mode }}
+          UPTIME_ROUNDS: ${{ github.event_name == 'schedule' && '5' || '1' }}
+          UPTIME_INTERVAL_SECONDS: "60"
+          FAILURE_THRESHOLD: "3"
+          HEARTBEAT_MAX_AGE_SECONDS: "600"
           CF_ACCESS_REQUIRED: "true"
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         shell: bash
         run: |
-          set -o pipefail
+          set -uo pipefail
           if [[ "$SIMULATION_MODE" == "failure" ]]; then
             printf 'checked_at=%s\nFAIL\tsimulation\thttp=503\tcurl_exit=22\terror=controlled workflow_dispatch failure\n' \
               "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee external-uptime-result.txt
             exit 1
           fi
-          scripts/monitor/external-uptime-check.sh 2>&1 | tee external-uptime-result.txt
+          if [[ "$SIMULATION_MODE" == "recovery" ]]; then
+            printf 'checked_at=%s\nOK\tsimulation\thttp=200\ttime=0.000000\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee external-uptime-result.txt
+            exit 0
+          fi
+          rm -rf external-monitor-rounds
+          if scripts/monitor/external-monitor-loop.sh external-monitor-rounds >external-uptime-result.txt 2>&1; then
+            passed=1
+          else
+            passed=0
+          fi
+          cat external-uptime-result.txt
+          if [[ "$passed" -ne 1 ]]; then
+            exit 1
+          fi
 
       - name: Open or close the incident issue
         if: >-
@@ -74,8 +93,28 @@ jobs:
           INCIDENT_KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.simulation_mode != 'none' && 'simulation' || 'production' }}
         shell: bash
         run: |
-          scripts/monitor/external-uptime-incident.sh \
-            "$CHECK_OUTCOME" external-uptime-result.txt "$INCIDENT_KIND"
+          if [[ "$INCIDENT_KIND" == simulation ]]; then
+            scripts/monitor/external-uptime-incident.sh \
+              "$CHECK_OUTCOME" external-uptime-result.txt simulation
+            exit 0
+          fi
+          while IFS=$'\t' read -r check_kind outcome result_file; do
+            if [[ "$outcome" == pending ]]; then
+              continue
+            fi
+            case "$check_kind" in
+              uptime)
+                scripts/monitor/external-uptime-incident.sh "$outcome" "$result_file" production
+                ;;
+              heartbeat)
+                scripts/monitor/external-uptime-incident.sh "$outcome" "$result_file" heartbeat
+                ;;
+              *)
+                echo "unknown external monitor kind: $check_kind" >&2
+                exit 1
+                ;;
+            esac
+          done <external-monitor-rounds/status.tsv
 
       - name: Mark unhealthy checks as failed
         if: steps.check.outcome == 'failure'

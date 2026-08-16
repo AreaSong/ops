@@ -65,6 +65,10 @@ simulation_log="$(run_case simulation failure '[]' simulation)"
 grep -Fq 'external-uptime-test' "$simulation_log"
 grep -Fq 'areasong-external-uptime-simulation:v1' "$simulation_log"
 
+heartbeat_log="$(run_case heartbeat failure '[]' heartbeat)"
+grep -Fq 'external-heartbeat' "$heartbeat_log"
+grep -Fq 'areasong-external-heartbeat-incident:v1' "$heartbeat_log"
+
 if GH_LOG="$WORK_DIR/invalid.log" PATH="$WORK_DIR/bin:$PATH" \
   "$INCIDENT_SCRIPT" cancelled "$WORK_DIR/result.txt" >/dev/null 2>&1; then
   echo "invalid outcome unexpectedly succeeded" >&2

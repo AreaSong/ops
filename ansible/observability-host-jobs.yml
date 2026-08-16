@@ -25,6 +25,7 @@
       - { name: business_error_log.py, mode: "0755" }
       - { name: cloudflare_ip_metrics.py, mode: "0755" }
       - { name: alertmanager_github_issues.py, mode: "0755" }
+      - { name: github_external_heartbeat.py, mode: "0755" }
       - { name: write-business-log-metrics.sh, mode: "0755" }
       - { name: write-cloudflare-origin-cert-metrics.sh, mode: "0755" }
       - { name: write-fail2ban-enriched-log.py, mode: "0755" }
@@ -59,6 +60,7 @@
     alertmanager_github_cron_files:
       - ops-alertmanager-github-issues
       - ops-alertmanager-github-simulation
+      - ops-github-external-heartbeat
     backup_files:
       - { name: run-backup-job.sh, mode: "0755" }
       - { name: backup-postgres.sh, mode: "0755" }
@@ -386,6 +388,22 @@
         argv:
           - /usr/bin/python3
           - "{{ host_jobs_generation }}/observability/scripts/alertmanager_github_issues.py"
+          - --config
+          - /var/lib/areasong-ops/credentials/alertmanager-github.env
+          - --validate-only
+          - --require-enabled
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - alertmanager_github_issues_enabled | bool
+        - not ansible_check_mode
+
+    - name: Validate the enabled external heartbeat configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/github_external_heartbeat.py"
           - --config
           - /var/lib/areasong-ops/credentials/alertmanager-github.env
           - --validate-only

@@ -15,14 +15,22 @@ case "$INCIDENT_KIND" in
     readonly TITLE='[monitor] LosAngeles external uptime failure'
     readonly LABEL='external-uptime'
     readonly MARKER='<!-- areasong-external-uptime-managed:v1 -->'
+    readonly RECOVERY_SUBJECT='External HTTPS checks'
     ;;
   simulation)
     readonly TITLE='[monitor:test] LosAngeles external uptime simulation'
     readonly LABEL='external-uptime-test'
     readonly MARKER='<!-- areasong-external-uptime-simulation:v1 -->'
+    readonly RECOVERY_SUBJECT='External HTTPS simulation'
+    ;;
+  heartbeat)
+    readonly TITLE='[monitor] LosAngeles external heartbeat missing'
+    readonly LABEL='external-heartbeat'
+    readonly MARKER='<!-- areasong-external-heartbeat-incident:v1 -->'
+    readonly RECOVERY_SUBJECT='LosAngeles external heartbeat'
     ;;
   *)
-    echo "incident kind must be production or simulation" >&2
+    echo "incident kind must be production, simulation, or heartbeat" >&2
     exit 2
     ;;
 esac
@@ -30,7 +38,7 @@ esac
 case "$OUTCOME" in
   success|failure) ;;
   *)
-    echo "usage: $0 success|failure RESULT_FILE [production|simulation]" >&2
+    echo "usage: $0 success|failure RESULT_FILE [production|simulation|heartbeat]" >&2
     exit 2
     ;;
 esac
@@ -53,7 +61,7 @@ if [ "$OUTCOME" = failure ]; then
 fi
 
 gh label create "$LABEL" --color B60205 \
-  --description 'Managed external uptime incident' --force
+  --description 'Managed external availability incident' --force
 
 issue_numbers=()
 gh issue list --state open --label "$LABEL" --limit 1000 \
@@ -77,6 +85,6 @@ else
   recovered_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   for issue_number in "${issue_numbers[@]}"; do
     gh issue close "$issue_number" \
-      --comment "External HTTPS checks recovered at $recovered_at."
+      --comment "$RECOVERY_SUBJECT recovered at $recovered_at."
   done
 fi

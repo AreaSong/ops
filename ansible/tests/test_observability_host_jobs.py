@@ -37,7 +37,11 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         )
         self.assertEqual(
             set(self.play["vars"]["alertmanager_github_cron_files"]),
-            {"ops-alertmanager-github-issues", "ops-alertmanager-github-simulation"},
+            {
+                "ops-alertmanager-github-issues",
+                "ops-alertmanager-github-simulation",
+                "ops-github-external-heartbeat",
+            },
         )
         self.assertEqual(
             set(self.play["vars"]["compliance_archive_cron_files"]),
@@ -91,6 +95,12 @@ class ObservabilityHostJobsTests(unittest.TestCase):
                 self.assertIn(legacy, cron, cron_name)
                 self.assertIn(managed_lock, cron, cron_name)
                 self.assertLess(cron.index(legacy), cron.index(managed_lock), cron_name)
+            elif cron_name == "ops-github-external-heartbeat":
+                self.assertIn(
+                    "/usr/bin/flock -n /var/lib/areasong-ops/run/github-external-heartbeat.lock",
+                    cron,
+                    cron_name,
+                )
             else:
                 self.assertIn("/usr/bin/flock -n /run/lock/", cron, cron_name)
 

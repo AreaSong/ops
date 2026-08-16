@@ -65,6 +65,7 @@ Scripts:
 - `observability/scripts/business_error_log.py`
 - `observability/scripts/cloudflare_ip_metrics.py`
 - `observability/scripts/alertmanager_github_issues.py`
+- `observability/scripts/github_external_heartbeat.py` (阶段 7：关闭状态 heartbeat Issue 更新，复用 root-only Issues 凭据)
 
 Cron:
 
@@ -81,8 +82,9 @@ Cron:
 - Previous complete UTC day operations audit at `00:20 UTC`
 - Docker BuildKit cache older than 14 days every Sunday at `06:40 UTC` (no image or volume pruning)
 - Optional critical-alert GitHub Issue sync every five minutes and monthly failure/recovery simulation
+- Optional external heartbeat Issue update every five minutes; GitHub Actions independently detects stale state
 
-The normal host jobs are always managed. The two GitHub Issue jobs are enabled by default (since 2026-07-20) and require `/var/lib/areasong-ops/credentials/alertmanager-github.env` to be `root:root 0600`; pass `-e alertmanager_github_issues_enabled=false` to remove them temporarily. AreaSong Ops owns the fixed-purpose credential rotation lifecycle. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed.
+The normal host jobs are always managed. The GitHub Issue sync and external heartbeat jobs are enabled by default and require `/var/lib/areasong-ops/credentials/alertmanager-github.env` to be `root:root 0600`; pass `-e alertmanager_github_issues_enabled=false` to remove them temporarily. AreaSong Ops owns the fixed-purpose credential rotation lifecycle. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed. The heartbeat writes only a timestamp and fixed marker to one closed Issue; it never writes logs or secrets.
 
 ## Daily operations audit
 

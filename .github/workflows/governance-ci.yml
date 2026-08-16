@@ -230,6 +230,15 @@ jobs:
       - name: Test external uptime incident handling
         run: bash scripts/monitor/tests/test_external_uptime_incident.sh
 
+      - name: Test external heartbeat checks
+        run: bash scripts/monitor/tests/test_external_heartbeat_check.sh
+
+      - name: Test external monitor round threshold
+        run: bash scripts/monitor/tests/test_external_monitor_loop.sh
+
+      - name: Test external heartbeat publisher
+        run: python3 -m unittest observability.scripts.tests.test_github_external_heartbeat
+
       - name: Test Docker metrics
         run: bash observability/scripts/tests/test_docker_metrics.sh
 

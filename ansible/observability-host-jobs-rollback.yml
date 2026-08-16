@@ -23,6 +23,7 @@
       - ops-docker-build-cache-prune
       - ops-alertmanager-github-issues
       - ops-alertmanager-github-simulation
+      - ops-github-external-heartbeat
     backup_cron_files:
       - ops-backup-postgres
       - ops-backup-redis
