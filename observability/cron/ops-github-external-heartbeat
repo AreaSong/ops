@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/5 * * * * root /usr/bin/flock -n /var/lib/areasong-ops/run/github-external-heartbeat.lock /usr/bin/python3 /var/lib/ops/observability-host-jobs/current/observability/scripts/github_external_heartbeat.py --config /var/lib/areasong-ops/credentials/alertmanager-github.env --require-enabled >>/var/log/observability/github-external-heartbeat.log 2>&1

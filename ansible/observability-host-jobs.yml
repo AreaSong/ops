@@ -7,7 +7,7 @@
     # LosAngeles 的 Worker、追加式写入 token 和独立只读回验 token 已就绪。
     # 生产默认保持开启，避免未显式传参的重复部署静默移除归档任务与告警 gate。
     compliance_archive_enabled: true
-    # 2026-07-20 起生产默认启用（/etc/ops/alertmanager-github.env 已配 PAT）；临时停用需显式 -e alertmanager_github_issues_enabled=false
+    # 生产凭据由 AreaSong Ops 类型化轮换闭环管理；临时停用需显式 -e alertmanager_github_issues_enabled=false
     alertmanager_github_issues_enabled: true
     host_jobs_release_id: ""
     host_jobs_root: /var/lib/ops/observability-host-jobs
@@ -25,6 +25,7 @@
       - { name: business_error_log.py, mode: "0755" }
       - { name: cloudflare_ip_metrics.py, mode: "0755" }
       - { name: alertmanager_github_issues.py, mode: "0755" }
+      - { name: github_external_heartbeat.py, mode: "0755" }
       - { name: write-business-log-metrics.sh, mode: "0755" }
       - { name: write-cloudflare-origin-cert-metrics.sh, mode: "0755" }
       - { name: write-fail2ban-enriched-log.py, mode: "0755" }
@@ -59,6 +60,7 @@
     alertmanager_github_cron_files:
       - ops-alertmanager-github-issues
       - ops-alertmanager-github-simulation
+      - ops-github-external-heartbeat
     backup_files:
       - { name: run-backup-job.sh, mode: "0755" }
       - { name: backup-postgres.sh, mode: "0755" }
@@ -367,7 +369,7 @@
 
     - name: Inspect the Alertmanager GitHub Issue sync credential file
       ansible.builtin.stat:
-        path: /etc/ops/alertmanager-github.env
+        path: /var/lib/areasong-ops/credentials/alertmanager-github.env
       register: alertmanager_github_credential
       when: alertmanager_github_issues_enabled | bool
 
@@ -378,7 +380,7 @@
           - alertmanager_github_credential.stat.pw_name == 'root'
           - alertmanager_github_credential.stat.gr_name == 'root'
           - alertmanager_github_credential.stat.mode == '0600'
-        fail_msg: /etc/ops/alertmanager-github.env must be root:root mode 0600 before enabling Issue sync.
+        fail_msg: /var/lib/areasong-ops/credentials/alertmanager-github.env must be root:root mode 0600 before enabling Issue sync.
       when: alertmanager_github_issues_enabled | bool
 
     - name: Validate the enabled Alertmanager GitHub Issue sync configuration
@@ -387,7 +389,23 @@
           - /usr/bin/python3
           - "{{ host_jobs_generation }}/observability/scripts/alertmanager_github_issues.py"
           - --config
-          - /etc/ops/alertmanager-github.env
+          - /var/lib/areasong-ops/credentials/alertmanager-github.env
+          - --validate-only
+          - --require-enabled
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - alertmanager_github_issues_enabled | bool
+        - not ansible_check_mode
+
+    - name: Validate the enabled external heartbeat configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/github_external_heartbeat.py"
+          - --config
+          - /var/lib/areasong-ops/credentials/alertmanager-github.env
           - --validate-only
           - --require-enabled
       environment:

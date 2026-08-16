@@ -20,6 +20,14 @@ export type PlanState =
   | 'completed'
   | 'invalidated'
 export type StageState = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'rolled_back'
+export type CredentialRotationState =
+  | 'running'
+  | 'failed'
+  | 'rolled_back'
+  | 'needs_attention'
+  | 'switched_pending_revocation'
+  | 'revocation_verified'
+  | 'completed'
 
 export interface NavigationLinks {
   grafana?: string
@@ -43,6 +51,35 @@ export interface SessionResponse {
   email: string
   csrfToken: string
   links?: NavigationLinks
+}
+
+export interface CredentialRotation {
+  id: string
+  actorHash: string
+  credentialType: 'github_alertmanager'
+  target: string
+  state: CredentialRotationState
+  fingerprint: string
+  expiresAt: string
+  validationResult?: string
+  outcome?: string
+  rollbackResult?: string
+  createdAt: string
+  finishedAt?: string
+  closedAt?: string
+}
+
+export interface CredentialProfile {
+  type: 'github_alertmanager'
+  displayName: string
+  target: string
+  repository: string
+  risk: Risk
+  confirmationPhrase: string
+  configured: boolean
+  fingerprint?: string
+  expiresAt?: string
+  lastRotation?: CredentialRotation
 }
 
 export interface ActionDefinition {

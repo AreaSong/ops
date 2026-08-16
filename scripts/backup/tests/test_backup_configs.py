@@ -71,6 +71,10 @@ class BackupConfigsTests(unittest.TestCase):
         self.assertEqual(entries["/etc/ssh/sshd_config"]["status"], "included")
         self.assertEqual(entries["/etc/ops/*.env"]["status"], "external-secret-required")
         self.assertEqual(entries["/etc/areasong-ops/web.env"]["status"], "external-secret-required")
+        self.assertEqual(
+            entries["/var/lib/areasong-ops/credentials/alertmanager-github.env"]["status"],
+            "external-secret-required",
+        )
         self.assertEqual(entries["/etc/areasong-ops/services.json"]["status"], "included")
 
     def test_missing_required_config_fails_without_archive(self) -> None:

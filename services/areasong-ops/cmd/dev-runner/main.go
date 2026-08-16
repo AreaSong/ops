@@ -29,6 +29,31 @@ type demoAlertmanager struct {
 	mode string
 }
 
+type demoCredentialRotator struct{}
+
+func (demoCredentialRotator) Current(context.Context) (runner.CurrentCredential, error) {
+	return runner.CurrentCredential{
+		Configured: true, Fingerprint: "sha256:development", ExpiresAt: "2027-08-12",
+	}, nil
+}
+
+func (demoCredentialRotator) Rotate(
+	context.Context, string, string, string,
+) (model.CredentialRotationResult, error) {
+	return model.CredentialRotationResult{
+		State:            model.CredentialRotationSwitchedPendingRevocation,
+		ValidationResult: "开发验证通过", Outcome: "开发新凭据已切换；等待撤销旧凭据",
+		RollbackResult: "开发回滚副本已保留",
+	}, nil
+}
+
+func (demoCredentialRotator) VerifyRevoked(context.Context, model.CredentialRotation) error {
+	return nil
+}
+func (demoCredentialRotator) RemoveRollback(context.Context, model.CredentialRotation) error {
+	return nil
+}
+
 func (manager demoAlertmanager) ListAlerts(context.Context, bool) ([]model.ActiveAlert, error) {
 	switch manager.mode {
 	case "sample":
@@ -139,7 +164,8 @@ func main() {
 	defer database.Close()
 	executor := &demoExecutor{versions: map[string]string{"areaforge": "1.1.1", "sub2api": "0.1.168"}}
 	engine := runner.NewEngine(catalog, database, executor, stateRoot,
-		runner.WithAlertmanager(demoAlertmanager{mode: os.Getenv("OPS_DEV_ALERTS")}))
+		runner.WithAlertmanager(demoAlertmanager{mode: os.Getenv("OPS_DEV_ALERTS")}),
+		runner.WithCredentialRotator(demoCredentialRotator{}))
 	socket := envOr("OPS_RUNNER_SOCKET", "/tmp/areasong-ops-dev.sock")
 	_ = os.Remove(socket)
 	listener, err := net.Listen("unix", socket)

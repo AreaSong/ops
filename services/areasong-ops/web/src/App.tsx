@@ -9,6 +9,8 @@ import type {
   ActionDefinition,
   AuditEntry,
   AutomaticTaskView,
+  CredentialProfile,
+  CredentialRotation,
   ManagedObjectView,
   NavigationLinks,
   OpsEvent,
@@ -19,6 +21,7 @@ import type {
 } from './types'
 import { Audit } from './views/Audit'
 import { AutomaticTasks } from './views/AutomaticTasks'
+import { Credentials } from './views/Credentials'
 import { Overview } from './views/Overview'
 import { Services } from './views/Services'
 import { Tasks } from './views/Tasks'
@@ -42,6 +45,8 @@ export default function App() {
   const [automaticTasks, setAutomaticTasks] = useState<AutomaticTaskView[]>([])
   const [alerts, setAlerts] = useState<ActiveAlert[]>([])
   const [alertsError, setAlertsError] = useState('')
+  const [credentialProfile, setCredentialProfile] = useState<CredentialProfile | null>(null)
+  const [credentialLoading, setCredentialLoading] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const tasksRef = useRef<Task[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
@@ -107,6 +112,15 @@ export default function App() {
       : null)
   }, [api, updateAudit, updateTasks])
 
+  const refreshCredential = useCallback(async () => {
+    setCredentialLoading(true)
+    try {
+      setCredentialProfile(await api.credentialProfile())
+    } finally {
+      setCredentialLoading(false)
+    }
+  }, [api])
+
   useEffect(() => {
     let active = true
     void (async () => {
@@ -168,6 +182,11 @@ export default function App() {
     }, 60_000)
     return () => window.clearInterval(timer)
   }, [email, refresh])
+
+  useEffect(() => {
+    if (view !== 'credentials' || credentialProfile || credentialLoading) return
+    void refreshCredential().catch((reason) => setError(reason instanceof Error ? reason.message : '凭据状态读取失败'))
+  }, [credentialLoading, credentialProfile, refreshCredential, view])
 
   async function beginAction(service: ManagedObjectView, action: ActionDefinition, target = '') {
     const key = `${service.name}/${action.name}`
@@ -326,6 +345,33 @@ export default function App() {
     setView('services')
   }
 
+  async function rotateCredential(secret: string, expiresAt: string, confirmation: string) {
+    setError('')
+    try {
+      const rotation = await api.rotateCredential(secret, expiresAt, confirmation)
+      setCredentialProfile((current) => current ? { ...current, lastRotation: rotation } : current)
+      await Promise.all([refreshCredential(), refresh()])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '凭据轮换失败')
+      await refreshCredential().catch(() => undefined)
+      throw reason
+    } finally {
+      secret = ''
+    }
+  }
+
+  async function closeCredentialRotation(rotation: CredentialRotation, confirmation: string) {
+    setError('')
+    try {
+      await api.closeCredentialRotation(rotation.id, confirmation)
+      await Promise.all([refreshCredential(), refresh()])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '凭据轮换收口失败')
+      await refreshCredential().catch(() => undefined)
+      throw reason
+    }
+  }
+
   if (loading) {
     return <div className="boot-state"><LoaderCircle className="spin" size={24} /><span>连接控制面</span></div>
   }
@@ -365,6 +411,11 @@ export default function App() {
           onAction={beginAction}
           onPlan={setSelectedPlan}
         />
+      )}
+      {view === 'credentials' && (
+        <Credentials profile={credentialProfile} loading={credentialLoading}
+          onRefresh={() => void refreshCredential().catch((reason) => setError(reason instanceof Error ? reason.message : '凭据状态刷新失败'))}
+          onRotate={rotateCredential} onClose={closeCredentialRotation} />
       )}
       {view === 'tasks' && (
         <Tasks tasks={tasks} hasMore={tasksHasMore} loadingMore={tasksLoadingMore}

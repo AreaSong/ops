@@ -28,6 +28,7 @@ TABLE_COLUMNS = {
     "tasks": ("id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"),
     "events": ("sequence", "task_id", "occurred_at", "level", "message", "data_json"),
     "audit_entries": ("sequence", "occurred_at", "actor_hash", "event", "resource", "outcome", "detail_json"),
+    "credential_rotations": ("id", "actor_hash", "credential_type", "target", "state", "fingerprint", "expires_at", "created_at"),
     "metadata": ("key", "value"),
 }
 
@@ -49,8 +50,8 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
 
     @staticmethod
     def _create_database(path: Path, tables: tuple[str, ...] = (
-        "previews", "tasks", "events", "audit_entries", "metadata",
-    ), omitted: tuple[str, str] | None = None) -> None:
+        "previews", "tasks", "events", "audit_entries", "credential_rotations", "metadata",
+    ), omitted: tuple[str, str] | None = None, schema_version: int = 5) -> None:
         path.unlink(missing_ok=True)
         connection = sqlite3.connect(path)
         try:
@@ -60,6 +61,7 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
                 connection.execute(f'CREATE TABLE "{table}"({definition})')
             if "metadata" in tables:
                 connection.execute("INSERT INTO metadata(key, value) VALUES ('schema', '1')")
+            connection.execute(f"PRAGMA user_version = {schema_version}")
             connection.commit()
         finally:
             connection.close()
@@ -139,6 +141,24 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
         self.assertIn("areasong_ops_restore_drill_last_success_timestamp_seconds", metrics)
         self.assertIn('areasong_ops_restore_drill_table_rows{table="metadata"} 1', metrics)
         self.assertEqual(list(self.work_root.glob("areasong-ops-restore-*")), [])
+
+    def test_restores_pre_stage6_schema_without_credential_table(self) -> None:
+        self._create_database(
+            self.database,
+            ("previews", "tasks", "events", "audit_entries", "metadata"),
+            schema_version=4,
+        )
+        self.manifest = self._create_backup_set()
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("credential_rotations", self.metric_out.read_text(encoding="utf-8"))
+
+    def test_rejects_unknown_schema_version(self) -> None:
+        self._create_database(self.database, schema_version=3)
+        self.manifest = self._create_backup_set()
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("schema 版本不受支持", result.stderr)
 
     def test_incomplete_manifest_is_rejected_and_workdir_is_not_created(self) -> None:
         payload = json.loads(self.manifest.read_text(encoding="utf-8"))

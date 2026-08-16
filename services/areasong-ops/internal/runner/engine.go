@@ -29,10 +29,12 @@ type Engine struct {
 	stateRoot    string
 	lockMu       sync.Mutex
 	locks        map[string]string
+	credentialMu sync.Mutex
 	wait         sync.WaitGroup
 	owner        string
 	backupRoot   string
 	alertmanager Alertmanager
+	credentials  CredentialRotator
 }
 
 type EngineOption func(*Engine)
@@ -41,6 +43,14 @@ func WithAlertmanager(alertmanager Alertmanager) EngineOption {
 	return func(engine *Engine) {
 		if alertmanager != nil {
 			engine.alertmanager = alertmanager
+		}
+	}
+}
+
+func WithCredentialRotator(rotator CredentialRotator) EngineOption {
+	return func(engine *Engine) {
+		if rotator != nil {
+			engine.credentials = rotator
 		}
 	}
 }
@@ -60,6 +70,7 @@ func NewEngine(
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
 		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
 		backupRoot: "/var/backups/ops", alertmanager: unavailableAlertmanager{},
+		credentials: unavailableCredentialRotator{},
 	}
 	for _, option := range options {
 		option(engine)

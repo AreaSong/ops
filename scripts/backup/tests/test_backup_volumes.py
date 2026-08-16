@@ -17,6 +17,7 @@ TABLE_COLUMNS = {
     "tasks": ("id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"),
     "events": ("sequence", "task_id", "occurred_at", "level", "message", "data_json"),
     "audit_entries": ("sequence", "occurred_at", "actor_hash", "event", "resource", "outcome", "detail_json"),
+    "credential_rotations": ("id", "actor_hash", "credential_type", "target", "state", "fingerprint", "expires_at", "created_at"),
     "metadata": ("key", "value"),
 }
 
@@ -51,6 +52,7 @@ class BackupVolumesTests(unittest.TestCase):
                 columns = [name for name in names if omitted != (table, name)]
                 definition = ", ".join(f'"{name}" TEXT' for name in columns)
                 connection.execute(f'CREATE TABLE "{table}"({definition})')
+            connection.execute("PRAGMA user_version = 5")
             connection.commit()
         finally:
             connection.close()
@@ -120,6 +122,17 @@ class BackupVolumesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("metadata is missing required columns: value", result.stderr)
         self.assertEqual(list((self.root / "backups").glob("areasong-ops-state-*.tar.gz")), [])
+
+    def test_rejects_pre_stage6_snapshot_as_new_backup(self) -> None:
+        connection = sqlite3.connect(self.snapshot)
+        try:
+            connection.execute("PRAGMA user_version = 4")
+            connection.commit()
+        finally:
+            connection.close()
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("schema version is not current", result.stderr)
 
     def test_rejects_snapshot_with_foreign_key_violation(self) -> None:
         self._add_foreign_key_violation(self.snapshot)

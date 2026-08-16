@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +54,54 @@ func TestOpenMigratesExistingPlanSchema(t *testing.T) {
 		`, expected).Scan(&column); err != nil || column != expected {
 			t.Fatalf("column=%q expected=%q err=%v", column, expected, err)
 		}
+	}
+}
+
+func TestCredentialRotationStoresOnlySummaryAndClosesIdempotently(t *testing.T) {
+	ctx := context.Background()
+	database, err := Open(filepath.Join(t.TempDir(), "ops.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	rotation := model.CredentialRotation{
+		ID:             "11111111-1111-4111-8111-111111111111",
+		IdempotencyKey: "22222222-2222-4222-8222-222222222222",
+		ActorHash:      strings.Repeat("a", 64), CredentialType: model.GitHubAlertmanagerCredential,
+		Target: "fixed target", State: model.CredentialRotationRunning,
+		Fingerprint: "sha256:0123456789ab", ExpiresAt: "2027-08-12", CreatedAt: time.Now().UTC(),
+	}
+	created, fresh, err := database.StartCredentialRotation(ctx, rotation)
+	if err != nil || !fresh || created.ID != rotation.ID {
+		t.Fatalf("rotation=%+v fresh=%v err=%v", created, fresh, err)
+	}
+	if err := database.FinishCredentialRotation(ctx, rotation.ID, model.CredentialRotationResult{
+		State:            model.CredentialRotationSwitchedPendingRevocation,
+		ValidationResult: "passed", Outcome: "switched", RollbackResult: "retained",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := database.MarkCredentialRevocationVerified(ctx, rotation.ID, rotation.ActorHash,
+		"33333333-3333-4333-8333-333333333333")
+	if err != nil || verified.State != model.CredentialRotationRevocationVerified {
+		t.Fatalf("verified=%+v err=%v", verified, err)
+	}
+	closed, fresh, err := database.CloseCredentialRotation(ctx, rotation.ID, rotation.ActorHash,
+		"33333333-3333-4333-8333-333333333333", "old token revoked")
+	if err != nil || !fresh || closed.State != model.CredentialRotationCompleted {
+		t.Fatalf("closed=%+v fresh=%v err=%v", closed, fresh, err)
+	}
+	closed, fresh, err = database.CloseCredentialRotation(ctx, rotation.ID, rotation.ActorHash,
+		"33333333-3333-4333-8333-333333333333", "old token revoked")
+	if err != nil || fresh || closed.State != model.CredentialRotationCompleted {
+		t.Fatalf("idempotent close=%+v fresh=%v err=%v", closed, fresh, err)
+	}
+	data, err := os.ReadFile(database.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "github_pat_") || strings.Contains(string(data), "GITHUB_TOKEN=") {
+		t.Fatal("SQLite unexpectedly contains credential material")
 	}
 }
 
@@ -433,6 +483,42 @@ func TestCollectMetricsIncludesTaskDimensionsAndFinishTime(t *testing.T) {
 	}
 	if len(metrics.LastFinishedTasks) != 1 || metrics.LastFinishedTasks[0].FinishedEpoch != float64(now.Unix()) {
 		t.Fatalf("unexpected finish metrics: %+v", metrics.LastFinishedTasks)
+	}
+}
+
+func TestCollectMetricsIncludesActiveCredentialRotationAge(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Date(2026, 8, 16, 4, 5, 6, 0, time.UTC)
+	started := now.Add(-25 * time.Hour)
+	database.now = func() time.Time { return started }
+	rotation := model.CredentialRotation{
+		ID: "metrics-rotation", IdempotencyKey: "metrics-rotation-key",
+		ActorHash: strings.Repeat("a", 64), CredentialType: model.GitHubAlertmanagerCredential,
+		Target: "fixed target", State: model.CredentialRotationRunning,
+		Fingerprint: "sha256:0123456789ab", ExpiresAt: "2027-08-12", CreatedAt: started,
+	}
+	if _, _, err := database.StartCredentialRotation(ctx, rotation); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.FinishCredentialRotation(ctx, rotation.ID, model.CredentialRotationResult{
+		State: model.CredentialRotationSwitchedPendingRevocation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	database.now = func() time.Time { return now }
+	metrics, err := database.CollectMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.ActiveCredentialRotations) != 1 {
+		t.Fatalf("unexpected credential metrics: %+v", metrics.ActiveCredentialRotations)
+	}
+	item := metrics.ActiveCredentialRotations[0]
+	if item.CredentialType != model.GitHubAlertmanagerCredential ||
+		item.State != model.CredentialRotationSwitchedPendingRevocation ||
+		item.AgeSeconds != (25*time.Hour).Seconds() {
+		t.Fatalf("unexpected credential metric: %+v", item)
 	}
 }
 

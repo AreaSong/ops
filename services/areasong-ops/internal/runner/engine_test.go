@@ -37,6 +37,44 @@ type fakeAlertmanager struct {
 	writeErr error
 }
 
+type fakeCredentialRotator struct {
+	current     CurrentCredential
+	rotateHook  func()
+	verifyCalls int
+	removeCalls int
+}
+
+func (rotator *fakeCredentialRotator) Current(context.Context) (CurrentCredential, error) {
+	return rotator.current, nil
+}
+
+func (rotator *fakeCredentialRotator) Rotate(
+	_ context.Context,
+	_ string,
+	secret string,
+	expiresAt string,
+) (model.CredentialRotationResult, error) {
+	if rotator.rotateHook != nil {
+		rotator.rotateHook()
+	}
+	rotator.current = CurrentCredential{
+		Configured: true, Fingerprint: credentialFingerprint(secret), ExpiresAt: expiresAt,
+	}
+	return model.CredentialRotationResult{
+		State:            model.CredentialRotationSwitchedPendingRevocation,
+		ValidationResult: "验证通过", Outcome: "已切换", RollbackResult: "已保留",
+	}, nil
+}
+
+func (rotator *fakeCredentialRotator) VerifyRevoked(context.Context, model.CredentialRotation) error {
+	rotator.verifyCalls++
+	return nil
+}
+func (rotator *fakeCredentialRotator) RemoveRollback(context.Context, model.CredentialRotation) error {
+	rotator.removeCalls++
+	return nil
+}
+
 func (manager *fakeAlertmanager) ListAlerts(_ context.Context, _ bool) ([]model.ActiveAlert, error) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
@@ -217,6 +255,110 @@ func TestManagedObjectEndpointsRequireActor(t *testing.T) {
 				t.Fatalf("path=%s missing=%s body=%s", test.path, expected, response.Body.String())
 			}
 		}
+	}
+}
+
+func TestCredentialRotationAPILeaksNoSecretToResponseSQLiteOrAudit(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	engine.credentials = &fakeCredentialRotator{current: CurrentCredential{
+		Configured: true, Fingerprint: "sha256:oldcredential", ExpiresAt: "2026-12-31",
+	}}
+	token := "github_pat_endpoint_test_secret_12345678901234567890"
+	payload, err := json.Marshal(model.CredentialRotationRequest{
+		CredentialType: model.GitHubAlertmanagerCredential, Secret: token,
+		ExpiresAt: "2027-08-12", Confirmation: credentialConfirmation,
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost,
+		"/v1/credentials/github-alertmanager/rotate", bytes.NewReader(payload))
+	request.Header.Set(actorHeader, actorHash())
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	NewServer(engine, database).ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), token) {
+		t.Fatal("credential API response exposed the token")
+	}
+	data, err := os.ReadFile(filepath.Join(engine.stateRoot, "ops.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Fatal("SQLite contained the token")
+	}
+	audit, err := database.ListAudit(ctx, 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedAudit, err := json.Marshal(audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedAudit), token) {
+		t.Fatal("audit contained the token")
+	}
+}
+
+func TestCredentialRotationPersistsTerminalStateAfterRequestCancellation(t *testing.T) {
+	engine, database := testEngine(t, &fakeExecutor{})
+	requestContext, cancel := context.WithCancel(context.Background())
+	engine.credentials = &fakeCredentialRotator{
+		current:    CurrentCredential{Configured: true, Fingerprint: "sha256:oldcredential", ExpiresAt: "2026-12-31"},
+		rotateHook: cancel,
+	}
+	rotation, created, err := engine.RotateCredential(requestContext, actorHash(), model.CredentialRotationRequest{
+		CredentialType: model.GitHubAlertmanagerCredential,
+		Secret:         "github_pat_cancel_test_secret_12345678901234567890",
+		ExpiresAt:      "2027-08-12",
+		Confirmation:   credentialConfirmation,
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil || !created || rotation.State != model.CredentialRotationSwitchedPendingRevocation {
+		t.Fatalf("rotation=%+v created=%v err=%v", rotation, created, err)
+	}
+	persisted, err := database.GetCredentialRotation(context.Background(), rotation.ID)
+	if err != nil || persisted.State != model.CredentialRotationSwitchedPendingRevocation {
+		t.Fatalf("persisted=%+v err=%v", persisted, err)
+	}
+}
+
+func TestCredentialClosureResumesAfterPersistedRevocationEvidence(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	rotator := &fakeCredentialRotator{
+		current: CurrentCredential{Configured: true, Fingerprint: "sha256:oldcredential", ExpiresAt: "2026-12-31"},
+	}
+	engine.credentials = rotator
+	rotation, _, err := engine.RotateCredential(ctx, actorHash(), model.CredentialRotationRequest{
+		CredentialType: model.GitHubAlertmanagerCredential,
+		Secret:         "github_pat_resume_test_secret_12345678901234567890",
+		ExpiresAt:      "2027-08-12",
+		Confirmation:   credentialConfirmation,
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err = database.MarkCredentialRevocationVerified(ctx, rotation.ID, actorHash(), mustUUID(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, fresh, err := engine.CloseCredentialRotation(ctx, actorHash(), rotation.ID,
+		model.CredentialRotationCloseRequest{
+			Confirmation:   credentialClosureConfirmation,
+			IdempotencyKey: mustUUID(t),
+		})
+	if err != nil || !fresh || closed.State != model.CredentialRotationCompleted {
+		t.Fatalf("closed=%+v fresh=%v err=%v", closed, fresh, err)
+	}
+	if rotator.verifyCalls != 0 || rotator.removeCalls != 1 {
+		t.Fatalf("verifyCalls=%d removeCalls=%d", rotator.verifyCalls, rotator.removeCalls)
 	}
 }
 

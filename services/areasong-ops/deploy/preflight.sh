@@ -14,6 +14,7 @@ CONFIG_DIR="${OPS_PREFLIGHT_CONFIG_DIR:-/etc/areasong-ops}"
 RUNNER_ROOT="${OPS_PREFLIGHT_RUNNER_ROOT:-/usr/local/libexec/areasong-ops}"
 UNIT_PATH="${OPS_PREFLIGHT_UNIT_PATH:-/etc/systemd/system/areasong-ops-runner.service}"
 SOCKET_PATH="${OPS_PREFLIGHT_SOCKET_PATH:-/var/lib/areasong-ops/run/runner.sock}"
+GITHUB_CREDENTIAL_PATH="${OPS_PREFLIGHT_GITHUB_CREDENTIAL_PATH:-/var/lib/areasong-ops/credentials/alertmanager-github.env}"
 CONTAINER_NAME="${OPS_PREFLIGHT_CONTAINER_NAME:-areasong-ops-web}"
 
 fail() { printf 'preflight failed: %s\n' "$*" >&2; exit 1; }
@@ -42,6 +43,7 @@ read_env_value() {
 for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
+require_regular_file "$SOURCE_DIR/deploy/migrate_github_credential.py"
 jq -e '.schemaVersion == 4 and (.adapters | length > 0) and (.services | length > 0) and
   (.automaticTasks | type == "object")' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
@@ -55,7 +57,7 @@ if [ "$mode" = source ]; then
 fi
 
 [ "$(uname -s)" = Linux ] || fail "installed checks require Linux"
-for command_name in getent stat systemd-analyze systemctl curl; do require_command "$command_name"; done
+for command_name in getent stat systemd-analyze systemctl curl sha256sum python3; do require_command "$command_name"; done
 [ "$(id -u)" -eq 0 ] || fail "installed checks require root"
 
 group_record="$(getent group areasong-ops)" || fail "areasong-ops group is missing"
@@ -64,6 +66,9 @@ group_gid="$(cut -d: -f3 <<<"$group_record")"
 
 require_owner_mode "$CONFIG_DIR/services.json" root root 600
 require_owner_mode "$CONFIG_DIR/web.env" root root 600
+require_owner_mode "$GITHUB_CREDENTIAL_PATH" root root 600
+python3 "$SOURCE_DIR/deploy/migrate_github_credential.py" --validate-destination \
+  --destination-path "$GITHUB_CREDENTIAL_PATH" >/dev/null || fail "GitHub credential schema is invalid"
 grafana_url="$(read_env_value OPS_GRAFANA_URL "$CONFIG_DIR/web.env")"
 [[ "$grafana_url" =~ ^https://[^/?#]+/?$ ]] || fail "Grafana URL must be an HTTPS origin"
 require_owner_mode "$RUNNER_ROOT/areasong-ops-runner" root root 755
@@ -96,6 +101,13 @@ systemctl is-active --quiet areasong-ops-runner.service || fail "Runner service 
 [ "$(stat -c '%a %U:%G' "$SOCKET_PATH")" = "660 root:areasong-ops" ] ||
   fail "Runner socket owner or mode is invalid"
 curl -fsS --unix-socket "$SOCKET_PATH" http://runner/healthz >/dev/null || fail "Runner health failed"
+actor_hash="$(printf 'runtime-preflight' | sha256sum | awk '{print $1}')"
+credential_json="$(curl -fsS --unix-socket "$SOCKET_PATH" -H "X-AreaSong-Ops-Actor-Hash: $actor_hash" \
+  http://runner/v1/credentials/github-alertmanager)" || fail "credential profile failed"
+jq -e '.type == "github_alertmanager" and .configured == true and
+  .repository == "AreaSong/ops" and (.fingerprint | startswith("sha256:")) and
+  (.expiresAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' <<<"$credential_json" >/dev/null ||
+  fail "credential profile is invalid"
 curl -fsS http://127.0.0.1:9093/-/ready >/dev/null || fail "Alertmanager readiness failed"
 
 docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$revision" '

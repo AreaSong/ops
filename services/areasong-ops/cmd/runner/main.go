@@ -58,8 +58,14 @@ func run() error {
 	} else if count > 0 {
 		slog.Warn("检测到未完成任务，已转为人工核对", "count", count)
 	}
+	if count, err := database.RecoverInterruptedCredentialRotations(context.Background()); err != nil {
+		return err
+	} else if count > 0 {
+		slog.Warn("检测到未完成凭据轮换，已转为人工核对", "count", count)
+	}
 	engine := runner.NewEngine(catalog, database, runner.CommandExecutor{}, stateRoot,
-		runner.WithAlertmanager(alertmanager))
+		runner.WithAlertmanager(alertmanager),
+		runner.WithCredentialRotator(runner.NewProductionCredentialRotator()))
 	listener, err := unixListener(socketPath)
 	if err != nil {
 		return err

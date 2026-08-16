@@ -6,6 +6,7 @@ import (
 )
 
 var sensitivePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+`),
 	regexp.MustCompile(`(?i)(authorization\s*[:=]\s*bearer\s+)[^\s"']+`),
 	regexp.MustCompile(`(?i)((?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,"']+`),
 }
