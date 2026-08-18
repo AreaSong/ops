@@ -22,6 +22,8 @@ class FakeSMTP:
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.user: str | None = None
+        self.password: str | None = None
         self.calls: list[object] = []
         self.__class__.instances.append(self)
 
@@ -37,8 +39,27 @@ class FakeSMTP:
     def starttls(self, context: object) -> None:
         self.calls.append(("starttls", context is not None))
 
-    def login(self, username: str, authorization_code: str) -> None:
-        self.calls.append(("login", username, authorization_code))
+    def auth_login(self, _challenge: bytes | None = None) -> str:
+        return self.user or ""
+
+    def auth(
+        self,
+        mechanism: str,
+        authobject: object,
+        *,
+        initial_response_ok: bool,
+    ) -> tuple[int, bytes]:
+        self.calls.append(
+            (
+                "auth",
+                mechanism,
+                getattr(authobject, "__name__", ""),
+                initial_response_ok,
+                self.user,
+                self.password,
+            )
+        )
+        return 235, b"authentication succeeded"
 
     def send_message(self, message: object) -> None:
         self.calls.append(("send_message", message))
@@ -58,7 +79,7 @@ class RotateAlertmanagerSmtpTests(unittest.TestCase):
             "abcdefghijklmnop",
         )
 
-    def test_smtp_verification_uses_starttls_before_login_and_sends_chinese_message(self) -> None:
+    def test_smtp_verification_uses_starttls_before_explicit_login_and_sends_chinese_message(self) -> None:
         MODULE.verify_smtp_authorization(
             "smtp.example.com",
             587,
@@ -73,7 +94,14 @@ class RotateAlertmanagerSmtpTests(unittest.TestCase):
         self.assertEqual(client.calls[2], "ehlo")
         self.assertEqual(
             client.calls[3],
-            ("login", "sender@example.com", "abcdefghijklmnop"),
+            (
+                "auth",
+                "LOGIN",
+                "auth_login",
+                False,
+                "sender@example.com",
+                "abcdefghijklmnop",
+            ),
         )
         message = client.calls[4][1]
         self.assertIn("轮换验证", str(message["Subject"]))
