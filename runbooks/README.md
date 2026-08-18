@@ -54,6 +54,7 @@
 
 | 记录 | 文件 |
 | --- | --- |
+| standards/09 阶段 9 当前验收（2026-08-19） | [records/losangeles-standards-09-phase9-20260819.md](records/losangeles-standards-09-phase9-20260819.md) |
 | 当前运维状态 | [records/losangeles-current-status.md](records/losangeles-current-status.md) |
 | 第二轮治理、批准与验收 | [records/losangeles-round2-governance-20260718.md](records/losangeles-round2-governance-20260718.md) |
 | 加固核查进度 | [records/losangeles-hardening-progress.md](records/losangeles-hardening-progress.md) |
