@@ -11,6 +11,7 @@ ansible/
 ├── cosign.yml            # 固定版本 cosign 与 OCI attestation 依赖
 ├── nginx-cloudflare-origin.yml # Cloudflare-only 源站事务式变更
 ├── observability-host-jobs.yml # 日报、日志和主机采集作业
+├── areaforge-update-scheduler-policy.yml # 受控更新 agent 与旧自动 updater 互斥策略
 ├── templates/            # Nginx Cloudflare 访问控制模板
 ├── inventory/
 │   └── hosts.yml         # 从 servers.yaml 自动生成
@@ -80,6 +81,14 @@ cron、logrotate 和 `generation.sha256`，安装文件只从已激活 generatio
 ```bash
 ansible-playbook observability-host-jobs.yml --check --diff --limit LosAngeles
 ansible-playbook observability-host-jobs.yml --limit LosAngeles
+```
+
+AreaForge 只允许网页控制面驱动的 update agent，旧每日自动 updater 必须保持
+stopped/disabled/masked。先预演，再单独执行 policy：
+
+```bash
+ansible-playbook areaforge-update-scheduler-policy.yml --check --diff --limit LosAngeles
+ansible-playbook areaforge-update-scheduler-policy.yml --limit LosAngeles
 ```
 
 Cloudflare Worker、两个 root-only 凭据文件和只读 R2 token 就绪后，再显式启用每日

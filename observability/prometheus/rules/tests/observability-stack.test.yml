@@ -93,6 +93,12 @@ tests:
     input_series:
       - series: 'alertmanager_config_last_reload_successful{job="alertmanager",instance="LosAngeles",service="alertmanager"}'
         values: '0+0x15'
+      - series: 'alertmanager_runtime_input_check_success{job="node",instance="LosAngeles",service="node-exporter"}'
+        values: '0+0x15'
+      - series: 'alertmanager_runtime_input_last_check_timestamp_seconds{job="node",instance="LosAngeles",service="node-exporter"}'
+        values: '0+60x15'
+      - series: 'alertmanager_runtime_input_stale{job="node",instance="LosAngeles",service="node-exporter",kind="config"}'
+        values: '1+0x15'
       - series: 'alertmanager_notifications_failed_total{job="alertmanager",instance="LosAngeles",service="alertmanager",integration="email",reason="serverError"}'
         values: '0+0x5 1+0x10'
       - series: 'blackbox_exporter_config_last_reload_successful{job="blackbox_exporter",instance="LosAngeles",service="blackbox-exporter"}'
@@ -138,6 +144,35 @@ tests:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "Alertmanager 通知投递失败：email"
               description: "最近十分钟内至少有一条通知失败；请验证接收器和独立的 GitHub 看门狗链路。"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 6m
+        alertname: AlertmanagerRuntimeInputCheckFailed
+        exp_alerts:
+          - exp_labels:
+              owner: areasong-ops
+              instance: LosAngeles
+              job: node
+              service: alertmanager
+              severity: warning
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+              summary: "Alertmanager 运行输入检查失效"
+              description: "主机侧检查无法持续确认 Alertmanager 已加载当前配置、模板和 SMTP 凭据；请先恢复采集器再信任加载状态。"
+              grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+      - eval_time: 6m
+        alertname: AlertmanagerRuntimeInputNotLoaded
+        exp_alerts:
+          - exp_labels:
+              owner: areasong-ops
+              instance: LosAngeles
+              job: node
+              kind: config
+              service: alertmanager
+              severity: critical
+            exp_annotations:
+              runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+              summary: "Alertmanager 尚未加载最新 config 输入"
+              description: "主机配置、模板或 SMTP 凭据比 Alertmanager 对应加载时间更新；校验后重载配置，凭据原子替换则必须重建 Alertmanager 容器。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
       - eval_time: 6m
         alertname: BlackboxExporterConfigReloadFailed

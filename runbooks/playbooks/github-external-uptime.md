@@ -61,8 +61,8 @@ python3 -m unittest observability.scripts.tests.test_github_external_heartbeat
 ## 阶段 7 增强实施状态
 
 - 本地实现已补齐固定响应内容校验、AreaForge JSON 健康路径、连续失败阈值、分钟级 round loop 和 heartbeat/dead-man 客户端。
-- 生产部署前必须先将 heartbeat host cron 部署并确认 heartbeat Issue 已产生，再发布默认分支工作流；否则外部监控会把“尚未接入”误报为失联。
-- 生产关闭门禁：正常探测、单次/两次抖动、三次连续失败、恢复、heartbeat 失联、heartbeat 恢复、重复 heartbeat Issue 和回滚证据均通过后，才将本节标记为完成。
+- 生产已完成 heartbeat host cron、默认分支工作流同步、灰度验收和回滚 check-mode 验证；最终 `main` 提交为 `1fa0be05248ae76734a493f4b672211fae95a463`。
+- 下方手工验证步骤继续作为回归清单，后续改动不得绕过连续失败阈值、heartbeat 失联/恢复、重复 Issue 和回滚证据门禁。
 
 ## 告警处理
 

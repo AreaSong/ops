@@ -20,6 +20,18 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # GitHub Issue 同步从 Alertmanager API 独立读取 critical 告警。
+    # 通知出口自身失败时不得再次投递到同一个失效邮箱。
+    - receiver: notification-failure-watchdog-only
+      matchers:
+        - alertname="AlertmanagerNotificationFailures"
+      group_by:
+        - alertname
+        - integration
+      group_wait: 0s
+      group_interval: 5m
+      repeat_interval: 4h
+
     - receiver: email-daily-audit
       matchers:
         - alertname="DailyOpsAuditReport"
@@ -205,6 +217,8 @@ inhibit_rules:
       - alertname=~"AuditLogPipeline.*"
 
 receivers:
+  - name: notification-failure-watchdog-only
+
   - name: email-daily-audit
     email_configs:
       - to: 3177348309@qq.com

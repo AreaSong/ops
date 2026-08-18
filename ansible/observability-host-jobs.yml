@@ -24,6 +24,7 @@
       - { name: runtime_snapshot.py, mode: "0755" }
       - { name: business_error_log.py, mode: "0755" }
       - { name: cloudflare_ip_metrics.py, mode: "0755" }
+      - { name: alertmanager_runtime_input.py, mode: "0755" }
       - { name: alertmanager_github_issues.py, mode: "0755" }
       - { name: github_external_heartbeat.py, mode: "0755" }
       - { name: write-business-log-metrics.sh, mode: "0755" }
@@ -50,6 +51,7 @@
       - ops-runtime-snapshot
       - ops-business-error-log
       - ops-cloudflare-ip-metrics
+      - ops-alertmanager-runtime-input
       - ops-business-log-metrics
       - ops-cloudflare-origin-cert-metrics
       - ops-fail2ban-enriched
@@ -398,6 +400,19 @@
       when:
         - alertmanager_github_issues_enabled | bool
         - not ansible_check_mode
+
+    - name: Validate staged Alertmanager runtime input entry point
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ host_jobs_generation }}/observability/scripts/alertmanager_runtime_input.py"
+          - --validate-only
+      environment:
+        PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not ansible_check_mode
+        - not host_jobs_generation_already_active | bool
 
     - name: Validate the enabled external heartbeat configuration
       ansible.builtin.command:

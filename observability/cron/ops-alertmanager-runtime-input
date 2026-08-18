@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+* * * * * root /usr/bin/flock -n /run/lock/ops-alertmanager-runtime-input.lock /bin/bash -c '/usr/bin/sleep 20; exec /var/lib/ops/observability-host-jobs/current/observability/scripts/alertmanager_runtime_input.py' >>/var/log/observability/alertmanager-runtime-input.log 2>&1

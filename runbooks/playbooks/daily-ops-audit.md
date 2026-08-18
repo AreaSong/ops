@@ -77,7 +77,8 @@ HTTP 5xx 按服务独立评估：日请求少于 1000 时，任意 5xx 为 Warni
 1. 检查 Alertmanager readiness 和日志。
 2. 检查日报 route/template 是否通过 `amtool check-config`。
 3. 确认 SMTP 密码文件存在且保持 root-only；不得把授权码放进命令行或 Git。
-4. 恢复后使用同一报告日重跑。日报 alert identity 固定，不会因严重度变化并存两条告警。
+4. `535 Login fail` 或运行输入漂移按 `alertmanager-notification-delivery.md` 安全轮换、重建和回验。
+5. 恢复后使用同一报告日重跑。日报 alert identity 固定，不会因严重度变化并存两条告警。
 
 ## 回滚
 

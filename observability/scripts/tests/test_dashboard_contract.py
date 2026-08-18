@@ -328,6 +328,26 @@ class DashboardContractTests(unittest.TestCase):
                 "Grafana 插件请求 P95",
             }.issubset(titles)
         )
+        by_title = {panel["title"]: panel for panel in panels}
+        alertmanager_expressions = {
+            target["expr"] for target in by_title["Alertmanager 告警与通知"]["targets"]
+        }
+        self.assertIn(
+            'max(alertmanager_runtime_input_stale{kind="config"}) or on() vector(0)',
+            alertmanager_expressions,
+        )
+        self.assertIn(
+            'max(alertmanager_runtime_input_stale{kind="credential"}) or on() vector(0)',
+            alertmanager_expressions,
+        )
+        freshness_expressions = {
+            target["expr"]
+            for target in by_title["高频采集器距上次运行（分钟级任务）"]["targets"]
+        }
+        self.assertIn(
+            "time() - alertmanager_runtime_input_last_check_timestamp_seconds",
+            freshness_expressions,
+        )
 
     def test_cloudflare_governance_is_owned_by_tls_dashboard(self) -> None:
         asset = load_dashboard("losangeles-server-asset-runtime.json")

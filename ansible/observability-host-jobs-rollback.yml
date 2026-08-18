@@ -14,6 +14,7 @@
       - ops-runtime-snapshot
       - ops-business-error-log
       - ops-cloudflare-ip-metrics
+      - ops-alertmanager-runtime-input
       - ops-business-log-metrics
       - ops-cloudflare-origin-cert-metrics
       - ops-fail2ban-enriched

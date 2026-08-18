@@ -55,6 +55,16 @@ class AlertmanagerContractTests(unittest.TestCase):
         for rule in self.config["inhibit_rules"]:
             self.assertNotIn("equal", rule)
 
+    def test_notification_failure_uses_only_the_independent_watchdog(self) -> None:
+        route = self.config["route"]["routes"][0]
+        self.assertEqual(route["receiver"], "notification-failure-watchdog-only")
+        self.assertEqual(route["matchers"], ['alertname="AlertmanagerNotificationFailures"'])
+        self.assertFalse(route.get("continue", False))
+
+        receivers = {receiver["name"]: receiver for receiver in self.config["receivers"]}
+        watchdog = receivers["notification-failure-watchdog-only"]
+        self.assertEqual(watchdog, {"name": "notification-failure-watchdog-only"})
+
     def test_fail2ban_notifies_on_burst_instead_of_normal_banning(self) -> None:
         rules = yaml.safe_load((RULES_DIR / "alerts.yml").read_text(encoding="utf-8"))
         alerts = {

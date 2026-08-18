@@ -1,0 +1,144 @@
+---
+- name: Enforce the controlled AreaForge update scheduler policy
+  hosts: LosAngeles
+  become: true
+  gather_facts: false
+  vars:
+    areaforge_controlled_timer: areaforge-update-agent.timer
+    areaforge_legacy_units:
+      - areaforge-updater.timer
+      - areaforge-updater.service
+  tasks:
+    - name: Inspect the controlled AreaForge update agent timer
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - "{{ areaforge_controlled_timer }}"
+          - --property=LoadState,ActiveState,UnitFileState
+          - --no-pager
+      register: areaforge_controlled_timer_before
+      changed_when: false
+      check_mode: false
+
+    - name: Require the controlled AreaForge update agent before retiring the legacy scheduler
+      ansible.builtin.assert:
+        that:
+          - "'LoadState=loaded' in areaforge_controlled_timer_before.stdout_lines"
+          - "'ActiveState=active' in areaforge_controlled_timer_before.stdout_lines"
+          - "'UnitFileState=enabled' in areaforge_controlled_timer_before.stdout_lines"
+        fail_msg: >-
+          Refusing to retire the legacy AreaForge updater because the controlled
+          areaforge-update-agent.timer is not loaded, enabled and active.
+
+    - name: Capture the legacy AreaForge updater state for transactional recovery
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - "{{ item }}"
+          - --property=LoadState,ActiveState,UnitFileState
+          - --no-pager
+      loop: "{{ areaforge_legacy_units }}"
+      register: areaforge_legacy_before
+      changed_when: false
+      check_mode: false
+
+    - name: Require the known legacy AreaForge updater units
+      ansible.builtin.assert:
+        that:
+          - >-
+            'LoadState=loaded' in item.stdout_lines or
+            'LoadState=masked' in item.stdout_lines
+        fail_msg: "Unexpected legacy unit state for {{ item.item }}: {{ item.stdout_lines }}"
+      loop: "{{ areaforge_legacy_before.results }}"
+
+    - name: Transactionally retire the legacy AreaForge updater scheduler
+      block:
+        - name: Stop legacy AreaForge updater units
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+          loop: "{{ areaforge_legacy_units }}"
+
+        - name: Disable and mask legacy AreaForge updater units
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: false
+            masked: true
+            daemon_reload: true
+          loop: "{{ areaforge_legacy_units }}"
+
+        - name: Clear the historical legacy AreaForge updater failure state
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - reset-failed
+              - areaforge-updater.service
+          changed_when: false
+          when: not ansible_check_mode
+
+        - name: Verify the retired legacy AreaForge updater units
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - show
+              - "{{ item }}"
+              - --property=LoadState,ActiveState,UnitFileState
+              - --no-pager
+          loop: "{{ areaforge_legacy_units }}"
+          register: areaforge_legacy_after
+          changed_when: false
+          when: not ansible_check_mode
+
+        - name: Require legacy AreaForge updater units to remain masked and inactive
+          ansible.builtin.assert:
+            that:
+              - "'LoadState=masked' in item.stdout_lines"
+              - "'ActiveState=inactive' in item.stdout_lines"
+              - "'UnitFileState=masked' in item.stdout_lines"
+            fail_msg: "Legacy updater retirement verification failed for {{ item.item }}"
+          loop: "{{ areaforge_legacy_after.results | default([]) }}"
+          when: not ansible_check_mode
+
+        - name: Recheck the controlled AreaForge update agent timer
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/systemctl
+              - show
+              - "{{ areaforge_controlled_timer }}"
+              - --property=LoadState,ActiveState,UnitFileState
+              - --no-pager
+          register: areaforge_controlled_timer_after
+          changed_when: false
+          when: not ansible_check_mode
+
+        - name: Require the controlled AreaForge update agent after legacy retirement
+          ansible.builtin.assert:
+            that:
+              - "'LoadState=loaded' in areaforge_controlled_timer_after.stdout_lines"
+              - "'ActiveState=active' in areaforge_controlled_timer_after.stdout_lines"
+              - "'UnitFileState=enabled' in areaforge_controlled_timer_after.stdout_lines"
+          when: not ansible_check_mode
+      rescue:
+        - name: Restore legacy AreaForge updater units to their captured state
+          ansible.builtin.systemd_service:
+            name: "{{ item.item }}"
+            masked: "{{ 'LoadState=masked' in item.stdout_lines }}"
+            enabled: "{{ 'UnitFileState=enabled' in item.stdout_lines }}"
+            state: "{{ 'started' if 'ActiveState=active' in item.stdout_lines else 'stopped' }}"
+            daemon_reload: true
+          loop: "{{ areaforge_legacy_before.results }}"
+
+        - name: Stop after restoring the legacy AreaForge scheduler state
+          ansible.builtin.fail:
+            msg: >-
+              Legacy AreaForge updater retirement failed; captured timer and service
+              enablement and activity state were restored.
+
+    - name: Report the enforced AreaForge update scheduler policy
+      ansible.builtin.debug:
+        msg: >-
+          controlled={{ areaforge_controlled_timer }} active;
+          legacy={{ areaforge_legacy_units | join(',') }} masked and inactive
+      when: not ansible_check_mode
