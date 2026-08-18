@@ -5,6 +5,8 @@
   gather_facts: false
   vars:
     areaforge_controlled_timer: areaforge-update-agent.timer
+    areaforge_legacy_unit_dir: /etc/systemd/system
+    areaforge_legacy_backup_dir: /var/backups/ops/areaforge-legacy-scheduler-units
     areaforge_legacy_units:
       - areaforge-updater.timer
       - areaforge-updater.service
@@ -53,6 +55,48 @@
         fail_msg: "Unexpected legacy unit state for {{ item.item }}: {{ item.stdout_lines }}"
       loop: "{{ areaforge_legacy_before.results }}"
 
+    - name: Inspect persistent legacy AreaForge unit files
+      ansible.builtin.stat:
+        path: "{{ areaforge_legacy_unit_dir }}/{{ item }}"
+        follow: false
+      loop: "{{ areaforge_legacy_units }}"
+      register: areaforge_legacy_unit_files
+      check_mode: false
+
+    - name: Require regular legacy unit files or existing persistent masks
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - >-
+            item.stat.isreg or
+            (item.stat.islnk and item.stat.lnk_source == '/dev/null')
+        fail_msg: >-
+          Refusing to replace unexpected legacy unit path
+          {{ item.stat.path | default(areaforge_legacy_unit_dir ~ '/' ~ item.item) }}.
+      loop: "{{ areaforge_legacy_unit_files.results }}"
+
+    - name: Create the root-only legacy unit recovery directory
+      ansible.builtin.file:
+        path: "{{ areaforge_legacy_backup_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Preserve unmasked legacy AreaForge unit definitions
+      ansible.builtin.copy:
+        src: "{{ areaforge_legacy_unit_dir }}/{{ item.item }}"
+        dest: "{{ areaforge_legacy_backup_dir }}/{{ item.item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+        force: true
+      loop: "{{ areaforge_legacy_unit_files.results }}"
+      when:
+        - not ansible_check_mode
+        - item.stat.isreg
+
     - name: Transactionally retire the legacy AreaForge updater scheduler
       block:
         - name: Stop legacy AreaForge updater units
@@ -61,13 +105,23 @@
             state: stopped
           loop: "{{ areaforge_legacy_units }}"
 
-        - name: Disable and mask legacy AreaForge updater units
+        - name: Disable legacy AreaForge updater units
           ansible.builtin.systemd_service:
             name: "{{ item }}"
             enabled: false
-            masked: true
-            daemon_reload: true
           loop: "{{ areaforge_legacy_units }}"
+
+        - name: Install persistent masks for legacy AreaForge updater units
+          ansible.builtin.file:
+            src: /dev/null
+            dest: "{{ areaforge_legacy_unit_dir }}/{{ item }}"
+            state: link
+            force: true
+          loop: "{{ areaforge_legacy_units }}"
+
+        - name: Reload systemd after installing legacy updater masks
+          ansible.builtin.systemd_service:
+            daemon_reload: true
 
         - name: Clear the historical legacy AreaForge updater failure state
           ansible.builtin.command:
@@ -121,6 +175,29 @@
               - "'UnitFileState=enabled' in areaforge_controlled_timer_after.stdout_lines"
           when: not ansible_check_mode
       rescue:
+        - name: Remove masks created for previously unmasked legacy units
+          ansible.builtin.file:
+            path: "{{ areaforge_legacy_unit_dir }}/{{ item.item }}"
+            state: absent
+          loop: "{{ areaforge_legacy_before.results }}"
+          when: "'LoadState=masked' not in item.stdout_lines"
+
+        - name: Restore preserved legacy AreaForge unit definitions
+          ansible.builtin.copy:
+            src: "{{ areaforge_legacy_backup_dir }}/{{ item.item }}"
+            dest: "{{ areaforge_legacy_unit_dir }}/{{ item.item }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "{{ item.stat.mode }}"
+            force: true
+          loop: "{{ areaforge_legacy_unit_files.results }}"
+          when: item.stat.isreg
+
+        - name: Reload systemd after restoring legacy unit definitions
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+
         - name: Restore legacy AreaForge updater units to their captured state
           ansible.builtin.systemd_service:
             name: "{{ item.item }}"

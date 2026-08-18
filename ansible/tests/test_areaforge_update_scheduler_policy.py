@@ -41,12 +41,22 @@ class AreaForgeUpdateSchedulerPolicyTests(unittest.TestCase):
             "ansible.builtin.systemd_service"
         ]
         self.assertEqual(stop["state"], "stopped")
-        policy = block["Disable and mask legacy AreaForge updater units"][
+        policy = block["Disable legacy AreaForge updater units"][
             "ansible.builtin.systemd_service"
         ]
         self.assertFalse(policy["enabled"])
-        self.assertTrue(policy["masked"])
-        self.assertTrue(policy["daemon_reload"])
+
+        mask = block["Install persistent masks for legacy AreaForge updater units"][
+            "ansible.builtin.file"
+        ]
+        self.assertEqual(mask["src"], "/dev/null")
+        self.assertEqual(mask["state"], "link")
+        self.assertTrue(mask["force"])
+
+        reload_systemd = block[
+            "Reload systemd after installing legacy updater masks"
+        ]["ansible.builtin.systemd_service"]
+        self.assertTrue(reload_systemd["daemon_reload"])
 
         assertion = block[
             "Require legacy AreaForge updater units to remain masked and inactive"
@@ -62,6 +72,17 @@ class AreaForgeUpdateSchedulerPolicyTests(unittest.TestCase):
             if task["name"] == "Transactionally retire the legacy AreaForge updater scheduler"
         )
         rescue = {task["name"]: task for task in retirement["rescue"]}
+        remove_masks = rescue[
+            "Remove masks created for previously unmasked legacy units"
+        ]["ansible.builtin.file"]
+        self.assertEqual(remove_masks["state"], "absent")
+
+        restore_definitions = rescue[
+            "Restore preserved legacy AreaForge unit definitions"
+        ]["ansible.builtin.copy"]
+        self.assertTrue(restore_definitions["remote_src"])
+        self.assertTrue(restore_definitions["force"])
+
         restore = rescue["Restore legacy AreaForge updater units to their captured state"][
             "ansible.builtin.systemd_service"
         ]
@@ -71,6 +92,30 @@ class AreaForgeUpdateSchedulerPolicyTests(unittest.TestCase):
         self.assertIn("ansible.builtin.fail", rescue[
             "Stop after restoring the legacy AreaForge scheduler state"
         ])
+
+    def test_unmasked_unit_definitions_are_backed_up_before_retirement(self) -> None:
+        retirement = self.task_names.index(
+            "Transactionally retire the legacy AreaForge updater scheduler"
+        )
+        backup = self.task_names.index(
+            "Preserve unmasked legacy AreaForge unit definitions"
+        )
+        self.assertLess(backup, retirement)
+
+        recovery_dir_task = next(
+            task
+            for task in self.tasks
+            if task["name"] == "Create the root-only legacy unit recovery directory"
+        )
+        recovery_dir = recovery_dir_task["ansible.builtin.file"]
+        self.assertEqual(recovery_dir["mode"], "0700")
+
+        backup_task = self.tasks[backup]
+        backup_module = backup_task["ansible.builtin.copy"]
+        self.assertTrue(backup_module["remote_src"])
+        self.assertEqual(backup_module["mode"], "0600")
+        self.assertIn("not ansible_check_mode", backup_task["when"])
+        self.assertIn("item.stat.isreg", backup_task["when"])
 
 
 if __name__ == "__main__":
