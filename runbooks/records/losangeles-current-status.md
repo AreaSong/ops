@@ -9,6 +9,8 @@
 
 > 状态边界：下方 2026-07-06 的结论代表第一轮单机治理基线。2026-07-29 时第二轮主体、Cloudflare Access 以及本次 Grafana/Prometheus 增量均已完成生产发布与权威回验；按本轮已批准边界可标记为 100%。Account Vault GHCR/migration 发布仍是需要单独批准的高风险专项，不属于本轮完成门禁。第二轮证据见 `runbooks/records/losangeles-round2-governance-20260718.md`。
 
+> 2026-08-19 阶段 9 当前复核见 `runbooks/records/losangeles-standards-09-phase9-20260819.md`。该记录优先于本快照中的旧时间点数据；本轮已完成只读基线核对，尚未对 SSH 来源、主机名、数据盘、数据库运行用户或 Redis 分用户策略做生产变更。
+
 ## 0. 2026-07-29 第二轮收口状态
 
 | 项目 | 当前结论 |
