@@ -3,7 +3,8 @@ set -uo pipefail
 
 readonly CURL_TIMEOUT_SECONDS="${CURL_TIMEOUT_SECONDS:-15}"
 readonly CURL_CONNECT_TIMEOUT_SECONDS="${CURL_CONNECT_TIMEOUT_SECONDS:-5}"
-readonly MAX_RESPONSE_BYTES="${MAX_RESPONSE_BYTES:-65536}"
+# Keep a bounded download while allowing the resume page to include its full HTML.
+readonly MAX_RESPONSE_BYTES="${MAX_RESPONSE_BYTES:-262144}"
 readonly -a TARGETS=(
   "resume|https://resume.areasong.top/|html-marker|JadeAI - AI Resume Builder"
   "account-vault|https://sorryiossearch.areasong.top/health|json-ok|"

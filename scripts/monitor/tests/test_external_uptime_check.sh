@@ -18,6 +18,7 @@ set -u
 url=""
 output_file=""
 header_file=""
+max_filesize=""
 client_id_header=0
 client_secret_header=0
 cache_control_header=0
@@ -30,6 +31,9 @@ for argument in "$@"; do
   if [[ "$previous_argument" == "--dump-header" ]]; then
     header_file="$argument"
   fi
+  if [[ "$previous_argument" == "--max-filesize" ]]; then
+    max_filesize="$argument"
+  fi
   [[ "$argument" == https://* ]] && url="$argument"
   [[ "$argument" == "CF-Access-Client-Id: test-client-id" ]] && client_id_header=1
   [[ "$argument" == "CF-Access-Client-Secret: test-client-secret" ]] && client_secret_header=1
@@ -40,6 +44,10 @@ done
 
 if [[ -z "$url" || -z "$output_file" || -z "$header_file" ]]; then
   printf 'missing URL, --output path, or --dump-header path\n' >&2
+  exit 2
+fi
+if [[ "${EXPECT_MAX_RESPONSE_BYTES:-false}" == true && "$max_filesize" != "262144" ]]; then
+  printf 'unexpected max response size: %s\n' "$max_filesize" >&2
   exit 2
 fi
 if [[ "${EXPECT_NO_CACHE_HEADERS:-false}" == true ]] && \
@@ -128,6 +136,9 @@ run_check success "$WORK_DIR/success.txt"
 
 EXPECT_NO_CACHE_HEADERS=true run_check success "$WORK_DIR/no-cache-headers.txt"
 [ "$(grep -c '^OK' "$WORK_DIR/no-cache-headers.txt")" -eq 6 ]
+
+EXPECT_MAX_RESPONSE_BYTES=true run_check success "$WORK_DIR/max-response-size.txt"
+[ "$(grep -c '^OK' "$WORK_DIR/max-response-size.txt")" -eq 6 ]
 
 CF_ACCESS_REQUIRED=true \
 CF_ACCESS_CLIENT_ID=test-client-id \
