@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+
 import unittest
 from pathlib import Path
 
+
 import yaml
+
+
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -11,10 +15,13 @@ PLAYBOOK = REPO_ROOT / "ansible" / "observability-host-jobs.yml"
 ROLLBACK_PLAYBOOK = REPO_ROOT / "ansible" / "observability-host-jobs-rollback.yml"
 
 
+
+
 class ObservabilityHostJobsTests(unittest.TestCase):
     def setUp(self) -> None:
         plays = yaml.safe_load(PLAYBOOK.read_text(encoding="utf-8"))
         self.play = plays[0]
+
 
     def test_all_host_jobs_are_managed(self) -> None:
         self.assertTrue(self.play["vars"]["compliance_archive_enabled"])
@@ -65,6 +72,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             task_names.index("Install Alertmanager GitHub Issue sync cron jobs"),
         )
 
+
     def test_collector_dependencies_exist(self) -> None:
         for item in self.play["vars"]["collector_files"]:
             source = REPO_ROOT / "observability" / "scripts" / item["name"]
@@ -81,6 +89,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         for cron_name in self.play["vars"]["backup_cron_files"] + self.play["vars"]["compliance_archive_cron_files"]:
             source = REPO_ROOT / "scripts" / "backup" / "cron" / cron_name
             self.assertTrue(source.is_file(), source)
+
 
     def test_minute_collectors_prevent_overlapping_runs(self) -> None:
         managed = set(self.play["vars"]["cron_files"] + self.play["vars"]["alertmanager_github_cron_files"])
@@ -104,6 +113,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             else:
                 self.assertIn("/usr/bin/flock -n /run/lock/", cron, cron_name)
 
+
     def test_heavy_collectors_are_staggered_inside_flock(self) -> None:
         delays = {
             "ops-docker-metrics": 5,
@@ -125,6 +135,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
                 cron_name,
             )
 
+
     def test_weekly_docker_cleanup_is_build_cache_only(self) -> None:
         cron = (REPO_ROOT / "observability" / "cron" / "ops-docker-build-cache-prune").read_text(
             encoding="utf-8"
@@ -143,6 +154,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         self.assertNotIn("volume prune", script)
         self.assertNotIn("system prune", script)
 
+
     def test_validated_generation_is_activated_before_cron_installation(self) -> None:
         task_names = [task.get("name") for task in self.play["tasks"]]
         self.assertIn("Require a clean controller Git worktree", task_names)
@@ -157,6 +169,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         self.assertLess(activation, task_names.index("Install observability cron jobs"))
         self.assertLess(activation, task_names.index("Install validated observability log rotation"))
         self.assertIn("/var/lib/ops/observability-host-jobs", self.play["vars"]["host_jobs_root"])
+
 
         current = "/var/lib/ops/observability-host-jobs/current/"
         cron_paths = [
@@ -173,6 +186,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn(current, content, path.name)
             self.assertNotIn("/opt/ops/observability/scripts/", content, path.name)
 
+
     def test_active_generation_uses_the_unresolved_symlink_target(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
         guard = tasks["Refuse to overwrite an existing inactive generation"]["ansible.builtin.assert"][
@@ -182,9 +196,11 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             "ansible.builtin.set_fact"
         ]["host_jobs_generation_already_active"]
 
+
         for expression in (guard, active):
             self.assertIn("stat.lnk_target", expression)
             self.assertNotIn("stat.lnk_source", expression)
+
 
     def test_activation_gate_is_removed_only_during_generation_switch(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
@@ -192,8 +208,10 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             "Remove the compliance archive activation gate while changing its deployment"
         ]["when"]
 
+
         self.assertIn("compliance_archive_enabled | bool", conditions)
         self.assertIn("not (host_jobs_generation_already_active | bool)", conditions)
+
 
     def test_generation_contains_cron_logrotate_and_checksums(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
@@ -225,6 +243,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn("host_jobs_current", copy["src"])
             self.assertIn("ansible_check_mode", copy["src"])
 
+
     def test_transactional_rollback_playbook_matches_managed_cron(self) -> None:
         rollback = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text(encoding="utf-8"))[0]
         expected_observability = set(
@@ -245,6 +264,36 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         self.assertIn("Restore original backup cron files", rescue_names)
         self.assertIn("Restore original logrotate configuration", rescue_names)
 
+
+
+    def test_rollback_post_switch_verification_is_skipped_in_check_mode(self) -> None:
+        rollback = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text(encoding="utf-8"))[0]
+        block = next(
+            task for task in rollback["tasks"]
+            if task.get("name") == "Atomically switch and install the rollback generation"
+        )
+        activation_tasks = {task["name"]: task for task in block["block"]}
+        for task_name in (
+            "Verify the active rollback pointer",
+            "Verify installed rollback observability cron files",
+            "Verify installed rollback backup cron files",
+            "Verify installed rollback logrotate configuration",
+        ):
+            self.assertEqual(
+                activation_tasks[task_name].get("when"),
+                "not ansible_check_mode",
+            )
+        rollback_tasks = {task["name"]: task for task in rollback["tasks"]}
+        self.assertEqual(
+            rollback_tasks["Report active rollback generation"].get("when"),
+            "not ansible_check_mode",
+        )
+        self.assertEqual(
+            rollback_tasks["Report rollback generation dry-run"].get("when"),
+            "ansible_check_mode",
+        )
+
+
     def test_transactional_rollback_preflight_runs_during_check_mode(self) -> None:
         rollback = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text(encoding="utf-8"))[0]
         tasks = {task.get("name"): task for task in rollback["tasks"]}
@@ -258,6 +307,7 @@ class ObservabilityHostJobsTests(unittest.TestCase):
             self.assertIn(task_name, tasks)
             self.assertIs(tasks[task_name].get("check_mode"), False)
 
+
     def test_git_identity_checks_run_during_check_mode(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
         for task_name in (
@@ -266,6 +316,8 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         ):
             self.assertIn(task_name, tasks)
             self.assertIs(tasks[task_name].get("check_mode"), False)
+
+
 
 
 if __name__ == "__main__":
