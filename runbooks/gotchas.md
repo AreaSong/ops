@@ -54,6 +54,7 @@
 
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
   → 详见 [records/losangeles-standards-09-b3-fstab-uuid-20260706.md](records/losangeles-standards-09-b3-fstab-uuid-20260706.md)
+- **Ansible `systemd_service` 不能可靠强制 mask `/etc/systemd/system` 下的真实 unit 文件**——模块调用 `systemctl mask` 时不带 `--force`，部分版本还会在目标已存在时忽略失败返回，随后只完成 disable；表面显示 changed，运行态却仍不是 masked。清退本地 unit 时必须先保存原文件，再以指向 `/dev/null` 的持久符号链接替换并回验 `LoadState`、`ActiveState` 与 `UnitFileState`，失败时恢复原文件和原状态。
 - **Ansible `stat` 校验相对符号链接时必须使用 `lnk_target`**——`lnk_source` 会把相对目标解析成绝对路径，用它和创建链接时的相对 `src` 比较会误判活动版本并阻断幂等部署；`lnk_target` 才保留链接中原始的相对目标。
 - **带激活门的 Ansible 部署不能在每次运行时无条件先删门再重建**——删除动作必须只在 generation 确实切换时执行；否则重复部署会短暂制造监控误报，check mode 也会永久报告伪变更，掩盖真实配置漂移。
 
