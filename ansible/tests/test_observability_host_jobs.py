@@ -245,6 +245,19 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         self.assertIn("Restore original backup cron files", rescue_names)
         self.assertIn("Restore original logrotate configuration", rescue_names)
 
+    def test_transactional_rollback_preflight_runs_during_check_mode(self) -> None:
+        rollback = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text(encoding="utf-8"))[0]
+        tasks = {task.get("name"): task for task in rollback["tasks"]}
+        for task_name in (
+            "Resolve the original active generation",
+            "Verify target generation checksums",
+            "Verify original generation checksums",
+            "Validate target shell entry points",
+            "Validate target logrotate configuration",
+        ):
+            self.assertIn(task_name, tasks)
+            self.assertIs(tasks[task_name].get("check_mode"), False)
+
     def test_git_identity_checks_run_during_check_mode(self) -> None:
         tasks = {task.get("name"): task for task in self.play["tasks"]}
         for task_name in (

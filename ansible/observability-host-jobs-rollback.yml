@@ -66,6 +66,7 @@
         argv: [/usr/bin/readlink, -f, "{{ host_jobs_current }}"]
       register: original_generation
       changed_when: false
+      check_mode: false
 
     - name: Require the original generation to support transactional rescue
       ansible.builtin.stat:
@@ -88,12 +89,14 @@
         argv: [/usr/bin/sha256sum, --check, generation.sha256]
         chdir: "{{ host_jobs_target }}"
       changed_when: false
+      check_mode: false
 
     - name: Verify original generation checksums
       ansible.builtin.command:
         argv: [/usr/bin/sha256sum, --check, generation.sha256]
         chdir: "{{ original_generation.stdout }}"
       changed_when: false
+      check_mode: false
 
     - name: Discover target shell entry points
       ansible.builtin.find:
@@ -110,11 +113,13 @@
         argv: [/usr/bin/bash, -n, "{{ item.path }}"]
       loop: "{{ target_shell_scripts.files }}"
       changed_when: false
+      check_mode: false
 
     - name: Validate target logrotate configuration
       ansible.builtin.command:
         argv: [/usr/sbin/logrotate, --debug, "{{ host_jobs_target }}/logrotate/ops-observability"]
       changed_when: false
+      check_mode: false
 
     - name: Atomically switch and install the rollback generation
       block:
