@@ -47,6 +47,7 @@ Node Exporter, Blackbox Exporter, Postgres Exporter, and Redis Exporter are reac
 - Sanitized warning/error collection for the four business services, forwarded to Loki as `job="business_errors"`
 - Daily comparison of the deployed Cloudflare proxy CIDRs with the official IPv4/IPv6 lists
 - Optional Alertmanager critical-alert to GitHub Issue synchronization with failure/recovery lifecycle simulation
+- Alertmanager config/template reload and atomically replaced SMTP credential inode freshness checks
 
 ## Textfile metrics
 
@@ -64,6 +65,7 @@ Scripts:
 - `observability/scripts/runtime_snapshot.py`
 - `observability/scripts/business_error_log.py`
 - `observability/scripts/cloudflare_ip_metrics.py`
+- `observability/scripts/alertmanager_runtime_input.py`
 - `observability/scripts/alertmanager_github_issues.py`
 - `observability/scripts/github_external_heartbeat.py` (阶段 7：关闭状态 heartbeat Issue 更新，复用 root-only Issues 凭据)
 
@@ -74,6 +76,7 @@ Cron:
 - Security log and firewall metrics every minute
 - sub2api account-pool symptom metrics every minute
 - Runtime asset snapshot and configuration drift every minute
+- Alertmanager runtime input freshness every minute
 - Sanitized business warning/error collection every minute
 - Business access-log metrics every minute
 - Fail2ban enrichment every five minutes
@@ -84,7 +87,7 @@ Cron:
 - Optional critical-alert GitHub Issue sync every five minutes and monthly failure/recovery simulation
 - Optional external heartbeat Issue update every five minutes; GitHub Actions independently detects stale state
 
-The normal host jobs are always managed. The GitHub Issue sync and external heartbeat jobs are enabled by default and require `/var/lib/areasong-ops/credentials/alertmanager-github.env` to be `root:root 0600`; pass `-e alertmanager_github_issues_enabled=false` to remove them temporarily. AreaSong Ops owns the fixed-purpose credential rotation lifecycle. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed. The heartbeat writes only a timestamp and fixed marker to one closed Issue; it never writes logs or secrets.
+The normal host jobs are always managed. The three GitHub jobs (critical-alert sync, monthly failure/recovery simulation, and external heartbeat) are enabled by default and require `/var/lib/areasong-ops/credentials/alertmanager-github.env` to be `root:root 0600`; pass `-e alertmanager_github_issues_enabled=false` to remove them temporarily. AreaSong Ops owns the fixed-purpose credential rotation lifecycle. The file contains the enable flag, a minimum-scope Issues token, and repository identity; it is never mounted into containers or committed. The heartbeat writes only a timestamp and fixed marker to one closed Issue; it never writes logs or secrets.
 
 ## Daily operations audit
 
@@ -375,6 +378,13 @@ After changing Alertmanager config or templates, validate and recreate Alertmana
 cd /opt/ops/observability
 docker compose up -d --force-recreate --no-deps alertmanager
 ```
+
+An atomically replaced SMTP credential is a new host inode while an existing single-file
+bind mount still references the old inode. Rotate it only with
+`scripts/deploy/rotate-alertmanager-smtp.py`, then recreate Alertmanager as described in
+[`alertmanager-notification-delivery.md`](../runbooks/playbooks/alertmanager-notification-delivery.md).
+The `alertmanager_runtime_input_stale` metric detects both an unreloaded config tree and
+a credential replacement that has not yet been loaded by a recreated container.
 
 After changing Promtail configuration or its position storage mount, validate the
 configuration and recreate Promtail:

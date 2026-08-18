@@ -43,6 +43,7 @@
 | 每日运维与流量审计 | [playbooks/daily-ops-audit.md](playbooks/daily-ops-audit.md) |
 | 外部可用性监控 | [playbooks/github-external-uptime.md](playbooks/github-external-uptime.md) |
 | 可观测告警响应 | [playbooks/observability-alert-response.md](playbooks/observability-alert-response.md) |
+| Alertmanager 邮件投递与独立通知出口 | [playbooks/alertmanager-notification-delivery.md](playbooks/alertmanager-notification-delivery.md) |
 | auditd 安全审计 | [playbooks/auditd-security-audit.md](playbooks/auditd-security-audit.md) |
 | sub2api SLO 与容量 | [playbooks/sub2api-slo-capacity.md](playbooks/sub2api-slo-capacity.md) |
 | 合规日志异地归档 | [playbooks/compliance-log-archive.md](playbooks/compliance-log-archive.md) |

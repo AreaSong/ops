@@ -287,6 +287,26 @@
             "type": "prometheus",
             "uid": "prometheus"
           }
+        },
+        {
+          "expr": "max(alertmanager_runtime_input_stale{kind=\"config\"}) or on() vector(0)",
+          "legendFormat": "配置未加载",
+          "instant": true,
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "max(alertmanager_runtime_input_stale{kind=\"credential\"}) or on() vector(0)",
+          "legendFormat": "凭据未加载",
+          "instant": true,
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
         }
       ],
       "fieldConfig": {
@@ -305,6 +325,54 @@
             "matcher": {
               "id": "byFrameRefID",
               "options": "D"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "E"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "F"
             },
             "properties": [
               {
@@ -1390,6 +1458,15 @@
           "expr": "time() - sub2api_capacity_metrics_last_run_timestamp",
           "legendFormat": "sub2api 容量（5 分钟）",
           "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "time() - alertmanager_runtime_input_last_check_timestamp_seconds",
+          "legendFormat": "Alertmanager 输入检查",
+          "refId": "F",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

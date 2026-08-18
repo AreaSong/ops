@@ -66,6 +66,32 @@ groups:
           description: "Alertmanager 仍使用上一份配置运行；请先校验并重载目标配置，再依赖路由变更。"
           grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
 
+      - alert: AlertmanagerRuntimeInputCheckFailed
+        expr: alertmanager_runtime_input_check_success{job="node"} == 0 or absent(alertmanager_runtime_input_check_success{job="node"}) or time() - alertmanager_runtime_input_last_check_timestamp_seconds{job="node"} > 180
+        for: 5m
+        labels:
+          owner: areasong-ops
+          severity: warning
+          service: alertmanager
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+          summary: "Alertmanager 运行输入检查失效"
+          description: "主机侧检查无法持续确认 Alertmanager 已加载当前配置、模板和 SMTP 凭据；请先恢复采集器再信任加载状态。"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
+      - alert: AlertmanagerRuntimeInputNotLoaded
+        expr: alertmanager_runtime_input_stale{job="node"} == 1
+        for: 5m
+        labels:
+          owner: areasong-ops
+          severity: critical
+          service: alertmanager
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
+          summary: "Alertmanager 尚未加载最新 {{ $labels.kind }} 输入"
+          description: "主机配置、模板或 SMTP 凭据比 Alertmanager 对应加载时间更新；校验后重载配置，凭据原子替换则必须重建 Alertmanager 容器。"
+          grafana_url: "https://monitor.areasong.top/d/losangeles-observability-selfcheck/losangeles-observability-selfcheck?orgId=1&from=now-6h&to=now"
+
       - alert: AlertmanagerNotificationFailures
         expr: sum by (integration) (increase(alertmanager_notifications_failed_total{job="alertmanager"}[10m])) > 0
         for: 0m

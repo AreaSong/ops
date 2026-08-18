@@ -33,6 +33,8 @@
   → 详见 [records/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md](records/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md)
 - **容器日志上限必须写进 compose，不能依赖 daemon 默认值**——依赖隐式默认时，容器迁移/重建到其他环境会丢失限制，json-file 日志无限增长打满磁盘。新增容器统一显式声明 `json-file max-size=50m max-file=5`。
   → 详见 [records/losangeles-standards-09-c4-container-logging-limits-20260705.md](records/losangeles-standards-09-c4-container-logging-limits-20260705.md)
+- **原子替换单文件 bind mount 后，运行中容器仍引用旧 inode**——宿主机路径内容已经更新并不代表容器看到了新文件；配置、证书或凭据采用 `os.replace`/`mv` 原子切换后，必须重建对应容器并从容器运行态回验。只执行 reload 可能继续读取旧挂载内容，导致凭据轮换表面成功、实际持续认证失败。
+  → 详见 [playbooks/alertmanager-notification-delivery.md](playbooks/alertmanager-notification-delivery.md)
 
 ## Nginx
 

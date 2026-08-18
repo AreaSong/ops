@@ -22,6 +22,7 @@
 - auditd、SSH、Fail2ban、UFW：[`auditd-security-audit.md`](auditd-security-audit.md)
 - 每日运维审计：[`daily-ops-audit.md`](daily-ops-audit.md)
 - 外部可用性与证书：[`github-external-uptime.md`](github-external-uptime.md)
+- Alertmanager 邮件、凭据和独立出口：[`alertmanager-notification-delivery.md`](alertmanager-notification-delivery.md)
 - 应用部署或回滚：[`losangeles-standard-app-deploy.md`](losangeles-standard-app-deploy.md)
 
 ## 观测链路根因顺序
