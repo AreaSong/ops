@@ -40,6 +40,7 @@
           - host_jobs_rollback_release_id is match('^[0-9a-f]{40}$')
         fail_msg: Pass -e host_jobs_rollback_release_id=<40-character-commit>.
 
+
     - name: Inspect rollback target and current pointer
       ansible.builtin.stat:
         path: "{{ item }}"
@@ -51,6 +52,7 @@
         - "{{ host_jobs_current }}"
       register: rollback_paths
 
+
     - name: Require a complete inactive rollback generation
       ansible.builtin.assert:
         that:
@@ -61,12 +63,14 @@
           - rollback_paths.results[3].stat.lnk_source != 'generations/' ~ host_jobs_rollback_release_id
         fail_msg: The rollback target must be an existing inactive generation with checksum, cron and logrotate content.
 
+
     - name: Resolve the original active generation
       ansible.builtin.command:
         argv: [/usr/bin/readlink, -f, "{{ host_jobs_current }}"]
       register: original_generation
       changed_when: false
       check_mode: false
+
 
     - name: Require the original generation to support transactional rescue
       ansible.builtin.stat:
@@ -76,6 +80,7 @@
         - "{{ original_generation.stdout }}/logrotate/ops-observability"
       register: original_paths
 
+
     - name: Refuse rollback without a verifiable rescue generation
       ansible.builtin.assert:
         that:
@@ -84,6 +89,7 @@
           - original_paths.results[1].stat.isreg | default(false)
         fail_msg: The current generation predates transactional rollback support.
 
+
     - name: Verify target generation checksums
       ansible.builtin.command:
         argv: [/usr/bin/sha256sum, --check, generation.sha256]
@@ -91,12 +97,14 @@
       changed_when: false
       check_mode: false
 
+
     - name: Verify original generation checksums
       ansible.builtin.command:
         argv: [/usr/bin/sha256sum, --check, generation.sha256]
         chdir: "{{ original_generation.stdout }}"
       changed_when: false
       check_mode: false
+
 
     - name: Discover target shell entry points
       ansible.builtin.find:
@@ -108,6 +116,7 @@
         file_type: file
       register: target_shell_scripts
 
+
     - name: Validate target shell entry points
       ansible.builtin.command:
         argv: [/usr/bin/bash, -n, "{{ item.path }}"]
@@ -115,11 +124,13 @@
       changed_when: false
       check_mode: false
 
+
     - name: Validate target logrotate configuration
       ansible.builtin.command:
         argv: [/usr/sbin/logrotate, --debug, "{{ host_jobs_target }}/logrotate/ops-observability"]
       changed_when: false
       check_mode: false
+
 
     - name: Atomically switch and install the rollback generation
       block:
@@ -132,6 +143,7 @@
             owner: root
             group: root
 
+
         - name: Activate rollback generation
           ansible.builtin.command:
             argv:
@@ -140,6 +152,7 @@
               - "import os, sys; os.replace(sys.argv[1], sys.argv[2])"
               - "{{ host_jobs_root }}/.rollback-current-{{ host_jobs_rollback_release_id }}"
               - "{{ host_jobs_current }}"
+
 
         - name: Install rollback observability cron files
           ansible.builtin.copy:
@@ -151,6 +164,7 @@
             remote_src: true
           loop: "{{ observability_cron_files }}"
 
+
         - name: Install rollback backup cron files
           ansible.builtin.copy:
             src: "{{ host_jobs_target }}/scripts/backup/cron/{{ item }}"
@@ -161,6 +175,7 @@
             remote_src: true
           loop: "{{ backup_cron_files }}"
 
+
         - name: Install rollback logrotate configuration
           ansible.builtin.copy:
             src: "{{ host_jobs_target }}/logrotate/ops-observability"
@@ -170,12 +185,15 @@
             mode: "0644"
             remote_src: true
 
+
         - name: Verify the active rollback pointer
           ansible.builtin.command:
             argv: [/usr/bin/readlink, -f, "{{ host_jobs_current }}"]
           register: active_rollback_generation
           changed_when: false
+          when: not ansible_check_mode
           failed_when: active_rollback_generation.stdout != host_jobs_target
+
 
         - name: Verify installed rollback observability cron files
           ansible.builtin.command:
@@ -186,6 +204,8 @@
               - "/etc/cron.d/{{ item }}"
           loop: "{{ observability_cron_files }}"
           changed_when: false
+          when: not ansible_check_mode
+
 
         - name: Verify installed rollback backup cron files
           ansible.builtin.command:
@@ -196,6 +216,8 @@
               - "/etc/cron.d/{{ item }}"
           loop: "{{ backup_cron_files }}"
           changed_when: false
+          when: not ansible_check_mode
+
 
         - name: Verify installed rollback logrotate configuration
           ansible.builtin.command:
@@ -205,6 +227,7 @@
               - "{{ host_jobs_target }}/logrotate/ops-observability"
               - /etc/logrotate.d/ops-observability
           changed_when: false
+          when: not ansible_check_mode
       rescue:
         - name: Create rescue pointer to the original generation
           ansible.builtin.file:
@@ -215,6 +238,7 @@
             owner: root
             group: root
 
+
         - name: Reactivate the original generation
           ansible.builtin.command:
             argv:
@@ -223,6 +247,7 @@
               - "import os, sys; os.replace(sys.argv[1], sys.argv[2])"
               - "{{ host_jobs_root }}/.rescue-current-{{ original_generation.stdout | basename }}"
               - "{{ host_jobs_current }}"
+
 
         - name: Restore original observability cron files
           ansible.builtin.copy:
@@ -234,6 +259,7 @@
             remote_src: true
           loop: "{{ observability_cron_files }}"
 
+
         - name: Restore original backup cron files
           ansible.builtin.copy:
             src: "{{ original_generation.stdout }}/scripts/backup/cron/{{ item }}"
@@ -244,6 +270,7 @@
             remote_src: true
           loop: "{{ backup_cron_files }}"
 
+
         - name: Restore original logrotate configuration
           ansible.builtin.copy:
             src: "{{ original_generation.stdout }}/logrotate/ops-observability"
@@ -253,10 +280,19 @@
             mode: "0644"
             remote_src: true
 
+
         - name: Report transactional rollback failure
           ansible.builtin.fail:
             msg: Rollback validation failed; the original generation and host files were restored.
 
+
     - name: Report active rollback generation
       ansible.builtin.debug:
         msg: "host_jobs_current={{ host_jobs_current }} generation={{ host_jobs_rollback_release_id }}"
+      when: not ansible_check_mode
+
+
+    - name: Report rollback generation dry-run
+      ansible.builtin.debug:
+        msg: "check mode: rollback preflight passed; no pointer, cron or logrotate changes were made"
+      when: ansible_check_mode
