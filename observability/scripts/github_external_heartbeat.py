@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import json
 import os
 import re
@@ -145,6 +146,10 @@ class JsonHttpClient:
             raise HeartbeatError(f"GitHub API returned HTTP {error.code} for {method} {path}") from error
         except urllib.error.URLError as error:
             raise HeartbeatError(f"GitHub API request failed for {method} {path}: {error.reason}") from error
+        except http.client.IncompleteRead as error:
+            # A truncated GitHub response is a transient API/network failure;
+            # keep cron output actionable without emitting a traceback or body.
+            raise HeartbeatError(f"GitHub API response was incomplete for {method} {path}") from error
         try:
             return json.loads(raw) if raw else {}
         except json.JSONDecodeError as error:

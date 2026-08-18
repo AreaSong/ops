@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import datetime as dt
+import http.client
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from observability.scripts.github_external_heartbeat import (
     MARKER,
     Config,
     HeartbeatError,
     HeartbeatPublisher,
+    JsonHttpClient,
     load_config,
     parse_timestamp,
     render_body,
@@ -74,6 +77,13 @@ class GithubExternalHeartbeatTests(unittest.TestCase):
         with self.assertRaisesRegex(HeartbeatError, "multiple managed"):
             HeartbeatPublisher(self.config, client).publish(self.now)
         self.assertEqual(len(client.calls), 1)
+
+    @mock.patch("urllib.request.urlopen")
+    def test_incomplete_github_response_is_a_controlled_error(self, urlopen: mock.Mock) -> None:
+        urlopen.side_effect = http.client.IncompleteRead(b"partial", 10)
+        client = JsonHttpClient("https://api.github.test", "test-token", 1.0)
+        with self.assertRaisesRegex(HeartbeatError, "response was incomplete"):
+            client.request("GET", "/repos/AreaSong/ops/issues")
 
     def test_config_requires_enabled_token_and_repository_shape(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
