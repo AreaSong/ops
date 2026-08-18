@@ -73,7 +73,11 @@ def verify_smtp_authorization(
         client.ehlo()
         client.starttls(context=ssl.create_default_context())
         client.ehlo()
-        client.login(username, authorization_code)
+        # Some QQ edges close the connection instead of returning an actionable
+        # rejection for AUTH PLAIN. LOGIN preserves the explicit SMTP status.
+        client.user = username
+        client.password = authorization_code
+        client.auth("LOGIN", client.auth_login, initial_response_ok=False)
         client.send_message(message)
 
 

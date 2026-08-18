@@ -15,7 +15,9 @@ SMTP 授权码只允许在交互式隐藏提示中输入，不能进入 Git、�
 1. 查询 `AlertmanagerNotificationFailures` 和最近一小时
    `alertmanager_notifications_failed_total` 增量。
 2. 检查 Alertmanager 日志中的 SMTP 状态码。`535 Login fail` 表示认证被 QQ 拒绝，
-   不能用重启或放宽文件权限代替授权码轮换。
+   不能用重启或放宽文件权限代替授权码轮换。STARTTLS 正常但认证阶段直接断连时，
+   先确认客户端是否选择了 `AUTH PLAIN`；QQ 节点可能在该机制认证失败时直接关闭
+   连接而不返回可诊断状态，阶段 8 轮换工具固定使用 TLS 内的 `AUTH LOGIN`。
 3. 检查 `alertmanager_github_issue_sync_success == 1` 和同步新鲜度，确认独立出口可用。
 4. 检查 `alertmanager_runtime_input_stale`：`config=1` 需要校验并重载，
    `credential=1` 需要重建 Alertmanager 容器。
@@ -30,9 +32,9 @@ cd /opt/ops
 sudo python3 scripts/deploy/rotate-alertmanager-smtp.py
 ```
 
-工具通过隐藏提示读取新授权码，先执行 STARTTLS、认证和测试邮件投递；验证失败时
-不会修改生产凭据。验证成功后创建 root-only 备份并原子替换凭据文件，输出的
-`backup=` 路径是本次回滚点。
+工具通过隐藏提示读取新授权码，先执行 STARTTLS、显式 `AUTH LOGIN` 认证和测试
+邮件投递；验证失败时不会修改生产凭据。验证成功后创建 root-only 备份并原子替换
+凭据文件，输出的 `backup=` 路径是本次回滚点。
 
 单文件 bind mount 绑定的是 inode。凭据原子替换后，运行中容器仍会看到旧 inode，
 因此必须校验配置并仅重建 Alertmanager：

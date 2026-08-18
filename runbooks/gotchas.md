@@ -45,6 +45,11 @@
 
 - **relabel 的 `replacement: $1` 不会自动引用整个匹配值**——配套 `regex` 必须显式包含第一个捕获组（如 `(.+)`）；若写成 `.+`，`$1` 会展开为空，目标标签随即消失。后续再 `labeldrop` 原标签时，原本靠该标签区分的多条序列会发生标签碰撞并静默丢失维度。发布此类变更必须在真实抓取后同时核对新标签数量、旧标签为零和代表性序列基数。
 
+## SMTP
+
+- **QQ SMTP 的 `AUTH PLAIN` 失败可能只表现为连接被关闭**——生产节点曾在 STARTTLS 和二次 EHLO 均成功后，于 `AUTH PLAIN` 阶段直接关闭连接；使用语言库的默认认证优先级会把明确的账号侧拒绝掩盖成网络或防火墙故障。QQ SMTP 客户端应在证书校验通过的 TLS 会话内显式使用 `AUTH LOGIN` 取得可诊断状态，并在写入新凭据前完成认证和测试邮件投递。
+  → 详见 [playbooks/alertmanager-notification-delivery.md](playbooks/alertmanager-notification-delivery.md)
+
 ## 系统 / 启动链路
 
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
