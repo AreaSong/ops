@@ -129,6 +129,9 @@
               - /usr/bin/systemctl
               - reset-failed
               - areaforge-updater.service
+          register: areaforge_reset_failed
+          failed_when: >-
+            areaforge_reset_failed.rc != 0 and "not loaded" not in areaforge_reset_failed.stderr
           changed_when: false
           when: not ansible_check_mode
 
