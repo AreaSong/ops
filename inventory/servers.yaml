@@ -63,6 +63,8 @@ servers:
       github_issue_token_expires_at: "2027-08-12"
       fresh_backup_manifest: "manifests/backup-set-20260819-074357.json"
       incident_response_tabletop: completed
+      cloudflare_access_identity: "song80184@gmail.com"
+      legacy_recoverable_tasks: 4
     notes: >-
       主机名不符合规范；ens3 直接使用公网 23.185.200.12/24，未发现主机级 RFC1918 私网 IP；
       Docker bridge 使用 172.17/18/19/20/21 网段；服务已主要规范到 /opt/services；

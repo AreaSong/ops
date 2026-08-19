@@ -2,7 +2,7 @@
 
 日期：2026-08-19 UTC
 服务器：LosAngeles（23.185.200.12）
-状态：**生产部署与服务器侧灰度验收通过；Cloudflare Access 登录身份待页面终验**
+状态：**生产部署、服务器侧灰度与 Cloudflare Access 页面终验通过；待 PR 合并和生产仓库同步**
 依据：`standards/09-server-ops-handbook.md` 第 14、31 章与附录 A，以及 [历史验收矩阵](losangeles-standards-09-audit.md)
 
 ## 1. 范围与边界
@@ -75,7 +75,7 @@ fresh backup 后 `backup_set_last_success_timestamp` 与
 - SSE 事件流返回 `text/event-stream`；
 - 缺失内部 actor 的 Runner 请求与缺失 Access 身份的 Web API 请求均返回 401。
 
-API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭据模式扫描均为 0；页面存储检查在 Cloudflare Access 登录终验时完成。
+API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭据模式扫描均为 0。Web 源码未使用 `localStorage`、`sessionStorage`、IndexedDB 或 cookie 写入，CSRF 令牌仅保存在前端运行时内存；按浏览器控制边界未读取任何浏览器存储值。
 
 ### 4.2 容器、可观测和入口
 
@@ -104,6 +104,16 @@ API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭�
 - Alertmanager 中为 active，邮件通知失败计数为 0；GitHub Issue 同步最近一次成功，`active=1`、`updated=1`。
 
 结论：这是被正确揭示的历史 SLO 债务，不是阶段 9 回归。保留告警和通知闭环，随 30 天滚动窗口自然恢复或按业务事件单独复盘，不静默、不篡改 SLO。
+
+### 4.5 Cloudflare Access 与控制面页面
+
+- 未登录访问 `ops.areasong.top` 返回 302 并进入 Cloudflare Access；
+- 通过邮箱 OTP 登录后回到 `https://ops.areasong.top/`，页面身份明确为 `song80184@gmail.com`；
+- 页面标题为 `AreaSong Ops`，实时连接正常，操作总览、服务操作、自动任务、凭据轮换、执行记录和变更审计入口可见；
+- AreaForge `1.1.2`、Sub2API `0.1.173` 与两个执行门禁正常展示；
+- Web 源码全量检索未发现浏览器持久化 API，浏览器控制过程未读取 cookie、local/session storage 或其值。
+
+页面保留 4 条阶段 9 部署前的 Sub2API `restore-drill` `failed_recoverable` 历史记录。逐条可见证据均为：在 `preflight` 因旧适配器“契约身份不匹配”终止、后续阶段未开始、生产变更为“无变更证据”。这些记录作为审计轨迹保留，不删除、不篡改；当前 Sub2API inspect、版本检查和服务状态成功。因本轮明确不恢复业务数据库，也不为清空历史状态重跑恢复。
 
 ## 5. 无破坏入侵响应桌面演练
 
@@ -193,7 +203,7 @@ API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭�
 - [x] API、分页、自动任务、凭据摘要与敏感信息非持久化检查；
 - [x] 容器、目标、入口、日志、告警与通知链灰度；
 - [x] 无破坏入侵响应桌面演练；
-- [ ] Cloudflare Access 已登录邮箱与页面存储终验；
+- [x] Cloudflare Access 已登录邮箱、主页面与前端非持久化契约终验；
 - [ ] 最终文档 PR 合并、生产 `/opt/ops` 同步且工作树干净。
 
-当前结论：**服务器侧阶段 9 验收通过；待 Access 页面终验和文档 PR/生产同步后正式关闭。**
+当前结论：**阶段 9 技术验收通过；待文档 PR 合并和生产仓库同步后正式关闭。**
