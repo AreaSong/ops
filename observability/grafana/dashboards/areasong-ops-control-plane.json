@@ -149,14 +149,14 @@
     {
       "id": 14, "type": "state-timeline", "title": "活动凭据轮换状态", "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 0, "y": 25, "w": 12, "h": 5},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_credential_rotation_active{job=\"areasong_ops\"}", "instant": false, "range": true, "legendFormat": "{{credential_type}} / {{state}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_credential_rotation_active{job=\"areasong_ops\"} or on() label_replace(label_replace(vector(0), \"credential_type\", \"none\", \"\", \"\"), \"state\", \"idle\", \"\", \"\")", "instant": false, "range": true, "legendFormat": "{{credential_type}} / {{state}}", "refId": "A"}],
       "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "无活动轮换", "color": "green"}, "1": {"text": "处理中", "color": "orange"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}, "custom": {"fillOpacity": 70, "lineWidth": 0, "spanNulls": false}}, "overrides": []},
       "options": {"alignValue": "left", "legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "mergeValues": true, "rowHeight": 0.9, "showValue": "auto", "tooltip": {"mode": "single", "sort": "none"}}
     },
     {
       "id": 15, "type": "timeseries", "title": "凭据轮换持续时间", "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 12, "y": 25, "w": 12, "h": 5},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_credential_rotation_age_seconds{job=\"areasong_ops\"}", "legendFormat": "{{credential_type}} / {{state}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "areasong_ops_credential_rotation_age_seconds{job=\"areasong_ops\"} or on() label_replace(label_replace(vector(0), \"credential_type\", \"none\", \"\", \"\"), \"state\", \"idle\", \"\", \"\")", "legendFormat": "{{credential_type}} / {{state}}", "refId": "A"}],
       "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 43200}, {"color": "red", "value": 86400}]}, "custom": {"lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
     },

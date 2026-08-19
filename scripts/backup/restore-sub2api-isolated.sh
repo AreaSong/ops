@@ -24,7 +24,8 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 result() {
   local summary="$1" data="${2:-}"
   [[ -n "$data" ]] || data='{}'
-  jq -cn --arg summary "$summary" --argjson data "$data" '{ok:true,summary:$summary,data:$data}'
+  jq -cn --arg action "$action" --arg phase "$phase" --arg summary "$summary" --argjson data "$data" \
+    '{schemaVersion:2,action:$action,phase:$phase,ok:true,summary:$summary,data:$data}'
 }
 
 [[ "$action" == prepare || "$action" == restore-drill ]] || fail "unsupported action"

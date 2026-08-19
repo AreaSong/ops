@@ -247,6 +247,22 @@ class DashboardContractTests(unittest.TestCase):
             any("external-uptime.yml" in link.get("url", "") for link in external_links)
         )
 
+    def test_areasong_ops_rotation_panels_define_an_idle_fallback(self) -> None:
+        dashboard = load_dashboard("areasong-ops-control-plane.json")
+        by_title = {
+            panel["title"]: panel for panel in walk_panels(dashboard["panels"])
+        }
+        metrics = {
+            "活动凭据轮换状态": "areasong_ops_credential_rotation_active",
+            "凭据轮换持续时间": "areasong_ops_credential_rotation_age_seconds",
+        }
+
+        for title, metric in metrics.items():
+            expression = by_title[title]["targets"][0]["expr"]
+            self.assertIn(metric, expression)
+            self.assertIn("or on() label_replace(label_replace(vector(0)", expression)
+            self.assertIn('"state", "idle"', expression)
+
     def test_panel_ids_are_unique_and_docker_cache_metrics_are_visible(self) -> None:
         dashboard = json.loads(DASHBOARD_PATH.read_text(encoding="utf-8"))
         panels = list(walk_panels(dashboard["panels"]))

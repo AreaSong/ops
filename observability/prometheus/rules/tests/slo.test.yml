@@ -116,5 +116,5 @@ tests:
             exp_annotations:
               runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/observability-alert-response.md"
               summary: "合成 SLO 错误预算耗尽：areaforge / login"
-              description: "30 天观测窗口至少已覆盖 95%，且 99.9% 可用性错误预算已经耗尽。"
+              description: "30 天观测窗口至少已覆盖 95%，且 99.9% 可用性错误预算已经耗尽；即使当前探针恢复，本告警也会保留到历史失败滚出滚动窗口，请结合当前探针和短窗口燃烧率判断是否仍在故障。"
               grafana_url: "https://monitor.areasong.top/d/losangeles-service-overview/losangeles-service-overview?orgId=1&from=now-30d&to=now"

@@ -124,7 +124,7 @@ printf '9999999999 %s\n' "$file"
         )
         path.chmod(0o755)
 
-    def run_preflight(self, target: str) -> subprocess.CompletedProcess[str]:
+    def adapter_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
         environment.update(
             {
@@ -136,39 +136,36 @@ printf '9999999999 %s\n' "$file"
                 "SUB2API_RESTORE_BACKUP_VOLUMES": str(self.backup_scripts[2]),
             }
         )
+        return environment
+
+    def run_phase(
+        self, action: str, phase: str, target: str = ""
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [str(SCRIPT), "prepare", "preflight", str(self.operation), target, ""],
+            [str(SCRIPT), action, phase, str(self.operation), target, ""],
             text=True,
             capture_output=True,
-            env=environment,
+            env=self.adapter_environment(),
             check=False,
         )
 
+    def run_preflight(self, target: str) -> subprocess.CompletedProcess[str]:
+        return self.run_phase("prepare", "preflight", target)
+
     def run_backup(self) -> subprocess.CompletedProcess[str]:
-        environment = os.environ.copy()
-        environment.update(
-            {
-                "PATH": f"{self.bin_dir}:{environment['PATH']}",
-                "BACKUP_ROOT": str(self.backup_root),
-                "SUB2API_RESTORE_ENV_FILE": str(self.env_file),
-                "SUB2API_RESTORE_BACKUP_POSTGRES": str(self.backup_scripts[0]),
-                "SUB2API_RESTORE_BACKUP_REDIS": str(self.backup_scripts[1]),
-                "SUB2API_RESTORE_BACKUP_VOLUMES": str(self.backup_scripts[2]),
-            }
-        )
-        return subprocess.run(
-            [str(SCRIPT), "prepare", "backup", str(self.operation), "v0.1.173", ""],
-            text=True,
-            capture_output=True,
-            env=environment,
-            check=False,
-        )
+        return self.run_phase("prepare", "backup", "v0.1.173")
+
+    def assert_contract(self, output: dict, action: str, phase: str) -> None:
+        self.assertEqual(output["schemaVersion"], 2)
+        self.assertEqual(output["action"], action)
+        self.assertEqual(output["phase"], phase)
+        self.assertTrue(output["ok"])
 
     def test_prepare_preflight_pins_target_and_production_baseline(self) -> None:
         result = self.run_preflight("v0.1.173")
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
-        self.assertTrue(output["ok"])
+        self.assert_contract(output, "prepare", "preflight")
         self.assertEqual(output["data"]["targetIdentity"]["version"], "0.1.173")
         self.assertEqual(output["data"]["targetIdentity"]["image"], "weishaw/sub2api@sha256:" + "b" * 64)
         state = json.loads((self.operation / "sub2api-drill-state.json").read_text(encoding="utf-8"))
@@ -184,7 +181,9 @@ printf '9999999999 %s\n' "$file"
         result = self.run_backup()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["data"], {})
+        output = json.loads(result.stdout)
+        self.assert_contract(output, "prepare", "backup")
+        self.assertEqual(output["data"], {})
         backups = json.loads((self.operation / "sub2api-drill-backups.json").read_text(encoding="utf-8"))
         self.assertEqual(backups["schemaVersion"], 1)
         self.assertTrue(backups["postgres"]["path"].endswith("sub2api-postgres-test.sql.gz"))
@@ -195,6 +194,12 @@ printf '9999999999 %s\n' "$file"
         result = self.run_preflight("latest")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("target release tag is invalid", result.stderr)
+
+    def test_restore_drill_preflight_returns_matching_v2_identity(self) -> None:
+        result = self.run_phase("restore-drill", "preflight")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_contract(json.loads(result.stdout), "restore-drill", "preflight")
 
     def test_drill_uses_postgres_18_volume_layout_and_retains_diagnostics(self) -> None:
         script = SCRIPT.read_text(encoding="utf-8")

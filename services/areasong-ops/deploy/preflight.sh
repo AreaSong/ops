@@ -16,6 +16,7 @@ UNIT_PATH="${OPS_PREFLIGHT_UNIT_PATH:-/etc/systemd/system/areasong-ops-runner.se
 SOCKET_PATH="${OPS_PREFLIGHT_SOCKET_PATH:-/var/lib/areasong-ops/run/runner.sock}"
 GITHUB_CREDENTIAL_PATH="${OPS_PREFLIGHT_GITHUB_CREDENTIAL_PATH:-/var/lib/areasong-ops/credentials/alertmanager-github.env}"
 CONTAINER_NAME="${OPS_PREFLIGHT_CONTAINER_NAME:-areasong-ops-web}"
+REVISION_VALIDATOR="$SOURCE_DIR/deploy/validate-runtime-revision.sh"
 
 fail() { printf 'preflight failed: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null || fail "missing command: $1"; }
@@ -44,6 +45,8 @@ for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
 require_regular_file "$SOURCE_DIR/deploy/migrate_github_credential.py"
+require_regular_file "$REVISION_VALIDATOR"
+[[ -x "$REVISION_VALIDATOR" ]] || fail "runtime revision validator is not executable"
 jq -e '.schemaVersion == 4 and (.adapters | length > 0) and (.services | length > 0) and
   (.automaticTasks | type == "object")' \
   "$SOURCE_DIR/config/services.example.json" >/dev/null || fail "source service catalog is invalid"
@@ -81,7 +84,8 @@ require_regular_file "$RUNTIME_DIR/.env"
 require_regular_file "$RUNTIME_DIR/compose.yml"
 configured_revision="$(read_env_value OPS_BUILD_REVISION "$RUNTIME_DIR/.env")"
 configured_gid="$(read_env_value OPS_RUNNER_GID "$RUNTIME_DIR/.env")"
-[ "$configured_revision" = "$revision" ] || fail "runtime revision differs from source revision"
+deployed_revision="$configured_revision"
+"$REVISION_VALIDATOR" "$REPO_ROOT" "$revision" "$deployed_revision"
 [ "$configured_gid" = "$group_gid" ] || fail "runtime Runner GID differs from the system group"
 
 systemd-analyze verify "$UNIT_PATH"
@@ -110,7 +114,7 @@ jq -e '.type == "github_alertmanager" and .configured == true and
   fail "credential profile is invalid"
 curl -fsS http://127.0.0.1:9093/-/ready >/dev/null || fail "Alertmanager readiness failed"
 
-docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$revision" '
+docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$deployed_revision" '
   length == 1 and
   .[0].State.Running == true and
   .[0].HostConfig.ReadonlyRootfs == true and
@@ -124,7 +128,7 @@ curl -fsS http://127.0.0.1:3200/healthz >/dev/null || fail "Web health failed"
 metrics="$(curl -fsS http://127.0.0.1:3200/metrics)"
 grep -Fq "component=\"web\",version=" <<<"$metrics" || fail "Web build metric is missing"
 grep -Fq "component=\"runner\",version=" <<<"$metrics" || fail "Runner build metric is missing"
-[ "$(grep -Fc "revision=\"$revision\"" <<<"$metrics")" -eq 2 ] ||
+[ "$(grep -Fc "revision=\"$deployed_revision\"" <<<"$metrics")" -eq 2 ] ||
   fail "Web and Runner revisions do not match the deployed commit"
 
 printf 'runtime preflight: PASS\n'
