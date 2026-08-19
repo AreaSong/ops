@@ -25,10 +25,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install service validation dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes shellcheck
+      - name: Check service validation dependencies
+        run: shellcheck --version
 
       - name: Test Runner and Web backend
         working-directory: services/areasong-ops
