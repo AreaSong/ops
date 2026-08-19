@@ -1,5 +1,7 @@
 # LosAngeles standards/09 验收矩阵
 
+> 本文件是 2026-07-06 的历史基线。2026-08-19 阶段 9 已完成 root-only 复核、fresh backup、AreaSong Ops `8961caf...` 生产部署、灰度与无破坏入侵响应桌面演练；当前事实、风险接受边界和逐项分类以 [losangeles-standards-09-phase9-20260819.md](losangeles-standards-09-phase9-20260819.md) 为准。
+
 更新时间：2026-07-06 04:05 UTC
 服务器：LosAngeles  
 公网 IP：23.185.200.12  

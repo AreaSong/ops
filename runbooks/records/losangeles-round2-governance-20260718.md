@@ -17,7 +17,7 @@
 | 项目 | 结论 |
 | --- | --- |
 | 资产 / 漂移 / cron / 业务日志指标 | 生产 textfile 新鲜；`ops_config_drift > 0` 无序列 |
-| Alertmanager → GitHub Issue | 已启用（PAT 2026-08-19 到期需轮换） |
+| Alertmanager → GitHub Issue | 已启用；当时记录的 PAT 到期日为 2026-08-19，已于 2026-08-19 完成轮换，当前到期日 2027-08-12 |
 | Loki retention | 720h / 30 天（非原计划 7 天） |
 | Cloudflare-only 源站 | `resume`/`sorryiossearch`/`monitor`/`forge` 已生效；台账 `observed_origin_policy` 已晋升 |
 | Cloudflare Access（Grafana） | **2026-07-29 已完成**：仅允许指定邮箱 OTP（6 小时），GitHub 专用 service token 正常探针与故障/恢复演练通过 |
