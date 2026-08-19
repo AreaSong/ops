@@ -290,6 +290,8 @@ class DashboardContractTests(unittest.TestCase):
                 "changes(r2_backup_last_success_timestamp[5m]) > 0",
                 "changes(backup_set_r2_verify_last_success_timestamp[5m]) > 0",
                 "changes(areaforge_restore_drill_last_success_timestamp[5m]) > 0",
+                "changes(areasong_ops_restore_drill_last_success_timestamp_seconds[5m]) > 0",
+                "changes(sub2api_restore_drill_last_success_timestamp_seconds[5m]) > 0",
             },
             "sub2api-slo-capacity.json": {
                 'changes(docker_container_started_at_timestamp_seconds{service="sub2api"}[75s]) > 0',
@@ -440,6 +442,45 @@ class DashboardContractTests(unittest.TestCase):
             by_title["演练来源"]["targets"][0]["expr"],
             "areaforge_restore_drill_last_success_timestamp",
         )
+        recovery_age = {
+            panel["title"]: panel
+            for panel in panels
+            if panel["title"] in {
+                "AreaSong Ops 演练距今(天)",
+                "Sub2API 演练距今(天)",
+                "AreaForge 演练距今(天)",
+            }
+        }
+        self.assertEqual(
+            {
+                title: panel["targets"][0]["expr"]
+                for title, panel in recovery_age.items()
+            },
+            {
+                "AreaSong Ops 演练距今(天)": (
+                    "(time() - areasong_ops_restore_drill_last_success_timestamp_seconds) / 86400"
+                ),
+                "Sub2API 演练距今(天)": (
+                    "(time() - sub2api_restore_drill_last_success_timestamp_seconds) / 86400"
+                ),
+                "AreaForge 演练距今(天)": (
+                    "(time() - areaforge_restore_drill_last_success_timestamp) / 86400"
+                ),
+            },
+        )
+        self.assertEqual(set(recovery_age), {
+            "AreaSong Ops 演练距今(天)",
+            "Sub2API 演练距今(天)",
+            "AreaForge 演练距今(天)",
+        })
+        for panel in recovery_age.values():
+            self.assertEqual(panel["fieldConfig"]["defaults"]["noValue"], "无数据")
+            values = [
+                step["value"]
+                for step in panel["fieldConfig"]["defaults"]["thresholds"]["steps"]
+                if step["value"] is not None
+            ]
+            self.assertEqual(values, [28, 35], panel["title"])
 
     def test_service_overview_handles_normal_and_not_applicable_states(self) -> None:
         path = DASHBOARD_DIR / "losangeles-service-overview.json"

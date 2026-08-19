@@ -75,6 +75,34 @@
         "step": "5m",
         "titleFormat": "AreaForge 恢复演练完成",
         "tagKeys": "service"
+      },
+      {
+        "name": "AreaSong Ops 恢复演练完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "changes(areasong_ops_restore_drill_last_success_timestamp_seconds[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "AreaSong Ops 恢复演练完成",
+        "tagKeys": "service"
+      },
+      {
+        "name": "Sub2API 恢复演练完成",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "yellow",
+        "expr": "changes(sub2api_restore_drill_last_success_timestamp_seconds[5m]) > 0",
+        "step": "5m",
+        "titleFormat": "Sub2API 恢复演练完成",
+        "tagKeys": "service"
       }
     ]
   },
@@ -988,7 +1016,7 @@
     {
       "id": 70,
       "type": "row",
-      "title": "恢复演练与合规（按需）",
+      "title": "AreaForge 恢复演练与合规（按需）",
       "collapsed": true,
       "panels": [
         {
@@ -1015,6 +1043,7 @@
           "fieldConfig": {
             "defaults": {
               "unit": "short",
+              "noValue": "无数据",
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
@@ -1422,6 +1451,221 @@
       "gridPos": {
         "x": 0,
         "y": 28,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 105,
+      "type": "row",
+      "title": "跨服务恢复演练年龄（按需）",
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 106,
+          "type": "stat",
+          "title": "AreaSong Ops 演练距今(天)",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 8,
+            "h": 3
+          },
+          "targets": [
+            {
+              "expr": "(time() - areasong_ops_restore_drill_last_success_timestamp_seconds) / 86400",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "AreaSong Ops"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "无数据",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 28
+                  },
+                  {
+                    "color": "red",
+                    "value": 35
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 107,
+          "type": "stat",
+          "title": "Sub2API 演练距今(天)",
+          "gridPos": {
+            "x": 8,
+            "y": 0,
+            "w": 8,
+            "h": 3
+          },
+          "targets": [
+            {
+              "expr": "(time() - sub2api_restore_drill_last_success_timestamp_seconds) / 86400",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "Sub2API"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "无数据",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 28
+                  },
+                  {
+                    "color": "red",
+                    "value": 35
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "id": 108,
+          "type": "stat",
+          "title": "AreaForge 演练距今(天)",
+          "gridPos": {
+            "x": 16,
+            "y": 0,
+            "w": 8,
+            "h": 3
+          },
+          "targets": [
+            {
+              "expr": "(time() - areaforge_restore_drill_last_success_timestamp) / 86400",
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "AreaForge"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "无数据",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 28
+                  },
+                  {
+                    "color": "red",
+                    "value": 35
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 29,
         "w": 24,
         "h": 1
       }
