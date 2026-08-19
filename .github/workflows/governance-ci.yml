@@ -35,6 +35,9 @@ jobs:
       - name: Test service adapters
         run: python3 -m unittest discover -s services/areasong-ops/adapters/tests -v
 
+      - name: Test deployment revision contract
+        run: python3 -m unittest discover -s services/areasong-ops/deploy/tests -v
+
       - name: Validate service shell entry points
         run: |
           set -euo pipefail
