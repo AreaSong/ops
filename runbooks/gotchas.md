@@ -22,6 +22,8 @@
 
 ## PostgreSQL
 
+- **官方 PostgreSQL 镜像首次初始化时，不能只用 `pg_isready` 判断最终可恢复状态**——entrypoint 会先启动临时 server 执行初始化，再主动关闭并启动最终 server；`pg_isready` 可能在临时窗口提前成功，紧随其后的导入会撞上 socket 关闭。隔离恢复应先等待日志中的初始化完成标志，再用 `psql ... -c 'select 1'` 验证最终 server。
+  → 详见 [records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md](records/losangeles-standards-09-c1h-postgres-isolated-restore-drill-20260706.md)
 - **应用启动内嵌 migration 时，不能直接切纯 CRUD 低权限用户**——migration 需要 DDL 权限，切换后容器持续 unhealthy（`pq: permission denied`）。正确路径：先确认应用能否关闭启动自动 migration 或把迁移拆成独立维护步骤，否则保持管理用户运行。
   → 详见 [records/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md](records/losangeles-standards-09-c2b-sub2api-low-privilege-switch-attempt-20260705.md)
 - **PostgreSQL 大版本升级会破坏 exporter collector 兼容性**——PG 18 移除了 `pg_stat_bgwriter` 的 checkpoint 字段，postgres-exporter v0.15 持续 `collector failed`；需升级 exporter 并按 PG 版本分别配置 collector 开关（`--no-collector.stat_bgwriter` + `--collector.stat_checkpointer`）。同宿主多 PG 版本时 exporter 配置不能复用一套。
