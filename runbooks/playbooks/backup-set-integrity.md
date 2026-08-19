@@ -113,6 +113,17 @@ immutable 模式执行 `PRAGMA integrity_check`、`PRAGMA foreign_key_check`、�
 数据库，也不能作为生产数据库恢复授权。建议至少每月执行一次，并在更改 SQLite schema、
 备份角色或归档结构后立即补做。
 
+## 恢复演练指标边界
+
+恢复成功指标按服务隔离，不能互相替代：
+
+- `areasong_ops_restore_drill_*` 只代表 AreaSong Ops 自身 SQLite 状态的隔离恢复；
+- `sub2api_restore_drill_*` 只代表 Sub2API PostgreSQL、Redis、应用卷和镜像兼容性的隔离恢复；
+- `areaforge_restore_drill_*` 只代表 AreaForge PostgreSQL、上传卷和控制面的隔离恢复。
+
+一个服务的演练成功只刷新该服务对应的时间戳和相关指标，不会刷新其他服务的恢复状态。Grafana
+备份面板因此将三类演练分成独立面板和独立完成注释，避免把单项成功误读为整个恢复体系已验证。
+
 ## 回滚
 
 如 manifest 或 R2 校验任务影响备份窗口：
