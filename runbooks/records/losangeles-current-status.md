@@ -1,6 +1,6 @@
 # LosAngeles 当前运维状态快照
 
-更新时间：2026-07-29 UTC
+更新时间：2026-08-19 UTC
 服务器：LosAngeles
 公网 IP：23.185.200.12
 系统：Ubuntu 24.04
@@ -9,9 +9,24 @@
 
 > 状态边界：下方 2026-07-06 的结论代表第一轮单机治理基线。2026-07-29 时第二轮主体、Cloudflare Access 以及本次 Grafana/Prometheus 增量均已完成生产发布与权威回验；按本轮已批准边界可标记为 100%。Account Vault GHCR/migration 发布仍是需要单独批准的高风险专项，不属于本轮完成门禁。第二轮证据见 `runbooks/records/losangeles-round2-governance-20260718.md`。
 
-> 2026-08-19 阶段 9 当前复核见 `runbooks/records/losangeles-standards-09-phase9-20260819.md`。该记录优先于本快照中的旧时间点数据；本轮已完成只读基线核对，尚未对 SSH 来源、主机名、数据盘、数据库运行用户或 Redis 分用户策略做生产变更。
+> 2026-08-19 阶段 9 最终复核见 `runbooks/records/losangeles-standards-09-phase9-20260819.md`。该记录优先于本快照中的旧时间点数据；服务器侧生产部署、root-only 证据、灰度和桌面演练已通过，Cloudflare Access 登录身份终验与最终文档同步仍在收口。SSH 来源、主机名、数据盘、数据库运行用户和 Redis 分用户策略没有在本轮变更。
 
-## 0. 2026-07-29 第二轮收口状态
+## 0. 2026-08-19 阶段 9 收口状态
+
+| 项目 | 当前结论 |
+| --- | --- |
+| 代码与生产身份 | `/opt/ops` 为干净 `main@8961caf...`；AreaSong Ops Runner/Web 均为 `phase9@8961caf...` |
+| fresh backup | 十角色 `backup-set-20260819-074357.json` 本机校验与 R2 回读 10/10 通过；部署前 SQLite 快照和 `9bc1806...` 回滚点可用 |
+| 控制面 API | 2 个服务、4 个受管对象、2 个自动任务均可读取；tasks/audit/plans/task-events 分页、SSE 和内部身份拒绝契约通过 |
+| 凭据 | GitHub 告警同步 Token 为 root-only 0600，到期日 `2027-08-12`；API、日志和 SQLite 敏感模式扫描为 0 |
+| 容器与监控 | 19 个运行容器全部 healthy，无重启/OOM；Prometheus targets `23/23 up`；Grafana、Alertmanager、Loki、Blackbox、Nginx 健康 |
+| auditd | active/enabled、`lost=0`、7 个规则 key 齐全，Loki 审计探针成功 |
+| Access | 未登录访问已确认 302 到 Cloudflare Access；已登录邮箱与页面存储等待本轮页面终验 |
+| 当前告警 | `SyntheticSloBudgetExhausted` 正确反映 Resume JadeAI 30 天历史可用性约 99.8111%；当前 journey 为 1，告警早于本轮部署，邮件与 GitHub Issue 同步正常，不静默 |
+| 入侵响应 | standards/09 第 14 章无破坏桌面演练完成；厂商无安全组/快照的限制已纳入隔离、取证、默认重装和凭据全轮换决策 |
+| 阶段状态 | 服务器侧验收通过；Access 页面终验、文档 PR 合并和生产仓库同步后关闭阶段 9 |
+
+## 0.1 2026-07-29 第二轮收口状态
 
 | 项目 | 当前结论 |
 | --- | --- |

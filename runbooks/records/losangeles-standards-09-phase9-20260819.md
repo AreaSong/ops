@@ -1,92 +1,199 @@
-# LosAngeles standards/09 阶段 9 当前验收记录
+# LosAngeles standards/09 阶段 9 最终验收记录
 
 日期：2026-08-19 UTC
 服务器：LosAngeles（23.185.200.12）
-状态：**进行中：基线复核已完成，生产变更项按分类处理**
-依据：`standards/09-server-ops-handbook.md` 31 章与附录 A  以及 [历史验收矩阵](losangeles-standards-09-audit.md)
+状态：**生产部署与服务器侧灰度验收通过；Cloudflare Access 登录身份待页面终验**
+依据：`standards/09-server-ops-handbook.md` 第 14、31 章与附录 A，以及 [历史验收矩阵](losangeles-standards-09-audit.md)
 
-## 1. 本轮目标与证据边界
+## 1. 范围与边界
 
-本记录用于把阶段 9 的每个标准项明确归类为：
+本阶段完成 standards/09 全量复核、root-only 证据补齐、AreaSong Ops 主线部署、生产灰度验收和无破坏入侵响应桌面演练。
 
-- **已完成**：有当前生产证据，且无需额外条件；
-- **风险接受**：当前单机模型下有明确边界和补偿控制；
-- **维护窗口**：需要停机、重启、迁移或其他生产变更；
-- **应用待配合**：需要上游应用提供配置或迁移能力；
-- **厂商限制 / 用户暂缓**：服务器或云控制面无法提供，或用户明确暂缓；
-- **待补证据**：实现可能存在，但当前证据不足，不能宣称完成。
+本轮明确没有执行以下操作：
 
-本轮先执行只读核对，不改变 SSH、主机名、数据盘、数据库权限、Redis 用户、Docker daemon 或云资源。
+- 未恢复或改写任何业务数据库；
+- 未修改 SSH 来源、主机名、数据盘、数据库权限、Redis 用户、Docker daemon 或云资源；
+- 未实际隔离主机、轮换凭据、重装主机或触发业务更新动作；
+- 未为消除告警而静默或修改现有告警规则。
 
-## 2. 2026-08-19 当前生产事实
+分类口径：
 
-| 检查项 | 当前事实 | 证据结论 |
+- **已完成**：存在当前生产证据；
+- **风险接受**：单机模型或业务约束下有明确补偿控制；
+- **维护窗口 / 应用待配合**：需另行批准或上游能力；
+- **厂商限制 / 用户暂缓**：当前控制面无法提供，或用户已明确暂缓。
+
+## 2. fresh backup 与回滚点
+
+部署前于 2026-08-19 07:43-07:44 UTC 完成 fresh backup：
+
+| 证据 | 结果 |
+|---|---|
+| 完整备份集 | `manifests/backup-set-20260819-074357.json` |
+| 必需角色 | 10/10，本机完整性验证通过 |
+| R2 异地校验 | 上传后重新下载并逐件 SHA-256 校验，10/10 通过 |
+| AreaSong Ops SQLite 一致性快照 | `/var/lib/areasong-ops/snapshots/ops-20260819T074334Z.db` |
+| 部署回滚点 | `/var/backups/ops/deployments/areasong-ops-20260819T074334Z-9bc1806ef0d0276f7efc7e8663cb3dc364773d40` |
+
+fresh backup 后 `backup_set_last_success_timestamp` 与
+`backup_set_r2_verify_last_success_timestamp` 均在本轮验收窗口内，原先接近 24 小时 RPO 的四条备份 Warning 已清除。
+
+## 3. AreaSong Ops 生产部署
+
+目标 revision：`8961cafcea1ab013bd974825a3554b076bff7249`。
+
+部署前门禁：
+
+- 12 项适配器测试通过；
+- 生产 revision 对应适配器 ShellCheck 通过；
+- `CGO_ENABLED=0 go test ./...` 通过；
+- Web `npm ci`、lint、typecheck、build 通过；
+- Runner/Web 均从固定 revision 构建；
+- 部署前回滚制品 10 项 SHA-256 复核通过。
+
+运行态：
+
+| 组件 | 当前身份 | 运行结论 |
 |---|---|---|
-| 主机与系统 | `LosAngeles`；Ubuntu 24.04.4 LTS；内核 `6.8.0-136-generic` | 非 EOL，运行正常 |
-| 时间 | `Etc/UTC`；NTP synchronized；`unattended-upgrades` active/enabled | 已完成 |
-| 存储 | 仅 `/dev/sda1`，约 58G；已用约 41G（71%） | 独立数据盘仍是结构性缺口 |
-| 网络监听 | 公网主要为 TCP 22/80/443；业务、数据库、监控服务为本机或容器网络 | 端口收敛仍有效；SSH 来源仍为 Anywhere |
-| 安全服务 | `fail2ban` active；`auditd` active/enabled | auditd 服务状态已确认，规则与事件管道仍需 root 级抽查 |
-| 容器运行 | 当前 SSH 用户无 Docker socket 权限，未绕过 root-only 边界 | 容器镜像/重启/OOM 需 root 级证据 |
-| Prometheus | readiness 200；active targets 23 个且全部 `up`；firing alerts 0 | 当前观测栈健康 |
-| Alertmanager / Loki | readiness 分别为 200 / 200 | 当前通知与日志入口健康 |
-| Grafana | HTTP API `/api/health` 200；版本 11.6.16 | 当前 Grafana 健康 |
-| Sub2API | `http://127.0.0.1:8080/health` 返回 200、`{"status":"ok"}` | 业务健康；运行镜像 digest 尚需 root 级核对 |
-| AreaForge / Ops | AreaForge Web 3020 返回 200；Ops 3200 返回 200 | 入口可达；页面级 Access 仍按专门验收记录判断 |
-| 代码基线 | GitHub `origin/main=8961caf`，PR #336/#337/#338 已进入主分支；生产 `/opt/services/areasong-ops/.env` 与 `/healthz` 均为 `9bc1806` / `phase6-prebuild` | **生产控制面部署漂移**：代码已合并但 Web/Runner 尚未切到最新主线 |
+| `/opt/ops` | `main@8961caf...`，工作树干净 | 与 GitHub 主线一致 |
+| Runner | `phase9@8961caf...` | active/enabled，`NRestarts=0`，退出码 0 |
+| Web | `areasong-ops-web:8961caf...`；image ID `sha256:272f05de...` | healthy，非 root `65532:65532`，只读 rootfs，非 privileged，无 Docker Socket、OOM 或重启 |
+| 其他业务容器 | AreaForge、Sub2API 及其数据库/Redis 的容器 ID、启动时间未变化 | 本轮只重启 Runner、只重建 Web |
 
-## 3. 附录 A 逐项分类
+`services/areasong-ops/deploy/preflight.sh runtime` 通过；自动回滚未触发。
 
-| # | 标准项 | 当前分类 | 当前证据 / 边界 | 下一步 |
+## 4. 生产灰度验收
+
+### 4.1 控制面 API 与状态恢复
+
+- `/v1/services`：2 个服务，AreaForge `1.1.2`、Sub2API `0.1.173`，状态检查均成功，无活动任务；
+- `/v1/objects`：4 个受管对象，状态检查均成功；
+- `/v1/automatic-tasks`：`docker-metrics`、`runtime-snapshot` 均启用、健康且按每分钟 cron 运行；
+- `/v1/alerts`：控制面映射返回正常；
+- 凭据摘要：GitHub 告警同步 Token 已配置，到期日 `2027-08-12`，响应不含 secret；
+- tasks、audit、plans 与 task-events 的分页、offset、`hasMore` 契约通过；
+- SSE 事件流返回 `text/event-stream`；
+- 缺失内部 actor 的 Runner 请求与缺失 Access 身份的 Web API 请求均返回 401。
+
+API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭据模式扫描均为 0；页面存储检查在 Cloudflare Access 登录终验时完成。
+
+### 4.2 容器、可观测和入口
+
+- 19 个运行容器全部 healthy，无异常重启、OOM 或 restarting；
+- Prometheus active targets `23/23 up`；
+- Prometheus、Alertmanager、Loki、Grafana、Blackbox、Nginx 均通过 readiness/health；
+- `nginx -t` 通过；
+- `ops.areasong.top` 与 `monitor.areasong.top` 的未登录请求均 302 到 Cloudflare Access；
+- Runner/Web 部署后无 warning、error、fatal 或 panic 日志；
+- auditd active/enabled，`lost=0`，7 个规则 key 齐全；审计日志到 Loki 的探针成功。
+
+### 4.3 备份与恢复证据
+
+- fresh manifest 与 R2 回读验证均新鲜；
+- `areasong_ops_restore_drill_last_success_timestamp_seconds` 存在，最近一次隔离恢复演练仍在 35 天门限内；
+- 本轮没有恢复生产数据库，也没有用备份覆盖运行态。
+
+### 4.4 当前一条真实告警
+
+验收时存在一条 `SyntheticSloBudgetExhausted`：
+
+- 对象：`resume-jadeai / public-home`；
+- 当前合成 journey 值为 `1`，服务和容器当前健康；
+- 30 天可用性约 `99.8111%`，覆盖率约 `95.2778%`，历史错误预算确已耗尽；
+- 告警从 2026-08-19 05:39 UTC 起在 Prometheus firing，早于 07:59 UTC 的阶段 9 部署；
+- Alertmanager 中为 active，邮件通知失败计数为 0；GitHub Issue 同步最近一次成功，`active=1`、`updated=1`。
+
+结论：这是被正确揭示的历史 SLO 债务，不是阶段 9 回归。保留告警和通知闭环，随 30 天滚动窗口自然恢复或按业务事件单独复盘，不静默、不篡改 SLO。
+
+## 5. 无破坏入侵响应桌面演练
+
+演练场景：假设同时出现陌生 root 进程、异常外连和未知 `authorized_keys`。
+
+本演练只走决策与门禁，没有实际隔离、快照、轮换、重装或恢复。
+
+### 5.1 发现与定性
+
+1. 以 Prometheus/Alertmanager、Loki、auditd、Fail2ban、Nginx 和主机进程/连接快照作为交叉信号；不以“重启后消失”作为排障方式。
+2. 立即建立 UTC 时间线，区分入侵入口、权限级别、数据访问、持久化、横向移动和备份污染范围。
+3. 证据只读导出到机器外，记录 SHA-256；不从可疑主机复制可执行文件到新环境运行。
+
+### 5.2 隔离决策
+
+标准动作是保留管理来源后切断其他入出站，不重启、不关机。当前厂商不提供安全组或云防火墙，因此真实事件优先级为：
+
+1. 联系厂商在宿主/网络侧停止路由并保留管理通道；
+2. 厂商无法及时处理时，评估主机侧 UFW 临时隔离，但不把已失陷主机上的防火墙视为可信边界；
+3. 启动干净替代机和 DNS/入口切换预案，不继续依赖受影响主机承载业务。
+
+### 5.3 证据保全
+
+厂商没有快照能力，不能声称已具备云盘快照取证。补偿流程：
+
+- 外部收集进程、连接、登录、timer/cron、审计和近期文件元数据；
+- 每份证据生成 SHA-256、记录 UTC 时间和采集人；
+- 写入独立受控存储，禁止覆盖；
+- 业务备份与取证副本分开，避免把可疑可执行内容带入恢复集。
+
+### 5.4 凭据全轮换计划
+
+一旦确认主机失陷，以下类别全部按已泄露处理：SSH key/信任关系、Cloudflare Access/API/R2、GitHub deploy key/PAT、SMTP、PostgreSQL、Redis、Grafana/应用管理员、x-ui/xray、TLS 私钥和所有应用 secret。
+
+轮换顺序为：先建立干净控制面和逃生通道，再轮换外部控制面与备份凭据，然后数据组件与应用凭据，最后撤销旧凭据并验证旧凭据不可用。任何 secret 均不进入聊天、Git、命令行历史或演练记录。
+
+### 5.5 重建与恢复门禁
+
+- 默认重装，不在已获 root 权限的主机上“清理后继续用”；
+- 新机按 standards/09 基线初始化，从受控 Git 和固定 digest 重建；
+- 只恢复经过完整性验证的数据与配置，不恢复来自受侵主机的可执行文件；
+- 所有凭据完成轮换并验证旧凭据失效；
+- 业务 health、关键路径、19 个容器、23 个 Prometheus target、日志/告警、fresh backup 与 R2 回读全部通过后才能切流；
+- 留存事件时间线、根因、影响范围、恢复点和 48 小时复盘。
+
+演练结论：流程可执行；厂商缺少网络侧隔离与快照仍是结构性限制，当前以厂商人工协作、外部取证、默认重装和异地备份补偿，不能表述为等价于安全组与云快照。
+
+## 6. 附录 A 最终分类
+
+| # | 标准项 | 最终分类 | 当前证据 / 边界 | 后续触发条件 |
 |---:|---|---|---|---|
-| 1 | 多 AZ、到期计费告警、抢占式实例治理 | 风险接受 + 用户暂缓 | 当前单机；账单/到期按用户要求暂缓；未发现第二台实例 | 有 HA 或账单需求时单独立项 |
-| 2 | UTC、时间同步、系统/数据/日志/应用分离 | 已完成（数据盘除外） | UTC、NTP、应用与日志路径已确认；无独立 `/data` | 数据增长后维护窗口迁移 |
-| 3 | 独立数据盘、UUID+nofail、磁盘/inode 监控 | 部分完成 / 风险接受 | UUID 与容量/inode 监控已有；只有系统盘 | 规划独立 `/data` 并做迁移演练 |
-| 4 | 软件源、GPG、禁止 curl|bash | 已完成 | 受控仓库已有检查，未发现明显违规安装链 | 月度审计持续执行 |
-| 5 | 命名、台账、到期/欠费双告警 | 部分完成 / 厂商限制 | 台账已补 owner/provider/region；主机名保留 `LosAngeles`；账单能力未启用 | 维护窗口改名；云侧能力变化后补告警 |
-| 6 | VPC/安全组/公网入口/IPv6 | 部分完成 / 厂商限制 | 主机无 RFC1918 私网；UFW 与 22/80/443 收敛有效；云厂商无安全组能力 | 保持主机补偿控制 |
-| 7 | SSH、账号、MFA、最小权限 | 已完成基础项 / SSH 来源风险接受 | root/password 禁用、密钥登录、云主账号 MFA；22 尚未限源 | 固定出口 IP 后收敛来源 |
-| 8 | 防火墙默认拒绝、数据组件不公网 | 已完成 | 当前公网监听核对符合 22/80/443；数据组件本机/容器网络 | 持续做端口漂移审计 |
-| 9 | 域名、证书、Nginx 流程 | 已完成 | 证书监控、Nginx 配置检查和 Cloudflare 台账已有 | 持续观察续期 |
-| 10 | AppArmor / auditd | 基本完成 / 待补证据 | AppArmor 与 auditd 服务 active/enabled；规则 key、lost、Loki 管道未做本轮 root 级抽查 | 只读 auditd playbook 验收 |
-| 11 | 凭据不入 Git、secret 600 | 已完成 | 既有备份/SMTP/Access 边界与 root-only 约束已记录 | Token 到期日需重新读取并更新台账 |
-| 12 | 入侵响应与凭证全轮换 | 文档完成 / 演练待做 | runbook 已存在，未做桌面演练 | 无破坏桌面演练 |
-| 13 | 服务路径、自启、健康检查 | 已完成基础项 / 容器证据待补 | systemd、健康端点、Prometheus targets 正常；容器清单需 root 权限 | root 级运行态快照 |
-| 14 | Compose、日志上限、镜像可追溯 | 基本完成 / digest 待补证据 | daemon/Compose 日志策略已有记录；当前镜像 digest 未从 root 运行态重读 | root 级 `docker inspect` |
-| 15 | 数据库/Redis 专属账号与无 DDL | 部分完成 / 应用待配合 | Redis 阶段 1 ACL 已持久化；Sub2API 仍需启动 migration，不能直接切 runtime 低权限 | 上游提供 migration-only 或关闭自动 migration 后再切换 |
-| 16 | 配置 Git 化与 IaC 审阅 | 已完成 | `/opt/ops` Git 化，主线 8961caf 已同步 | 保持提交/回滚纪律 |
-| 17 | 制品追溯与 CI 最小权限 | 部分完成 | digest 与控制面发布记录已有；通用 CI/CD 制品链仍不完整 | 另立 CI/CD 供应链专项 |
-| 18 | 变更五要素、回滚、一次一变更 | 已完成 | runbook、fresh backup、回滚点和阶段门禁已使用 | 持续执行 |
-| 19 | 备份失败告警与脚本入 Git | 已完成 | 本机/R2/应用级恢复演练及告警链已有 | 持续检查 RPO |
-| 20 | 日志上限与 180 天审计留存 | 基本完成 / 防篡改归档待增强 | journald、logrotate、Docker、Loki 基线已有；同机 Loki 不等于 WORM | 有合规要求时接入独立归档 |
-| 21 | node exporter、探活、证书、告警可达 | 已完成当前运行态 | 23 targets up、firing 0、Grafana/Alertmanager/Loki readiness 200 | 持续噪声复盘 |
-| 22 | OOM 归因 | 未触发 / 流程待验证 | 当前无已知 OOM；已有 runbook | 发生事件时按模板复盘 |
-| 23 | 核心服务无单点 / 主从监控 | 单机风险接受 | 当前只有一台主机；备份与恢复补偿有效 | 有 SLA/预算后做 HA |
-| 24 | 异云备份与恢复演练 | 已完成 | 本机、R2、隔离 Postgres、应用级演练均有记录 | 有第二台机器时做跨机实演 |
-| 25 | 自动安全更新与 CVE 流程 | 已完成 | `unattended-upgrades` active/enabled；CVE 流程已记录 | 持续补丁日 |
-| 26 | 止血优先与复盘 | 文档完成 / 真实事件待触发 | standards 与 postmortem 模板已存在 | 真实 P0/P1 后 48h 复盘 |
-| 27 | 环境隔离、灰度、回切点 | 部分完成 / 单机风险接受 | 控制面有灰度和回滚；当前无第二生产/测试环境 | 多环境时补云侧隔离 |
-| 28 | 离职回收、退役、AI 变更批准 | 文档完成 | 流程、root-only 和共享终端授权已记录 | 按事件执行 |
+| 1 | 多 AZ、到期计费、抢占式治理 | 风险接受 + 用户暂缓 | 当前单机；账单/到期暂缓 | 有 SLA、预算或第二台机器时立项 |
+| 2 | UTC、时间同步、目录分离 | 已完成（数据盘除外） | UTC、NTP、应用与日志路径正常 | 数据增长后迁移独立数据盘 |
+| 3 | 独立数据盘、UUID、容量/inode | 部分完成 / 风险接受 | UUID 与监控已完成；仅系统盘 | 有数据盘与维护窗口时迁移 |
+| 4 | 软件源、GPG、禁止 curl\|bash | 已完成当前核对 | 受控仓库未发现违规安装链 | 月度审计 |
+| 5 | 命名、台账、到期/欠费 | 部分完成 / 用户暂缓 | 台账完整；主机名保留；账单暂缓 | 维护窗口或用户重启该专项 |
+| 6 | VPC/安全组/公网入口/IPv6 | 厂商限制 + 补偿控制 | 无私网/安全组；UFW、端口收敛有效 | 更换厂商或新增网络控制面 |
+| 7 | SSH、账号、MFA、最小权限 | 已完成基础项 / 风险接受 | 禁 root/password；密钥登录；22 未限源 | 固定出口 IP 后限源 |
+| 8 | 防火墙默认拒绝、数据组件不公网 | 已完成 | 公网仅主要 22/80/443；数据组件内网 | 持续端口漂移审计 |
+| 9 | 域名、证书、Nginx | 已完成 | 证书监控、Cloudflare 台账、`nginx -t` 通过 | 持续续期观察 |
+| 10 | AppArmor / auditd | 已完成当前单机基线 | auditd active/enabled、`lost=0`、7 keys、Loki 探针成功 | 持续月度审计 |
+| 11 | secret 与凭据生命周期 | 已完成当前闭环 | root-only 0600；GitHub Token 到期 2027-08-12；网页类型化轮换 | 到期前轮换并撤销旧 Token |
+| 12 | 入侵响应与全量轮换 | 已完成文档与桌面演练 | 无破坏演练完成；厂商隔离/快照能力有限 | 年度重演；真实事件按流程执行 |
+| 13 | 服务路径、自启、健康 | 已完成 | Runner/Web 与 19 个容器健康；23 targets up | 持续巡检 |
+| 14 | Compose、日志、镜像追溯 | 已完成当前运行态 | digest、日志上限、端口、加固均有 root 证据 | 每次升级同样复核 |
+| 15 | 数据库/Redis 专属账号与无 DDL | 部分完成 / 应用待配合 | Redis ACL 已持久化；Sub2API 启动 migration 仍需管理权限 | 上游提供 migration-only/关闭自动 migration |
+| 16 | 配置 Git 化与 IaC | 已完成 / IaC 不适用 | `/opt/ops` Git 化且与主线一致 | 多机后评估 Ansible/Terraform |
+| 17 | 制品追溯与 CI 最小权限 | 部分完成 | 当前 digest 与发布记录可追溯；通用供应链未全量建设 | 新 CI/CD 项目单独立项 |
+| 18 | 变更五要素、回滚、一次一变更 | 已完成 | fresh backup、回滚点、单服务灰度均执行 | 持续执行 |
+| 19 | 备份失败告警与脚本入 Git | 已完成 | 十角色 manifest、R2 回读、指标和告警在线 | 持续 RPO 观察 |
+| 20 | 日志上限与长期审计 | 基本完成 / 防篡改待增强 | journald/logrotate/Docker/Loki 完成；同机 Loki 非 WORM | 有合规要求时做独立对象锁归档 |
+| 21 | exporter、探活、证书、通知 | 已完成当前运行态 | 23/23 up；通知失败 0；GitHub Issue 同步成功 | 继续处理真实 SLO 告警 |
+| 22 | OOM 归因 | 未触发 / 流程已具备 | 当前 OOM 0 | 真实事件按模板复盘 |
+| 23 | 核心服务无单点 | 单机风险接受 | 异地备份与恢复演练补偿 | 有 SLA/预算时做 HA |
+| 24 | 异云备份与恢复演练 | 已完成单机模型 | 本机/R2/隔离恢复均有证据 | 有第二台机器时做跨机实演 |
+| 25 | 安全更新与 CVE | 已完成 | 自动安全更新和周镜像扫描在线 | 持续补丁日 |
+| 26 | 止血优先与复盘 | 文档完成 / 事件触发 | 流程与模板具备 | 真实 P0/P1 后 48 小时复盘 |
+| 27 | 环境隔离、灰度、回切 | 部分完成 / 单机风险接受 | 控制面灰度和回滚完成；无第二生产环境 | 多环境时补云侧隔离 |
+| 28 | 离职回收、退役、AI 批准 | 文档完成 | root-only 与共享终端授权执行有效 | 按事件执行 |
 
-## 4. 当前仍不能宣称完成的证据
+## 7. 完成门禁
 
-1. root-only Docker 运行态（镜像 digest、异常重启、OOM、所有容器健康）尚未在本轮读取。
-2. auditd 的规则 key、`lost=0`、审计管道到 Loki 的新鲜度尚未在本轮读取。
-3. GitHub Token 实际到期日与生产凭据路径尚未从服务器重新读取；台账中的 `2026-08-19` 视为疑似滞后，不能据此判断轮换失败。
-4. Sub2API 当前实际版本与 `/opt/services`、`/opt/ops` 两份 Compose 的 digest 一致性尚未在 root 级读取。
-5. 生产 AreaSong Ops Web/Runner 仍报告 `phase6-prebuild@9bc1806`，与 `origin/main=8961caf` 不一致；需单独走部署门禁。
-6. 独立数据盘、SSH 来源限制、主机名、单机 HA、Redis 分用户 ACL、Sub2API runtime 低权限均不是本轮无确认可直接完成的项目。
+- [x] root 级运行态快照与逐项对账；
+- [x] Token 到期日、Sub2API digest、容器与 auditd 证据回写；
+- [x] AreaSong Ops Runner/Web 与 `origin/main@8961caf` 一致；
+- [x] fresh backup、本机校验、R2 回读和回滚点；
+- [x] API、分页、自动任务、凭据摘要与敏感信息非持久化检查；
+- [x] 容器、目标、入口、日志、告警与通知链灰度；
+- [x] 无破坏入侵响应桌面演练；
+- [ ] Cloudflare Access 已登录邮箱与页面存储终验；
+- [ ] 最终文档 PR 合并、生产 `/opt/ops` 同步且工作树干净。
 
-## 5. 阶段 9 完成门禁
-
-阶段 9 只有在以下条件满足后才能关闭：
-
-- [ ] 完成一次 root 级只读运行态快照，并与本矩阵逐项对账；
-- [ ] 将 Token 到期日、Sub2API digest、容器清单和 auditd 规则写回台账；
-- [ ] AreaSong Ops Web/Runner 运行身份与 `origin/main` 一致，并完成生产灰度验收；
-- [ ] 对维护窗口、应用配合、厂商限制和用户暂缓项保留明确决策记录；
-- [ ] 做一次无破坏入侵响应桌面演练；
-- [ ] 运行全量健康、告警、备份新鲜度和恢复证据检查；
-- [ ] 生产仓库、文档、台账与 `origin/main` 一致，工作树干净。
-
-当前结论：**阶段 9 尚未关闭，当前完成度为“基线审计完成，证据补齐和最终门禁待完成”。**
+当前结论：**服务器侧阶段 9 验收通过；待 Access 页面终验和文档 PR/生产同步后正式关闭。**

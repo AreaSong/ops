@@ -175,6 +175,8 @@ services:
       runtime_compose: /opt/services/sub2api/compose.yml
       controlled_compose: /opt/ops/services/sub2api/compose.yml
       containers: [sub2api]
+      observed_version: "0.1.173"
+      observed_image_digest: "sha256:7a924a8ecd5ad103d7b2730a3e5f94db5d4f09bb8273f0298ac3e13380bdb3a1"
     ports:
       - { bind: 127.0.0.1, host_port: 8080, container_port: 8080, protocol: tcp, exposure: loopback }
     data: { type: files, path: /var/lib/sub2api/data, classification: confidential }
@@ -243,7 +245,7 @@ services:
     observability:
       prometheus_jobs: [prometheus, alertmanager, loki, promtail, node, blackbox_https]
       dashboards: [losangeles-host-overview, losangeles-services-backups, losangeles-service-overview, losangeles-observability-selfcheck]
-      notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/var/lib/areasong-ops/credentials/alertmanager-github.env root:root 0600，由 AreaSong Ops 类型化轮换，fine-grained PAT 仅 AreaSong/ops Issues RW；5 分钟 cron + 每月演练）；阶段 7 heartbeat/dead-man 复用同一 root-only Issues 凭据，外部 workflow 负责失联通知（生产部署待验收）；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
+      notes: "Loki 留存 720h/30 天（2026-07-21 起，此前 168h）；critical 告警→GitHub issue 同步 enabled（/var/lib/areasong-ops/credentials/alertmanager-github.env root:root 0600，由 AreaSong Ops 类型化轮换，fine-grained PAT 仅 AreaSong/ops Issues RW，到期日 2027-08-12；5 分钟 cron + 每月演练）；阶段 7 heartbeat/dead-man 复用同一 root-only Issues 凭据，外部 workflow 负责失联通知，已完成生产部署与验收；镜像 CVE 周扫描 .github/workflows/image-cve-scan.yml。"
 
   - service_id: areasong-ops
     name: AreaSong Ops control plane
@@ -258,6 +260,9 @@ services:
       controlled_compose: /opt/ops/services/areasong-ops/deploy/compose.yml
       containers: [areasong-ops-web]
       config_paths: [/etc/areasong-ops/services.json, /etc/areasong-ops/web.env]
+      observed_version: phase9
+      observed_revision: "8961cafcea1ab013bd974825a3554b076bff7249"
+      observed_web_image_digest: "sha256:272f05de9125728ad51eebf4061a18b4ac584a8db46822578ead47afe7a3fdbc"
     ports:
       - { bind: 127.0.0.1, host_port: 3200, container_port: 8080, protocol: tcp, exposure: loopback }
     data: { type: sqlite-and-operation-evidence, path: /var/lib/areasong-ops, classification: confidential }
@@ -266,7 +271,7 @@ services:
       prometheus_jobs: [areasong_ops, blackbox_access_policy]
       log_jobs: [docker, syslog, nginx]
       dashboards: [areasong-ops-control-plane]
-      notes: "Runner、Web、Prometheus、Blackbox Access 探针、Loki 标签链路与 Grafana 看板已于 2026-08-10 完成生产验收；控制面状态已纳入十角色备份集与隔离恢复演练。"
+      notes: "Runner/Web 已于 2026-08-19 完成 phase9@8961caf 生产部署与灰度验收；Prometheus、Blackbox Access 探针、Loki 标签链路与 Grafana 看板健康；控制面状态已纳入十角色备份集与隔离恢复演练。"
 
 routes:
   - service_id: resume-jadeai

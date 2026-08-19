@@ -92,7 +92,7 @@ collector cron 日志写入 `/var/log/observability/security-metrics.log`，由
 ## 留存与防篡改
 
 `50 MiB x 14` 的本地轮转只提供约 700 MiB 容量上限，不能证明 180 天留存。
-当前 Loki 也只有 7 天热存储，并与被审计主机同机，不能作为防篡改归档。
+当前 Loki 有 30 天热存储，但与被审计主机同机，仍不能作为防篡改归档。
 
 每日敏感日志封装、哈希链、Worker 追加式写入和独立只读回验见
 `runbooks/playbooks/compliance-log-archive.md`。Cloudflare R2 当前不支持 Object Lock；若要求
