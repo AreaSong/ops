@@ -231,10 +231,22 @@ YAML
     drill_compose up -d postgres redis
     postgres_id="$(drill_compose ps -q postgres)"
     redis_id="$(drill_compose ps -q redis)"
-    for _ in $(seq 1 90); do docker exec "$postgres_id" pg_isready -U postgres -d postgres >/dev/null 2>&1 && break; sleep 1; done
-    if ! docker exec "$postgres_id" pg_isready -U postgres -d postgres >/dev/null; then
+    postgres_final_ready() {
+      docker logs "$postgres_id" >"$work_dir/postgres-init.log" 2>&1 || return 1
+      grep -Fq 'PostgreSQL init process complete; ready for start up.' "$work_dir/postgres-init.log" || return 1
+      docker exec "$postgres_id" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atc 'select 1' >/dev/null 2>&1
+    }
+    postgres_ready=0
+    for _ in $(seq 1 90); do
+      if postgres_final_ready; then
+        postgres_ready=1
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$postgres_ready" -ne 1 ]]; then
       capture_diagnostics postgres "$postgres_id"
-      fail "isolated PostgreSQL did not become ready; diagnostics retained in operation directory"
+      fail "isolated PostgreSQL did not reach final ready state; diagnostics retained in operation directory"
     fi
     gzip -dc "$postgres_backup" | docker exec -i "$postgres_id" psql -v ON_ERROR_STOP=1 -U postgres -d postgres >/dev/null
     for _ in $(seq 1 60); do docker exec "$redis_id" redis-cli ping >/dev/null 2>&1 && break; sleep 1; done
