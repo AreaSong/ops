@@ -206,6 +206,8 @@ printf '9999999999 %s\n' "$file"
 
         self.assertIn("pgdata:/var/lib/postgresql\n", script)
         self.assertNotIn("pgdata:/var/lib/postgresql/data", script)
+        self.assertIn("project=\"ops-sub2api-$(printf '%s' \"$operation_dir\" | sha256sum", script)
+        self.assertNotIn("basename \"$operation_dir\"", script)
         self.assertIn('isolated-compose.template.yml', script)
         self.assertIn('capture_diagnostics postgres "$postgres_id"', script)
         self.assertIn('capture_diagnostics redis "$redis_id"', script)

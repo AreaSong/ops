@@ -131,7 +131,7 @@ case "$phase" in
     [[ -f "$state_file" && ! -L "$state_file" && -f "$backup_file" && ! -L "$backup_file" ]] || fail "drill inputs are missing"
     work_dir="$(mktemp -d "$operation_dir/sub2api-restore.XXXXXXXX")"
     chmod 0700 "$work_dir"
-    project="ops-sub2api-$(basename "$operation_dir" | tr -cd 'a-zA-Z0-9' | tail -c 24)"
+    project="ops-sub2api-$(printf '%s' "$operation_dir" | sha256sum | awk '{print substr($1, 1, 16)}')"
     compose_file="$work_dir/compose.yml"
     capture_diagnostics() {
       local service="$1" container_id="$2"
