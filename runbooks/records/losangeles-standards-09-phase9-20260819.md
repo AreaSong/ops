@@ -2,7 +2,7 @@
 
 日期：2026-08-19 UTC
 服务器：LosAngeles（23.185.200.12）
-状态：**生产部署、服务器侧灰度与 Cloudflare Access 页面终验通过；待 PR 合并和生产仓库同步**
+状态：**已完成：PR #350 已合并，生产仓库已同步，源码与运行时身份已分离核对，最终验收通过**
 依据：`standards/09-server-ops-handbook.md` 第 14、31 章与附录 A，以及 [历史验收矩阵](losangeles-standards-09-audit.md)
 
 ## 1. 范围与边界
@@ -40,7 +40,7 @@ fresh backup 后 `backup_set_last_success_timestamp` 与
 
 ## 3. AreaSong Ops 生产部署
 
-目标 revision：`8961cafcea1ab013bd974825a3554b076bff7249`。
+运行时目标 revision：`8961cafcea1ab013bd974825a3554b076bff7249`。
 
 部署前门禁：
 
@@ -55,12 +55,12 @@ fresh backup 后 `backup_set_last_success_timestamp` 与
 
 | 组件 | 当前身份 | 运行结论 |
 |---|---|---|
-| `/opt/ops` | `main@8961caf...`，工作树干净 | 与 GitHub 主线一致 |
+| `/opt/ops` | `main` 包含 `c98c3fb` 与本次收口提交，工作树干净 | PR #350 及阶段 9 文档收口后的 GitHub 主线 |
 | Runner | `phase9@8961caf...` | active/enabled，`NRestarts=0`，退出码 0 |
 | Web | `areasong-ops-web:8961caf...`；image ID `sha256:272f05de...` | healthy，非 root `65532:65532`，只读 rootfs，非 privileged，无 Docker Socket、OOM 或重启 |
 | 其他业务容器 | AreaForge、Sub2API 及其数据库/Redis 的容器 ID、启动时间未变化 | 本轮只重启 Runner、只重建 Web |
 
-`services/areasong-ops/deploy/preflight.sh runtime` 通过；自动回滚未触发。
+`services/areasong-ops/deploy/preflight.sh runtime` 通过；自动回滚未触发。本轮 PR 合并后只同步 `/opt/ops` 文档和治理代码，未重建 Runner/Web，故源码 revision 与已部署制品 revision 有意不同。
 
 ## 4. 生产灰度验收
 
@@ -114,6 +114,22 @@ API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭�
 - Web 源码全量检索未发现浏览器持久化 API，浏览器控制过程未读取 cookie、local/session storage 或其值。
 
 页面保留 4 条阶段 9 部署前的 Sub2API `restore-drill` `failed_recoverable` 历史记录。逐条可见证据均为：在 `preflight` 因旧适配器“契约身份不匹配”终止、后续阶段未开始、生产变更为“无变更证据”。这些记录作为审计轨迹保留，不删除、不篡改；当前 Sub2API inspect、版本检查和服务状态成功。因本轮明确不恢复业务数据库，也不为清空历史状态重跑恢复。
+
+### 4.6 PR 合并与生产仓库同步
+
+- PR #350 已在 GitHub 合并并关闭，合并提交为 `c98c3fb12b2cb38bd16eb7ee6827d1df4ad427eb`。
+- 生产 `/opt/ops` 已从 `8961caf` 快进到 `c98c3fb`，随后同步本次文档收口提交，`main...origin/main`，工作树无改动。
+- 同步范围仅为 Git 文档和治理代码；没有重启业务容器、没有重建业务服务，也没有恢复数据库。
+- 最终验收脚本已修正为分别校验源码 `c98c3fb` 与运行时 Runner/Web `8961caf`，避免把文档同步误报为运行身份漂移。
+
+### 4.7 最终验收结果
+
+2026-08-19 10:23:28 UTC 以源码与运行时身份分离后的验收口径重跑：
+
+- `phase9_acceptance=PASS`，`failures=0`，`warnings=1`；
+- 源码 `c98c3fb...` clean，Runner/Web `8961caf...` 身份、systemd、只读 rootfs、非 root、无 Docker Socket 均通过；
+- 19 个容器 healthy、无重启/OOM，Prometheus `23/23 up`，控制面 API、分页、SSE、Access、审计和敏感信息扫描全部通过；
+- 唯一 Warning 为部署前已存在的 `SyntheticSloBudgetExhausted`，保持 firing 以揭示历史 SLO 债务，未被静默或改写。
 
 ## 5. 无破坏入侵响应桌面演练
 
@@ -204,6 +220,6 @@ API 响应、Runner 日志、Web 日志和 SQLite 全表文本值的 Token/凭�
 - [x] 容器、目标、入口、日志、告警与通知链灰度；
 - [x] 无破坏入侵响应桌面演练；
 - [x] Cloudflare Access 已登录邮箱、主页面与前端非持久化契约终验；
-- [ ] 最终文档 PR 合并、生产 `/opt/ops` 同步且工作树干净。
+- [x] PR #350 合并、生产 `/opt/ops` 同步且工作树干净；源码 `c98c3fb` 与运行时制品 `8961caf` 分离核对。
 
-当前结论：**阶段 9 技术验收通过；待文档 PR 合并和生产仓库同步后正式关闭。**
+当前结论：**阶段 9 已完成。** 生产运行态、控制面、可观测性、Access、备份、审计、演练与文档同步均有证据；唯一保留的是部署前已存在且未被静默的 `SyntheticSloBudgetExhausted` 历史 SLO 告警，不构成阶段 9 回归。
