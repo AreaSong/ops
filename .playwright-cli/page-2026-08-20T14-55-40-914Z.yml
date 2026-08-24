@@ -1,0 +1,55 @@
+- generic [ref=e7]:
+  - complementary [ref=e8]:
+    - generic [ref=e13]:
+      - strong [ref=e14]: AreaSong Ops
+      - generic [ref=e15]: LosAngeles
+    - navigation "主导航" [ref=e16]:
+      - button "操作总览" [ref=e17] [cursor=pointer]
+      - button "生命周期" [ref=e24] [cursor=pointer]
+      - button "服务操作" [ref=e30] [cursor=pointer]
+      - button "多服务器" [ref=e44] [cursor=pointer]
+      - button "批量作业" [ref=e51] [cursor=pointer]
+      - button "恢复中心" [ref=e63] [cursor=pointer]
+      - button "配置中心" [ref=e69] [cursor=pointer]
+      - button "自动更新" [ref=e74] [cursor=pointer]
+      - button "受控终端" [ref=e80] [cursor=pointer]
+      - button "受管文件" [active] [ref=e85] [cursor=pointer]
+      - button "Runner 更新" [ref=e92] [cursor=pointer]
+      - button "访问控制" [ref=e99] [cursor=pointer]
+      - button "自动任务" [ref=e103] [cursor=pointer]
+      - button "凭据轮换" [ref=e108] [cursor=pointer]
+      - button "执行记录" [ref=e113] [cursor=pointer]
+      - button "变更审计" [ref=e118] [cursor=pointer]
+    - generic [ref=e124]: 实时连接正常
+  - generic [ref=e130]:
+    - banner [ref=e131]:
+      - generic [ref=e132]: 生产环境
+      - generic [ref=e135]:
+        - navigation "观测入口"
+        - generic "song80184@gmail.com" [ref=e136]
+    - main [ref=e137]:
+      - generic [ref=e227]:
+        - generic [ref=e228]:
+          - generic [ref=e229]:
+            - generic [ref=e230]: 白名单根目录与原子替换
+            - heading "受管文件" [level=1] [ref=e231]
+          - button "刷新受管文件提案" [ref=e232] [cursor=pointer]
+        - generic [ref=e238]:
+          - generic [ref=e239]:
+            - heading "读取白名单路径" [level=2] [ref=e240]
+            - generic [ref=e241]: 只读检查先于提案
+          - generic [ref=e242]:
+            - generic [ref=e243]:
+              - generic [ref=e244]: Root ID
+              - textbox "Root ID" [ref=e245]:
+                - /placeholder: 配置中的 rootId
+            - generic [ref=e246]:
+              - generic [ref=e247]: 相对路径
+              - textbox "相对路径" [ref=e248]:
+                - /placeholder: 留空读取根目录
+            - button "读取" [disabled] [ref=e249]
+        - generic [ref=e252]:
+          - generic [ref=e253]:
+            - heading "文件提案" [level=2] [ref=e254]
+            - generic [ref=e255]: 0 项
+          - generic [ref=e256]: 暂无文件提案

@@ -13,6 +13,7 @@ RUNTIME_DIR="${OPS_PREFLIGHT_RUNTIME_DIR:-/opt/services/areasong-ops}"
 CONFIG_DIR="${OPS_PREFLIGHT_CONFIG_DIR:-/etc/areasong-ops}"
 RUNNER_ROOT="${OPS_PREFLIGHT_RUNNER_ROOT:-/usr/local/libexec/areasong-ops}"
 UNIT_PATH="${OPS_PREFLIGHT_UNIT_PATH:-/etc/systemd/system/areasong-ops-runner.service}"
+UPDATER_UNIT_PATH="${OPS_PREFLIGHT_UPDATER_UNIT_PATH:-/etc/systemd/system/areasong-ops-runner-update@.service}"
 SOCKET_PATH="${OPS_PREFLIGHT_SOCKET_PATH:-/var/lib/areasong-ops/run/runner.sock}"
 GITHUB_CREDENTIAL_PATH="${OPS_PREFLIGHT_GITHUB_CREDENTIAL_PATH:-/var/lib/areasong-ops/credentials/alertmanager-github.env}"
 CONTAINER_NAME="${OPS_PREFLIGHT_CONTAINER_NAME:-areasong-ops-web}"
@@ -45,6 +46,7 @@ for command_name in git jq docker; do require_command "$command_name"; done
 require_regular_file "$SOURCE_DIR/Dockerfile"
 require_regular_file "$SOURCE_DIR/config/services.example.json"
 require_regular_file "$SOURCE_DIR/deploy/migrate_github_credential.py"
+require_regular_file "$SOURCE_DIR/deploy/areasong-ops-runner-update@.service"
 require_regular_file "$REVISION_VALIDATOR"
 [[ -x "$REVISION_VALIDATOR" ]] || fail "runtime revision validator is not executable"
 jq -e '.schemaVersion == 4 and (.adapters | length > 0) and (.services | length > 0) and
@@ -74,8 +76,10 @@ python3 "$SOURCE_DIR/deploy/migrate_github_credential.py" --validate-destination
   --destination-path "$GITHUB_CREDENTIAL_PATH" >/dev/null || fail "GitHub credential schema is invalid"
 grafana_url="$(read_env_value OPS_GRAFANA_URL "$CONFIG_DIR/web.env")"
 [[ "$grafana_url" =~ ^https://[^/?#]+/?$ ]] || fail "Grafana URL must be an HTTPS origin"
-require_owner_mode "$RUNNER_ROOT/areasong-ops-runner" root root 755
+require_owner_mode "$RUNNER_ROOT/runner/areasong-ops-runner" root root 755
+require_owner_mode "$RUNNER_ROOT/areasong-ops-runner-updater" root root 755
 require_owner_mode "$UNIT_PATH" root root 644
+require_owner_mode "$UPDATER_UNIT_PATH" root root 644
 for adapter in "$RUNNER_ROOT"/adapters/*.sh; do
   require_owner_mode "$adapter" root root 755
 done
@@ -88,7 +92,7 @@ deployed_revision="$configured_revision"
 "$REVISION_VALIDATOR" "$REPO_ROOT" "$revision" "$deployed_revision"
 [ "$configured_gid" = "$group_gid" ] || fail "runtime Runner GID differs from the system group"
 
-systemd-analyze verify "$UNIT_PATH"
+systemd-analyze verify "$UNIT_PATH" "$UPDATER_UNIT_PATH"
 docker compose --project-directory "$RUNTIME_DIR" --env-file "$RUNTIME_DIR/.env" \
   -f "$RUNTIME_DIR/compose.yml" config --quiet
 

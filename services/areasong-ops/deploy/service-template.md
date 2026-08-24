@@ -13,7 +13,9 @@
 - 查询 GitHub 最新发布，并读取静态或动态 prepared 记录。
 - 把服务特有的恢复演练、发布准备、更新和回滚委托给固定 hook。
 
-模板不提供任意 Shell、Compose 编辑、生产数据库恢复或自动更新。涉及迁移、认证 smoke、数据一致性和旧版本兼容时，必须提供服务特有 hook。
+模板不提供任意 Shell、任意路径文件写入、生产数据库恢复或自动更新。Compose 内容如需调整，只能走控制面的 `propose`/`validate` 流程：候选内容写入受控提案目录，校验 expected digest、服务 allowlist、Compose 语法和安全边界；摘要进入发布计划并由具备权限的操作者批准后，固定适配器才可在声明的受控路径执行 `apply`。任何 digest 漂移、路径变化、审批过期或验证失败都必须拒绝 apply。涉及迁移、认证 smoke、数据一致性和旧版本兼容时，必须提供服务特有 hook。
+
+生产恢复不属于通用 Compose apply 或 rollback：只能从已验证恢复点创建独立恢复计划，`isolated` 演练和 `production` 恢复分开；生产恢复必须有两名独立确认、备份证据和目标身份复核。批量任务也不由模板隐式开启，必须经过 fleet 目标、DAG、并发、失败策略和变更窗口门禁。
 
 ## 最小声明
 
@@ -33,6 +35,15 @@
   "description": "Demo Web 与 PostgreSQL",
   "template": "compose-service-v1",
   "adapterRef": "compose-service-v1",
+  "tenantId": "production",
+  "serverId": "losangeles",
+  "capabilities": ["docker.compose", "backup", "restore-drill", "lifecycle"],
+  "statePolicy": {
+    "defaultDesired": "running",
+    "maintenanceTtlSeconds": 14400,
+    "drainTimeoutSeconds": 300,
+    "autoReconcile": false
+  },
   "recoveryPointPolicy": {
     "requiredArtifactRoles": ["postgres-demo", "volume-demo-data"],
     "recoverableSeconds": 604800
@@ -63,6 +74,8 @@
 
 完整受管对象目录使用 `schemaVersion: 4`，并在顶层 `adapters` 注册由 root 管理的适配器路径及允许对象类型。对象只能用 `adapterRef` 引用注册项，不能直接声明任意可执行路径。Runner 兼容读取既有 schema 3 服务目录，但所有新增或迁移声明必须采用 schema 4。
 
+对象可以声明 `tenantId`、`serverId` 和 `capabilities`；服务可用 `statePolicy` 指定默认目标状态、维护 TTL、排空超时和是否允许自动协调。`tenantId`/`serverId` 不会把请求变成跨租户或跨服务器授权，实际访问仍由 `access` 的角色绑定和 fleet 状态共同决定。
+
 `objectId` 是稳定治理身份；`metadata` 记录对象类型、环境、责任域、重要级别、生命周期和成熟度。新对象默认使用 `lifecycle: proposed` 与 `maturity: inspect_only`，只开放 `inspect`、`check` 等只读动作；完成接入验证后才能显式提升生命周期和成熟度。`retiring`、`retired`、`disabled` 对象不能开放动作。
 
 `alertPolicy.matchers.service`
@@ -71,6 +84,8 @@
 控制面或恢复失败告警。matcher、告警名和最长 4 小时时长均由声明与观察窗口生成，网页不允许输入。
 
 动作仍在同一服务对象的 `actions` 中声明。更新动作使用 `targetMode: signed_release_tag` 和 `readinessGate: prepared_release`；准备动作使用相同目标格式并在成功后发布动态 prepared 记录。包含 `runtime_mutation` 或 `data_mutation` 的生产变更动作必须声明 60 到 86400 秒的 `observationSeconds`，该值会进入不可变批准摘要。
+
+`metadata.lifecycle: active` 的服务还会得到 Runner 动态生成的 `enter-maintenance`、`drain`、`resume-traffic`、`start`、`stop` 动作。它们不需要复制到 JSON；调用路径仍必须经过预览、RBAC、确认短语、服务锁和审计。维护/排空动作只改变目标状态，启动/停止动作才委托适配器。
 
 ## Hook 契约
 
@@ -104,6 +119,14 @@ Runner 会拒绝缺少 v2 身份、动作/阶段身份不匹配、尾随第二�
 生产变更任务成功只会让计划进入观察状态。观察窗口结束后，Runner 先解除维护静默，再复核活动阻断告警、
 执行固定 inspect 并核对目标版本或运行身份；验证和收口审计在同一事务完成后，计划才进入完成状态。
 任务失败时提前解除静默并进入人工关注。观察期间不得把任务成功当作计划已经收口。
+
+### Compose 受控变更契约
+
+1. `GET`/inspect 只读取当前受控 revision 和运行身份。
+2. `mode: validate` 只解析和检查候选内容，不落盘运行 Compose；`mode: propose` 只在受控提案目录创建带 expected digest 的 revision。
+3. 计划摘要固定候选 digest、目标服务、影响、回滚和观察窗口；批准人必须确认摘要，批准后任何内容变化都会使计划失效。
+4. 受信适配器在 apply 前重新核对 digest、受控路径、容器 allowlist、备份和告警门禁；只允许重建声明的应用服务，不能修改依赖或写任意宿主文件。
+5. apply 后执行 health、smoke、identity 和观察期收口；失败按阶段策略回滚到上一受控 revision，数据库不自动恢复。
 
 发布准备成功后，以原子方式写入：
 

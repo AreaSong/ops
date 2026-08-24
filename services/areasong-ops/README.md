@@ -1,6 +1,8 @@
 # AreaSong Ops
 
-AreaSong Ops 是 `ops.areasong.top` 的受控交互式运维控制面。它只开放 root-only 服务声明中的类型化能力，不提供任意 Shell、文件管理、Compose 编辑、批量更新或数据库自动恢复。
+> 本 README、`config/services.example.json` 和 `deploy/` 文档描述控制面代码与配置的目标状态及验收门禁；它们不是“已部署到生产”的证明。生产上线必须按阶段取得批准并完成只读验收。
+
+AreaSong Ops 是 `ops.areasong.top` 的受控交互式运维控制面。它只开放 root-only 服务声明中的类型化能力：不提供默认任意 Shell 或文件写入；Compose 只能走 propose/validate、摘要审批和受控 apply；生产恢复与多服务器批量均是独立高风险流程。
 
 ## 运行边界
 
@@ -15,6 +17,10 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - Web 只接收并校验 Cloudflare Access JWT，向 Runner 传递邮箱 SHA-256。
 - Web 不接触 Docker Socket、SQLite、备份目录或业务卷。
 - Runner 独占 `/var/lib/areasong-ops/ops.db`，通过持久目录中的 `root:areasong-ops 0660` Socket 提供 API；Runner 重启不会使 Web 的 bind mount 失效。
+- 没有默认的任意 Shell、任意路径文件写入、动态可执行路径或任意 Compose/Kubernetes 目标；所有可执行能力必须来自 root-owned 适配器、声明的路径和固定 allowlist。
+- Compose 编辑只允许提交候选内容或执行离线 validate；只有 expected digest 未漂移、校验通过、计划摘要已批准且满足备份/观察门禁时，受控适配器才可 apply 到声明的 Compose 副本。
+- Kubernetes 目标只接受 `config/services.example.json` 中登记的 cluster/context/namespace、资源 kind 和对象 allowlist；网页输入不能扩大目标范围，默认只做 dry-run/检查。
+- 扩展默认关闭；启用时必须使用受信发布者、签名和 `rootless`/`wasm` 沙箱，扩展权限不能越过对象和租户边界。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
 - 生产变更任务成功后进入声明的观察窗口；到期后重新核对运行身份并原子写入收口审计，才将计划标记为完成。
@@ -34,6 +40,25 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 凭据页仅开放固定的 GitHub 告警 Issue 同步 Token。新值只经 HTTPS、Unix Socket 与 Runner 内存传递，不进入浏览器持久化、SQLite、事件、日志、Git 或普通备份；验证身份、GitHub 签发方到期日、固定仓库访问与 Issues 读写能力后原子切换并执行真实同步，失败自动恢复旧配置。
 - 成功切换后轮换状态保持为“等待撤销旧凭据”；只有 GitHub API 确认旧 Token 已失效，Runner 才删除隔离回滚副本并将轮换标记为完成。
 - Runner 暴露活动轮换状态及持续时间；等待撤销超过 24 小时或进入人工关注状态时，由 Prometheus 唯一规则源告警。
+
+## Schema 4 与控制面能力
+
+完整字段说明、示例和迁移注意事项见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。示例目录现在包含：
+
+- 每个服务/自动任务的 `tenantId`、`serverId`、能力声明；服务还声明 `statePolicy`，但 `autoReconcile` 默认关闭。
+- `access` 租户、principal、角色和对象范围绑定。principal key 是 Cloudflare Access 邮箱规范化后的 SHA-256，不把邮箱明文当作授权标识。
+- `fleet` 的 server/Runner 清单、心跳租约和能力标签；当前示例只登记一台服务器，不代表已启用跨机生产执行。
+- `extensions` 签名与沙箱策略（默认 `enabled: false`）以及受控 Kubernetes 目标清单。
+
+### 生命周期动作
+
+当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。`enter-maintenance`/`drain`/`resume-traffic` 只写入目标状态，`start`/`stop` 才调用服务适配器并执行健康检查。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
+
+### 高风险边界
+
+- 生产恢复不能由普通更新或回滚动作隐式触发；必须选择明确的恢复点和 `production` 模式，执行双人/双确认，完成备份证据、目标身份和影响范围复核。`isolated` 恢复演练与生产恢复严格分开。
+- 多服务器批量是红线能力：必须显式目标 selector/目标列表、DAG、并发上限、失败策略、变更窗口和 canary/观察；禁止通配符扩大范围、默认并行或跨租户混跑。首次接入和生产批量都要单独批准。
+- 任何失败只按声明的阶段策略处理。生产是否已改变不确定时按“已改变”处理，停止自动重试并进入人工核对；不自动恢复业务数据库。
 
 ## 通用服务模板
 
@@ -88,17 +113,15 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 
 ## 部署顺序
 
-1. 备份当前配置、二进制、镜像身份并确认完整备份集。
-2. 创建 `areasong-ops` 系统组和 root-only 目录。
-3. 使用 `deploy/migrate_github_credential.py` 校验旧凭据并将旧 4 键规范化为固定 8 键；迁移工具、两条 cron 与 Runner smoke 都按旧锁、新锁顺序互斥，目标已存在且不一致时禁止覆盖。
-4. 构建并安装 Runner，安装 adapter 和 `services.json`。
-5. `systemd-analyze verify` 后启动 Runner，核对 Socket owner/mode 与 `/healthz`。
-6. `docker compose config --quiet` 后构建、启动 Web，只验证 loopback health。
-7. 安装 Nginx 站点，`nginx -t` 通过后 reload。
-8. 创建 Cloudflare DNS/Access 并完成邮箱、JWT、CSRF 与源站限制验收。
-9. 接入 Prometheus、告警、Grafana、备份和 inventory 后再宣布完成。
+1. **准备与冻结**：确认批准 commit、备份 manifest、当前 Runner/Web/Nginx 身份和回滚窗口；复制配置备份，不改生产流量。
+2. **离线门禁**：校验 JSON/schema、root-owned 路径、适配器契约、Go/适配器/Web 测试、Compose config 和 Nginx test。
+3. **安装但不开放写能力**：创建 root-only 目录，安装 Runner、适配器和 `services.json`；先以 inspect-only/禁用扩展状态启动。
+4. **组件验收**：逐项验证 Socket、非 root 只读 Web、Cloudflare Access、Alertmanager、Prometheus、fleet 心跳和 Kubernetes dry-run 投影。
+5. **受控能力验收**：只在隔离环境验证 Compose propose/validate/摘要审批、生命周期状态转换、备份/恢复演练和批量计划；不执行生产恢复或跨机批量。
+6. **单独变更窗口**：每个生产 update/restart/Compose apply/生产恢复/多服务器批量都单独说明影响、回滚和批准人；观察窗口收口后才记录为完成。
+7. **记录与交接**：更新 inventory、端口、备份和审计记录；没有完成上述门禁时，不得写“生产已部署”。
 
-每一步都是独立生产变更，必须说明影响与回滚并单独批准。首次部署只运行 inspect/check，不用 restart/update/rollback/backup/restore-drill 做 smoke。
+每一步都是独立生产变更，必须说明影响与回滚并单独批准。首次部署只运行 inspect/check 和必要的 dry-run，不用 restart/update/rollback/backup/restore-drill 或生产恢复做 smoke。
 
 ## 回滚
 
@@ -107,5 +130,7 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 - Nginx：恢复上一站点文件，`nginx -t` 后 reload。
 - Access：删除或禁用本 Application 前先确认不会留下公开源站；源站仍由 Cloudflare CIDR allowlist 保护。
 - 保留 SQLite、任务产物与审计；不自动恢复 SQLite 或任何业务数据库。
+- Compose 候选内容或 Kubernetes manifest 只保留带摘要的提案/验证记录；apply 失败时恢复上一受控 revision，不接受直接覆盖运行文件。
+- 生产恢复回滚不是普通版本回滚：停止变更、保留证据并重新走双确认和恢复点核对，不能用旧二进制或批量任务代替。
 
-详细生产检查见 [deploy/deploy-checklist.md](deploy/deploy-checklist.md)，Access 见 [deploy/cloudflare-access.md](deploy/cloudflare-access.md)。
+详细分阶段检查见 [deploy/deploy-checklist.md](deploy/deploy-checklist.md)，schema/生命周期/fleet/Compose/Kubernetes 见 [docs/control-plane-schema.md](docs/control-plane-schema.md)，Access 见 [deploy/cloudflare-access.md](deploy/cloudflare-access.md)。

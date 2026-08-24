@@ -1,6 +1,16 @@
 package model
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"time"
+)
+
+// TrafficAdapterPath is the only executable allowed for the Nginx traffic
+// contract. It is kept in model so control-plane and remote-worker digest
+// calculation do not depend on a config package import.
+const TrafficAdapterPath = "/usr/local/libexec/areasong-ops/adapters/nginx-traffic.sh"
 
 type Risk string
 
@@ -165,21 +175,32 @@ type RecoveryAction struct {
 }
 
 type ApprovalSummary struct {
-	SchemaVersion      int                       `json:"schemaVersion"`
-	Service            string                    `json:"service"`
-	Action             string                    `json:"action"`
-	Target             string                    `json:"target,omitempty"`
-	Risk               Risk                      `json:"risk"`
-	Impact             string                    `json:"impact"`
-	Rollback           string                    `json:"rollback"`
-	Scope              string                    `json:"scope"`
-	Steps              []string                  `json:"steps"`
-	PhaseSemantics     map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
-	ObservationSeconds int                       `json:"observationSeconds,omitempty"`
-	AlertPolicy        AlertPolicyDefinition     `json:"alertPolicy,omitempty"`
-	ConfirmationPhrase string                    `json:"confirmationPhrase,omitempty"`
-	ExpectedBefore     map[string]any            `json:"expectedBefore"`
-	TargetEvidence     map[string]any            `json:"targetEvidence,omitempty"`
+	SchemaVersion       int    `json:"schemaVersion"`
+	Service             string `json:"service"`
+	Action              string `json:"action"`
+	Target              string `json:"target,omitempty"`
+	TrafficPolicyDigest string `json:"trafficPolicyDigest,omitempty"`
+	// Restore fields are part of the signed approval summary.  Keeping them in
+	// the summary (rather than only on the plan envelope) prevents an approval
+	// from being replayed against a different tenant, runner, or before-state.
+	RestoreMode                 string                    `json:"restoreMode,omitempty"`
+	RecoveryPointID             string                    `json:"recoveryPointId,omitempty"`
+	TenantID                    string                    `json:"tenantId,omitempty"`
+	ServerID                    string                    `json:"serverId,omitempty"`
+	ExpectedBeforeDigest        string                    `json:"expectedBeforeDigest,omitempty"`
+	RecoveryPointBindingDigest  string                    `json:"recoveryPointBindingDigest,omitempty"`
+	RecoveryPointEvidenceDigest string                    `json:"recoveryPointEvidenceDigest,omitempty"`
+	Risk                        Risk                      `json:"risk"`
+	Impact                      string                    `json:"impact"`
+	Rollback                    string                    `json:"rollback"`
+	Scope                       string                    `json:"scope"`
+	Steps                       []string                  `json:"steps"`
+	PhaseSemantics              map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
+	ObservationSeconds          int                       `json:"observationSeconds,omitempty"`
+	AlertPolicy                 AlertPolicyDefinition     `json:"alertPolicy,omitempty"`
+	ConfirmationPhrase          string                    `json:"confirmationPhrase,omitempty"`
+	ExpectedBefore              map[string]any            `json:"expectedBefore"`
+	TargetEvidence              map[string]any            `json:"targetEvidence,omitempty"`
 }
 
 type ReleasePlan struct {
@@ -195,6 +216,21 @@ type ReleasePlan struct {
 	ConfirmationPhrase           string          `json:"confirmationPhrase,omitempty"`
 	RequiresConfirmation         bool            `json:"requiresConfirmation"`
 	ApprovedByHash               string          `json:"approvedByHash,omitempty"`
+	SecondApprovedByHash         string          `json:"secondApprovedByHash,omitempty"`
+	RequiresDualApproval         bool            `json:"requiresDualApproval,omitempty"`
+	RequestIdempotencyKey        string          `json:"-"`
+	RequestDigest                string          `json:"-"`
+	RestoreMode                  string          `json:"restoreMode,omitempty"`
+	RecoveryPointID              string          `json:"recoveryPointId,omitempty"`
+	RestoreTenantID              string          `json:"restoreTenantId,omitempty"`
+	RestoreServerID              string          `json:"restoreServerId,omitempty"`
+	RestoreExpectedBeforeDigest  string          `json:"restoreExpectedBeforeDigest,omitempty"`
+	RestoreContractDigest        string          `json:"restoreContractDigest,omitempty"`
+	RestoreRevalidationDigest    string          `json:"restoreRevalidationDigest,omitempty"`
+	RestoreRevalidatedAt         *time.Time      `json:"restoreRevalidatedAt,omitempty"`
+	ExecutedByHash               string          `json:"executedByHash,omitempty"`
+	RestoreOutcome               string          `json:"restoreOutcome,omitempty"`
+	RestoreEvidenceDigest        string          `json:"restoreEvidenceDigest,omitempty"`
 	ApprovedAt                   *time.Time      `json:"approvedAt,omitempty"`
 	InvalidatedReason            string          `json:"invalidatedReason,omitempty"`
 	TaskID                       string          `json:"taskId,omitempty"`
@@ -319,11 +355,15 @@ type RecoveryArtifact struct {
 }
 
 type RecoveryPointEvidence struct {
-	SchemaVersion int                `json:"schemaVersion"`
-	Service       string             `json:"service"`
-	TaskID        string             `json:"taskId"`
-	CreatedAt     time.Time          `json:"createdAt"`
-	Artifacts     []RecoveryArtifact `json:"artifacts"`
+	SchemaVersion        int                `json:"schemaVersion"`
+	Service              string             `json:"service"`
+	TaskID               string             `json:"taskId"`
+	TenantID             string             `json:"tenantId,omitempty"`
+	ServerID             string             `json:"serverId,omitempty"`
+	ExpectedBeforeDigest string             `json:"expectedBeforeDigest,omitempty"`
+	BindingDigest        string             `json:"bindingDigest,omitempty"`
+	CreatedAt            time.Time          `json:"createdAt"`
+	Artifacts            []RecoveryArtifact `json:"artifacts"`
 }
 
 type RecoveryPointPolicy struct {
@@ -335,14 +375,21 @@ type RecoveryPoint struct {
 	ID                    string                `json:"id"`
 	TaskID                string                `json:"taskId"`
 	Service               string                `json:"service"`
+	TenantID              string                `json:"tenantId,omitempty"`
+	ServerID              string                `json:"serverId,omitempty"`
 	Status                string                `json:"status"`
 	Evidence              RecoveryPointEvidence `json:"evidence"`
 	EvidenceDigest        string                `json:"evidenceDigest"`
 	ExpectedBeforeDigest  string                `json:"expectedBeforeDigest"`
+	ExpectedBefore        map[string]any        `json:"expectedBefore,omitempty"`
+	BindingDigest         string                `json:"bindingDigest,omitempty"`
 	RequiredArtifactRoles []string              `json:"requiredArtifactRoles"`
 	CreatedAt             time.Time             `json:"createdAt"`
 	VerifiedAt            *time.Time            `json:"verifiedAt,omitempty"`
 	RecoverableUntil      *time.Time            `json:"recoverableUntil,omitempty"`
+	RestoreOutcome        string                `json:"restoreOutcome,omitempty"`
+	RestoreEvidenceDigest string                `json:"restoreEvidenceDigest,omitempty"`
+	OutcomeAt             *time.Time            `json:"outcomeAt,omitempty"`
 }
 
 type ComposeServiceRuntime struct {
@@ -360,8 +407,53 @@ type ComposeServiceRuntime struct {
 	BackupExecutables        []string `json:"backupExecutables,omitempty"`
 	BackupEvidenceExecutable string   `json:"backupEvidenceExecutable,omitempty"`
 	RestoreDrillExecutable   string   `json:"restoreDrillExecutable,omitempty"`
+	RestoreExecutable        string   `json:"restoreExecutable,omitempty"`
 	PrepareExecutable        string   `json:"prepareExecutable,omitempty"`
 	UpdateExecutable         string   `json:"updateExecutable,omitempty"`
+}
+
+// TrafficPolicy defines the only Nginx surface a service lifecycle action may
+// change. All paths and hostnames are operator-owned declarations; request
+// payloads never supply them.
+type TrafficPolicy struct {
+	AdapterPath      string `json:"adapterPath"`
+	SiteFile         string `json:"siteFile"`
+	IncludeFile      string `json:"includeFile"`
+	Hostname         string `json:"hostname"`
+	MaintenanceFile  string `json:"maintenanceFile"`
+	Marker           string `json:"marker"`
+	DrainTimeoutSecs int    `json:"drainTimeoutSeconds"`
+}
+
+// trafficPolicyDigestPayload intentionally enumerates the adapter wire
+// contract. This keeps unrelated future fields out of the remote execution
+// identity and makes the digest stable across JSON map ordering.
+type trafficPolicyDigestPayload struct {
+	AdapterPath      string `json:"adapterPath"`
+	SiteFile         string `json:"siteFile"`
+	IncludeFile      string `json:"includeFile"`
+	Hostname         string `json:"hostname"`
+	MaintenanceFile  string `json:"maintenanceFile"`
+	Marker           string `json:"marker"`
+	DrainTimeoutSecs int    `json:"drainTimeoutSeconds"`
+}
+
+// TrafficPolicyDigest returns a stable SHA-256 digest for the seven-field
+// traffic adapter contract. Call it after config validation, which fills the
+// fixed adapter path and default drain timeout.
+func TrafficPolicyDigest(policy TrafficPolicy) string {
+	payload := trafficPolicyDigestPayload{
+		AdapterPath:      policy.AdapterPath,
+		SiteFile:         policy.SiteFile,
+		IncludeFile:      policy.IncludeFile,
+		Hostname:         policy.Hostname,
+		MaintenanceFile:  policy.MaintenanceFile,
+		Marker:           policy.Marker,
+		DrainTimeoutSecs: policy.DrainTimeoutSecs,
+	}
+	data, _ := json.Marshal(payload)
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 type ObjectMetadata struct {
@@ -399,6 +491,28 @@ type ServiceDefinition struct {
 	RecoveryPointPolicy    *RecoveryPointPolicy        `json:"recoveryPointPolicy,omitempty"`
 	AlertPolicy            AlertPolicyDefinition       `json:"alertPolicy"`
 	Actions                map[string]ActionDefinition `json:"actions"`
+	// TenantID/ServerID are optional in legacy catalogs and become required
+	// when the multi-tenant/fleet policy is enabled.
+	TenantID            string                 `json:"tenantId,omitempty"`
+	ServerID            string                 `json:"serverId,omitempty"`
+	Capabilities        []string               `json:"capabilities,omitempty"`
+	StatePolicy         *StatePolicyDefinition `json:"statePolicy,omitempty"`
+	TrafficPolicy       *TrafficPolicy         `json:"trafficPolicy,omitempty"`
+	TrafficPolicyDigest string                 `json:"trafficPolicyDigest,omitempty"`
+	// AutoUpdate is deliberately separate from the service action map. An
+	// enabled policy may create a release plan, but it never bypasses the
+	// normal preview, approval, backup, and observation gates.
+	AutoUpdate *AutoUpdatePolicy `json:"autoUpdate,omitempty"`
+}
+
+// PolicyDigest returns the normalized traffic policy digest carried by a
+// service declaration. The fallback keeps manually constructed legacy test
+// catalogs useful while validated catalogs retain the explicit field.
+func (service ServiceDefinition) PolicyDigest() string {
+	if service.TrafficPolicy == nil {
+		return ""
+	}
+	return TrafficPolicyDigest(*service.TrafficPolicy)
 }
 
 type ServiceView struct {
@@ -413,6 +527,10 @@ type ServiceView struct {
 	StatusError          string                      `json:"statusError,omitempty"`
 	ActiveTaskID         string                      `json:"activeTaskId,omitempty"`
 	RollbackSourceTaskID string                      `json:"rollbackSourceTaskId,omitempty"`
+	TenantID             string                      `json:"tenantId,omitempty"`
+	ServerID             string                      `json:"serverId,omitempty"`
+	State                *ServiceState               `json:"state,omitempty"`
+	Drift                *StateDrift                 `json:"drift,omitempty"`
 }
 
 type ManagedObjectView struct {
@@ -425,6 +543,10 @@ type ManagedObjectView struct {
 	Status       map[string]any              `json:"status,omitempty"`
 	StatusError  string                      `json:"statusError,omitempty"`
 	ActiveTaskID string                      `json:"activeTaskId,omitempty"`
+	TenantID     string                      `json:"tenantId,omitempty"`
+	ServerID     string                      `json:"serverId,omitempty"`
+	State        *ServiceState               `json:"state,omitempty"`
+	Drift        *StateDrift                 `json:"drift,omitempty"`
 }
 
 type AutomaticTaskView struct {
@@ -453,36 +575,45 @@ type Preview struct {
 }
 
 type Task struct {
-	ID                string           `json:"id"`
-	IdempotencyKey    string           `json:"-"`
-	RequestHash       string           `json:"-"`
-	ActorHash         string           `json:"actorHash"`
-	Service           string           `json:"service"`
-	Action            string           `json:"action"`
-	Target            string           `json:"target,omitempty"`
-	Risk              Risk             `json:"risk"`
-	State             TaskState        `json:"state"`
-	CurrentPhase      string           `json:"currentPhase,omitempty"`
-	Summary           string           `json:"summary,omitempty"`
-	Error             string           `json:"error,omitempty"`
-	PreviewID         string           `json:"previewId"`
-	PlanID            string           `json:"planId,omitempty"`
-	PlanDigest        string           `json:"planDigest,omitempty"`
-	ParentTaskID      string           `json:"parentTaskId,omitempty"`
-	Snapshot          map[string]any   `json:"snapshot,omitempty"`
-	Stages            []TaskStage      `json:"stages,omitempty"`
-	RunnerOwner       string           `json:"-"`
-	HeartbeatAt       *time.Time       `json:"heartbeatAt,omitempty"`
-	ProductionChanged bool             `json:"productionChanged"`
-	Retryable         bool             `json:"retryable"`
-	FailureCode       string           `json:"failureCode,omitempty"`
-	RollbackAvailable bool             `json:"rollbackAvailable"`
-	RollbackReason    string           `json:"rollbackReason,omitempty"`
-	RecoveryPointID   string           `json:"recoveryPointId,omitempty"`
-	RecoveryActions   []RecoveryAction `json:"recoveryActions,omitempty"`
-	CreatedAt         time.Time        `json:"createdAt"`
-	StartedAt         *time.Time       `json:"startedAt,omitempty"`
-	FinishedAt        *time.Time       `json:"finishedAt,omitempty"`
+	ID                          string           `json:"id"`
+	IdempotencyKey              string           `json:"-"`
+	RequestHash                 string           `json:"-"`
+	ActorHash                   string           `json:"actorHash"`
+	Service                     string           `json:"service"`
+	Action                      string           `json:"action"`
+	Target                      string           `json:"target,omitempty"`
+	Risk                        Risk             `json:"risk"`
+	State                       TaskState        `json:"state"`
+	CurrentPhase                string           `json:"currentPhase,omitempty"`
+	Summary                     string           `json:"summary,omitempty"`
+	Error                       string           `json:"error,omitempty"`
+	PreviewID                   string           `json:"previewId"`
+	PlanID                      string           `json:"planId,omitempty"`
+	PlanDigest                  string           `json:"planDigest,omitempty"`
+	TrafficPolicyDigest         string           `json:"trafficPolicyDigest,omitempty"`
+	ParentTaskID                string           `json:"parentTaskId,omitempty"`
+	Snapshot                    map[string]any   `json:"snapshot,omitempty"`
+	Stages                      []TaskStage      `json:"stages,omitempty"`
+	RunnerOwner                 string           `json:"-"`
+	HeartbeatAt                 *time.Time       `json:"heartbeatAt,omitempty"`
+	ProductionChanged           bool             `json:"productionChanged"`
+	Retryable                   bool             `json:"retryable"`
+	FailureCode                 string           `json:"failureCode,omitempty"`
+	RollbackAvailable           bool             `json:"rollbackAvailable"`
+	RollbackReason              string           `json:"rollbackReason,omitempty"`
+	RecoveryPointID             string           `json:"recoveryPointId,omitempty"`
+	RestoreMode                 string           `json:"restoreMode,omitempty"`
+	RestoreTenantID             string           `json:"restoreTenantId,omitempty"`
+	RestoreServerID             string           `json:"restoreServerId,omitempty"`
+	RestoreExpectedBeforeDigest string           `json:"restoreExpectedBeforeDigest,omitempty"`
+	RestoreContractDigest       string           `json:"restoreContractDigest,omitempty"`
+	RestoreRevalidatedAt        *time.Time       `json:"restoreRevalidatedAt,omitempty"`
+	RestoreOutcome              string           `json:"restoreOutcome,omitempty"`
+	RestoreEvidenceDigest       string           `json:"restoreEvidenceDigest,omitempty"`
+	RecoveryActions             []RecoveryAction `json:"recoveryActions,omitempty"`
+	CreatedAt                   time.Time        `json:"createdAt"`
+	StartedAt                   *time.Time       `json:"startedAt,omitempty"`
+	FinishedAt                  *time.Time       `json:"finishedAt,omitempty"`
 }
 
 type Event struct {
@@ -506,9 +637,19 @@ type AuditEntry struct {
 }
 
 type PreviewRequest struct {
-	Service string `json:"service"`
-	Action  string `json:"action"`
-	Target  string `json:"target,omitempty"`
+	Service                     string `json:"service"`
+	Action                      string `json:"action"`
+	Target                      string `json:"target,omitempty"`
+	IdempotencyKey              string `json:"-"`
+	RequestDigest               string `json:"-"`
+	RestoreMode                 string `json:"-"`
+	RecoveryPointID             string `json:"-"`
+	RequiresDualApproval        bool   `json:"-"`
+	RestoreTenantID             string `json:"-"`
+	RestoreServerID             string `json:"-"`
+	RestoreExpectedBeforeDigest string `json:"-"`
+	RestoreContractDigest       string `json:"-"`
+	RestoreEvidenceDigest       string `json:"-"`
 }
 
 type StartTaskRequest struct {
@@ -531,7 +672,8 @@ type ClosePlanRequest struct {
 }
 
 type RecoveryRequest struct {
-	Action string `json:"action"`
+	Action         string `json:"action"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 }
 
 type AdapterResult struct {

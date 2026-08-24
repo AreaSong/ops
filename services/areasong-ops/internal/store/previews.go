@@ -18,6 +18,16 @@ type PreviewInput struct {
 	ConfirmationHash string
 }
 
+func (store *Store) GetPreview(ctx context.Context, id string) (model.Preview, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Preview{}, err
+	}
+	defer tx.Rollback()
+	preview, _, _, err := previewForUpdate(ctx, tx, id)
+	return preview, err
+}
+
 func HashConfirmation(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
@@ -145,6 +155,9 @@ func (store *Store) StartTask(
 		Service: preview.Service, Action: preview.Action, Target: preview.Target,
 		Risk: preview.Risk, State: model.TaskQueued, PreviewID: preview.ID,
 		Snapshot: preview.Snapshot, Stages: stages, CreatedAt: now,
+	}
+	if preview.Snapshot != nil {
+		task.TrafficPolicyDigest, _ = preview.Snapshot["trafficPolicyDigest"].(string)
 	}
 	return task, true, nil
 }

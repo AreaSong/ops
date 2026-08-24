@@ -14,6 +14,170 @@
       "allowedTypes": ["automatic_task"]
     }
   },
+  "access": {
+    "enforced": true,
+    "defaultTenant": "production",
+    "principals": {
+      "1f9f71bd340ebf8794dd8cda3a0bc438888023d7877def3e138736fdbabe2938": {
+        "emailHash": "1f9f71bd340ebf8794dd8cda3a0bc438888023d7877def3e138736fdbabe2938",
+        "tenantId": "production",
+        "roles": ["viewer"]
+      },
+      "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727": {
+        "emailHash": "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727",
+        "tenantId": "production",
+        "roles": ["viewer"]
+      }
+    },
+    "tenants": {
+      "production": {
+        "id": "production",
+        "displayName": "AreaSong Production",
+        "status": "active",
+        "createdAt": "2026-08-20T00:00:00Z",
+        "updatedAt": "2026-08-20T00:00:00Z"
+      }
+    },
+    "roles": {
+      "viewer": {
+        "id": "viewer",
+        "displayName": "只读观察者",
+        "permissions": ["ops.read", "ops.inspect"],
+        "builtIn": true
+      },
+      "operator": {
+        "id": "operator",
+        "displayName": "运维操作员",
+        "permissions": ["ops.read", "ops.inspect", "ops.lifecycle", "ops.recover"],
+        "builtIn": true
+      },
+      "release-manager": {
+        "id": "release-manager",
+        "displayName": "发布管理员",
+        "permissions": ["ops.read", "ops.inspect", "ops.lifecycle", "ops.deploy", "ops.batch", "ops.recover"],
+        "builtIn": true
+      },
+      "platform-admin": {
+        "id": "platform-admin",
+        "displayName": "平台管理员",
+        "permissions": ["*", "access.manage", "fleet.manage", "config.manage"],
+        "builtIn": true
+      }
+    },
+    "bindings": [
+      {
+        "id": "binding-production-release",
+        "subject": "1f9f71bd340ebf8794dd8cda3a0bc438888023d7877def3e138736fdbabe2938",
+        "tenantId": "production",
+        "roleId": "release-manager",
+        "objectIds": [
+          "service:areaforge",
+          "service:sub2api",
+          "automatic-task:runtime-snapshot",
+          "automatic-task:docker-metrics"
+        ],
+        "createdAt": "2026-08-20T00:00:00Z",
+        "createdBy": "bootstrap"
+      },
+      {
+        "id": "binding-production-recovery-approver",
+        "subject": "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727",
+        "tenantId": "production",
+        "roleId": "release-manager",
+        "objectIds": [
+          "service:areaforge",
+          "service:sub2api"
+        ],
+        "createdAt": "2026-08-20T00:00:00Z",
+        "createdBy": "bootstrap"
+      }
+    ]
+  },
+  "fleet": {
+    "enabled": true,
+    "heartbeatTimeoutSeconds": 90,
+    "allowRemoteRunners": false,
+    "requireMTLS": true,
+    "inventory": {
+      "servers": [
+        {
+          "id": "losangeles",
+          "hostname": "LosAngeles",
+          "environment": "production",
+          "region": "us-ca-los-angeles",
+          "address": "23.185.200.12",
+          "labels": {"provider": "crystalclear-solutions", "role": "prod"},
+          "capabilities": ["docker.compose", "nginx", "backup"],
+          "runnerId": "runner-losangeles",
+          "state": "unknown",
+          "maxConcurrency": 1
+        }
+      ],
+      "runners": [
+        {
+          "id": "runner-losangeles",
+          "serverId": "losangeles",
+          "hostname": "LosAngeles",
+          "version": "replace-with-40-character-git-commit",
+          "labels": {"provider": "crystalclear-solutions", "role": "prod"},
+          "capabilities": ["docker.compose", "nginx", "backup"],
+          "state": "unknown",
+          "maxConcurrency": 1
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "enabled": false,
+    "trustedPublishers": ["AreaSong"],
+    "trustedPublisherKeys": {
+      "AreaSong": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    },
+    "requireSignature": true,
+    "sandbox": "wasm"
+  },
+  "terminal": {
+    "enabled": false,
+    "breakGlass": false,
+    "maxSessionSeconds": 900,
+    "commands": {
+      "service-status": {
+        "name": "service-status",
+        "executable": "/usr/bin/systemctl",
+        "arguments": ["--no-pager", "status", "docker"],
+        "readOnly": true,
+        "timeoutSeconds": 30
+      }
+    }
+  },
+  "files": {
+    "enabled": false,
+    "readOnly": true,
+    "maxFileBytes": 1048576,
+    "roots": {
+      "ops-config": "/opt/ops"
+    }
+  },
+  "runnerUpdate": {
+    "enabled": false,
+    "runnerId": "runner-losangeles",
+    "artifactRoot": "/var/lib/areasong-ops/runner-updates/incoming",
+    "binaryPath": "/usr/local/libexec/areasong-ops/runner/areasong-ops-runner",
+    "unitName": "areasong-ops-runner.service",
+    "updaterUnitName": "areasong-ops-runner-update@.service",
+    "publisher": "areasong-release",
+    "trustedPublisherKeys": {},
+    "maxArtifactBytes": 268435456
+  },
+  "kubernetes": {
+    "areasong-production": {
+      "cluster": "areasong-production",
+      "context": "areasong-production",
+      "namespace": "areasong-ops",
+      "allowlist": ["deployment/areasong-ops", "service/areasong-ops"],
+      "resourceKinds": ["Deployment", "Service", "ConfigMap"]
+    }
+  },
   "services": {
     "areaforge": {
       "name": "areaforge",
@@ -30,6 +194,24 @@
       "description": "AreaForge Web 与 PostgreSQL",
       "template": "custom",
       "adapterRef": "areaforge-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["docker.compose", "backup", "restore", "restore-drill", "lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "maintenanceTtlSeconds": 14400,
+        "drainTimeoutSeconds": 300,
+        "autoReconcile": false
+      },
+      "trafficPolicy": {
+        "adapterPath": "/usr/local/libexec/areasong-ops/adapters/nginx-traffic.sh",
+        "siteFile": "/etc/nginx/sites-enabled/forge.areasong.top.conf",
+        "includeFile": "/etc/nginx/snippets/areasong-ops/areaforge-traffic.conf",
+        "hostname": "forge.areasong.top",
+        "maintenanceFile": "/etc/nginx/snippets/areasong-ops/areaforge-maintenance.conf",
+        "marker": "include /etc/nginx/snippets/areasong-ops/areaforge-traffic.conf;",
+        "drainTimeoutSeconds": 300
+      },
       "recoveryPointPolicy": {
         "requiredArtifactRoles": ["postgres-areaforge", "volume-areaforge-uploads", "volume-areaforge-ops-state"],
         "recoverableSeconds": 604800
@@ -152,6 +334,27 @@
           "impact": "在隔离环境恢复最近备份，增加临时磁盘、CPU 与数据库 IO，不切换生产数据。",
           "rollback": "演练环境失败后清理隔离资源，生产数据库与流量保持不变。",
           "scope": "AreaForge 隔离恢复环境"
+        },
+        "restore": {
+          "name": "restore",
+          "displayName": "生产恢复",
+          "enabled": true,
+          "risk": "high",
+          "targetMode": "none",
+          "steps": ["preflight", "quiesce", "restore", "verify", "resume"],
+          "observationSeconds": 900,
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "requiresRecoveryPoint": true, "failurePolicy": "fail"},
+            "quiesce": {"effect": "runtime_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "restore": {"effect": "data_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "verify": {"effect": "observe", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "resume": {"effect": "runtime_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"}
+          },
+          "timeoutSeconds": 7200,
+          "confirmationTemplate": "恢复 {service} 使用恢复点 {target}",
+          "impact": "停止 AreaForge Web，使用所选恢复点覆盖 PostgreSQL、上传卷与 ops-state，再验证并恢复服务。",
+          "rollback": "生产恢复不自动回滚数据库；任一变更阶段失败都保持现场并进入人工核对。",
+          "scope": "AreaForge PostgreSQL、上传卷、ops-state 与 Web 可用性"
         }
       }
     },
@@ -170,6 +373,24 @@
       "description": "Sub2API、PostgreSQL 与 Redis",
       "template": "compose-service-v1",
       "adapterRef": "compose-service-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["docker.compose", "backup", "restore", "restore-drill", "lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "maintenanceTtlSeconds": 14400,
+        "drainTimeoutSeconds": 300,
+        "autoReconcile": false
+      },
+      "trafficPolicy": {
+        "adapterPath": "/usr/local/libexec/areasong-ops/adapters/nginx-traffic.sh",
+        "siteFile": "/etc/nginx/sites-enabled/direct.cpa.areasong.top.conf",
+        "includeFile": "/etc/nginx/snippets/areasong-ops/sub2api-traffic.conf",
+        "hostname": "direct.cpa.areasong.top",
+        "maintenanceFile": "/etc/nginx/snippets/areasong-ops/sub2api-maintenance.conf",
+        "marker": "include /etc/nginx/snippets/areasong-ops/sub2api-traffic.conf;",
+        "drainTimeoutSeconds": 300
+      },
       "recoveryPointPolicy": {
         "requiredArtifactRoles": ["postgres-sub2api", "redis", "volume-sub2api-data"],
         "recoverableSeconds": 604800
@@ -205,6 +426,7 @@
           "/opt/ops/scripts/backup/backup-volumes.sh"
         ],
         "restoreDrillExecutable": "/opt/ops/scripts/backup/restore-sub2api-isolated.sh",
+        "restoreExecutable": "/opt/ops/scripts/backup/restore-sub2api-production.sh",
         "prepareExecutable": "/opt/ops/scripts/backup/restore-sub2api-isolated.sh",
         "updateExecutable": "/usr/local/libexec/areasong-ops/adapters/sub2api.sh"
       },
@@ -328,6 +550,27 @@
           "impact": "从最新完整备份集恢复 PostgreSQL、Redis 与应用卷并执行隔离健康检查。",
           "rollback": "失败时删除隔离资源；不执行生产数据库恢复。",
           "scope": "Sub2API 隔离恢复环境"
+        },
+        "restore": {
+          "name": "restore",
+          "displayName": "生产恢复",
+          "enabled": true,
+          "risk": "high",
+          "targetMode": "none",
+          "steps": ["preflight", "quiesce", "restore", "verify", "resume"],
+          "observationSeconds": 900,
+          "phaseSemantics": {
+            "preflight": {"effect": "observe", "requiresRecoveryPoint": true, "failurePolicy": "fail"},
+            "quiesce": {"effect": "runtime_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "restore": {"effect": "data_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "verify": {"effect": "observe", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"},
+            "resume": {"effect": "runtime_mutation", "requiresRecoveryPoint": true, "failurePolicy": "needs_attention"}
+          },
+          "timeoutSeconds": 7200,
+          "confirmationTemplate": "恢复 {service} 使用恢复点 {target}",
+          "impact": "停止 Sub2API 与 Redis，使用所选恢复点覆盖 PostgreSQL、Redis 和应用数据，再验证并恢复服务。",
+          "rollback": "生产恢复不自动回滚数据库；任一变更阶段失败都保持现场并进入人工核对。",
+          "scope": "Sub2API PostgreSQL、Redis、应用数据与服务可用性"
         }
       }
     }
@@ -348,6 +591,9 @@
       "description": "汇总受管资产、容器、端口和配置漂移状态。",
       "template": "automatic-task-v1",
       "adapterRef": "automatic-task-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["inspect", "artifact-write"],
       "automaticTask": {
         "schedule": "每分钟",
         "scheduleSource": "cron",
@@ -401,6 +647,9 @@
       "description": "采集受管容器身份、健康、资源边界和使用率。",
       "template": "automatic-task-v1",
       "adapterRef": "automatic-task-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["inspect", "artifact-write"],
       "automaticTask": {
         "schedule": "每分钟",
         "scheduleSource": "cron",

@@ -1,0 +1,37 @@
+- generic [ref=e7]:
+  - complementary [ref=e8]:
+    - generic [ref=e13]:
+      - strong [ref=e14]: AreaSong Ops
+      - generic [ref=e15]: LosAngeles
+    - navigation "主导航" [ref=e16]:
+      - button "操作总览" [ref=e17] [cursor=pointer]
+      - button "生命周期" [ref=e24] [cursor=pointer]
+      - button "服务操作" [ref=e30] [cursor=pointer]
+      - button "多服务器" [ref=e44] [cursor=pointer]
+      - button "批量作业" [ref=e51] [cursor=pointer]
+      - button "恢复中心" [ref=e63] [cursor=pointer]
+      - button "配置中心" [ref=e69] [cursor=pointer]
+      - button "自动更新" [ref=e74] [cursor=pointer]
+      - button "受控终端" [active] [ref=e80] [cursor=pointer]
+      - button "受管文件" [ref=e85] [cursor=pointer]
+      - button "Runner 更新" [ref=e92] [cursor=pointer]
+      - button "访问控制" [ref=e99] [cursor=pointer]
+      - button "自动任务" [ref=e103] [cursor=pointer]
+      - button "凭据轮换" [ref=e108] [cursor=pointer]
+      - button "执行记录" [ref=e113] [cursor=pointer]
+      - button "变更审计" [ref=e118] [cursor=pointer]
+    - generic [ref=e124]: 实时连接正常
+  - generic [ref=e130]:
+    - banner [ref=e131]:
+      - generic [ref=e132]: 生产环境
+      - generic [ref=e135]:
+        - navigation "观测入口"
+        - generic "song80184@gmail.com" [ref=e136]
+    - main [ref=e137]:
+      - generic [ref=e212]:
+        - generic [ref=e213]:
+          - generic [ref=e214]:
+            - generic [ref=e215]: Break-glass 受控执行
+            - heading "紧急终端" [level=1] [ref=e216]
+          - button "刷新终端计划" [ref=e217] [cursor=pointer]
+        - generic [ref=e223]: 紧急终端尚未启用

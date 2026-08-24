@@ -17,6 +17,81 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
+// inspectForAction keeps lifecycle planning usable when an application that is
+// already stopped cannot answer its normal inspect probe. The fallback is
+// deliberately narrow: it requires a durable stopped desired state and binds
+// the plan to the last known runtime identity instead of inventing a new one.
+func (engine *Engine) inspectForAction(
+	ctx context.Context,
+	service model.ServiceDefinition,
+	action string,
+) (map[string]any, error) {
+	status, inspectErr := engine.inspect(ctx, service)
+	if inspectErr == nil {
+		return status, nil
+	}
+	if action != "start" && action != "stop" {
+		return nil, inspectErr
+	}
+	state, found, stateErr := engine.store.GetServiceState(ctx, service.Name)
+	if stateErr != nil || !found || state.Desired != model.DesiredStopped {
+		return nil, inspectErr
+	}
+
+	// Prefer observer data, then the immutable pre-stop snapshot. Both are
+	// persisted by the control plane and therefore remain stable across a
+	// Runner restart.
+	snapshot := cloneAnyMap(state.Data)
+	if !hasRuntimeIdentity(snapshot) {
+		if tasks, listErr := engine.store.ListTasks(ctx, 200, 0); listErr == nil {
+			for _, task := range tasks {
+				if task.Service == service.Name && task.Action == "stop" &&
+					task.State == model.TaskSucceeded && hasRuntimeIdentity(task.Snapshot) {
+					snapshot = cloneAnyMap(task.Snapshot)
+					break
+				}
+			}
+		}
+	}
+	if snapshot == nil {
+		snapshot = make(map[string]any)
+	}
+	// Reconcile must see the durable lifecycle state, while runtime identity
+	// fields remain whatever was observed before the stop.
+	snapshot["objectId"] = service.ObjectID
+	snapshot["service"] = service.Name
+	snapshot["state"] = "stopped"
+	snapshot["actualState"] = "stopped"
+	snapshot["desiredState"] = string(state.Desired)
+	snapshot["stateGeneration"] = state.Generation
+	snapshot["lifecycleInspectFallback"] = true
+	return snapshot, nil
+}
+
+func cloneAnyMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	result := make(map[string]any, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
+}
+
+func hasRuntimeIdentity(snapshot map[string]any) bool {
+	if snapshot == nil {
+		return false
+	}
+	for _, field := range []string{"currentVersion", "currentImage", "currentImageId", "runtimeIdentityHash"} {
+		value, _ := snapshot[field].(string)
+		if value == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func (engine *Engine) CreateReleasePlan(
 	ctx context.Context,
 	actorHash string,
@@ -25,8 +100,64 @@ func (engine *Engine) CreateReleasePlan(
 	if !actorPattern.MatchString(actorHash) {
 		return model.ReleasePlan{}, errors.New("操作者标识无效")
 	}
+	if request.IdempotencyKey != "" {
+		if existing, found, err := engine.store.GetReleasePlanByRequest(ctx, request.IdempotencyKey); err != nil {
+			return model.ReleasePlan{}, err
+		} else if found {
+			if existing.ActorHash != actorHash {
+				return model.ReleasePlan{}, store.ErrActorMismatch
+			}
+			requestDigest := request.RequestDigest
+			if requestDigest == "" {
+				requestDigest = digestText(strings.Join([]string{actorHash, request.Service, request.Action, request.Target, request.RestoreMode, request.RecoveryPointID}, "\x00"))
+			}
+			if existing.RequestDigest != requestDigest {
+				return model.ReleasePlan{}, store.ErrIdempotency
+			}
+			return existing, nil
+		}
+	}
 	service, action, err := engine.resolveAction(request.Service, request.Action, request.Target)
 	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	var restorePoint *model.RecoveryPoint
+	if request.RestoreMode != "" {
+		if request.RecoveryPointID == "" || (request.RestoreMode != "isolated" && request.RestoreMode != "production") {
+			return model.ReleasePlan{}, errors.New("恢复计划绑定信息无效")
+		}
+		point, pointErr := engine.store.GetRecoveryPoint(ctx, request.RecoveryPointID)
+		if pointErr != nil || point.Status != "verified" || point.Service != service.Name {
+			return model.ReleasePlan{}, errors.New("恢复点不可用于当前服务")
+		}
+		pointTenantID := point.TenantID
+		if pointTenantID == "" {
+			pointTenantID = request.RestoreTenantID
+		}
+		pointServerID := point.ServerID
+		if pointServerID == "" {
+			pointServerID = request.RestoreServerID
+		}
+		if request.RestoreTenantID != "" && request.RestoreTenantID != pointTenantID {
+			return model.ReleasePlan{}, errors.New("恢复计划租户绑定不一致")
+		}
+		if request.RestoreServerID != "" && request.RestoreServerID != pointServerID {
+			return model.ReleasePlan{}, errors.New("恢复计划服务器绑定不一致")
+		}
+		if request.RestoreExpectedBeforeDigest != "" && request.RestoreExpectedBeforeDigest != point.ExpectedBeforeDigest {
+			return model.ReleasePlan{}, errors.New("恢复计划变更前身份绑定不一致")
+		}
+		request.RestoreTenantID = pointTenantID
+		request.RestoreServerID = pointServerID
+		request.RestoreExpectedBeforeDigest = point.ExpectedBeforeDigest
+		request.RestoreContractDigest = point.BindingDigest
+		request.RestoreEvidenceDigest = point.EvidenceDigest
+		if request.RestoreContractDigest == "" || request.RestoreEvidenceDigest == "" {
+			return model.ReleasePlan{}, errors.New("恢复点缺少不可变绑定摘要")
+		}
+		restorePoint = &point
+	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(action.Name), service.ObjectID); err != nil {
 		return model.ReleasePlan{}, err
 	}
 	if active, found, err := engine.store.ActiveTask(ctx, service.Name); err != nil {
@@ -34,7 +165,7 @@ func (engine *Engine) CreateReleasePlan(
 	} else if found {
 		return model.ReleasePlan{}, fmt.Errorf("服务已有活动任务: %s", active.ID)
 	}
-	snapshot, err := engine.inspect(ctx, service)
+	snapshot, err := engine.inspectForAction(ctx, service, action.Name)
 	if err != nil {
 		return model.ReleasePlan{}, fmt.Errorf("创建计划前检查失败: %w", err)
 	}
@@ -52,12 +183,18 @@ func (engine *Engine) CreateReleasePlan(
 	}
 	summary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: request.Target,
-		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback,
+		TrafficPolicyDigest: service.PolicyDigest(),
+		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
 		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds,
 		AlertPolicy:        service.AlertPolicy,
 		ConfirmationPhrase: phrase,
 		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
+		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
+		TenantID: request.RestoreTenantID, ServerID: request.RestoreServerID,
+		ExpectedBeforeDigest:        request.RestoreExpectedBeforeDigest,
+		RecoveryPointBindingDigest:  request.RestoreContractDigest,
+		RecoveryPointEvidenceDigest: request.RestoreEvidenceDigest,
 	}
 	digest, err := approvalDigest(summary)
 	if err != nil {
@@ -74,10 +211,28 @@ func (engine *Engine) CreateReleasePlan(
 		Digest: digest, ApprovalSummary: summary, ConfirmationPhrase: phrase,
 		RequiresConfirmation: action.Risk != model.RiskReadOnly,
 		ObservationSeconds:   action.ObservationSeconds, CreatedAt: now, UpdatedAt: now,
+		RequestIdempotencyKey: request.IdempotencyKey, RequestDigest: request.RequestDigest,
+		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
+		RequiresDualApproval: request.RequiresDualApproval,
+		RestoreTenantID:      request.RestoreTenantID, RestoreServerID: request.RestoreServerID,
+		RestoreExpectedBeforeDigest: request.RestoreExpectedBeforeDigest,
+		RestoreContractDigest:       request.RestoreContractDigest,
+		RestoreEvidenceDigest:       request.RestoreEvidenceDigest,
 	}
-	if err := engine.store.CreateReleasePlan(ctx, store.ReleasePlanInput{
-		Plan: plan, ConfirmationHash: store.HashConfirmation(phrase),
-	}); err != nil {
+	_ = restorePoint // retained to make the binding lookup explicit above
+	input := store.ReleasePlanInput{Plan: plan, ConfirmationHash: store.HashConfirmation(phrase)}
+	if request.IdempotencyKey != "" {
+		requestDigest := request.RequestDigest
+		if requestDigest == "" {
+			requestDigest = digestText(strings.Join([]string{actorHash, request.Service, request.Action, request.Target, request.RestoreMode, request.RecoveryPointID}, "\x00"))
+		}
+		stored, _, err := engine.store.CreateReleasePlanIdempotent(ctx, input, actorHash, request.IdempotencyKey, requestDigest)
+		if err != nil {
+			return model.ReleasePlan{}, err
+		}
+		return stored, nil
+	}
+	if err := engine.store.CreateReleasePlan(ctx, input); err != nil {
 		return model.ReleasePlan{}, err
 	}
 	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
@@ -95,7 +250,18 @@ func (engine *Engine) ApproveReleasePlan(
 	if !actorPattern.MatchString(actorHash) || !uuidPattern.MatchString(id) {
 		return model.ReleasePlan{}, errors.New("发布计划请求标识无效")
 	}
-	plan, err := engine.store.ApproveReleasePlan(ctx, id, actorHash, request.Digest, request.Confirmation)
+	plan, err := engine.store.GetReleasePlan(ctx, id)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	service, exists := engine.catalog.Object(plan.Service)
+	if !exists {
+		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
+	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), service.ObjectID); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	plan, err = engine.store.ApproveReleasePlan(ctx, id, actorHash, request.Digest, request.Confirmation)
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
@@ -122,6 +288,13 @@ func (engine *Engine) ExecuteReleasePlan(
 	if plan.ActorHash != actorHash {
 		return model.Task{}, false, store.ErrActorMismatch
 	}
+	serviceForAuth, exists := engine.catalog.Object(plan.Service)
+	if !exists {
+		return model.Task{}, false, errors.New("受管对象声明不存在")
+	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), serviceForAuth.ObjectID); err != nil {
+		return model.Task{}, false, err
+	}
 	if plan.State == model.PlanExecuting || plan.State == model.PlanObserving ||
 		plan.State == model.PlanNeedsAttention || plan.State == model.PlanCompleted {
 		task, taskErr := engine.store.GetTask(ctx, plan.TaskID)
@@ -131,6 +304,9 @@ func (engine *Engine) ExecuteReleasePlan(
 		}
 		return model.Task{}, false, store.ErrIdempotency
 	}
+	if plan.RequiresDualApproval && (plan.SecondApprovedByHash == "" || plan.SecondApprovedByHash == plan.ApprovedByHash) {
+		return model.Task{}, false, errors.New("生产恢复计划尚未完成独立第二批准")
+	}
 	if plan.State != model.PlanApproved {
 		return model.Task{}, false, errors.New("发布计划尚未批准或已经执行")
 	}
@@ -139,7 +315,7 @@ func (engine *Engine) ExecuteReleasePlan(
 		_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, "服务能力或目标策略已变化")
 		return model.Task{}, false, err
 	}
-	observed, err := engine.inspect(ctx, service)
+	observed, err := engine.inspectForAction(ctx, service, action.Name)
 	if err != nil {
 		return model.Task{}, false, fmt.Errorf("执行计划前检查失败: %w", err)
 	}
@@ -158,12 +334,18 @@ func (engine *Engine) ExecuteReleasePlan(
 	}
 	currentSummary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: plan.Target,
-		Risk: action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
+		TrafficPolicyDigest: service.PolicyDigest(),
+		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
 		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
 		ObservationSeconds: action.ObservationSeconds,
 		AlertPolicy:        actionAlertPolicy(service),
 		ConfirmationPhrase: renderConfirmation(action.ConfirmationTemplate, service.Name, plan.Target),
 		ExpectedBefore:     observed, TargetEvidence: targetEvidence,
+		RestoreMode: plan.RestoreMode, RecoveryPointID: plan.RecoveryPointID,
+		TenantID: plan.RestoreTenantID, ServerID: plan.RestoreServerID,
+		ExpectedBeforeDigest:        plan.RestoreExpectedBeforeDigest,
+		RecoveryPointBindingDigest:  plan.RestoreContractDigest,
+		RecoveryPointEvidenceDigest: plan.RestoreEvidenceDigest,
 	}
 	currentDigest, digestErr := approvalDigest(currentSummary)
 	if digestErr != nil {
@@ -177,6 +359,32 @@ func (engine *Engine) ExecuteReleasePlan(
 			return model.Task{}, false, fmt.Errorf("%s，且计划失效写入失败: %w", reason, invalidateErr)
 		}
 		return model.Task{}, false, errors.New(reason + "，请重新创建计划")
+	}
+	if plan.RestoreMode != "" {
+		point, verifyErr := engine.verifyRestorePlanBinding(ctx, plan, service)
+		if verifyErr != nil {
+			reason := "恢复点执行前复验失败: " + redactText(verifyErr.Error())
+			if invalidateErr := engine.store.InvalidateReleasePlan(ctx, plan.ID, reason); invalidateErr != nil {
+				return model.Task{}, false, fmt.Errorf("%s，且计划失效写入失败: %w", reason, invalidateErr)
+			}
+			return model.Task{}, false, errors.New(reason + "，请重新创建并批准恢复计划")
+		}
+		revalidatedAt := time.Now().UTC()
+		if err := engine.store.MarkRestorePlanRevalidated(
+			ctx, plan.ID, actorHash, point.BindingDigest, revalidatedAt,
+		); err != nil {
+			return model.Task{}, false, fmt.Errorf("恢复计划复验结果无法持久化: %w", err)
+		}
+		plan.RestoreRevalidationDigest = point.BindingDigest
+		plan.RestoreRevalidatedAt = &revalidatedAt
+		plan.ExecutedByHash = actorHash
+	}
+	// Approval can outlive the Fleet heartbeat lease. A fresh execution must
+	// therefore re-check the service's server/Runner binding immediately before
+	// any maintenance silence or task is created. Idempotent replays returned
+	// above do not need a second gate because they cannot start another task.
+	if err := engine.ensureServiceTargetAvailable(ctx, service.Name); err != nil {
+		return model.Task{}, false, fmt.Errorf("目标 Runner 当前不可执行: %w", err)
 	}
 	silence, err := engine.prepareMaintenanceSilence(ctx, plan, service, action)
 	if err != nil {
@@ -201,19 +409,31 @@ func (engine *Engine) ExecuteReleasePlan(
 		}
 		return task, created, err
 	}
+	task.TrafficPolicyDigest = plan.ApprovalSummary.TrafficPolicyDigest
 	engine.enqueue(task)
 	return task, true, nil
 }
 
 func approvalSnapshot(object model.ServiceDefinition, observed map[string]any) map[string]any {
+	var result map[string]any
 	if object.Metadata.Type != "automatic_task" {
-		return observed
-	}
-	result := make(map[string]any)
-	for _, key := range []string{"objectId", "taskName", "scheduleSource", "enabled"} {
-		if value, exists := observed[key]; exists {
-			result[key] = value
+		result = cloneAnyMap(observed)
+	} else {
+		result = make(map[string]any)
+		for _, key := range []string{"objectId", "taskName", "scheduleSource", "enabled"} {
+			if value, exists := observed[key]; exists {
+				result[key] = value
+			}
 		}
+	}
+	if result == nil {
+		result = make(map[string]any)
+	}
+	if digest := object.PolicyDigest(); digest != "" {
+		// Persist the contract in the task snapshot as well as the signed
+		// summary. The existing task schema stores this map, so remote dispatch
+		// can carry the digest without a database migration.
+		result["trafficPolicyDigest"] = digest
 	}
 	return result
 }
@@ -258,6 +478,13 @@ func (engine *Engine) CloseReleasePlan(
 	if plan.ActorHash != actorHash {
 		return model.ReleasePlan{}, store.ErrActorMismatch
 	}
+	serviceForAuth, exists := engine.catalog.Object(plan.Service)
+	if !exists {
+		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
+	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), serviceForAuth.ObjectID); err != nil {
+		return model.ReleasePlan{}, err
+	}
 	if plan.State == model.PlanCompleted {
 		return engine.store.CloseReleasePlan(ctx, id, actorHash, request.IdempotencyKey, model.AuditEntry{})
 	}
@@ -288,7 +515,7 @@ func (engine *Engine) CloseReleasePlan(
 		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID,
 			"关联阻断告警仍在触发: "+alertNames(blockers), alertFingerprints(blockers))
 	}
-	observed, err := engine.inspect(ctx, service)
+	observed, err := engine.inspectForAction(ctx, service, plan.Action)
 	if err != nil {
 		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "收口身份检查失败: "+redactText(err.Error()), nil)
 	}

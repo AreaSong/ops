@@ -10,7 +10,24 @@ fi
 BACKUP_ROOT="${REDIS_BACKUP_ROOT:-/var/backups/ops/redis}"
 TS="$(date +%Y%m%d-%H%M%S)"
 OUT="$BACKUP_ROOT/redis-$TS.tar.gz"
-DATA_DIR="${REDIS_DATA_DIR:-/var/lib/sub2api/redis_data}"
+SUB2API_ENV_FILE="${SUB2API_BACKUP_ENV_FILE:-/opt/services/sub2api/.env}"
+ENV_READER="${OPS_RESTORE_ENV_READER:-$SCRIPT_DIR/restore_env.py}"
+if [ -n "${REDIS_DATA_DIR:-}" ]; then
+  DATA_DIR="$REDIS_DATA_DIR"
+  DATA_DIR_EXPLICIT=1
+elif [ -f "$SUB2API_ENV_FILE" ]; then
+  DATA_DIR="$("$ENV_READER" --file "$SUB2API_ENV_FILE" --get SUB2API_REDIS_DATA_DIR --default /var/lib/sub2api/redis_data)"
+  DATA_DIR_EXPLICIT=0
+else
+  DATA_DIR="/var/lib/sub2api/redis_data"
+  DATA_DIR_EXPLICIT=0
+fi
+if [ "$DATA_DIR_EXPLICIT" -ne 1 ]; then
+  case "$DATA_DIR" in
+    /var/lib/sub2api/*) ;;
+    *) echo "unsafe Redis data directory: $DATA_DIR" >&2; exit 1 ;;
+  esac
+fi
 LOG_DIR="${BACKUP_LOG_DIR:-/var/log/backup}"
 RDB_FILE="$DATA_DIR/dump.rdb"
 ACL_FILE="$DATA_DIR/users.acl"

@@ -1,0 +1,97 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [ref=f1e9]:
+      - strong [ref=f1e10]: AreaSong Ops
+      - generic [ref=f1e11]: LosAngeles
+    - navigation "主导航" [ref=f1e12]:
+      - button "操作总览" [ref=f1e13] [cursor=pointer]
+      - button "生命周期" [active] [ref=f1e20] [cursor=pointer]
+      - button "服务操作" [ref=f1e26] [cursor=pointer]
+      - button "多服务器" [ref=f1e40] [cursor=pointer]
+      - button "批量作业" [ref=f1e47] [cursor=pointer]
+      - button "恢复中心" [ref=f1e59] [cursor=pointer]
+      - button "配置中心" [ref=f1e65] [cursor=pointer]
+      - button "访问控制" [ref=f1e70] [cursor=pointer]
+      - button "自动任务" [ref=f1e74] [cursor=pointer]
+      - button "凭据轮换" [ref=f1e79] [cursor=pointer]
+      - button "执行记录" [ref=f1e84] [cursor=pointer]
+      - button "变更审计" [ref=f1e89] [cursor=pointer]
+    - generic [ref=f1e95]: 实时连接重试中
+  - generic [ref=f1e104]:
+    - banner [ref=f1e105]:
+      - generic [ref=f1e106]: 生产环境
+      - generic [ref=f1e109]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f1e110]
+    - main [ref=f1e111]:
+      - generic [ref=f1e186]:
+        - generic [ref=f1e187]:
+          - generic [ref=f1e188]:
+            - generic [ref=f1e189]: 目标与观测状态
+            - heading "生命周期状态" [level=1] [ref=f1e190]
+          - button "刷新生命周期状态" [ref=f1e191] [cursor=pointer]
+        - region "生命周期概览" [ref=f1e197]:
+          - generic [ref=f1e202]:
+            - generic [ref=f1e203]: "1"
+            - text: 健康
+          - generic [ref=f1e207]:
+            - generic [ref=f1e208]: "1"
+            - text: 状态漂移
+          - generic [ref=f1e213]:
+            - generic [ref=f1e214]: "0"
+            - text: 未知观测
+          - generic [ref=f1e216]:
+            - generic [ref=f1e217]: "2"
+            - text: 受控服务
+        - generic [ref=f1e218]:
+          - generic [ref=f1e219]:
+            - heading "服务状态" [level=2] [ref=f1e220]
+            - generic [ref=f1e221]: 2 项
+          - table "服务生命周期状态" [ref=f1e222]:
+            - row "服务 目标 实际 健康 观测 操作" [ref=f1e223]:
+              - generic [ref=f1e224]: 服务
+              - generic [ref=f1e225]: 目标
+              - generic [ref=f1e226]: 实际
+              - generic [ref=f1e227]: 健康
+              - generic [ref=f1e228]: 观测
+              - generic [ref=f1e229]: 操作
+            - row "AreaForge AreaForge 生产服务 运行 运行 健康 08/20 17:30:00 运行身份与目标一致 保存目标" [ref=f1e230]:
+              - generic [ref=f1e233]:
+                - strong [ref=f1e234]: AreaForge
+                - generic [ref=f1e235]: AreaForge 生产服务
+              - generic [ref=f1e236]:
+                - combobox "areaforge 目标状态" [ref=f1e237]:
+                  - option "运行" [selected]
+                  - option "停止"
+                  - option "维护"
+                  - option "排空"
+                - textbox "areaforge 变更原因" [ref=f1e238]:
+                  - /placeholder: 原因（可选）
+              - generic [ref=f1e239]: 运行
+              - generic [ref=f1e240]: 健康
+              - generic [ref=f1e241]:
+                - generic [ref=f1e242]: 08/20 17:30:00
+                - generic [ref=f1e243]: 运行身份与目标一致
+              - generic [ref=f1e244]:
+                - button "重新核对状态" [ref=f1e245] [cursor=pointer]
+                - button "保存目标" [disabled] [ref=f1e249]
+            - row "Sub2API Sub2API 生产服务 运行 维护 降级 08/20 17:28:00 漂移：running ≠ maintenance 保存目标" [ref=f1e254]:
+              - generic [ref=f1e257]:
+                - strong [ref=f1e258]: Sub2API
+                - generic [ref=f1e259]: Sub2API 生产服务
+              - generic [ref=f1e260]:
+                - combobox "sub2api 目标状态" [ref=f1e261]:
+                  - option "运行" [selected]
+                  - option "停止"
+                  - option "维护"
+                  - option "排空"
+                - textbox "sub2api 变更原因" [ref=f1e262]:
+                  - /placeholder: 原因（可选）
+              - generic [ref=f1e263]: 维护
+              - generic [ref=f1e264]: 降级
+              - generic [ref=f1e265]:
+                - generic [ref=f1e266]: 08/20 17:28:00
+                - generic "维护窗口" [ref=f1e267]: 漂移：running ≠ maintenance
+              - generic [ref=f1e268]:
+                - button "重新核对状态" [ref=f1e269] [cursor=pointer]
+                - button "保存目标" [disabled] [ref=f1e273]

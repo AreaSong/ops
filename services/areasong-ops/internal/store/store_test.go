@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,11 @@ func TestOpenMigratesExistingPlanSchema(t *testing.T) {
 		`, expected).Scan(&column); err != nil || column != expected {
 			t.Fatalf("column=%q expected=%q err=%v", column, expected, err)
 		}
+	}
+	if err := migrated.db.QueryRow(`
+		SELECT name FROM pragma_table_info('kubernetes_plans') WHERE name = 'execute_idempotency_key'
+	`).Scan(&column); err != nil || column != "execute_idempotency_key" {
+		t.Fatalf("column=%q err=%v", column, err)
 	}
 }
 
@@ -187,6 +193,41 @@ func testPreview(now time.Time) model.Preview {
 	}
 }
 
+func TestLatestSucceededRestoreDrillRequiresExactArtifactEvidence(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	insert := func(id, digest string, state model.TaskState, finished time.Time) {
+		t.Helper()
+		_, err := database.db.ExecContext(ctx, `
+			INSERT INTO tasks (
+				id, idempotency_key, request_hash, actor_hash, service, action, target, risk,
+				state, preview_id, snapshot_json, stages_json, restore_mode,
+				restore_evidence_digest, created_at, finished_at
+			) VALUES (?, ?, ?, ?, 'demo', 'restore-drill', 'point', ?, ?, ?, '{}', '[]',
+			          'isolated', ?, ?, ?)
+		`, id, "idem-"+id, "request-"+id, "actor", model.RiskMedium, state,
+			"preview-"+id, digest, timeText(finished.Add(-time.Minute)), timeText(finished))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("drill-old-artifact", "sha256:old", model.TaskSucceeded, now.Add(-time.Hour))
+	insert("drill-failed-current", "sha256:current", model.TaskNeedsAttention, now.Add(-time.Minute))
+
+	if task, found, err := database.LatestSucceededRestoreDrill(ctx, "demo", "sha256:current"); err != nil || found {
+		t.Fatalf("current artifact unexpectedly fresh: task=%+v found=%v err=%v", task, found, err)
+	}
+	insert("drill-current", "sha256:current", model.TaskSucceeded, now)
+	task, found, err := database.LatestSucceededRestoreDrill(ctx, "demo", "sha256:current")
+	if err != nil || !found || task.ID != "drill-current" || task.FinishedAt == nil {
+		t.Fatalf("task=%+v found=%v err=%v", task, found, err)
+	}
+	if _, found, err := database.LatestSucceededRestoreDrill(ctx, "demo", "sha256:other"); err != nil || found {
+		t.Fatalf("different artifact found=%v err=%v", found, err)
+	}
+}
+
 func TestStartTaskIsIdempotentAndConsumesPreview(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
@@ -243,6 +284,63 @@ func TestStartTaskRejectsWrongConfirmation(t *testing.T) {
 	}, "task-2")
 	if err != ErrConfirmation {
 		t.Fatalf("expected ErrConfirmation, got %v", err)
+	}
+}
+
+func TestBatchCoordinatorLeaseTakeoverFencesOldOwner(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	database.now = func() time.Time { return now }
+	operation := testBatchOperation(now, "batch-lease")
+	if _, created, err := database.CreateBatchOperation(ctx, BatchOperationInput{
+		Operation: operation, ConfirmationHash: HashConfirmation(operation.ConfirmationPhrase),
+	}); err != nil || !created {
+		t.Fatalf("create batch: created=%v err=%v", created, err)
+	}
+	tokenA, generationA, acquired, err := database.AcquireBatchCoordinator(ctx, operation.ID, "owner-a", time.Minute)
+	if err != nil || !acquired || generationA != 1 || tokenA == "" {
+		t.Fatalf("owner-a token=%q generation=%d acquired=%v err=%v", tokenA, generationA, acquired, err)
+	}
+	if token, generation, acquired, err := database.AcquireBatchCoordinator(ctx, operation.ID, "owner-b", time.Minute); err != nil || acquired || token != "" || generation != generationA {
+		t.Fatalf("owner-b active lease token=%q generation=%d acquired=%v err=%v", token, generation, acquired, err)
+	}
+	now = now.Add(2 * time.Minute)
+	tokenB, generationB, acquired, err := database.AcquireBatchCoordinator(ctx, operation.ID, "owner-b", time.Minute)
+	if err != nil || !acquired || generationB != 2 || tokenB == "" || tokenB == tokenA {
+		t.Fatalf("takeover token=%q generation=%d acquired=%v err=%v", tokenB, generationB, acquired, err)
+	}
+	if renewed, err := database.RenewBatchCoordinator(ctx, operation.ID, "owner-a", tokenA, time.Minute); err != nil || renewed {
+		t.Fatalf("old lease renewed=%v err=%v", renewed, err)
+	}
+	item := operation.Items[0]
+	err = database.UpdateBatchItemCAS(ctx, operation.ID, item.ID, model.BatchNodePending, model.BatchNodeReady, "", "", "",
+		BatchCoordinatorFence{Owner: "owner-a", Token: tokenA})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old fence update error=%v, want ErrNotFound", err)
+	}
+	if err := database.UpdateBatchItemCAS(ctx, operation.ID, item.ID, model.BatchNodePending, model.BatchNodeReady, "", "", "",
+		BatchCoordinatorFence{Owner: "owner-b", Token: tokenB}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBatchCoordinatorMissingJobDoesNotCreateLease(t *testing.T) {
+	database := openTestStore(t)
+	if token, generation, acquired, err := database.AcquireBatchCoordinator(context.Background(), "missing", "owner", time.Minute); err != nil || acquired || token != "" || generation != 0 {
+		t.Fatalf("token=%q generation=%d acquired=%v err=%v", token, generation, acquired, err)
+	}
+}
+
+func testBatchOperation(now time.Time, id string) model.BatchOperation {
+	item := model.BatchItem{ID: "item-1", ObjectID: "service:demo", Service: "demo", BatchIndex: 0, State: model.BatchNodePending, UpdatedAt: now}
+	return model.BatchOperation{
+		ID: id, IdempotencyKey: id + "-idempotency", ActorHash: strings.Repeat("a", 64), TenantID: "default",
+		Action: "restart", Digest: "digest", ConfirmationPhrase: "批量重启 1 项", State: model.BatchRunning,
+		Task: model.BatchTask{ID: id, Action: "restart", TargetIDs: []string{"demo"}, Nodes: []model.DAGNode{{ID: item.ID, State: model.BatchNodePending}},
+			BatchPolicy: model.BatchPolicy{Strategy: model.BatchFixed, BatchSize: 1}, Concurrency: model.ConcurrencyPolicy{Scope: model.ConcurrencyGlobal, MaxConcurrent: 1},
+			FailurePolicy: model.FailureStop, State: model.BatchTaskRunning, CreatedAt: now},
+		Items: []model.BatchItem{item}, CreatedAt: now, UpdatedAt: now,
 	}
 }
 

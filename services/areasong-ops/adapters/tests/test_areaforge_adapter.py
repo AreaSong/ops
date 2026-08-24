@@ -207,6 +207,53 @@ esac
         )
         return environment
 
+    def _enable_lifecycle_fakes(self) -> Path:
+        state = self.root / "app-state"
+        state.write_text("running\n", encoding="utf-8")
+        docker = self.bin_dir / "docker"
+        docker.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env bash",
+                    "set -eu",
+                    f"state={str(state)!r}",
+                    f"log={str(self.root / 'docker-calls.txt')!r}",
+                    'if [[ "${1:-}" == compose ]]; then',
+                    '  printf "%s\\n" "$*" >>"$log"',
+                    '  case "$*" in',
+                    '    *" up "*) printf "running\\n" >"$state" ;;',
+                    '    *" stop "*) printf "exited\\n" >"$state" ;;',
+                    "  esac",
+                    "  exit 0",
+                    "fi",
+                    '[[ "${1:-}" == inspect ]] || { printf "unexpected docker invocation: %s\\n" "$*" >&2; exit 1; }',
+                    'if [[ "$*" == *--format* ]]; then',
+                    '  format="${3:-}"',
+                    '  container="${!#}"',
+                    '  if [[ "$container" == areaforge-web ]]; then',
+                    '    case "$format" in',
+                    '      *Config.Image*) printf "%s\\n" ' + repr(self.old_image) + ' ;;',
+                    '      *State.Running*) [[ "$(cat "$state")" == running ]] && printf "true\\n" || printf "false\\n" ;;',
+                    '      *State.Status*) cat "$state" ;;',
+                    '      *Image*) printf "%s\\n" ' + repr(self.old_image_id) + ' ;;',
+                    '      *) printf "running\\n" ;;',
+                    "    esac",
+                    '  elif [[ "$container" == areaforge-postgres ]]; then',
+                    '    printf "healthy\\n"',
+                    "  else",
+                    '    printf "running\\n"',
+                    "  fi",
+                    "else",
+                    '  printf \'[{"Name":"/areaforge-postgres","Id":"pg-id","State":{"StartedAt":"pg-start"},"Config":{"Image":"postgres@sha256:test"}}]\\n\'',
+                    "fi",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        docker.chmod(0o755)
+        return state
+
     def run_adapter(
         self,
         action: str,
@@ -222,13 +269,13 @@ esac
             check=False,
         )
 
-    def write_task_contract(self) -> None:
+    def write_task_contract(self, action: str = "update") -> None:
         contract = {
             "schemaVersion": 1,
             "taskId": str(uuid.uuid4()),
             "actorHash": "f" * 64,
             "service": "areaforge",
-            "action": "update",
+            "action": action,
             "target": "v1.2.0",
             "expectedBefore": self.expected_before,
             "createdAt": "2026-08-09T00:00:00Z",
@@ -305,6 +352,38 @@ esac
         result = self.run_adapter("rollback", "preflight", "source-task", str(source))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("rollback source is not the currently deployed release", result.stderr)
+
+    def test_start_lifecycle_only_starts_web_and_checks_health(self) -> None:
+        state = self._enable_lifecycle_fakes()
+        state.write_text("exited\n", encoding="utf-8")
+        self.write_task_contract("start")
+        for phase in ("preflight", "start", "health"):
+            result = self.run_adapter("start", phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["phase"], phase)
+        self.assertEqual(state.read_text(encoding="utf-8").strip(), "running")
+        calls = (self.root / "docker-calls.txt").read_text(encoding="utf-8")
+        self.assertIn("up -d --no-deps web", calls)
+        self.assertNotIn("--force-recreate", calls)
+        self.assertNotIn("areaforge-postgres", calls.split("up -d", 1)[-1])
+
+    def test_stop_lifecycle_only_stops_web_and_verifies_stopped(self) -> None:
+        state = self._enable_lifecycle_fakes()
+        self.write_task_contract("stop")
+        for phase in ("preflight", "stop", "health"):
+            result = self.run_adapter("stop", phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["phase"], phase)
+        self.assertEqual(state.read_text(encoding="utf-8").strip(), "exited")
+        calls = (self.root / "docker-calls.txt").read_text(encoding="utf-8")
+        self.assertIn("stop web", calls)
+        self.assertNotIn("stop areaforge-postgres", calls)
+
+    def test_traffic_lifecycle_is_explicitly_unsupported(self) -> None:
+        self._enable_lifecycle_fakes()
+        result = self.run_adapter("resume-traffic", "preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported traffic action", result.stderr)
 
 
 if __name__ == "__main__":

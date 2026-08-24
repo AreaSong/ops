@@ -1,0 +1,68 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [ref=f1e9]:
+      - strong [ref=f1e10]: AreaSong Ops
+      - generic [ref=f1e11]: LosAngeles
+    - navigation "主导航" [ref=f1e12]:
+      - button "操作总览" [ref=f1e13] [cursor=pointer]
+      - button "生命周期" [ref=f1e20] [cursor=pointer]
+      - button "服务操作" [ref=f1e26] [cursor=pointer]
+      - button "多服务器" [ref=f1e40] [cursor=pointer]
+      - button "批量作业" [ref=f1e47] [cursor=pointer]
+      - button "恢复中心" [ref=f1e59] [cursor=pointer]
+      - button "配置中心" [ref=f1e65] [cursor=pointer]
+      - button "访问控制" [ref=f1e70] [cursor=pointer]
+      - button "自动任务" [ref=f1e74] [cursor=pointer]
+      - button "凭据轮换" [ref=f1e79] [cursor=pointer]
+      - button "执行记录" [ref=f1e84] [cursor=pointer]
+      - button "变更审计" [ref=f1e89] [cursor=pointer]
+    - generic [ref=f1e95]: 实时连接重试中
+  - generic [ref=f1e104]:
+    - banner [ref=f1e105]:
+      - generic [ref=f1e106]: 生产环境
+      - generic [ref=f1e109]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f1e110]
+    - main [ref=f1e111]:
+      - generic [ref=f1e364]:
+        - generic [ref=f1e365]:
+          - generic [ref=f1e366]:
+            - generic [ref=f1e367]: 并行执行与故障策略
+            - heading "批量作业" [level=1] [ref=f1e368]
+          - generic [ref=f1e369]:
+            - button "新建作业" [ref=f1e370] [cursor=pointer]
+            - button "刷新批量作业" [ref=f1e372] [cursor=pointer]
+        - generic [ref=f1e378]:
+          - generic [ref=f1e379]:
+            - heading "作业队列" [level=2] [ref=f1e380]
+            - generic [ref=f1e381]: 1 项
+          - article [ref=f1e383]:
+            - button "边缘节点发布 inspect · 2 个目标 等待下一批 08/20 16:30:00 已暂停" [expanded] [active] [ref=f1e384] [cursor=pointer]:
+              - generic [ref=f1e387]:
+                - strong [ref=f1e388]: 边缘节点发布
+                - generic [ref=f1e389]: inspect · 2 个目标
+              - generic [ref=f1e390]: 等待下一批
+              - time [ref=f1e391]: 08/20 16:30:00
+              - generic [ref=f1e392]: 已暂停
+            - generic [ref=f1e395]:
+              - generic [ref=f1e396]:
+                - generic [ref=f1e397]:
+                  - term [ref=f1e398]: 批次策略
+                  - definition [ref=f1e399]: serial
+                - generic [ref=f1e400]:
+                  - term [ref=f1e401]: 并发
+                  - definition [ref=f1e402]: global · 1
+                - generic [ref=f1e403]:
+                  - term [ref=f1e404]: 失败策略
+                  - definition [ref=f1e405]: stop
+                - generic [ref=f1e406]:
+                  - term [ref=f1e407]: 开始时间
+                  - definition [ref=f1e408]: —
+              - generic [ref=f1e409]:
+                - generic [ref=f1e410]:
+                  - generic [ref=f1e411]: LosAngeles
+                  - generic [ref=f1e412]: succeeded
+                - generic [ref=f1e413]:
+                  - generic [ref=f1e414]: Tokyo
+                  - generic [ref=f1e415]: ready
+              - button "启动下一批" [ref=f1e417] [cursor=pointer]

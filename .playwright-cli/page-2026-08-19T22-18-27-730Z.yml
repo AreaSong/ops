@@ -1,0 +1,66 @@
+- generic [ref=f3e7]:
+  - complementary [ref=f3e8]:
+    - navigation "主导航" [ref=f3e9]:
+      - button "操作总览" [ref=f3e10] [cursor=pointer]
+      - button "生命周期" [ref=f3e17] [cursor=pointer]
+      - button "服务操作" [ref=f3e23] [cursor=pointer]
+      - button "多服务器" [ref=f3e37] [cursor=pointer]
+      - button "批量作业" [ref=f3e44] [cursor=pointer]
+      - button "恢复中心" [ref=f3e56] [cursor=pointer]
+      - button "配置中心" [active] [ref=f3e62] [cursor=pointer]
+      - button "访问控制" [ref=f3e67] [cursor=pointer]
+      - button "自动任务" [ref=f3e71] [cursor=pointer]
+      - button "凭据轮换" [ref=f3e76] [cursor=pointer]
+      - button "执行记录" [ref=f3e81] [cursor=pointer]
+      - button "变更审计" [ref=f3e86] [cursor=pointer]
+  - generic [ref=f3e92]:
+    - banner [ref=f3e93]:
+      - generic [ref=f3e94]: 生产环境
+      - generic [ref=f3e97]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f3e98]
+    - main [ref=f3e99]:
+      - generic [ref=f3e169]:
+        - generic [ref=f3e171]:
+          - generic [ref=f3e172]: 受控声明与执行目标
+          - heading "配置中心" [level=1] [ref=f3e173]
+        - navigation "配置类型" [ref=f3e174]:
+          - button "Compose" [ref=f3e175] [cursor=pointer]
+          - button "Kubernetes" [ref=f3e180] [cursor=pointer]
+          - button "扩展" [ref=f3e184] [cursor=pointer]
+        - generic [ref=f3e187]:
+          - generic [ref=f3e188]:
+            - generic [ref=f3e189]:
+              - heading "Compose 受控版本" [level=2] [ref=f3e190]
+              - paragraph [ref=f3e191]: 编辑只生成校验或提案，运行态变更仍需审批计划。
+            - generic [ref=f3e192]:
+              - combobox "选择服务" [ref=f3e193]:
+                - option "AreaForge" [selected]
+                - option "Sub2API"
+              - button "刷新 Compose" [ref=f3e194] [cursor=pointer]
+          - generic [ref=f3e200]:
+            - generic [ref=f3e201]:
+              - term [ref=f3e202]: 当前摘要
+              - definition [ref=f3e203]:
+                - code [ref=f3e204]: sha256:123…abcdef
+            - generic [ref=f3e205]:
+              - term [ref=f3e206]: 来源
+              - definition [ref=f3e207]: controlled
+            - generic [ref=f3e208]:
+              - term [ref=f3e209]: 校验
+              - definition [ref=f3e210]: 已通过
+            - generic [ref=f3e211]:
+              - term [ref=f3e212]: 运行服务
+              - definition [ref=f3e213]: web
+          - generic [ref=f3e214]:
+            - generic [ref=f3e215]: Compose 内容
+            - textbox "Compose 内容" [ref=f3e216]: "services: web: image: ghcr.io/areasong/areaforge:1.8.2"
+          - generic [ref=f3e217]:
+            - group "Compose 操作模式" [ref=f3e218]:
+              - button "仅校验" [ref=f3e219] [cursor=pointer]
+              - button "提交提案" [ref=f3e222] [cursor=pointer]
+            - generic [ref=f3e226]:
+              - generic [ref=f3e227]: 确认短语
+              - textbox "确认短语" [ref=f3e228]:
+                - /placeholder: 提案模式可选
+            - button "保存 Compose" [ref=f3e229] [cursor=pointer]

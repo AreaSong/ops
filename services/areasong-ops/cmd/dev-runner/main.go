@@ -163,9 +163,12 @@ func main() {
 	}
 	defer database.Close()
 	executor := &demoExecutor{versions: map[string]string{"areaforge": "1.1.1", "sub2api": "0.1.168"}}
-	engine := runner.NewEngine(catalog, database, executor, stateRoot,
+	engine, err := runner.NewEngineChecked(catalog, database, executor, stateRoot,
 		runner.WithAlertmanager(demoAlertmanager{mode: os.Getenv("OPS_DEV_ALERTS")}),
 		runner.WithCredentialRotator(demoCredentialRotator{}))
+	if err != nil {
+		log.Fatal(err)
+	}
 	socket := envOr("OPS_RUNNER_SOCKET", "/tmp/areasong-ops-dev.sock")
 	_ = os.Remove(socket)
 	listener, err := net.Listen("unix", socket)

@@ -18,13 +18,26 @@ fail() {
 
 result() {
   local summary="$1"
-  local data="${2:-\{\}}"
+  local data="${2:-}"
+  [[ -n "$data" ]] || data='{}'
   jq -cn --arg action "$action" --arg phase "$phase" --arg summary "$summary" --argjson data "$data" \
     '{schemaVersion:2,action:$action,phase:$phase,ok:true,summary:$summary,data:$data}'
 }
 
 [[ "$service" =~ ^[a-z][a-z0-9-]{1,39}$ ]] || fail "service name is invalid"
 [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail "operation directory is unsafe"
+
+case "$action" in
+  inspect|check|backup|restart|start|stop|prepare|update|rollback|restore|restore-drill)
+    ;;
+  enter-maintenance|drain|resume-traffic)
+    fail "unsupported traffic action: $action (no Nginx or route hook is configured; use desired-only control-plane handling)"
+    ;;
+  *)
+    fail "unsupported action"
+    ;;
+esac
+
 [[ -f "$catalog" && ! -L "$catalog" ]] || fail "service catalog is unsafe"
 
 spec="$(jq -cer --arg service "$service" '.services[$service] | select(.template == "compose-service-v1") | .runtime' "$catalog")"
@@ -41,9 +54,13 @@ release_catalog="$(value '.releaseCatalog')"
 prepared_release_dir="$(value '.preparedReleaseDir')"
 inspect_executable="$(value '.inspectExecutable')"
 restore_executable="$(jq -r '.restoreDrillExecutable // ""' <<<"$spec")"
+production_restore_executable="$(jq -r '.restoreExecutable // ""' <<<"$spec")"
 prepare_executable="$(jq -r '.prepareExecutable // ""' <<<"$spec")"
 update_executable="$(jq -r '.updateExecutable // ""' <<<"$spec")"
 backup_evidence_executable="$(jq -r '.backupEvidenceExecutable // ""' <<<"$spec")"
+
+[[ "$app_service" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "application service name is invalid"
+[[ "$app_container" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "application container name is invalid"
 
 require_regular_file() {
   [[ -f "$1" && ! -L "$1" ]] || fail "required file is missing or unsafe: $1"
@@ -63,7 +80,9 @@ delegate() {
 
 dependency_snapshot() {
   local names=()
-  mapfile -t names < <(jq -r '.dependencyContainers[]?' <<<"$spec")
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && names+=("$name")
+  done < <(jq -r '.dependencyContainers[]?' <<<"$spec")
   if [[ "${#names[@]}" -eq 0 ]]; then
     printf '[]\n'
     return
@@ -97,9 +116,64 @@ wait_health() {
   fail "application health endpoint did not return HTTP 200"
 }
 
+verify_lifecycle_preflight() {
+  require_regular_file "$controlled_compose"
+  require_regular_file "$runtime_compose"
+  require_regular_file "$env_file"
+  cmp -s "$controlled_compose" "$runtime_compose" || fail "controlled and runtime Compose files differ"
+  docker compose --env-file "$env_file" -f "$runtime_compose" config --quiet >/dev/null
+  dependency_snapshot >"$operation_dir/dependencies.before.json"
+}
+
+assert_application_stopped() {
+  local status
+  status="$(docker inspect --format '{{.State.Status}}' "$app_container" 2>/dev/null)" ||
+    fail "application container is missing after stop"
+  case "$status" in
+    exited|stopped)
+      ;;
+    *)
+      fail "application container is not stopped (state=$status)"
+      ;;
+  esac
+}
+
+assert_application_running() {
+  local running
+  running="$(docker inspect --format '{{.State.Running}}' "$app_container" 2>/dev/null)" ||
+    fail "application container is missing after start"
+  [[ "$running" == true ]] || fail "application container is not running after start (running=$running)"
+}
+
+# Lifecycle planning must remain possible while the application is stopped.
+# This projection deliberately avoids the business health endpoint and only
+# carries immutable container/config identity used by the approval digest.
+lifecycle_identity() {
+  local image image_id status version identity_hash
+  image="$(docker inspect --format '{{.Config.Image}}' "$app_container" 2>/dev/null)" ||
+    fail "application container is missing; lifecycle identity unavailable"
+  image_id="$(docker inspect --format '{{.Image}}' "$app_container" 2>/dev/null)" ||
+    fail "application image identity unavailable"
+  status="$(docker inspect --format '{{.State.Status}}' "$app_container" 2>/dev/null)" ||
+    fail "application container state unavailable"
+  version="${image##*:}"
+  version="${version%%@*}"
+  [[ -n "$version" ]] || version="$image_id"
+  identity_hash="$(printf '%s\n' "$image|$image_id|$version" | sha256sum | awk '{print "sha256:"$1}')"
+  jq -cnS --arg currentVersion "$version" --arg currentImage "$image" \
+    --arg currentImageId "$image_id" --arg runtimeIdentityHash "$identity_hash" \
+    --arg appState "$status" \
+    '{currentVersion:$currentVersion,currentImage:$currentImage,currentImageId:$currentImageId,
+      runtimeIdentityHash:$runtimeIdentityHash,appState:$appState}'
+}
+
 case "$action:$phase" in
   inspect:inspect)
     delegate "$inspect_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
+    ;;
+  inspect:lifecycle)
+    verify_lifecycle_preflight
+    result "Compose 停止态运行身份检查完成" "$(lifecycle_identity)"
     ;;
   check:discover)
     require_regular_file "$release_catalog"
@@ -140,7 +214,10 @@ case "$action:$phase" in
       delegate "$backup_evidence_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
       exit 0
     fi
-    mapfile -t backup_executables < <(jq -r '.backupExecutables[]?' <<<"$spec")
+    backup_executables=()
+    while IFS= read -r executable; do
+      [[ -n "$executable" ]] && backup_executables+=("$executable")
+    done < <(jq -r '.backupExecutables[]?' <<<"$spec")
     [[ "${#backup_executables[@]}" -gt 0 ]] || fail "backup executables are not configured"
     for executable in "${backup_executables[@]}"; do
       require_executable "$executable"
@@ -175,9 +252,41 @@ case "$action:$phase" in
     assert_dependencies_unchanged
     result "应用健康检查与依赖身份检查通过"
     ;;
+  start:preflight|stop:preflight)
+    verify_lifecycle_preflight
+    result "Compose 双副本与依赖容器基线已记录"
+    ;;
+  start:start)
+    docker compose --env-file "$env_file" -f "$runtime_compose" config --quiet >/dev/null
+    docker compose --env-file "$env_file" -f "$runtime_compose" up -d --no-deps "$app_service" >/dev/null
+    assert_dependencies_unchanged
+    result "仅启动应用服务 ${app_service}" '{"productionChanged":true}'
+    ;;
+  start:health)
+    wait_health
+    assert_application_running
+    assert_dependencies_unchanged
+    result "应用启动后健康检查与依赖身份检查通过"
+    ;;
+  stop:stop)
+    docker compose --env-file "$env_file" -f "$runtime_compose" stop "$app_service" >/dev/null
+    assert_application_stopped
+    assert_dependencies_unchanged
+    result "仅停止应用服务 ${app_service}" '{"productionChanged":true}'
+    ;;
+  stop:health)
+    assert_application_stopped
+    assert_dependencies_unchanged
+    result "应用已停止且依赖容器身份未变化"
+    ;;
   restore-drill:*)
     [[ -n "$restore_executable" ]] || fail "restore drill executable is not configured"
     delegate "$restore_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
+    ;;
+  restore:*)
+    [[ -n "$production_restore_executable" ]] || fail "production restore executable is not configured"
+    require_regular_file "$operation_dir/recovery-point.json"
+    delegate "$production_restore_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
     ;;
   prepare:*)
     [[ -n "$prepare_executable" ]] || fail "prepare executable is not configured"

@@ -11,6 +11,33 @@ BACKUP_ROOT="${BACKUP_VOLUME_BACKUP_ROOT:-/var/backups/ops/volumes}"
 LOG_DIR="${BACKUP_VOLUME_LOG_DIR:-/var/log/backup}"
 AREASONG_OPS_STATE_ROOT="${BACKUP_AREASONG_OPS_STATE_ROOT:-/var/lib/areasong-ops}"
 AREASONG_OPS_SNAPSHOT_MAX_AGE_SECONDS="${BACKUP_AREASONG_OPS_SNAPSHOT_MAX_AGE_SECONDS:-90000}"
+ENV_READER="${OPS_RESTORE_ENV_READER:-$SCRIPT_DIR/restore_env.py}"
+SUB2API_ENV_FILE="${SUB2API_BACKUP_ENV_FILE:-/opt/services/sub2api/.env}"
+AREAFORGE_ENV_FILE="${AREAFORGE_BACKUP_ENV_FILE:-/opt/areaforge/.env.production}"
+if [ -n "${BACKUP_SUB2API_DATA_DIR:-}" ]; then
+  SUB2API_DATA_DIR="$BACKUP_SUB2API_DATA_DIR"
+elif [ -f "$SUB2API_ENV_FILE" ]; then
+  SUB2API_DATA_DIR="$("$ENV_READER" --file "$SUB2API_ENV_FILE" --get SUB2API_DATA_DIR --default /var/lib/sub2api/data)"
+else
+  SUB2API_DATA_DIR="/var/lib/sub2api/data"
+fi
+if [ -n "${BACKUP_AREAFORGE_UPLOADS_VOLUME:-}" ]; then
+  AREAFORGE_UPLOADS_VOLUME="$BACKUP_AREAFORGE_UPLOADS_VOLUME"
+elif [ -f "$AREAFORGE_ENV_FILE" ]; then
+  AREAFORGE_UPLOADS_VOLUME="$("$ENV_READER" --file "$AREAFORGE_ENV_FILE" --get AREAFORGE_UPLOADS_VOLUME --default areaforge_areaforge-uploads)"
+else
+  AREAFORGE_UPLOADS_VOLUME="areaforge_areaforge-uploads"
+fi
+if [ -n "${BACKUP_AREAFORGE_OPS_STATE_ROOT:-}" ]; then
+  AREAFORGE_OPS_STATE_ROOT="$BACKUP_AREAFORGE_OPS_STATE_ROOT"
+elif [ -f "$AREAFORGE_ENV_FILE" ]; then
+  AREAFORGE_OPS_STATE_ROOT="$("$ENV_READER" --file "$AREAFORGE_ENV_FILE" --get AREAFORGE_OPS_STATE_HOST_DIR --default /opt/areaforge/ops-state)"
+else
+  AREAFORGE_OPS_STATE_ROOT="/opt/areaforge/ops-state"
+fi
+case "$SUB2API_DATA_DIR" in /var/lib/sub2api/*) ;; *) echo "unsafe Sub2API data directory: $SUB2API_DATA_DIR" >&2; exit 1 ;; esac
+case "$AREAFORGE_OPS_STATE_ROOT" in /opt/areaforge/*) ;; *) echo "unsafe AreaForge ops-state directory: $AREAFORGE_OPS_STATE_ROOT" >&2; exit 1 ;; esac
+case "$AREAFORGE_UPLOADS_VOLUME" in *[!A-Za-z0-9_.-]*|'') echo "unsafe AreaForge uploads volume: $AREAFORGE_UPLOADS_VOLUME" >&2; exit 1 ;; esac
 TS="$(date +%Y%m%d-%H%M%S)"
 install -d -m 0700 "$BACKUP_ROOT"
 install -d -m 0750 "$LOG_DIR"
@@ -177,11 +204,11 @@ PY
   cleanup_areasong_ops_backup
 }
 
-if [ -d /var/lib/sub2api/data ]; then
+if [ -d "$SUB2API_DATA_DIR" ]; then
   out="$BACKUP_ROOT/sub2api-data-$TS.tar.gz"
   tar --exclude="data/logs" \
       --exclude="data/logs/*" \
-      -czf "$out" -C /var/lib/sub2api data
+      -czf "$out" -C "$(dirname "$SUB2API_DATA_DIR")" "$(basename "$SUB2API_DATA_DIR")"
   tar -tzf "$out" >/dev/null
   chmod 0600 "$out"
   echo "$out"
@@ -189,8 +216,8 @@ if [ -d /var/lib/sub2api/data ]; then
 fi
 
 backup_docker_volume jadeai-data jadeai-data
-backup_docker_volume areaforge_areaforge-uploads areaforge-uploads
-backup_directory /opt/areaforge/ops-state areaforge-ops-state
+backup_docker_volume "$AREAFORGE_UPLOADS_VOLUME" areaforge-uploads
+backup_directory "$AREAFORGE_OPS_STATE_ROOT" areaforge-ops-state
 backup_areasong_ops_state
 
 if [ "$made" -eq 0 ]; then

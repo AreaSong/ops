@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/buildinfo"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -27,7 +28,19 @@ func (server *Server) metrics(response http.ResponseWriter, request *http.Reques
 	output.WriteString("# TYPE areasong_ops_tasks_total gauge\n")
 	states := []model.TaskState{
 		model.TaskQueued, model.TaskRunning, model.TaskSucceeded, model.TaskFailed,
-		model.TaskRolledBack, model.TaskRecoveryUncertain,
+		model.TaskFailedRecoverable, model.TaskNeedsAttention, model.TaskRolledBack, model.TaskRecoveryUncertain,
+	}
+	output.WriteString("# HELP areasong_ops_runner_heartbeat_timestamp_seconds Runner 最近心跳时间。\n")
+	output.WriteString("# TYPE areasong_ops_runner_heartbeat_timestamp_seconds gauge\n")
+	fmt.Fprintf(&output, "areasong_ops_runner_heartbeat_timestamp_seconds %.0f\n", float64(time.Now().Unix()))
+	output.WriteString("# HELP areasong_ops_desired_actual_drift 服务目标状态与实际状态不一致。\n")
+	output.WriteString("# TYPE areasong_ops_desired_actual_drift gauge\n")
+	for _, state := range server.engine.ServiceStates(request.Context()) {
+		drift := 0
+		if state.Drift != nil && state.Drift.Detected {
+			drift = 1
+		}
+		fmt.Fprintf(&output, "areasong_ops_desired_actual_drift{service=%q,desired=%q,actual=%q} %d\n", state.Service, state.Desired, state.Actual, drift)
 	}
 	for _, state := range states {
 		fmt.Fprintf(&output, "areasong_ops_tasks_total{state=%q} %d\n", state, metrics.TasksByState[state])

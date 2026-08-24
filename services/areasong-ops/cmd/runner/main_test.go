@@ -8,6 +8,12 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
+func TestMTLSListenerRejectsIncompletePolicy(t *testing.T) {
+	if _, err := mtlsListener(&config.FleetPolicy{AllowRemoteRunners: true, RequiremTLS: true}); err == nil {
+		t.Fatal("incomplete mTLS policy was accepted")
+	}
+}
+
 func TestEnforceProductionStateRootMode(t *testing.T) {
 	stateRoot := t.TempDir()
 	if err := os.Chmod(stateRoot, 0o700); err != nil {

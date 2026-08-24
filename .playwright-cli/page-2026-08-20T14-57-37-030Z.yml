@@ -1,0 +1,45 @@
+- generic [ref=e7]:
+  - complementary [ref=e8]:
+    - generic [ref=e13]:
+      - strong [ref=e14]: AreaSong Ops
+      - generic [ref=e15]: LosAngeles
+    - navigation "主导航" [ref=e16]:
+      - button "操作总览" [ref=e17] [cursor=pointer]
+      - button "生命周期" [ref=e24] [cursor=pointer]
+      - button "服务操作" [ref=e30] [cursor=pointer]
+      - button "多服务器" [ref=e44] [cursor=pointer]
+      - button "批量作业" [ref=e51] [cursor=pointer]
+      - button "恢复中心" [ref=e63] [cursor=pointer]
+      - button "配置中心" [ref=e69] [cursor=pointer]
+      - button "自动更新" [active] [ref=e74] [cursor=pointer]
+      - button "受控终端" [ref=e80] [cursor=pointer]
+      - button "受管文件" [ref=e85] [cursor=pointer]
+      - button "Runner 更新" [ref=e92] [cursor=pointer]
+      - button "访问控制" [ref=e99] [cursor=pointer]
+      - button "自动任务" [ref=e103] [cursor=pointer]
+      - button "凭据轮换" [ref=e108] [cursor=pointer]
+      - button "执行记录" [ref=e113] [cursor=pointer]
+      - button "变更审计" [ref=e118] [cursor=pointer]
+    - generic [ref=e124]: 实时连接正常
+  - generic [ref=e130]:
+    - banner [ref=e131]:
+      - generic [ref=e132]: 生产环境
+      - generic [ref=e135]:
+        - navigation "观测入口"
+        - generic "song80184@gmail.com" [ref=e136]
+    - main [ref=e137]:
+      - generic [ref=e257]:
+        - generic [ref=e258]:
+          - generic [ref=e259]:
+            - generic [ref=e260]: 自动发现只生成计划
+            - heading "自动更新" [level=1] [ref=e261]
+          - generic [ref=e262]:
+            - button "评估现在的策略" [ref=e263] [cursor=pointer]
+            - button "刷新自动更新策略" [ref=e267] [cursor=pointer]
+        - alert [ref=e273]: 当前角色没有平台资源权限
+        - generic [ref=e274]:
+          - generic [ref=e275]:
+            - heading "最近评估" [level=2] [ref=e276]
+            - generic [ref=e277]: 0 项
+          - generic [ref=e278]: 尚未运行本次评估
+        - generic [ref=e279]: 自动更新只创建普通发布计划，不会绕过批准、备份或观察门禁。

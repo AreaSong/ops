@@ -10,15 +10,20 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/mail"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type Session struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
+	TenantID string `json:"tenantId"`
+	Subject  string `json:"-"`
 }
 
 type Authenticator interface {
@@ -44,22 +49,128 @@ type jwksResponse struct {
 }
 
 type AccessVerifier struct {
-	issuer       string
-	audience     string
-	allowedEmail string
-	client       *http.Client
-	mu           sync.RWMutex
-	keys         map[string]*rsa.PublicKey
-	keysExpireAt time.Time
+	issuer            string
+	audience          string
+	allowedEmail      string // legacy single-email test/config compatibility
+	allowedIdentities IdentityDirectory
+	client            *http.Client
+	mu                sync.RWMutex
+	keys              map[string]*rsa.PublicKey
+	keysExpireAt      time.Time
+}
+
+type IdentityDirectory struct {
+	tenants map[string]string
+	emails  []string
+}
+
+var tenantIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,39}$`)
+
+func ParseIdentityDirectory(rawEmails, rawMappings, defaultTenant string) (IdentityDirectory, error) {
+	directory := IdentityDirectory{tenants: make(map[string]string)}
+	seen := make(map[string]struct{})
+	for _, raw := range strings.Split(rawEmails, ",") {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		email, err := canonicalEmail(raw)
+		if err != nil {
+			return IdentityDirectory{}, err
+		}
+		if _, exists := seen[email]; exists {
+			return IdentityDirectory{}, fmt.Errorf("允许邮箱重复: %s", email)
+		}
+		seen[email] = struct{}{}
+		directory.emails = append(directory.emails, email)
+	}
+	if len(directory.emails) == 0 {
+		return IdentityDirectory{}, errors.New("Cloudflare Access 允许邮箱不能为空")
+	}
+
+	mappings := make(map[string]string)
+	for _, raw := range strings.Split(rawMappings, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		parts := strings.SplitN(raw, "=", 2)
+		if len(parts) != 2 {
+			return IdentityDirectory{}, fmt.Errorf("邮箱租户映射格式无效: %s", raw)
+		}
+		email, err := canonicalEmail(parts[0])
+		if err != nil {
+			return IdentityDirectory{}, err
+		}
+		tenantID := strings.ToLower(strings.TrimSpace(parts[1]))
+		if !tenantIDPattern.MatchString(tenantID) {
+			return IdentityDirectory{}, fmt.Errorf("邮箱 %s 的租户标识无效", email)
+		}
+		if existing, exists := mappings[email]; exists && existing != tenantID {
+			return IdentityDirectory{}, fmt.Errorf("邮箱 %s 映射到多个租户", email)
+		}
+		mappings[email] = tenantID
+	}
+	defaultTenant = strings.ToLower(strings.TrimSpace(defaultTenant))
+	if defaultTenant != "" && !tenantIDPattern.MatchString(defaultTenant) {
+		return IdentityDirectory{}, errors.New("默认租户标识无效")
+	}
+	for _, email := range directory.emails {
+		tenantID := mappings[email]
+		if tenantID == "" {
+			tenantID = defaultTenant
+		}
+		if tenantID == "" {
+			return IdentityDirectory{}, fmt.Errorf("允许邮箱 %s 缺少租户映射", email)
+		}
+		directory.tenants[email] = tenantID
+		delete(mappings, email)
+	}
+	if len(mappings) > 0 {
+		return IdentityDirectory{}, errors.New("邮箱租户映射包含未在白名单中的邮箱")
+	}
+	return directory, nil
+}
+
+func (directory IdentityDirectory) Session(email string) (Session, bool) {
+	email = config.NormalizeAccessSubject(email)
+	tenantID, ok := directory.tenants[email]
+	if !ok {
+		return Session{}, false
+	}
+	return Session{Email: email, TenantID: tenantID, Subject: config.AccessHashForEmail(email)}, true
+}
+
+func (directory IdentityDirectory) FirstEmail() string {
+	if len(directory.emails) == 0 {
+		return ""
+	}
+	return directory.emails[0]
+}
+
+func canonicalEmail(value string) (string, error) {
+	normalized := config.NormalizeAccessSubject(value)
+	parsed, err := mail.ParseAddress(normalized)
+	if err != nil || config.NormalizeAccessSubject(parsed.Address) != normalized {
+		return "", fmt.Errorf("允许邮箱格式无效: %s", strings.TrimSpace(value))
+	}
+	return normalized, nil
 }
 
 func NewAccessVerifier(issuer, audience, allowedEmail string) (*AccessVerifier, error) {
+	identities, err := ParseIdentityDirectory(allowedEmail, "", "default")
+	if err != nil {
+		return nil, err
+	}
+	return NewAccessVerifierWithIdentities(issuer, audience, identities)
+}
+
+func NewAccessVerifierWithIdentities(issuer, audience string, identities IdentityDirectory) (*AccessVerifier, error) {
 	issuer = strings.TrimSuffix(strings.TrimSpace(issuer), "/")
-	if !strings.HasPrefix(issuer, "https://") || audience == "" || allowedEmail == "" {
+	if !strings.HasPrefix(issuer, "https://") || strings.TrimSpace(audience) == "" || len(identities.tenants) == 0 {
 		return nil, errors.New("Cloudflare Access 配置不完整")
 	}
 	return &AccessVerifier{
-		issuer: issuer, audience: audience, allowedEmail: strings.ToLower(allowedEmail),
+		issuer: issuer, audience: strings.TrimSpace(audience), allowedIdentities: identities,
 		client: &http.Client{Timeout: 10 * time.Second}, keys: make(map[string]*rsa.PublicKey),
 	}, nil
 }
@@ -77,14 +188,19 @@ func (verifier *AccessVerifier) Authenticate(request *http.Request) (Session, er
 		return Session{}, errors.New("Cloudflare Access JWT 无效")
 	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
-	if email != verifier.allowedEmail {
+	session, allowed := verifier.allowedIdentities.Session(email)
+	if verifier.allowedEmail != "" {
+		allowed = email == verifier.allowedEmail
+		session = Session{Email: email, TenantID: "default", Subject: config.AccessHashForEmail(email)}
+	}
+	if !allowed {
 		return Session{}, errors.New("邮箱不在控制面允许名单")
 	}
 	forwardedEmail := strings.ToLower(strings.TrimSpace(request.Header.Get("Cf-Access-Authenticated-User-Email")))
 	if forwardedEmail != "" && forwardedEmail != email {
 		return Session{}, errors.New("Cloudflare 身份头与 JWT 不一致")
 	}
-	return Session{Email: email}, nil
+	return session, nil
 }
 
 func (verifier *AccessVerifier) keyFunc(ctx context.Context) jwt.Keyfunc {
@@ -174,12 +290,24 @@ func rsaKey(item jwk) (*rsa.PublicKey, error) {
 }
 
 type DevelopmentAuthenticator struct {
-	Email string
+	Email     string
+	Directory IdentityDirectory
 }
 
 func (auth DevelopmentAuthenticator) Authenticate(_ *http.Request) (Session, error) {
 	if auth.Email == "" {
 		return Session{}, errors.New("开发身份未配置")
 	}
-	return Session{Email: strings.ToLower(auth.Email)}, nil
+	if len(auth.Directory.tenants) == 0 {
+		email, err := canonicalEmail(auth.Email)
+		if err != nil {
+			return Session{}, err
+		}
+		return Session{Email: email, TenantID: "default", Subject: config.AccessHashForEmail(email)}, nil
+	}
+	session, ok := auth.Directory.Session(auth.Email)
+	if !ok {
+		return Session{}, errors.New("开发身份不在控制面允许名单")
+	}
+	return session, nil
 }

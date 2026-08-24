@@ -89,4 +89,6 @@ services:
 
 volumes:
   areaforge-postgres-data:
+    name: ${AREAFORGE_POSTGRES_VOLUME:-areaforge_areaforge-postgres-data}
   areaforge-uploads:
+    name: ${AREAFORGE_UPLOADS_VOLUME:-areaforge_areaforge-uploads}

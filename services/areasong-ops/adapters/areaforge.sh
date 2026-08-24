@@ -18,9 +18,11 @@ ENV_FILE="${AREAFORGE_OPS_ENV_FILE:-/opt/areaforge/.env.production}"
 BACKUP_POSTGRES="${AREAFORGE_OPS_BACKUP_POSTGRES:-/opt/ops/scripts/backup/backup-postgres.sh}"
 BACKUP_VOLUMES="${AREAFORGE_OPS_BACKUP_VOLUMES:-/opt/ops/scripts/backup/backup-volumes.sh}"
 RESTORE_DRILL="${AREAFORGE_OPS_RESTORE_DRILL:-/opt/ops/scripts/backup/restore-areaforge-isolated.sh}"
+RESTORE_PRODUCTION="${AREAFORGE_OPS_RESTORE_PRODUCTION:-/opt/ops/scripts/backup/restore-areaforge-production.sh}"
 LATEST_MANIFEST="${AREAFORGE_OPS_LATEST_MANIFEST:-/var/backups/ops/manifests/latest-manifest.txt}"
 RESTORE_METRICS="${AREAFORGE_OPS_RESTORE_METRICS:-/var/lib/node_exporter/textfile_collector/areaforge-restore-drill.prom}"
 APP_CONTAINER="${AREAFORGE_OPS_APP_CONTAINER:-areaforge-web}"
+APP_SERVICE="${AREAFORGE_OPS_APP_SERVICE:-web}"
 POSTGRES_CONTAINER="${AREAFORGE_OPS_POSTGRES_CONTAINER:-areaforge-postgres}"
 BASE_URL="${AREAFORGE_OPS_BASE_URL:-http://127.0.0.1:3020}"
 
@@ -41,7 +43,19 @@ epoch_ms() {
 }
 
 [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail "operation directory is unsafe"
-[[ "$action" =~ ^(inspect|check|backup|restart|update|rollback|restore-drill)$ ]] || fail "unsupported action"
+case "$action" in
+  inspect|check|backup|restart|start|stop|update|rollback|restore|restore-drill)
+    ;;
+  enter-maintenance|drain|resume-traffic)
+    fail "unsupported traffic action: $action (no Nginx or route hook is configured; use desired-only control-plane handling)"
+    ;;
+  *)
+    fail "unsupported action"
+    ;;
+esac
+
+[[ "$APP_SERVICE" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "application service name is invalid"
+[[ "$APP_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "application container name is invalid"
 
 require_file() {
   [[ -f "$1" && ! -L "$1" ]] || fail "required regular file is missing: $1"
@@ -107,6 +121,28 @@ inspect_data() {
     --argjson health "$(jq -c '{ok,service,version,runtimeIdentityStatus:.runtimeIdentity.status}' <<<"$health")" \
     '$before + {currentImageId:$currentImageId,runtimeIdentityHash:$runtimeIdentityHash,
       gitCommit:$gitCommit,appState:$appState,postgresState:$postgresState,health:$health}'
+}
+
+# The normal inspect path verifies the application health endpoint. A stopped
+# service cannot satisfy that check, so lifecycle plans use this stable
+# identity-only projection instead.
+lifecycle_identity() {
+  local before current_image current_image_id app_state postgres_state runtime_hash
+  before="$(updater_expected_before | jq -ceS .)"
+  current_image="$(docker inspect --format '{{.Config.Image}}' "$APP_CONTAINER" 2>/dev/null)" ||
+    fail "AreaForge Web 容器不存在，无法读取生命周期身份"
+  current_image_id="$(docker inspect --format '{{.Image}}' "$APP_CONTAINER" 2>/dev/null)" ||
+    fail "AreaForge Web 镜像身份不可用"
+  app_state="$(docker inspect --format '{{.State.Status}}' "$APP_CONTAINER" 2>/dev/null)" ||
+    fail "AreaForge Web 容器状态不可用"
+  postgres_state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$POSTGRES_CONTAINER" 2>/dev/null)" ||
+    fail "AreaForge PostgreSQL 状态不可用"
+  runtime_hash="$(printf '%s\n' "$current_image|$current_image_id|$(jq -r .currentVersion <<<"$before")" | sha256sum | awk '{print "sha256:"$1}')"
+  jq -cnS --argjson before "$before" --arg currentImage "$current_image" \
+    --arg currentImageId "$current_image_id" --arg appState "$app_state" \
+    --arg postgresState "$postgres_state" --arg runtimeHash "$runtime_hash" \
+    '$before + {currentImage:$currentImage,currentImageId:$currentImageId,
+      runtimeIdentityHash:$runtimeHash,appState:$appState,postgresState:$postgresState}'
 }
 
 contract_before() {
@@ -308,6 +344,42 @@ recreate_web() {
     ' areasong-ops "$UPDATER" >/dev/null
 }
 
+verify_lifecycle_preflight() {
+  assert_expected_before
+  verify_compose_pair
+  docker compose --env-file "$ENV_FILE" -f "$RUNTIME_COMPOSE" config --quiet >/dev/null
+  record_dependency
+}
+
+start_web() {
+  docker compose --env-file "$ENV_FILE" -f "$RUNTIME_COMPOSE" config --quiet
+  docker compose --env-file "$ENV_FILE" -f "$RUNTIME_COMPOSE" up -d --no-deps "$APP_SERVICE" >/dev/null
+}
+
+stop_web() {
+  docker compose --env-file "$ENV_FILE" -f "$RUNTIME_COMPOSE" stop "$APP_SERVICE" >/dev/null
+}
+
+assert_application_stopped() {
+  local status
+  status="$(docker inspect --format '{{.State.Status}}' "$APP_CONTAINER" 2>/dev/null)" ||
+    fail "application container is missing after stop"
+  case "$status" in
+    exited|stopped)
+      ;;
+    *)
+      fail "application container is not stopped (state=$status)"
+      ;;
+  esac
+}
+
+assert_application_running() {
+  local running
+  running="$(docker inspect --format '{{.State.Running}}' "$APP_CONTAINER" 2>/dev/null)" ||
+    fail "application container is missing after start"
+  [[ "$running" == true ]] || fail "application container is not running after start (running=$running)"
+}
+
 restore_application() {
   local directory="$1" old_version old_image
   require_file "$directory/controlled-compose.before.yml"
@@ -396,6 +468,10 @@ case "$action:$phase" in
   inspect:inspect)
     result "AreaForge 运行身份检查完成" "$(inspect_data)"
     ;;
+  inspect:lifecycle)
+    verify_lifecycle_preflight
+    result "AreaForge 停止态运行身份检查完成" "$(lifecycle_identity)"
+    ;;
   check:discover)
     verify_release "$operation_dir/target-identity.json"
     current="$(inspect_data | jq -r .currentVersion)"
@@ -439,6 +515,32 @@ case "$action:$phase" in
     run_smoke "$(jq -r .expectedBefore.currentVersion "$operation_dir/task-contract.json")"
     assert_dependency_unchanged_from "$operation_dir"
     result "AreaForge 认证只读 smoke 通过"
+    ;;
+  start:preflight|stop:preflight)
+    verify_lifecycle_preflight
+    result "Compose 双副本与 PostgreSQL 依赖基线已记录"
+    ;;
+  start:start)
+    start_web
+    assert_dependency_unchanged_from "$operation_dir"
+    result "仅启动 AreaForge Web 应用服务" '{"productionChanged":true}'
+    ;;
+  start:health)
+    wait_health "$(jq -r .expectedBefore.currentVersion "$operation_dir/task-contract.json")"
+    assert_application_running
+    assert_dependency_unchanged_from "$operation_dir"
+    result "AreaForge 启动后健康检查与依赖身份检查通过"
+    ;;
+  stop:stop)
+    stop_web
+    assert_application_stopped
+    assert_dependency_unchanged_from "$operation_dir"
+    result "仅停止 AreaForge Web 应用服务" '{"productionChanged":true}'
+    ;;
+  stop:health)
+    assert_application_stopped
+    assert_dependency_unchanged_from "$operation_dir"
+    result "AreaForge 应用已停止且 PostgreSQL 身份未变化"
     ;;
   update:preflight)
     for command_name in bash curl docker jq sha256sum awk flock; do command -v "$command_name" >/dev/null || fail "missing command: $command_name"; done
@@ -560,6 +662,17 @@ case "$action:$phase" in
       fail "restore drill completion marker is missing"
     assert_expected_before
     result "隔离恢复结果、成功指标与生产未漂移检查通过"
+    ;;
+  restore:*)
+    require_file "$operation_dir/recovery-point.json"
+    if [[ "$phase" == preflight ]]; then
+      assert_expected_before
+    fi
+    restore_output="$("$RESTORE_PRODUCTION" "$action" "$phase" "$operation_dir" "$target" "$source_dir")"
+    jq -e --arg action "$action" --arg phase "$phase" \
+      '.schemaVersion == 2 and .action == $action and .phase == $phase and .ok == true and (.summary | type == "string" and length > 0)' \
+      <<<"$restore_output" >/dev/null || fail "production restore hook contract failed"
+    printf '%s\n' "$restore_output"
     ;;
   *)
     fail "unsupported action phase"

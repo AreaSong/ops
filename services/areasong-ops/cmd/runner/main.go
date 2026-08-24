@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,14 +30,13 @@ func main() {
 }
 
 func run() error {
-	development := os.Getenv("OPS_ENV") == "development"
-	if os.Geteuid() != 0 && !development {
+	if os.Geteuid() != 0 {
 		return errors.New("生产 Runner 必须以 root 身份运行")
 	}
 	stateRoot := envOr("OPS_STATE_ROOT", "/var/lib/areasong-ops")
 	catalogPath := envOr("OPS_SERVICE_CATALOG", "/etc/areasong-ops/services.json")
 	socketPath := envOr("OPS_RUNNER_SOCKET", "/var/lib/areasong-ops/run/runner.sock")
-	catalog, err := config.Load(catalogPath, !development)
+	catalog, err := config.Load(catalogPath, true)
 	if err != nil {
 		return err
 	}
@@ -48,10 +49,8 @@ func run() error {
 		return err
 	}
 	defer database.Close()
-	if !development {
-		if err := enforceProductionStateRootMode(stateRoot); err != nil {
-			return err
-		}
+	if err := enforceProductionStateRootMode(stateRoot); err != nil {
+		return err
 	}
 	if count, err := database.RecoverInterrupted(context.Background(), interruptionClassifier(catalog)); err != nil {
 		return err
@@ -63,26 +62,59 @@ func run() error {
 	} else if count > 0 {
 		slog.Warn("检测到未完成凭据轮换，已转为人工核对", "count", count)
 	}
-	engine := runner.NewEngine(catalog, database, runner.CommandExecutor{}, stateRoot,
+	if count, err := database.RecoverInterruptedRunnerUpdates(context.Background()); err != nil {
+		return err
+	} else if count > 0 {
+		slog.Warn("检测到失联的 Runner 更新执行器，已转为人工核对", "count", count)
+	}
+	engine, err := runner.NewEngineChecked(catalog, database, runner.CommandExecutor{}, stateRoot,
 		runner.WithAlertmanager(alertmanager),
 		runner.WithCredentialRotator(runner.NewProductionCredentialRotator()))
+	if err != nil {
+		return err
+	}
 	listener, err := unixListener(socketPath)
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
+	rawHandler := runner.NewServer(engine, database)
+	handler := runner.WithListenerKind(rawHandler, "unix")
 	server := &http.Server{
-		Handler:           runner.NewServer(engine, database),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    32 << 10,
+	}
+	var remoteServer *http.Server
+	var remoteListener net.Listener
+	if catalog.Fleet != nil && catalog.Fleet.AllowRemoteRunners {
+		remoteListener, err = mtlsListener(catalog.Fleet)
+		if err != nil {
+			return err
+		}
+		defer remoteListener.Close()
+		remoteServer = &http.Server{
+			Handler:           runner.RemoteRunnerHandler(rawHandler),
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       90 * time.Second,
+			MaxHeaderBytes:    32 << 10,
+		}
 	}
 	maintenanceContext, stopMaintenance := context.WithCancel(context.Background())
 	defer stopMaintenance()
 	legacyStateRoot := envOr("OPS_LEGACY_STATE_ROOT", "/var/lib/ops/update-control")
 	go maintain(maintenanceContext, database, stateRoot, legacyStateRoot)
-	serveErrors := make(chan error, 1)
+	go monitorRunnerUpdates(maintenanceContext, database)
+	serveBuffer := 1
+	if remoteServer != nil {
+		serveBuffer++
+	}
+	serveErrors := make(chan error, serveBuffer)
 	go func() { serveErrors <- server.Serve(listener) }()
+	if remoteServer != nil {
+		go func() { serveErrors <- remoteServer.Serve(remoteListener) }()
+	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	select {
@@ -96,8 +128,58 @@ func run() error {
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownContext)
+	if remoteServer != nil {
+		_ = remoteServer.Shutdown(shutdownContext)
+	}
 	engine.Wait()
 	return nil
+}
+
+func mtlsListener(policy *config.FleetPolicy) (net.Listener, error) {
+	if policy == nil || !policy.AllowRemoteRunners || !policy.RequiremTLS {
+		return nil, errors.New("远程 Runner mTLS 策略未启用")
+	}
+	certificate, err := tls.LoadX509KeyPair(policy.MTLSCertificateFile, policy.MTLSKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("加载 Runner mTLS 证书失败: %w", err)
+	}
+	caPEM, err := os.ReadFile(policy.MTLSClientCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("读取 Runner mTLS 客户端 CA 失败: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("Runner mTLS 客户端 CA 无有效证书")
+	}
+	tlsConfig := &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{certificate},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+	}
+	listener, err := tls.Listen("tcp", policy.MTLSListenAddress, tlsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("监听 Runner mTLS 地址失败: %w", err)
+	}
+	return listener, nil
+}
+
+func monitorRunnerUpdates(ctx context.Context, database *store.Store) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			count, err := database.RecoverInterruptedRunnerUpdates(ctx)
+			if err != nil {
+				slog.Error("Runner 更新执行心跳检查失败", "error", err)
+			} else if count > 0 {
+				slog.Warn("Runner 更新执行器心跳超时，已转为人工核对", "count", count)
+			}
+		}
+	}
 }
 
 func interruptionClassifier(catalog *config.Catalog) store.InterruptionClassifier {

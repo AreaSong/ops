@@ -95,6 +95,9 @@ func (engine *Engine) RotateCredential(
 		!uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.CredentialRotation{}, false, errors.New("凭据轮换请求无效")
 	}
+	if err := engine.authorizePlatform(ctx, actorHash, model.PermissionManageConfig, "credentials"); err != nil {
+		return model.CredentialRotation{}, false, err
+	}
 	if request.Confirmation != credentialConfirmation {
 		return model.CredentialRotation{}, false, errors.New("凭据轮换确认短语不匹配")
 	}
@@ -169,6 +172,9 @@ func (engine *Engine) CloseCredentialRotation(
 	if !actorPattern.MatchString(actorHash) || !uuidPattern.MatchString(rotationID) ||
 		!uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.CredentialRotation{}, false, errors.New("凭据轮换收口请求无效")
+	}
+	if err := engine.authorizePlatform(ctx, actorHash, model.PermissionManageConfig, "credentials"); err != nil {
+		return model.CredentialRotation{}, false, err
 	}
 	if request.Confirmation != credentialClosureConfirmation {
 		return model.CredentialRotation{}, false, errors.New("凭据轮换收口确认短语不匹配")

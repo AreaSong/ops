@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/hex"
@@ -114,7 +113,8 @@ func (server *Server) session(response http.ResponseWriter, request *http.Reques
 		HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 1800,
 	})
 	writeJSON(response, http.StatusOK, map[string]any{
-		"email": session.Email, "csrfToken": token, "links": server.externalLinks,
+		"email": session.Email, "tenantId": session.TenantID,
+		"csrfToken": token, "links": server.externalLinks,
 	})
 }
 
@@ -153,10 +153,8 @@ func (server *Server) api(response http.ResponseWriter, request *http.Request) {
 		writeJSON(response, http.StatusBadRequest, map[string]any{"error": "API 路径无效"})
 		return
 	}
-	actor := sha256.Sum256([]byte(strings.ToLower(session.Email)))
-	actorHash := hex.EncodeToString(actor[:])
 	stream := runnerPath == "/v1/events"
-	contextWithActor := context.WithValue(request.Context(), actorContextKey{}, actorHash)
+	contextWithActor := context.WithValue(request.Context(), actorContextKey{}, session.Subject)
 	upstream := server.runnerRequest(contextWithActor, request.Method, runnerPath, request.URL.RawQuery, request.Body, stream)
 	if upstream == nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]any{"error": "Runner 当前不可用"})

@@ -16,6 +16,9 @@ ARG BUILD_REVISION=unknown
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -ldflags="-s -w -X github.com/AreaSong/ops/services/areasong-ops/internal/buildinfo.Version=${BUILD_VERSION} -X github.com/AreaSong/ops/services/areasong-ops/internal/buildinfo.Revision=${BUILD_REVISION}" \
     -o /out/areasong-ops-runner ./cmd/runner
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w" \
+    -o /out/areasong-ops-runner-updater ./cmd/runner-updater
 
 FROM ${NODE_IMAGE} AS web-assets
 WORKDIR /web
@@ -34,6 +37,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 
 FROM scratch AS runner-export
 COPY --from=runner-build /out/areasong-ops-runner /areasong-ops-runner
+COPY --from=runner-build /out/areasong-ops-runner-updater /areasong-ops-runner-updater
 
 FROM ${RUNTIME_IMAGE} AS web
 ARG BUILD_VERSION=dev

@@ -195,8 +195,8 @@ func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
 			},
 		},
 	}}
-	return NewEngine(catalog, database, executor, stateRoot,
-		WithAlertmanager(&fakeAlertmanager{})), database
+	engine := NewEngine(catalog, database, executor, stateRoot, WithAlertmanager(&fakeAlertmanager{}))
+	return engine, database
 }
 
 func TestAutomaticTaskUsesManagedObjectPlanAndExecution(t *testing.T) {

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,19 +23,24 @@ var (
 )
 
 type Engine struct {
-	catalog      *config.Catalog
-	store        *store.Store
-	executor     Executor
-	broker       *Broker
-	stateRoot    string
-	lockMu       sync.Mutex
-	locks        map[string]string
-	credentialMu sync.Mutex
-	wait         sync.WaitGroup
-	owner        string
-	backupRoot   string
-	alertmanager Alertmanager
-	credentials  CredentialRotator
+	catalog        *config.Catalog
+	store          *store.Store
+	executor       Executor
+	broker         *Broker
+	stateRoot      string
+	lockMu         sync.Mutex
+	locks          map[string]string
+	credentialMu   sync.Mutex
+	wait           sync.WaitGroup
+	owner          string
+	backupRoot     string
+	alertmanager   Alertmanager
+	credentials    CredentialRotator
+	runnerUpdater  RunnerUpdateLauncher
+	composeRunner  ComposeCommandRunner
+	terminalMu     sync.Mutex
+	terminals      map[string]model.TerminalSession
+	remoteDispatch bool
 }
 
 type EngineOption func(*Engine)
@@ -55,6 +61,35 @@ func WithCredentialRotator(rotator CredentialRotator) EngineOption {
 	}
 }
 
+func WithRunnerUpdateLauncher(launcher RunnerUpdateLauncher) EngineOption {
+	return func(engine *Engine) {
+		if launcher != nil {
+			engine.runnerUpdater = launcher
+		}
+	}
+}
+
+// WithComposeRunner is intentionally injectable so the Compose state machine
+// can be verified without touching a host Docker daemon. Production uses the
+// fixed system Docker executable configured by NewEngineChecked.
+func WithComposeRunner(runner ComposeCommandRunner) EngineOption {
+	return func(engine *Engine) {
+		if runner != nil {
+			engine.composeRunner = runner
+		}
+	}
+}
+
+// WithRemoteDispatch turns the control-plane process into a dispatcher. A task
+// is durably assigned before enqueue returns; no local execution goroutine is
+// started while the option is enabled.
+func WithRemoteDispatch(enabled bool) EngineOption {
+	return func(engine *Engine) { engine.remoteDispatch = enabled }
+}
+
+// NewEngine keeps the historical constructor shape for in-process callers.
+// Production entrypoints should use NewEngineChecked so bootstrap failures are
+// returned instead of being silently tolerated.
 func NewEngine(
 	catalog *config.Catalog,
 	database *store.Store,
@@ -62,6 +97,20 @@ func NewEngine(
 	stateRoot string,
 	options ...EngineOption,
 ) *Engine {
+	engine, err := NewEngineChecked(catalog, database, executor, stateRoot, options...)
+	if err != nil {
+		panic(err)
+	}
+	return engine
+}
+
+func NewEngineChecked(
+	catalog *config.Catalog,
+	database *store.Store,
+	executor Executor,
+	stateRoot string,
+	options ...EngineOption,
+) (*Engine, error) {
 	owner, err := newUUID()
 	if err != nil {
 		owner = fmt.Sprintf("runner-%d", os.Getpid())
@@ -70,12 +119,86 @@ func NewEngine(
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
 		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
 		backupRoot: "/var/backups/ops", alertmanager: unavailableAlertmanager{},
-		credentials: unavailableCredentialRotator{},
+		credentials:   unavailableCredentialRotator{},
+		composeRunner: systemComposeCommandRunner{executable: "/usr/bin/docker"},
+		terminals:     make(map[string]model.TerminalSession),
 	}
 	for _, option := range options {
 		option(engine)
 	}
-	return engine
+	if err := engine.seedAccessPolicy(); err != nil {
+		return nil, fmt.Errorf("初始化访问策略失败: %w", err)
+	}
+	if err := engine.seedFleet(); err != nil {
+		return nil, fmt.Errorf("初始化 Fleet 失败: %w", err)
+	}
+	if err := engine.seedAutoUpdatePolicies(); err != nil {
+		return nil, fmt.Errorf("初始化自动更新策略失败: %w", err)
+	}
+	if err := engine.resumeBatchOperations(); err != nil {
+		return nil, fmt.Errorf("恢复批量协调器失败: %w", err)
+	}
+	return engine, nil
+}
+
+func (engine *Engine) seedAccessPolicy() error {
+	if engine.catalog.Access == nil {
+		return nil
+	}
+	ctx := context.Background()
+	if err := engine.store.EnsureAccessDefaults(ctx); err != nil {
+		return err
+	}
+	// Once a durable snapshot exists it is the authority. Re-reading a changed
+	// catalog must not silently overwrite operator-created tenants, roles, or
+	// bindings in a running production control plane.
+	if _, found, err := engine.store.GetAccessPolicySnapshot(ctx); err != nil {
+		return err
+	} else if found {
+		return nil
+	}
+	tenants := make([]model.Tenant, 0, len(engine.catalog.Access.Tenants))
+	roles := make([]model.Role, 0, len(engine.catalog.Access.Roles))
+	bindings := make([]model.RoleBinding, 0, len(engine.catalog.Access.Bindings))
+	for _, tenant := range engine.catalog.Access.Tenants {
+		tenants = append(tenants, tenant)
+	}
+	for _, role := range engine.catalog.Access.Roles {
+		roles = append(roles, role)
+	}
+	for _, binding := range engine.catalog.Access.Bindings {
+		bindings = append(bindings, binding)
+	}
+	if err := engine.store.ReconcileBootstrapAccess(ctx, tenants, roles, bindings); err != nil {
+		return err
+	}
+	policyJSON, err := json.Marshal(engine.catalog.Access)
+	if err != nil {
+		return err
+	}
+	digest := digestText(string(policyJSON))
+	_, _, err = engine.store.EnsureAccessPolicySnapshot(ctx, model.AccessPolicySnapshot{
+		Digest: digest, PolicyJSON: string(policyJSON), ActorHash: "bootstrap",
+	})
+	return err
+}
+
+func (engine *Engine) seedFleet() error {
+	if engine.catalog.Fleet == nil {
+		return nil
+	}
+	ctx := context.Background()
+	for _, node := range engine.catalog.Fleet.Inventory.Servers {
+		if err := engine.store.UpsertServerNode(ctx, node); err != nil {
+			return err
+		}
+	}
+	for _, node := range engine.catalog.Fleet.Inventory.Runners {
+		if err := engine.store.UpsertRunnerNode(ctx, node, "default"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (engine *Engine) Broker() *Broker {
@@ -94,14 +217,20 @@ func (engine *Engine) CreatePreview(
 	if err != nil {
 		return model.Preview{}, err
 	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(action.Name), service.ObjectID); err != nil {
+		return model.Preview{}, err
+	}
 	if active, found, err := engine.store.ActiveTask(ctx, service.Name); err != nil {
 		return model.Preview{}, err
 	} else if found {
 		return model.Preview{}, fmt.Errorf("服务已有活动任务: %s", active.ID)
 	}
-	snapshot, err := engine.inspect(ctx, service)
+	snapshot, err := engine.inspectForAction(ctx, service, action.Name)
 	if err != nil {
 		return model.Preview{}, fmt.Errorf("创建预览前检查失败: %w", err)
+	}
+	if digest := service.PolicyDigest(); digest != "" {
+		snapshot["trafficPolicyDigest"] = digest
 	}
 	if action.TargetMode == "controlled_rollback" {
 		if err := engine.validateRollbackSource(service.Name, request.Target, snapshot); err != nil {
@@ -144,6 +273,17 @@ func (engine *Engine) StartTask(
 		!uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.Task{}, false, errors.New("任务请求标识无效")
 	}
+	preview, err := engine.store.GetPreview(ctx, request.PreviewID)
+	if err != nil {
+		return model.Task{}, false, err
+	}
+	service, exists := engine.catalog.Object(preview.Service)
+	if !exists {
+		return model.Task{}, false, errors.New("受管对象声明不存在")
+	}
+	if err := engine.authorize(ctx, actorHash, permissionForAction(preview.Action), service.ObjectID); err != nil {
+		return model.Task{}, false, err
+	}
 	taskID, err := newUUID()
 	if err != nil {
 		return model.Task{}, false, err
@@ -169,11 +309,38 @@ func (engine *Engine) enqueue(task model.Task) {
 		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
 		Outcome: "accepted", Detail: map[string]any{"service": task.Service, "action": task.Action, "target": task.Target},
 	})
+	if engine.remoteDispatch {
+		if err := engine.dispatchRemote(context.Background(), task); err != nil {
+			engine.completeTask(task, model.TaskFailedRecoverable, "远程任务分派失败", redactText(err.Error()),
+				"remote_dispatch_failed", true, false, "")
+		}
+		return
+	}
 	engine.wait.Add(1)
 	go func() {
 		defer engine.wait.Done()
 		engine.run(task)
 	}()
+}
+
+func (engine *Engine) dispatchRemote(ctx context.Context, task model.Task) error {
+	service, action, err := engine.resolveAction(task.Service, task.Action, task.Target)
+	if err != nil {
+		return err
+	}
+	if service.ServerID == "" {
+		return errors.New("远程任务目标未绑定 Fleet server")
+	}
+	runnerID := engine.runnerIDForService(ctx, service)
+	if runnerID == "" {
+		return errors.New("远程任务目标没有在线 Runner")
+	}
+	timeout := time.Duration(action.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Minute
+	}
+	_, err = engine.store.CreateTaskAssignment(ctx, task.ID, service.ServerID, runnerID, time.Now().UTC().Add(timeout))
+	return err
 }
 
 func (engine *Engine) Wait() {
@@ -190,11 +357,32 @@ func (engine *Engine) inspect(ctx context.Context, service model.ServiceDefiniti
 	defer cancel()
 	result, err := engine.executor.Execute(inspectCtx, ExecuteInput{
 		Service: service, Action: "inspect", Phase: "inspect", OperationDir: directory,
+		AdapterKind: adapterKindService,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return result.Data, nil
+	data := cloneAnyMap(result.Data)
+	if data == nil {
+		data = make(map[string]any)
+	}
+	data["application"] = cloneAnyMap(result.Data)
+	if service.TrafficPolicy != nil {
+		traffic, trafficErr := engine.executor.Execute(inspectCtx, ExecuteInput{
+			Service: service, Action: "inspect", Phase: "inspect", OperationDir: directory,
+			AdapterKind: adapterKindTraffic,
+		})
+		if trafficErr != nil {
+			return nil, fmt.Errorf("流量状态检查失败: %w", trafficErr)
+		}
+		data["traffic"] = cloneAnyMap(traffic.Data)
+		for key, value := range traffic.Data {
+			if key == "trafficState" || key == "includeDigest" || key == "hostname" || key == "drainTimeoutSeconds" {
+				data[key] = value
+			}
+		}
+	}
+	return data, nil
 }
 
 func (engine *Engine) resolveAction(
@@ -205,12 +393,18 @@ func (engine *Engine) resolveAction(
 		return service, model.ActionDefinition{}, errors.New("受管对象未纳入控制面")
 	}
 	action, ok := service.Actions[actionName]
+	if !ok {
+		if generated, generatedOK := lifecycleAction(service, actionName); generatedOK {
+			action, ok = generated, true
+		}
+	}
 	if !ok || !action.Enabled {
 		return service, action, errors.New("服务能力未开放")
 	}
 	switch action.TargetMode {
 	case "none":
-		if target != "" {
+		isRecoveryPointTarget := (actionName == "restore" || actionName == "restore-drill") && uuidPattern.MatchString(target)
+		if target != "" && !isRecoveryPointTarget {
 			return service, action, errors.New("该动作不接受目标参数")
 		}
 	case "signed_release_tag":

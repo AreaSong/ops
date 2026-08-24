@@ -1,0 +1,59 @@
+- generic [ref=f3e7]:
+  - complementary [ref=f3e8]:
+    - navigation "主导航" [ref=f3e9]:
+      - button "操作总览" [ref=f3e10] [cursor=pointer]
+      - button "生命周期" [ref=f3e17] [cursor=pointer]
+      - button "服务操作" [ref=f3e23] [cursor=pointer]
+      - button "多服务器" [ref=f3e37] [cursor=pointer]
+      - button "批量作业" [ref=f3e44] [cursor=pointer]
+      - button "恢复中心" [ref=f3e56] [cursor=pointer]
+      - button "配置中心" [ref=f3e62] [cursor=pointer]
+      - button "访问控制" [ref=f3e67] [cursor=pointer]
+      - button "自动任务" [ref=f3e71] [cursor=pointer]
+      - button "凭据轮换" [ref=f3e76] [cursor=pointer]
+      - button "执行记录" [ref=f3e81] [cursor=pointer]
+      - button "变更审计" [ref=f3e86] [cursor=pointer]
+  - generic [ref=f3e92]:
+    - banner [ref=f3e93]:
+      - generic [ref=f3e94]: 生产环境
+      - generic [ref=f3e97]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f3e98]
+    - main [ref=f3e99]:
+      - generic [ref=f3e169]:
+        - generic [ref=f3e171]:
+          - generic [ref=f3e172]: 受控声明与执行目标
+          - heading "配置中心" [level=1] [ref=f3e173]
+        - navigation "配置类型" [ref=f3e174]:
+          - button "Compose" [ref=f3e175] [cursor=pointer]
+          - button "Kubernetes" [ref=f3e180] [cursor=pointer]
+          - button "扩展" [active] [ref=f3e184] [cursor=pointer]
+        - generic [ref=f3e230]:
+          - generic [ref=f3e231]:
+            - generic [ref=f3e232]:
+              - heading "扩展策略" [level=2] [ref=f3e233]
+              - paragraph [ref=f3e234]: 扩展必须保持签名校验与受限沙箱，策略变更会写入审计。
+            - button "刷新扩展策略" [ref=f3e235] [cursor=pointer]
+          - generic [ref=f3e241]:
+            - generic [ref=f3e242]:
+              - term [ref=f3e243]: 状态
+              - definition [ref=f3e244]: 已关闭
+            - generic [ref=f3e245]:
+              - term [ref=f3e246]: 签名校验
+              - definition [ref=f3e247]: 强制
+            - generic [ref=f3e248]:
+              - term [ref=f3e249]: 沙箱
+              - definition [ref=f3e250]: rootless
+            - generic [ref=f3e251]:
+              - term [ref=f3e252]: 受信发布者
+              - definition [ref=f3e253]: 1 个
+          - generic [ref=f3e254]:
+            - generic [ref=f3e255]:
+              - heading "受信发布者" [level=2] [ref=f3e256]
+              - generic [ref=f3e257]: 受控配置
+            - code [ref=f3e259]: AreaSong
+          - generic [ref=f3e260]:
+            - generic [ref=f3e261]:
+              - heading "已登记扩展" [level=2] [ref=f3e262]
+              - generic [ref=f3e263]: 0 项
+            - generic [ref=f3e264]: 暂无扩展登记

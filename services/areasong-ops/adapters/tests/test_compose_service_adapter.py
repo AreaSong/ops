@@ -99,6 +99,92 @@ class ComposeServiceAdapterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+    def _enable_lifecycle_fakes(self) -> Path:
+        state = self.root / "app-state"
+        state.write_text("running\n", encoding="utf-8")
+        catalog = json.loads(self.catalog.read_text(encoding="utf-8"))
+        catalog["services"]["demo"]["runtime"]["dependencyContainers"] = ["demo-db"]
+        self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
+
+        docker = self.bin_dir / "docker"
+        docker.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env bash",
+                    "set -eu",
+                    f"state={str(state)!r}",
+                    f"log={str(self.root / 'docker-calls.txt')!r}",
+                    'if [[ "${1:-}" == compose ]]; then',
+                    '  printf "%s\\n" "$*" >>"$log"',
+                    '  case " $* " in',
+                    '    *\ up\ *) printf "running\\n" >"$state" ;;',
+                    '    *\ stop\ *) printf "exited\\n" >"$state" ;;',
+                    "  esac",
+                    "  exit 0",
+                    "fi",
+                    '[[ "${1:-}" == inspect ]] || { printf "unexpected docker invocation: %s\\n" "$*" >&2; exit 1; }',
+                    'if [[ "$*" == *--format* ]]; then',
+                    '  container="${!#}"',
+                    '  format="${3:-}"',
+                    '  if [[ "$container" == demo ]]; then',
+                    '    case "$format" in',
+                    '      *State.Running*) [[ "$(cat "$state")" == running ]] && printf "true\\n" || printf "false\\n" ;;',
+                    '      *State.Status*) cat "$state" ;;',
+                    '      *) printf "running\\n" ;;',
+                    "    esac",
+                    "  else",
+                    '    printf "running\\n"',
+                    "  fi",
+                    "else",
+                    '  printf \'[{"Name":"/demo-db","Id":"db-id","State":{"StartedAt":"db-start"},"Image":"postgres@sha256:test"}]\\n\'',
+                    "fi",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        docker.chmod(0o755)
+        curl = self.bin_dir / "curl"
+        curl.write_text(
+            "\n".join(
+                [
+                    "#!/bin/sh",
+                    "out=''",
+                    "code=''",
+                    "while [ $# -gt 0 ]; do",
+                    '  case "$1" in',
+                    "    -o) out=$2; shift 2 ;;",
+                    "    -w) code=$2; shift 2 ;;",
+                    "    *) shift ;;",
+                    "  esac",
+                    "done",
+                    '[ -z "$out" ] || printf \'{"ok":true}\\n\' >"$out"',
+                    '[ -z "$code" ] || printf "200\\n"',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+        return state
+
+    def run_lifecycle(self, action: str, phase: str) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "PATH": f"{self.bin_dir}:{environment['PATH']}",
+                "OPS_SERVICE_NAME": "demo",
+                "OPS_SERVICE_CATALOG": str(self.catalog),
+            }
+        )
+        return subprocess.run(
+            [str(ADAPTER), action, phase, str(self.operation), "", ""],
+            text=True,
+            capture_output=True,
+            env=environment,
+            check=False,
+        )
+
     def test_check_blocks_release_without_preparation_record(self) -> None:
         payload = self.run_check()
         self.assertFalse(payload["data"]["prepared"])
@@ -145,6 +231,37 @@ class ComposeServiceAdapterTests(unittest.TestCase):
             calls.read_text(encoding="utf-8").splitlines(),
             ["backup preflight", "backup backup", "backup verify"],
         )
+
+    def test_start_lifecycle_only_starts_application_and_checks_health(self) -> None:
+        state = self._enable_lifecycle_fakes()
+        state.write_text("exited\n", encoding="utf-8")
+        for phase in ("preflight", "start", "health"):
+            result = self.run_lifecycle("start", phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["phase"], phase)
+
+        self.assertEqual(state.read_text(encoding="utf-8").strip(), "running")
+        calls = (self.root / "docker-calls.txt").read_text(encoding="utf-8")
+        self.assertIn("up -d --no-deps demo", calls)
+        self.assertNotIn("--force-recreate", calls)
+        self.assertNotIn("demo-db", calls.split("up -d", 1)[-1])
+
+    def test_stop_lifecycle_only_stops_application_and_verifies_stopped(self) -> None:
+        state = self._enable_lifecycle_fakes()
+        for phase in ("preflight", "stop", "health"):
+            result = self.run_lifecycle("stop", phase)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["phase"], phase)
+        self.assertEqual(state.read_text(encoding="utf-8").strip(), "exited")
+        calls = (self.root / "docker-calls.txt").read_text(encoding="utf-8")
+        self.assertIn("stop demo", calls)
+        self.assertNotIn("stop demo-db", calls)
+
+    def test_traffic_lifecycle_is_explicitly_unsupported(self) -> None:
+        self._enable_lifecycle_fakes()
+        result = self.run_lifecycle("drain", "preflight")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported traffic action", result.stderr)
 
 
 if __name__ == "__main__":

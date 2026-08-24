@@ -95,6 +95,86 @@ groups:
           description: "完整备份集中的控制面 SQLite 超过 35 天未完成隔离恢复、完整性、关键表和行数验证。"
           grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-40d&to=now"
 
+      - alert: AreaSongOpsTaskNeedsAttention
+        expr: |
+          areasong_ops_tasks_total{job="areasong_ops",state="needs_attention"} > 0
+          or
+          areasong_ops_task_state_total{job="areasong_ops",state="needs_attention"} > 0
+        for: 5m
+        labels:
+          owner: areasong-ops
+          severity: critical
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 有任务需要人工处理"
+          description: "至少一个控制面任务进入 needs_attention；禁止自动重试或覆盖生产状态，先核对任务事件、生产变更事实、恢复点和回滚证据。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+      - alert: AreaSongOpsTaskFailedRecoverable
+        expr: |
+          areasong_ops_tasks_total{job="areasong_ops",state="failed_recoverable"} > 0
+          or
+          areasong_ops_task_state_total{job="areasong_ops",state="failed_recoverable"} > 0
+        for: 15m
+        labels:
+          owner: areasong-ops
+          severity: warning
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 有可恢复失败任务未处理"
+          description: "至少一个任务处于 failed_recoverable 超过 15 分钟；请重新生成计划并完成预检，禁止直接修改任务终态或绕过批准链。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+      - alert: AreaSongOpsRunnerHeartbeatStale
+        expr: |
+          absent(areasong_ops_runner_heartbeat_timestamp_seconds{job="areasong_ops"})
+          or
+          time() - max by (job) (areasong_ops_runner_heartbeat_timestamp_seconds{job="areasong_ops"}) > 120
+        for: 2m
+        labels:
+          owner: areasong-ops
+          severity: critical
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops Runner 心跳过期或缺失"
+          description: "控制面 Runner 超过两分钟没有发布新心跳；先核对 Runner 进程、SQLite 可写性和指标抓取链路，不要把旧任务标记为成功。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-15m&to=now"
+
+      - alert: AreaSongOpsDesiredActualDriftCritical
+        expr: |
+          areasong_ops_desired_actual_drift{job="areasong_ops",severity="critical"} > 0
+          or
+          ops_state_drift{severity="critical"} > 0
+        for: 2m
+        labels:
+          owner: areasong-ops
+          severity: critical
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 期望状态与实际状态发生关键漂移"
+          description: "控制面报告了 critical desired/actual drift；暂停相关自动动作，核对受管对象、期望摘要、运行身份和最近变更审计。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
+      - alert: AreaSongOpsDesiredActualDrift
+        expr: |
+          areasong_ops_desired_actual_drift{job="areasong_ops",severity!="critical"} > 0
+          or
+          ops_state_drift{severity!="critical"} > 0
+        for: 10m
+        labels:
+          owner: areasong-ops
+          severity: warning
+          service: areasong-ops
+        annotations:
+          runbook_url: "https://github.com/AreaSong/ops/blob/main/runbooks/playbooks/areasong-ops-control-plane.md"
+          summary: "AreaSong Ops 期望状态与实际状态发生漂移"
+          description: "控制面报告了 desired/actual drift 持续超过十分钟；请先确认对象生命周期和受控配置是否已完成批准，不要直接覆盖实际状态。"
+          grafana_url: "https://monitor.areasong.top/d/areasong-ops-control-plane/areasong-ops-control-plane?orgId=1&from=now-6h&to=now"
+
       - alert: AreaSongOpsAccessPolicyProbeFailed
         expr: probe_success{job="blackbox_access_policy",service="areasong-ops"} == 0
         for: 5m

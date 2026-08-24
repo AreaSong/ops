@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,6 +28,8 @@ const taskSelect = `
 	           current_phase, summary, error, preview_id, plan_id, plan_digest, parent_task_id,
 	           snapshot_json, stages_json, runner_owner, heartbeat_at, production_changed,
 	           retryable, failure_code, rollback_available, rollback_reason, recovery_point_id,
+	           restore_mode, restore_tenant_id, restore_server_id, restore_expected_before_digest,
+	           restore_contract_digest, restore_revalidated_at, restore_outcome, restore_evidence_digest,
 	           created_at, started_at, finished_at
     FROM tasks`
 
@@ -37,13 +40,15 @@ type scanner interface {
 func scanTask(row scanner) (model.Task, error) {
 	var task model.Task
 	var risk, state, snapshotJSON, stagesJSON, createdAt string
-	var heartbeatAt, startedAt, finishedAt sql.NullString
+	var heartbeatAt, restoreRevalidatedAt, startedAt, finishedAt sql.NullString
 	err := row.Scan(&task.ID, &task.IdempotencyKey, &task.RequestHash, &task.ActorHash, &task.Service,
 		&task.Action, &task.Target, &risk, &state, &task.CurrentPhase, &task.Summary,
 		&task.Error, &task.PreviewID, &task.PlanID, &task.PlanDigest, &task.ParentTaskID,
 		&snapshotJSON, &stagesJSON, &task.RunnerOwner, &heartbeatAt, &task.ProductionChanged,
 		&task.Retryable, &task.FailureCode, &task.RollbackAvailable, &task.RollbackReason,
-		&task.RecoveryPointID, &createdAt, &startedAt, &finishedAt)
+		&task.RecoveryPointID, &task.RestoreMode, &task.RestoreTenantID, &task.RestoreServerID,
+		&task.RestoreExpectedBeforeDigest, &task.RestoreContractDigest, &restoreRevalidatedAt,
+		&task.RestoreOutcome, &task.RestoreEvidenceDigest, &createdAt, &startedAt, &finishedAt)
 	if err != nil {
 		return model.Task{}, err
 	}
@@ -51,6 +56,9 @@ func scanTask(row scanner) (model.Task, error) {
 	task.State = model.TaskState(state)
 	if err := decodeJSON(snapshotJSON, &task.Snapshot); err != nil {
 		return model.Task{}, err
+	}
+	if task.Snapshot != nil {
+		task.TrafficPolicyDigest, _ = task.Snapshot["trafficPolicyDigest"].(string)
 	}
 	if err := decodeJSON(stagesJSON, &task.Stages); err != nil {
 		return model.Task{}, err
@@ -63,6 +71,9 @@ func scanTask(row scanner) (model.Task, error) {
 		return model.Task{}, err
 	}
 	if task.HeartbeatAt, err = nullableTime(heartbeatAt); err != nil {
+		return model.Task{}, err
+	}
+	if task.RestoreRevalidatedAt, err = nullableTime(restoreRevalidatedAt); err != nil {
 		return model.Task{}, err
 	}
 	task.FinishedAt, err = nullableTime(finishedAt)
@@ -100,6 +111,25 @@ func (store *Store) LatestSucceededUpdate(ctx context.Context, service string) (
 	task, err := scanTask(store.db.QueryRowContext(ctx, taskSelect+`
 		WHERE service = ? AND action = 'update' AND state = ?
 		ORDER BY created_at DESC, id DESC LIMIT 1`, service, model.TaskSucceeded))
+	if err == sql.ErrNoRows {
+		return model.Task{}, false, nil
+	}
+	return task, err == nil, err
+}
+
+// LatestSucceededRestoreDrill returns real isolated-restore evidence for the
+// exact recovery-point artifact digest currently shown to the operator. A
+// verified backup alone must never be presented as a successful restore drill.
+func (store *Store) LatestSucceededRestoreDrill(
+	ctx context.Context, service, evidenceDigest string,
+) (model.Task, bool, error) {
+	if service == "" || evidenceDigest == "" {
+		return model.Task{}, false, nil
+	}
+	task, err := scanTask(store.db.QueryRowContext(ctx, taskSelect+`
+		WHERE service = ? AND action = 'restore-drill' AND restore_mode = 'isolated'
+		  AND restore_evidence_digest = ? AND state = ?
+		ORDER BY finished_at DESC, id DESC LIMIT 1`, service, evidenceDigest, model.TaskSucceeded))
 	if err == sql.ErrNoRows {
 		return model.Task{}, false, nil
 	}
@@ -237,6 +267,24 @@ func (store *Store) CompleteTask(
 	event model.Event,
 	audit model.AuditEntry,
 ) (model.Event, error) {
+	return store.CompleteTaskWithDesired(ctx, id, state, summary, errorMessage, failureCode,
+		retryable, rollbackAvailable, rollbackReason, event, audit, nil)
+}
+
+// CompleteTaskWithDesired atomically completes a task and, for a successful
+// lifecycle terminal state, optionally persists the control-plane desired
+// state and its changed event in the same transaction.
+func (store *Store) CompleteTaskWithDesired(
+	ctx context.Context,
+	id string,
+	state model.TaskState,
+	summary, errorMessage, failureCode string,
+	retryable, rollbackAvailable bool,
+	rollbackReason string,
+	event model.Event,
+	audit model.AuditEntry,
+	desired *DesiredStateInput,
+) (model.Event, error) {
 	if !state.Terminal() {
 		return model.Event{}, fmt.Errorf("任务终态无效: %s", state)
 	}
@@ -271,12 +319,24 @@ func (store *Store) CompleteTask(
 	if err != nil {
 		return model.Event{}, err
 	}
+	restoreOutcome := task.RestoreOutcome
+	restoreEvidenceDigest := task.RestoreEvidenceDigest
+	if task.RestoreMode != "" {
+		restoreOutcome = string(state)
+		// The selected recovery-point evidence remains the immutable evidence
+		// reference for the outcome; task/plan state records whether applying it
+		// succeeded, failed, or became uncertain.
+		if restoreEvidenceDigest == "" {
+			return model.Event{}, errors.New("恢复任务缺少恢复点证据摘要")
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE tasks SET state = ?, summary = ?, error = ?, failure_code = ?, retryable = ?,
-			rollback_available = ?, rollback_reason = ?, stages_json = ?, finished_at = ?, heartbeat_at = NULL
+			rollback_available = ?, rollback_reason = ?, stages_json = ?, finished_at = ?, heartbeat_at = NULL,
+			restore_outcome = ?, restore_evidence_digest = ?
 		WHERE id = ? AND state = ?
 	`, state, summary, errorMessage, failureCode, retryable, rollbackAvailable,
-		rollbackReason, stagesJSON, timeText(now), id, task.State)
+		rollbackReason, stagesJSON, timeText(now), restoreOutcome, restoreEvidenceDigest, id, task.State)
 	if err = requireOne(result, err, "任务无法写入终态"); err != nil {
 		return model.Event{}, err
 	}
@@ -302,11 +362,27 @@ func (store *Store) CompleteTask(
 		}
 		result, err := tx.ExecContext(ctx, `
 			UPDATE release_plans SET state = ?, observation_started_at = ?, observation_ends_at = ?,
-				closure_reason = ?, closed_at = ?, updated_at = ?
+				closure_reason = ?, closed_at = ?, restore_outcome = ?, restore_evidence_digest = ?, updated_at = ?
 			WHERE id = ? AND task_id = ? AND state = ?
 		`, planState, observationStartedAt, observationEndsAt, closureReason, closedAt,
-			timeText(now), task.PlanID, task.ID, model.PlanExecuting)
+			restoreOutcome, restoreEvidenceDigest, timeText(now), task.PlanID, task.ID, model.PlanExecuting)
 		if err = requireOne(result, err, "任务终态无法更新计划状态"); err != nil {
+			return model.Event{}, err
+		}
+		if task.RestoreMode != "" {
+			result, err := tx.ExecContext(ctx, `
+				UPDATE recovery_points
+				SET restore_outcome = ?, restore_evidence_digest = ?, outcome_at = ?
+				WHERE id = ? AND service = ? AND evidence_digest = ?
+			`, restoreOutcome, restoreEvidenceDigest, timeText(now), task.RecoveryPointID,
+				task.Service, task.RestoreEvidenceDigest)
+			if err = requireOne(result, err, "恢复点结果无法写入"); err != nil {
+				return model.Event{}, err
+			}
+		}
+	}
+	if state == model.TaskSucceeded && desired != nil {
+		if _, _, _, err := store.setDesiredStateTx(ctx, tx, *desired, now); err != nil {
 			return model.Event{}, err
 		}
 	}

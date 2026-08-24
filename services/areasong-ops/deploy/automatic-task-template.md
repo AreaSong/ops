@@ -9,6 +9,8 @@
 - 适配器按对象名选择代码内固定的 cron 文件、采集器、指标文件、指标名和 flock。
 - 补跑必须复用原调度的 flock，失败时保留原指标文件，成功时验证新文件身份、新鲜度和时间不倒退。
 - 备份、Docker 清理、发布、GitHub Issue 同步、合规归档、凭据、网络、权限、数据库和外部写操作不得使用通用补跑入口。
+- 自动任务可以声明 `tenantId`/`serverId` 和只读能力，但这只是治理归属；实际补跑仍须通过 RBAC、固定适配器和对应 Runner 的在线租约。
+- 自动任务不能借补跑入口执行任意 Shell、文件写入、Compose/Kubernetes apply 或跨服务器批量操作。
 
 ## 最小声明
 
@@ -30,6 +32,9 @@
   "description": "汇总固定来源并原子发布只读指标。",
   "template": "automatic-task-v1",
   "adapterRef": "automatic-task-v1",
+  "tenantId": "production",
+  "serverId": "losangeles",
+  "capabilities": ["inspect", "artifact-write"],
   "automaticTask": {
     "schedule": "每分钟",
     "scheduleSource": "cron",

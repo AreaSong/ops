@@ -16,5 +16,10 @@
 | 回滚方式 | 恢复上一 Runner 二进制、Web 镜像 tag、Compose 和 Nginx 配置 |
 | 数据库恢复 | 禁止自动恢复；SQLite 只恢复控制面审计，不触碰业务数据库 |
 | 自动更新 | 不启用 |
+| 配置声明 | `config/services.example.json` 的 schema 4；生产副本 `/etc/areasong-ops/services.json` 必须 root-only `0600` |
+| 租户/服务器 | `tenantId=production`，服务归属 `serverId=losangeles`；跨租户/跨服务器需显式 RBAC 与 fleet 门禁 |
+| Compose 变更 | 仅 `propose`/`validate` -> 摘要审批 -> 受控 `apply`；不接受任意路径、任意 Shell 或直接覆盖运行文件 |
+| 生产恢复 | 与隔离演练分离；恢复点、目标身份、影响范围和双确认均通过后才可执行 |
+| 批量变更 | 默认不跨服务器；启用 fleet 后仍需目标 selector、DAG、并发/失败策略、变更窗口和单独批准 |
 
 Cloudflare Access 仅允许 `song80184@gmail.com`。Web 不挂载 Docker Socket、业务卷、备份目录或 SQLite。

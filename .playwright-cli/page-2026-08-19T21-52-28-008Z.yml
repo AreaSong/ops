@@ -1,0 +1,64 @@
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - generic [ref=f1e9]:
+      - strong [ref=f1e10]: AreaSong Ops
+      - generic [ref=f1e11]: LosAngeles
+    - navigation "主导航" [ref=f1e12]:
+      - button "操作总览" [ref=f1e13] [cursor=pointer]
+      - button "生命周期" [ref=f1e20] [cursor=pointer]
+      - button "服务操作" [ref=f1e26] [cursor=pointer]
+      - button "多服务器" [ref=f1e40] [cursor=pointer]
+      - button "批量作业" [ref=f1e47] [cursor=pointer]
+      - button "恢复中心" [ref=f1e59] [cursor=pointer]
+      - button "配置中心" [ref=f1e65] [cursor=pointer]
+      - button "访问控制" [ref=f1e70] [cursor=pointer]
+      - button "自动任务" [ref=f1e74] [cursor=pointer]
+      - button "凭据轮换" [ref=f1e79] [cursor=pointer]
+      - button "执行记录" [ref=f1e84] [cursor=pointer]
+      - button "变更审计" [ref=f1e89] [cursor=pointer]
+    - generic [ref=f1e95]: 实时连接重试中
+  - generic [ref=f1e104]:
+    - banner [ref=f1e105]:
+      - generic [ref=f1e106]: 生产环境
+      - generic [ref=f1e109]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f1e110]
+    - main [ref=f1e111]:
+      - generic [ref=f1e473]:
+        - generic [ref=f1e475]:
+          - generic [ref=f1e476]: 受控声明与执行目标
+          - heading "配置中心" [level=1] [ref=f1e477]
+        - navigation "配置类型" [ref=f1e478]:
+          - button "Compose" [ref=f1e479] [cursor=pointer]
+          - button "Kubernetes" [active] [ref=f1e484] [cursor=pointer]
+          - button "扩展" [ref=f1e488] [cursor=pointer]
+        - generic [ref=f1e534]:
+          - generic [ref=f1e535]:
+            - generic [ref=f1e536]:
+              - heading "Kubernetes 目标" [level=2] [ref=f1e537]
+              - paragraph [ref=f1e538]: 默认使用 dry-run；正式动作必须经过授权与变更窗口。
+            - button "刷新 Kubernetes" [ref=f1e539] [cursor=pointer]
+          - button "primary areasong-prod · applications" [ref=f1e546] [cursor=pointer]:
+            - strong [ref=f1e547]: primary
+            - generic [ref=f1e548]: areasong-prod · applications
+          - generic [ref=f1e549]:
+            - generic [ref=f1e550]:
+              - generic [ref=f1e551]: 动作
+              - combobox "动作" [ref=f1e552]:
+                - option "检查"
+                - option "Diff"
+                - option "Apply" [selected]
+                - option "Rollback"
+            - generic [ref=f1e553]:
+              - checkbox "Dry-run" [checked] [ref=f1e554]
+              - generic [ref=f1e555]: Dry-run
+            - generic [ref=f1e556]:
+              - generic [ref=f1e557]: Manifest
+              - textbox "Manifest" [ref=f1e558]:
+                - /placeholder: 粘贴受控 manifest
+            - button "执行 Dry-run" [ref=f1e559] [cursor=pointer]
+          - generic [ref=f1e560]:
+            - generic [ref=f1e561]:
+              - heading "最近操作" [level=2] [ref=f1e562]
+              - generic [ref=f1e563]: 0 项
+            - generic [ref=f1e564]: 暂无 Kubernetes 操作记录

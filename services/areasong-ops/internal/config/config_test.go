@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -8,6 +11,122 @@ import (
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
+
+func TestFleetRemoteTransportValidation(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := model.RunnerNode{ID: "runner-test", ServerID: "server-test", Version: "v1", State: model.NodeUnknown}
+	server := model.ServerNode{ID: "server-test", Hostname: "test", Environment: "production", RunnerID: runner.ID, State: model.NodeUnknown}
+	base := &FleetPolicy{
+		Enabled: true, HeartbeatTimeoutSeconds: 90, AllowRemoteRunners: true, RequiremTLS: true,
+		MTLSListenAddress: "127.0.0.1:8443", MTLSCertificateFile: "/etc/areasong-ops/tls/server.crt",
+		MTLSKeyFile: "/etc/areasong-ops/tls/server.key", MTLSClientCAFile: "/etc/areasong-ops/tls/ca.crt",
+		RunnerPublicKeys: map[string]string{runner.ID: base64.StdEncoding.EncodeToString(publicKey)},
+		Inventory:        model.Fleet{Servers: []model.ServerNode{server}, Runners: []model.RunnerNode{runner}},
+	}
+	if err := validateFleetTransport(base, false); err != nil {
+		t.Fatal(err)
+	}
+	if !base.RequireSignedHeartbeat {
+		t.Fatal("remote Fleet did not normalize to signed heartbeat requirement")
+	}
+	noMTLS := *base
+	noMTLS.RequiremTLS = false
+	if err := validateFleetTransport(&noMTLS, false); err == nil {
+		t.Fatal("remote Fleet without mTLS was accepted")
+	}
+	local := &FleetPolicy{Enabled: true, AllowRemoteRunners: false, MTLSListenAddress: "127.0.0.1:8443"}
+	if err := validateFleetTransport(local, false); err == nil {
+		t.Fatal("local-only Fleet with remote listener was accepted")
+	}
+}
+
+func validTrafficPolicyForTest() *model.TrafficPolicy {
+	return &model.TrafficPolicy{
+		SiteFile:         "/etc/nginx/sites-enabled/demo.conf",
+		IncludeFile:      "/etc/nginx/snippets/areasong-ops/demo-traffic.conf",
+		Hostname:         "demo.example.com",
+		MaintenanceFile:  "/etc/nginx/snippets/areasong-ops/demo-maintenance.conf",
+		Marker:           "include /etc/nginx/snippets/areasong-ops/demo-traffic.conf;",
+		DrainTimeoutSecs: 30,
+	}
+}
+
+func TestTrafficPolicyValidationAndDigestContract(t *testing.T) {
+	base := validTrafficPolicyForTest()
+	if err := validateTrafficPolicy("demo", base, false); err != nil {
+		t.Fatal(err)
+	}
+	if base.AdapterPath != TrafficAdapterPath {
+		t.Fatalf("adapter path=%q", base.AdapterPath)
+	}
+	digest := model.TrafficPolicyDigest(*base)
+	if digest == "" || digest[:7] != "sha256:" {
+		t.Fatalf("unexpected policy digest %q", digest)
+	}
+	if digest != model.TrafficPolicyDigest(*base) {
+		t.Fatal("policy digest is not stable")
+	}
+	changed := *base
+	changed.Hostname = "other.example.com"
+	if digest == model.TrafficPolicyDigest(changed) {
+		t.Fatal("policy digest did not bind the traffic contract")
+	}
+
+	tests := map[string]func(*model.TrafficPolicy){
+		"adapter path is fixed": func(policy *model.TrafficPolicy) {
+			policy.AdapterPath = "/usr/local/libexec/areasong-ops/adapters/other.sh"
+		},
+		"hostname must contain a dot": func(policy *model.TrafficPolicy) { policy.Hostname = "demo" },
+		"site must end in conf":       func(policy *model.TrafficPolicy) { policy.SiteFile = "/etc/nginx/sites-enabled/demo" },
+		"include must end in conf": func(policy *model.TrafficPolicy) {
+			policy.IncludeFile = "/etc/nginx/snippets/areasong-ops/demo-traffic"
+		},
+		"maintenance must end in conf": func(policy *model.TrafficPolicy) {
+			policy.MaintenanceFile = "/etc/nginx/snippets/areasong-ops/demo-maintenance"
+		},
+		"include and maintenance must differ": func(policy *model.TrafficPolicy) {
+			policy.MaintenanceFile = policy.IncludeFile
+		},
+		"marker must match include directive": func(policy *model.TrafficPolicy) {
+			policy.Marker = "include /etc/nginx/snippets/areasong-ops/other.conf;"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			policy := validTrafficPolicyForTest()
+			mutate(policy)
+			if err := validateTrafficPolicy("demo", policy, false); err == nil {
+				t.Fatal("invalid traffic policy was accepted")
+			}
+		})
+	}
+}
+
+func TestCatalogBindsTrafficPolicyDigest(t *testing.T) {
+	catalog := validComposeCatalog()
+	service := catalog.Services["demo"]
+	service.TrafficPolicy = validTrafficPolicyForTest()
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err != nil {
+		t.Fatal(err)
+	}
+	service = catalog.Services["demo"]
+	if service.TrafficPolicyDigest == "" || service.TrafficPolicyDigest != model.TrafficPolicyDigest(*service.TrafficPolicy) {
+		t.Fatalf("traffic policy digest not normalized: %q", service.TrafficPolicyDigest)
+	}
+
+	catalog = validComposeCatalog()
+	service = catalog.Services["demo"]
+	service.TrafficPolicy = validTrafficPolicyForTest()
+	service.TrafficPolicyDigest = "sha256:deadbeef"
+	catalog.Services["demo"] = service
+	if err := catalog.Validate(false); err == nil {
+		t.Fatal("mismatched traffic policy digest was accepted")
+	}
+}
 
 func validComposeCatalog() *Catalog {
 	return &Catalog{SchemaVersion: 3, Services: map[string]model.ServiceDefinition{
@@ -84,6 +203,14 @@ func TestProductionExampleCatalogIsValid(t *testing.T) {
 	}
 	if len(catalog.AutomaticTasks) != 2 || len(catalog.Adapters) != 3 {
 		t.Fatalf("automaticTasks=%d adapters=%d", len(catalog.AutomaticTasks), len(catalog.Adapters))
+	}
+	for name, service := range catalog.Services {
+		if service.TrafficPolicy == nil || service.TrafficPolicyDigest == "" {
+			t.Fatalf("service %s traffic policy digest missing", name)
+		}
+		if service.TrafficPolicyDigest != model.TrafficPolicyDigest(*service.TrafficPolicy) {
+			t.Fatalf("service %s traffic policy digest mismatch", name)
+		}
 	}
 }
 

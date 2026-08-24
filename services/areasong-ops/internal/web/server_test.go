@@ -120,3 +120,9 @@ func TestMutationRequiresMatchingCSRFCookie(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestRunnerClientRejectsRemoteEndpoint(t *testing.T) {
+	if client, err := NewRemoteRunnerClient("https://runner.example.test"); err == nil || client != nil {
+		t.Fatalf("remote Runner client=%v err=%v", client, err)
+	}
+}

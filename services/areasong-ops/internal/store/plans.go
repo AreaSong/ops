@@ -22,32 +22,103 @@ const planSelect = `
 	       invalidated_reason, task_id, observation_seconds, observation_started_at,
 	       observation_ends_at, closure_reason, maintenance_silence_id,
 	       maintenance_silence_ends_at, maintenance_silence_released_at,
-	       blocking_alert_fingerprints_json, closed_at, created_at, updated_at
-	FROM release_plans`
+		       blocking_alert_fingerprints_json, closed_at, created_at, updated_at,
+		       request_idempotency_key, request_digest, restore_mode, recovery_point_id,
+		       requires_dual_approval, second_approved_by_hash, restore_tenant_id,
+		       restore_server_id, restore_expected_before_digest, restore_contract_digest,
+		       restore_revalidation_digest, restore_revalidated_at, executed_by_hash,
+		       restore_outcome, restore_evidence_digest
+		FROM release_plans`
 
 func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInput) error {
+	return store.createReleasePlan(ctx, store.db, input)
+}
+
+type planExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (store *Store) createReleasePlan(ctx context.Context, db planExecer, input ReleasePlanInput) error {
 	summary, err := encodeJSON(input.Plan.ApprovalSummary)
 	if err != nil {
 		return err
 	}
-	_, err = store.db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
 		INSERT INTO release_plans (
 			id, actor_hash, service, action, target, risk, state, digest,
 			approval_summary_json, confirmation_hash, confirmation_phrase,
-			observation_seconds, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			observation_seconds, created_at, updated_at, request_idempotency_key,
+			request_digest, restore_mode, recovery_point_id, requires_dual_approval,
+			second_approved_by_hash, restore_tenant_id, restore_server_id,
+			restore_expected_before_digest, restore_contract_digest,
+			restore_revalidation_digest, restore_revalidated_at, executed_by_hash,
+			restore_outcome, restore_evidence_digest
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Plan.ID, input.Plan.ActorHash, input.Plan.Service, input.Plan.Action,
 		input.Plan.Target, input.Plan.Risk, input.Plan.State, input.Plan.Digest,
 		summary, input.ConfirmationHash, input.Plan.ConfirmationPhrase,
-		input.Plan.ObservationSeconds,
-		timeText(input.Plan.CreatedAt), timeText(input.Plan.UpdatedAt))
+		input.Plan.ObservationSeconds, timeText(input.Plan.CreatedAt), timeText(input.Plan.UpdatedAt),
+		input.Plan.RequestIdempotencyKey, input.Plan.RequestDigest, input.Plan.RestoreMode,
+		input.Plan.RecoveryPointID, input.Plan.RequiresDualApproval, input.Plan.SecondApprovedByHash,
+		input.Plan.RestoreTenantID, input.Plan.RestoreServerID, input.Plan.RestoreExpectedBeforeDigest,
+		input.Plan.RestoreContractDigest, input.Plan.RestoreRevalidationDigest,
+		nullableTimeValue(input.Plan.RestoreRevalidatedAt), input.Plan.ExecutedByHash,
+		input.Plan.RestoreOutcome, input.Plan.RestoreEvidenceDigest)
 	return err
+}
+
+// CreateReleasePlanIdempotent atomically consumes a request key. Replaying the
+// same actor and digest returns the original plan without creating a second
+// approval record.
+func (store *Store) CreateReleasePlanIdempotent(
+	ctx context.Context, input ReleasePlanInput, actor, idempotencyKey, requestDigest string,
+) (model.ReleasePlan, bool, error) {
+	if idempotencyKey == "" || requestDigest == "" {
+		return model.ReleasePlan{}, false, errors.New("发布计划幂等信息不完整")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.ReleasePlan{}, false, err
+	}
+	defer tx.Rollback()
+	var existingID, existingActor, existingDigest string
+	err = tx.QueryRowContext(ctx, `SELECT id,actor_hash,request_digest FROM release_plans WHERE request_idempotency_key=?`, idempotencyKey).
+		Scan(&existingID, &existingActor, &existingDigest)
+	if err == nil {
+		if existingActor != actor {
+			return model.ReleasePlan{}, false, ErrActorMismatch
+		}
+		if existingDigest != requestDigest {
+			return model.ReleasePlan{}, false, ErrIdempotency
+		}
+		plan, getErr := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE id=?`, existingID))
+		if getErr != nil {
+			return model.ReleasePlan{}, false, getErr
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ReleasePlan{}, false, err
+		}
+		return plan, false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return model.ReleasePlan{}, false, err
+	}
+	input.Plan.RequestIdempotencyKey = idempotencyKey
+	input.Plan.RequestDigest = requestDigest
+	if err := store.createReleasePlan(ctx, tx, input); err != nil {
+		return model.ReleasePlan{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.ReleasePlan{}, false, err
+	}
+	return input.Plan, true, nil
 }
 
 func scanPlan(row scanner) (model.ReleasePlan, error) {
 	var plan model.ReleasePlan
 	var risk, state, summaryJSON, createdAt, updatedAt string
-	var approvedAt, observationStartedAt, observationEndsAt, silenceEndsAt, silenceReleasedAt, closedAt sql.NullString
+	var approvedAt, observationStartedAt, observationEndsAt, silenceEndsAt, silenceReleasedAt,
+		closedAt, restoreRevalidatedAt sql.NullString
 	var blockingAlertsJSON string
 	err := row.Scan(&plan.ID, &plan.ActorHash, &plan.Service, &plan.Action, &plan.Target,
 		&risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
@@ -55,7 +126,12 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 		&plan.ObservationSeconds, &observationStartedAt, &observationEndsAt,
 		&plan.ClosureReason, &plan.MaintenanceSilenceID, &silenceEndsAt, &silenceReleasedAt,
 		&blockingAlertsJSON, &closedAt,
-		&createdAt, &updatedAt)
+		&createdAt, &updatedAt, &plan.RequestIdempotencyKey, &plan.RequestDigest,
+		&plan.RestoreMode, &plan.RecoveryPointID, &plan.RequiresDualApproval,
+		&plan.SecondApprovedByHash, &plan.RestoreTenantID, &plan.RestoreServerID,
+		&plan.RestoreExpectedBeforeDigest, &plan.RestoreContractDigest,
+		&plan.RestoreRevalidationDigest, &restoreRevalidatedAt, &plan.ExecutedByHash,
+		&plan.RestoreOutcome, &plan.RestoreEvidenceDigest)
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
@@ -96,6 +172,10 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 		return model.ReleasePlan{}, parseErr
 	}
 	plan.ClosedAt, parseErr = nullableTime(closedAt)
+	if parseErr != nil {
+		return model.ReleasePlan{}, parseErr
+	}
+	plan.RestoreRevalidatedAt, parseErr = nullableTime(restoreRevalidatedAt)
 	return plan, parseErr
 }
 
@@ -105,6 +185,50 @@ func (store *Store) GetReleasePlan(ctx context.Context, id string) (model.Releas
 		return model.ReleasePlan{}, ErrNotFound
 	}
 	return plan, err
+}
+
+// MarkRestorePlanRevalidated persists the exact recovery-point binding that
+// passed the last pre-production check.  It is deliberately conditional on an
+// approved plan so a stale/invalidated plan cannot be revalidated out of band.
+func (store *Store) MarkRestorePlanRevalidated(
+	ctx context.Context, id, actorHash, bindingDigest string, at time.Time,
+) error {
+	if id == "" || actorHash == "" || bindingDigest == "" {
+		return errors.New("恢复计划复验信息不完整")
+	}
+	result, err := store.db.ExecContext(ctx, `
+		UPDATE release_plans
+		SET restore_revalidation_digest = ?, restore_revalidated_at = ?, executed_by_hash = ?, updated_at = ?
+		WHERE id = ? AND actor_hash = ? AND state = ? AND restore_mode != ''
+		  AND restore_contract_digest = ?
+	`, bindingDigest, timeText(at), actorHash, timeText(at), id, actorHash, model.PlanApproved, bindingDigest)
+	return requireOne(result, err, "恢复计划复验结果无法写入")
+}
+
+func (store *Store) MarkRestorePlanOutcome(
+	ctx context.Context, id, outcome, evidenceDigest string, at time.Time,
+) error {
+	result, err := store.db.ExecContext(ctx, `
+		UPDATE release_plans SET restore_outcome = ?, restore_evidence_digest = ?, updated_at = ?
+		WHERE id = ? AND restore_mode != ''
+	`, outcome, evidenceDigest, timeText(at), id)
+	return requireOne(result, err, "恢复计划结果无法写入")
+}
+
+func (store *Store) GetReleasePlanByRequest(
+	ctx context.Context, idempotencyKey string,
+) (model.ReleasePlan, bool, error) {
+	if idempotencyKey == "" {
+		return model.ReleasePlan{}, false, nil
+	}
+	plan, err := scanPlan(store.db.QueryRowContext(ctx, planSelect+` WHERE request_idempotency_key = ?`, idempotencyKey))
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.ReleasePlan{}, false, nil
+	}
+	if err != nil {
+		return model.ReleasePlan{}, false, err
+	}
+	return plan, true, nil
 }
 
 func (store *Store) ListReleasePlans(ctx context.Context, limit, offset int) ([]model.ReleasePlan, error) {
@@ -141,10 +265,10 @@ func (store *Store) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if plan.ActorHash != actorHash {
+	if plan.ActorHash != actorHash && !(plan.RequiresDualApproval && plan.ApprovedByHash != "") {
 		return model.ReleasePlan{}, ErrActorMismatch
 	}
-	if plan.State != model.PlanPendingApproval || plan.Digest != digest {
+	if (plan.State != model.PlanPendingApproval && plan.State != model.PlanApproved) || plan.Digest != digest {
 		return model.ReleasePlan{}, errors.New("发布计划已变化，批准失效")
 	}
 	var expectedHash string
@@ -155,6 +279,43 @@ func (store *Store) ApproveReleasePlan(
 		return model.ReleasePlan{}, ErrConfirmation
 	}
 	now := store.now()
+	if plan.RequiresDualApproval {
+		if plan.State == model.PlanApproved {
+			if plan.SecondApprovedByHash == actorHash || plan.ApprovedByHash == actorHash {
+				return model.ReleasePlan{}, ErrActorMismatch
+			}
+			return model.ReleasePlan{}, errors.New("生产恢复计划已完成双人批准")
+		}
+		if plan.ApprovedByHash == "" {
+			result, err := tx.ExecContext(ctx, `
+				UPDATE release_plans SET approved_by_hash = ?, approved_at = ?, updated_at = ?
+				WHERE id = ? AND state = ? AND digest = ? AND approved_by_hash = ''
+			`, actorHash, timeText(now), timeText(now), id, model.PlanPendingApproval, digest)
+			if err = requireOne(result, err, "生产恢复第一批准无法写入"); err != nil {
+				return model.ReleasePlan{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return model.ReleasePlan{}, err
+			}
+			plan.ApprovedByHash, plan.ApprovedAt, plan.UpdatedAt = actorHash, &now, now
+			return plan, nil
+		}
+		if plan.ApprovedByHash == actorHash {
+			return model.ReleasePlan{}, ErrActorMismatch
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE release_plans SET state = ?, second_approved_by_hash = ?, updated_at = ?
+			WHERE id = ? AND state = ? AND digest = ? AND approved_by_hash != '' AND second_approved_by_hash = ''
+		`, model.PlanApproved, actorHash, timeText(now), id, model.PlanPendingApproval, digest)
+		if err = requireOne(result, err, "生产恢复第二批准无法写入"); err != nil {
+			return model.ReleasePlan{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ReleasePlan{}, err
+		}
+		plan.State, plan.SecondApprovedByHash, plan.UpdatedAt = model.PlanApproved, actorHash, now
+		return plan, nil
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE release_plans SET state = ?, approved_by_hash = ?, approved_at = ?, updated_at = ?
 		WHERE id = ? AND state = ? AND digest = ?
@@ -382,11 +543,16 @@ func (store *Store) StartPlanTask(
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO tasks (
 			id, idempotency_key, request_hash, actor_hash, service, action, target, risk,
-			state, preview_id, plan_id, plan_digest, snapshot_json, stages_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)
+			state, preview_id, plan_id, plan_digest, snapshot_json, stages_json, created_at,
+			recovery_point_id,
+			restore_mode, restore_tenant_id, restore_server_id, restore_expected_before_digest,
+			restore_contract_digest, restore_revalidated_at, restore_outcome, restore_evidence_digest
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, taskID, idempotencyKey, requestHash, actorHash, plan.Service, plan.Action,
 		plan.Target, plan.Risk, model.TaskQueued, plan.ID, plan.Digest, snapshotJSON,
-		stagesJSON, timeText(now))
+		stagesJSON, timeText(now), plan.RecoveryPointID, plan.RestoreMode, plan.RestoreTenantID, plan.RestoreServerID,
+		plan.RestoreExpectedBeforeDigest, plan.RestoreContractDigest,
+		nullableTimeValue(plan.RestoreRevalidatedAt), plan.RestoreOutcome, plan.RestoreEvidenceDigest)
 	if err != nil {
 		return model.Task{}, false, err
 	}
@@ -400,6 +566,7 @@ func (store *Store) StartPlanTask(
 		UPDATE release_plans SET state = ?, task_id = ?, maintenance_silence_id = ?,
 			maintenance_silence_ends_at = ?, maintenance_silence_released_at = NULL, updated_at = ?
 		WHERE id = ? AND state = ? AND digest = ?
+		  AND (restore_mode = '' OR (restore_revalidation_digest = restore_contract_digest AND restore_revalidated_at IS NOT NULL))
 	`, model.PlanExecuting, taskID, silenceID, silenceEndsAt, timeText(now),
 		plan.ID, model.PlanApproved, plan.Digest)
 	if err = requireOne(result, err, "发布计划无法进入执行状态"); err != nil {
@@ -421,6 +588,14 @@ func (store *Store) StartPlanTask(
 		ID: taskID, IdempotencyKey: idempotencyKey, RequestHash: requestHash,
 		ActorHash: actorHash, Service: plan.Service, Action: plan.Action, Target: plan.Target,
 		Risk: plan.Risk, State: model.TaskQueued, PlanID: plan.ID, PlanDigest: plan.Digest,
-		Snapshot: plan.ApprovalSummary.ExpectedBefore, Stages: stages, CreatedAt: now,
+		TrafficPolicyDigest: plan.ApprovalSummary.TrafficPolicyDigest,
+		Snapshot:            plan.ApprovalSummary.ExpectedBefore, Stages: stages, CreatedAt: now,
+		RecoveryPointID: plan.RecoveryPointID,
+		RestoreMode:     plan.RestoreMode, RestoreTenantID: plan.RestoreTenantID,
+		RestoreServerID:             plan.RestoreServerID,
+		RestoreExpectedBeforeDigest: plan.RestoreExpectedBeforeDigest,
+		RestoreContractDigest:       plan.RestoreContractDigest,
+		RestoreRevalidatedAt:        plan.RestoreRevalidatedAt,
+		RestoreOutcome:              plan.RestoreOutcome, RestoreEvidenceDigest: plan.RestoreEvidenceDigest,
 	}, true, nil
 }

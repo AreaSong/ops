@@ -1,0 +1,86 @@
+- generic [ref=f2e7]:
+  - complementary [ref=f2e8]:
+    - navigation "主导航" [ref=f2e9]:
+      - button "操作总览" [ref=f2e10] [cursor=pointer]
+      - button "生命周期" [active] [ref=f2e17] [cursor=pointer]
+      - button "服务操作" [ref=f2e23] [cursor=pointer]
+      - button "多服务器" [ref=f2e37] [cursor=pointer]
+      - button "批量作业" [ref=f2e44] [cursor=pointer]
+      - button "恢复中心" [ref=f2e56] [cursor=pointer]
+      - button "配置中心" [ref=f2e62] [cursor=pointer]
+      - button "访问控制" [ref=f2e67] [cursor=pointer]
+      - button "自动任务" [ref=f2e71] [cursor=pointer]
+      - button "凭据轮换" [ref=f2e76] [cursor=pointer]
+      - button "执行记录" [ref=f2e81] [cursor=pointer]
+      - button "变更审计" [ref=f2e86] [cursor=pointer]
+  - generic [ref=f2e92]:
+    - banner [ref=f2e93]:
+      - generic [ref=f2e94]: 生产环境
+      - generic [ref=f2e97]:
+        - navigation "观测入口"
+        - generic "sre@areasong.top" [ref=f2e98]
+    - main [ref=f2e99]:
+      - generic [ref=f2e169]:
+        - generic [ref=f2e170]:
+          - generic [ref=f2e171]:
+            - generic [ref=f2e172]: 目标与观测状态
+            - heading "生命周期状态" [level=1] [ref=f2e173]
+          - button "刷新生命周期状态" [ref=f2e174] [cursor=pointer]
+        - region "生命周期概览" [ref=f2e180]:
+          - generic [ref=f2e185]:
+            - generic [ref=f2e186]: "1"
+            - text: 健康
+          - generic [ref=f2e190]:
+            - generic [ref=f2e191]: "1"
+            - text: 状态漂移
+          - generic [ref=f2e196]:
+            - generic [ref=f2e197]: "0"
+            - text: 未知观测
+          - generic [ref=f2e199]:
+            - generic [ref=f2e200]: "2"
+            - text: 受控服务
+        - generic [ref=f2e201]:
+          - generic [ref=f2e202]:
+            - heading "服务状态" [level=2] [ref=f2e203]
+            - generic [ref=f2e204]: 2 项
+          - table "服务生命周期状态" [ref=f2e205]:
+            - row "AreaForge AreaForge 生产服务 运行 运行 健康 08/20 17:30:00 运行身份与目标一致 保存目标" [ref=f2e206]:
+              - generic [ref=f2e209]:
+                - strong [ref=f2e210]: AreaForge
+                - generic [ref=f2e211]: AreaForge 生产服务
+              - generic [ref=f2e212]:
+                - combobox "areaforge 目标状态" [ref=f2e213]:
+                  - option "运行" [selected]
+                  - option "停止"
+                  - option "维护"
+                  - option "排空"
+                - textbox "areaforge 变更原因" [ref=f2e214]:
+                  - /placeholder: 原因（可选）
+              - generic [ref=f2e215]: 运行
+              - generic [ref=f2e216]: 健康
+              - generic [ref=f2e217]:
+                - generic [ref=f2e218]: 08/20 17:30:00
+                - generic [ref=f2e219]: 运行身份与目标一致
+              - generic [ref=f2e220]:
+                - button "重新核对状态" [ref=f2e221] [cursor=pointer]
+                - button "保存目标" [disabled] [ref=f2e225]
+            - row "Sub2API Sub2API 生产服务 运行 维护 降级 08/20 17:28:00 漂移：running ≠ maintenance 保存目标" [ref=f2e230]:
+              - generic [ref=f2e233]:
+                - strong [ref=f2e234]: Sub2API
+                - generic [ref=f2e235]: Sub2API 生产服务
+              - generic [ref=f2e236]:
+                - combobox "sub2api 目标状态" [ref=f2e237]:
+                  - option "运行" [selected]
+                  - option "停止"
+                  - option "维护"
+                  - option "排空"
+                - textbox "sub2api 变更原因" [ref=f2e238]:
+                  - /placeholder: 原因（可选）
+              - generic [ref=f2e239]: 维护
+              - generic [ref=f2e240]: 降级
+              - generic [ref=f2e241]:
+                - generic [ref=f2e242]: 08/20 17:28:00
+                - generic "维护窗口" [ref=f2e243]: 漂移：running ≠ maintenance
+              - generic [ref=f2e244]:
+                - button "重新核对状态" [ref=f2e245] [cursor=pointer]
+                - button "保存目标" [disabled] [ref=f2e249]

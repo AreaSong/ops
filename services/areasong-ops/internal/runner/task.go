@@ -49,15 +49,51 @@ func (engine *Engine) run(task model.Task) {
 	go engine.heartbeat(task.ID, heartbeatDone)
 	engine.event(ctx, model.Event{TaskID: task.ID, Level: "info", Phase: action.Steps[0], Message: "任务开始执行"})
 	productionChanged := false
-	recoveryPointID := ""
+	recoveryPointID := task.RecoveryPointID
+	restoreContractFileDigest := ""
+	// Restore plans carry the selected point on the task envelope. The backup
+	// phase may replace this with the point it just produced, but a restore must
+	// never start with an empty local ID and accidentally skip the pre-mutation
+	// verification gate.
+	if recoveryPointID == "" && (task.Action == "restore" || task.Action == "restore-drill") {
+		recoveryPointID = task.Target
+	}
+	if task.RestoreMode != "" {
+		point, verifyErr := engine.verifyRestoreTaskBinding(context.Background(), task, service, recoveryPointID)
+		if verifyErr != nil {
+			engine.completeTask(task, model.TaskNeedsAttention, "恢复点执行前复验失败", redactText(verifyErr.Error()), "restore_binding_failed", false, false, "")
+			return
+		}
+		if task.RestoreEvidenceDigest == "" {
+			task.RestoreEvidenceDigest = point.EvidenceDigest
+		}
+		restoreContractFileDigest, verifyErr = writeRestorePointContract(operationDir, task, point)
+		if verifyErr != nil {
+			engine.completeTask(task, model.TaskNeedsAttention, "恢复合同写入失败", redactText(verifyErr.Error()), "restore_contract_failed", false, false, "")
+			return
+		}
+	}
 	lastSummary := ""
 	for _, phase := range action.Steps {
+		if restoreContractFileDigest != "" {
+			if err := verifyRestorePointContract(operationDir, restoreContractFileDigest); err != nil {
+				engine.finishFailure(task, service, action, model.PhaseSemantics{FailurePolicy: "needs_attention"},
+					operationDir, productionChanged, productionChanged, lastSummary, err)
+				return
+			}
+		}
 		semantics := phaseSemantics(action, phase)
 		failureSemantics := model.EffectiveFailureSemantics(action, phase, productionChanged)
 		if semantics.RequiresRecoveryPoint {
-			if err := engine.verifyRecoveryPoint(context.Background(), task, service, recoveryPointID); err != nil {
+			var verifyErr error
+			if task.RestoreMode != "" {
+				_, verifyErr = engine.verifyRestoreTaskBinding(context.Background(), task, service, recoveryPointID)
+			} else {
+				verifyErr = engine.verifyRecoveryPoint(context.Background(), task, service, recoveryPointID)
+			}
+			if verifyErr != nil {
 				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary,
-					fmt.Errorf("恢复点复验失败，已拒绝执行: %w", err))
+					fmt.Errorf("恢复点复验失败，已拒绝执行: %w", verifyErr))
 				return
 			}
 		}
@@ -65,14 +101,18 @@ func (engine *Engine) run(task model.Task) {
 			engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary, err)
 			return
 		}
-		result, err := engine.executor.Execute(ctx, ExecuteInput{
-			Service: service, Action: action.Name, Phase: phase,
-			OperationDir: operationDir, Target: task.Target,
-			SourceDir: engine.sourceDir(task),
-		})
+		result, err := engine.executePhase(ctx, service, action.Name, phase,
+			operationDir, task.Target, engine.sourceDir(task))
 		if err != nil {
 			engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, mutationSemantics(semantics), lastSummary, err)
 			return
+		}
+		if restoreContractFileDigest != "" {
+			if contractErr := verifyRestorePointContract(operationDir, restoreContractFileDigest); contractErr != nil {
+				engine.finishFailure(task, service, action, model.PhaseSemantics{FailurePolicy: "needs_attention"},
+					operationDir, productionChanged, mutationSemantics(semantics), lastSummary, contractErr)
+				return
+			}
 		}
 		if semantics.ProducesRecoveryPoint {
 			point, err := engine.persistRecoveryPoint(context.Background(), task, service, result.RecoveryPoint)
@@ -87,12 +127,17 @@ func (engine *Engine) run(task model.Task) {
 			result.Data["recoveryPointId"] = point.ID
 			result.Data["recoveryPointDigest"] = point.EvidenceDigest
 		}
-		changed, explicit := result.Data["productionChanged"].(bool)
-		if changed || (!explicit && mutationSemantics(semantics)) {
+		changed, _ := result.Data["productionChanged"].(bool)
+		if changed || mutationSemantics(semantics) {
 			productionChanged = true
 			rollbackAvailable := semantics.FailurePolicy == "rollback" && semantics.RecoveryPhase != ""
-			_ = engine.store.MarkProductionChanged(context.Background(), task.ID, rollbackAvailable,
-				"仅回滚应用版本和 Compose，不自动恢复业务数据库")
+			if markErr := engine.store.MarkProductionChanged(context.Background(), task.ID, rollbackAvailable,
+				"仅回滚应用版本和 Compose，不自动恢复业务数据库"); markErr != nil {
+				engine.finishFailure(task, service, action, model.PhaseSemantics{FailurePolicy: "needs_attention"},
+					operationDir, true, true, lastSummary,
+					fmt.Errorf("生产变更状态无法持久化: %w", markErr))
+				return
+			}
 		}
 		lastSummary = result.Summary
 		engine.event(ctx, model.Event{
@@ -120,14 +165,24 @@ func (engine *Engine) heartbeat(taskID string, done <-chan struct{}) {
 
 func writeTaskContract(operationDir string, task model.Task) error {
 	contract := map[string]any{
-		"schemaVersion":  1,
-		"taskId":         task.ID,
-		"actorHash":      task.ActorHash,
-		"service":        task.Service,
-		"action":         task.Action,
-		"target":         task.Target,
-		"expectedBefore": task.Snapshot,
-		"createdAt":      task.CreatedAt,
+		"schemaVersion":               1,
+		"taskId":                      task.ID,
+		"actorHash":                   task.ActorHash,
+		"service":                     task.Service,
+		"action":                      task.Action,
+		"target":                      task.Target,
+		"expectedBefore":              task.Snapshot,
+		"createdAt":                   task.CreatedAt,
+		"planId":                      task.PlanID,
+		"trafficPolicyDigest":         task.TrafficPolicyDigest,
+		"restoreMode":                 task.RestoreMode,
+		"recoveryPointId":             task.RecoveryPointID,
+		"restoreTenantId":             task.RestoreTenantID,
+		"restoreServerId":             task.RestoreServerID,
+		"restoreExpectedBeforeDigest": task.RestoreExpectedBeforeDigest,
+		"restoreContractDigest":       task.RestoreContractDigest,
+		"restoreEvidenceDigest":       task.RestoreEvidenceDigest,
+		"restoreRevalidatedAt":        task.RestoreRevalidatedAt,
 	}
 	data, err := json.Marshal(contract)
 	if err != nil {
@@ -168,10 +223,8 @@ func (engine *Engine) finishFailure(
 		}
 		rollbackCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
-		result, err := engine.executor.Execute(rollbackCtx, ExecuteInput{
-			Service: service, Action: action.Name, Phase: semantics.RecoveryPhase,
-			OperationDir: operationDir, Target: task.Target,
-		})
+		result, err := engine.executePhase(rollbackCtx, service, action.Name,
+			semantics.RecoveryPhase, operationDir, task.Target, engine.sourceDir(task))
 		if err == nil {
 			state = model.TaskRolledBack
 			lastSummary = result.Summary
@@ -209,7 +262,7 @@ func (engine *Engine) sourceDir(task model.Task) string {
 
 func lockResources(service, action string) []string {
 	resources := []string{"service:" + service}
-	if action == "backup" || action == "update" || action == "rollback" || action == "restore-drill" {
+	if action == "backup" || action == "update" || action == "rollback" || action == "restore" || action == "restore-drill" {
 		resources = append(resources, "backup:global")
 	}
 	sort.Strings(resources)
@@ -262,12 +315,16 @@ func (engine *Engine) completeTask(
 	if state != model.TaskSucceeded {
 		level = "error"
 	}
-	event, err := engine.store.CompleteTask(ctx, task.ID, state, summary, message, failureCode,
+	completedTask := task
+	completedTask.State = state
+	desired := engine.desiredStateInputForTask(completedTask)
+	event, err := engine.store.CompleteTaskWithDesired(ctx, task.ID, state, summary, message, failureCode,
 		retryable, rollbackAvailable, rollbackReason,
 		model.Event{TaskID: task.ID, Level: level, Phase: "terminal", Message: string(state),
 			Data: map[string]any{"state": state}},
 		model.AuditEntry{ActorHash: task.ActorHash, Event: "task.terminal", Resource: task.ID,
 			Outcome: string(state), Detail: map[string]any{"service": task.Service, "action": task.Action, "error": message}},
+		desired,
 	)
 	if err == nil {
 		engine.broker.Publish(event.Sequence)

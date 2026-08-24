@@ -31,13 +31,26 @@ func main() {
 
 func run() error {
 	development := os.Getenv("OPS_ENV") == "development"
-	allowedEmail := os.Getenv("OPS_ALLOWED_EMAIL")
+	allowedEmails := os.Getenv("OPS_ALLOWED_EMAILS")
+	if allowedEmails == "" {
+		allowedEmails = os.Getenv("OPS_ALLOWED_EMAIL")
+	}
+	identities, err := webapi.ParseIdentityDirectory(
+		allowedEmails,
+		os.Getenv("OPS_EMAIL_TENANTS"),
+		envOr("OPS_DEFAULT_TENANT", "production"),
+	)
+	if err != nil {
+		return err
+	}
 	var authenticator webapi.Authenticator
 	if development {
-		authenticator = webapi.DevelopmentAuthenticator{Email: allowedEmail}
+		authenticator = webapi.DevelopmentAuthenticator{
+			Email: envOr("OPS_DEV_EMAIL", identities.FirstEmail()), Directory: identities,
+		}
 	} else {
-		verifier, err := webapi.NewAccessVerifier(
-			os.Getenv("OPS_ACCESS_ISSUER"), os.Getenv("OPS_ACCESS_AUDIENCE"), allowedEmail)
+		verifier, err := webapi.NewAccessVerifierWithIdentities(
+			os.Getenv("OPS_ACCESS_ISSUER"), os.Getenv("OPS_ACCESS_AUDIENCE"), identities)
 		if err != nil {
 			return err
 		}
