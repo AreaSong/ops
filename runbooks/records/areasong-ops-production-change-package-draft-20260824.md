@@ -177,7 +177,7 @@
 - 容器运行约束：Web 实测 `User=65532:65532`、只读 rootfs、`CapDrop=ALL`、`no-new-privileges`；共享 Runner GID 后 Web 镜像 `/healthz=200`，Fleet API 返回 200。
 - 负向门禁：注入 `BusinessHttp5xxHigh` 时执行被拒绝；终端和文件模块关闭时 API 返回 `409`；公开 desired-state 路径 `GET/POST` 均 `404`。
 - Nginx：隔离 `nginx:1.27-alpine` 容器真实 `nginx -t` 通过；本机仍无宿主 Nginx，真实生产站点、证书、Cloudflare 源站和流量连接归零未验证。
-- 浏览器：Vite `http://127.0.0.1:4173` 页面、总览、生命周期和终端关闭态通过；截图见 `services/areasong-ops/web/output/playwright-local/ops-ui.png`。终端关闭态产生预期的 API `409` 控制台错误，不影响页面状态。
+- 浏览器：本地原生 Web（连接隔离 dev-runner）经 Vite `http://127.0.0.1:4173` 代理后执行 Playwright smoke 通过，页面成功进入已认证 Ops shell；本次未保留截图或 console 临时产物。该结果仍只代表本地开发身份和隔离 Socket，不等同生产 Access/mTLS 验收。
 - 未完成外部条件：真实生产 Access/mTLS/备份/Prometheus/Alertmanager、真实站点流量、生产观察窗口，以及任何生产写操作。
 
 只有表中“生产需”项在 C0-C3 窗口内形成带时间戳的审计证据，才允许将本包标记为完成。
