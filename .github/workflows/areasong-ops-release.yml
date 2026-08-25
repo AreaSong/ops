@@ -1,0 +1,161 @@
+name: AreaSong Ops Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 40-character Git commit to publish
+        required: true
+        default: e9b8b3e2d2d814841da356d45f15ce7c69a14dcf
+        type: string
+      version:
+        description: Human-readable release version
+        required: true
+        default: 1.0.0
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: areasong-ops-release-${{ inputs.revision }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish signed amd64 control-plane artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out approved revision
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+
+      - name: Validate revision and build metadata
+        id: metadata
+        shell: bash
+        env:
+          REQUESTED_REVISION: ${{ inputs.revision }}
+          BUILD_VERSION: ${{ inputs.version }}
+        run: |
+          set -Eeuo pipefail
+          actual_revision="$(git rev-parse HEAD)"
+          [[ "$actual_revision" == "$REQUESTED_REVISION" ]]
+          [[ "$actual_revision" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$BUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          echo "revision=$actual_revision" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/areasong/areasong-ops-web:$actual_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c
+        with:
+          cosign-release: v2.4.3
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.metadata.outputs.image }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Build and push Web image
+        working-directory: services/areasong-ops
+        env:
+          IMAGE: ${{ steps.metadata.outputs.image }}
+          BUILD_VERSION: ${{ inputs.version }}
+          REVISION: ${{ steps.metadata.outputs.revision }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --target web \
+            --build-arg "BUILD_VERSION=$BUILD_VERSION" \
+            --build-arg "BUILD_REVISION=$REVISION" \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            --tag "$IMAGE" \
+            .
+          digest="$(docker buildx imagetools inspect "$IMAGE" | awk '$1 == "Digest:" {print $2; exit}')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "image_digest=$digest" >> "$GITHUB_OUTPUT"
+        id: web
+
+      - name: Sign Web image
+        env:
+          IMAGE_DIGEST: ${{ steps.metadata.outputs.image }}@${{ steps.web.outputs.image_digest }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          COSIGN_YES=true cosign sign "$IMAGE_DIGEST"
+
+      - name: Build and sign Runner bundle
+        working-directory: services/areasong-ops
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+          REVISION: ${{ steps.metadata.outputs.revision }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          output="$(mktemp -d)"
+          docker buildx build \
+            --platform linux/amd64 \
+            --target runner-export \
+            --build-arg "BUILD_VERSION=$BUILD_VERSION" \
+            --build-arg "BUILD_REVISION=$REVISION" \
+            --output "type=local,dest=$output" \
+            .
+          test -x "$output/areasong-ops-runner"
+          test -x "$output/areasong-ops-runner-updater"
+          archive="$GITHUB_WORKSPACE/areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          tar -C "$output" -czf "$archive" areasong-ops-runner areasong-ops-runner-updater
+          sha256sum "$archive" > "$archive.sha256"
+          COSIGN_YES=true cosign sign-blob \
+            --bundle "$archive.sigstore.json" \
+            "$archive" > "$archive.sigstore"
+
+      - name: Write release manifest
+        env:
+          IMAGE: ${{ steps.metadata.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.web.outputs.image_digest }}
+          REVISION: ${{ steps.metadata.outputs.revision }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          archive="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg revision "$REVISION" \
+            --arg image "$IMAGE" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            --arg runner_archive "$archive" \
+            --rawfile runner_sha256 "$archive.sha256" \
+            '{schemaVersion:1,service:"areasong-ops",version:$version,revision:$revision,platform:"linux/amd64",web:{image:($image+"@"+$image_digest),cosign:"keyless"},runner:{archive:$runner_archive,sha256:($runner_sha256|rtrimstr("\n")),cosign:"keyless"}}' \
+            > "areasong-ops-release-$REVISION.json"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ steps.metadata.outputs.revision }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag="areasong-ops-$REVISION"
+          gh release create "$tag" \
+            --target "$REVISION" \
+            --title "AreaSong Ops $VERSION ($REVISION)" \
+            --notes "Signed linux/amd64 control-plane artifacts for $REVISION. Production deployment remains separately approved." \
+            "areasong-ops-release-$REVISION.json" \
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz" \
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sha256" \
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore" \
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore.json"
