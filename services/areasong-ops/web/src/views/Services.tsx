@@ -55,7 +55,7 @@ export function Services({
   const discoveredTarget = discovery?.latestTag ?? (discovery?.manifestVersion ? `v${discovery.manifestVersion}` : '')
   const updateAvailable = Boolean(discoveredTarget && discoveredTarget.replace(/^v/, '') !== service.status?.currentVersion)
   const activePlan = plans.find((plan) => plan.service === service.name &&
-    ['pending_approval', 'approved', 'observing'].includes(plan.state))
+    ['pending_approval', 'scheduled', 'approved', 'observing'].includes(plan.state))
 
   return (
     <div className="page service-page">
@@ -116,7 +116,7 @@ export function Services({
           {activePlan && (
             <section className="plan-band">
               <div>
-                <strong>{activePlan.state === 'observing' ? '计划正在观察' : activePlan.state === 'approved' ? '计划已批准' : '计划等待批准'}</strong>
+                <strong>{activePlan.state === 'observing' ? '计划正在观察' : activePlan.state === 'approved' ? '计划已批准' : activePlan.state === 'scheduled' ? '计划等待调度' : '计划等待批准'}</strong>
                 <small>{activePlan.action} {activePlan.target || ''}</small>
               </div>
               <code>{shortHash(activePlan.digest)}</code>

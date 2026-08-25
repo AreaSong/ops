@@ -93,6 +93,9 @@ func TestTrafficPolicyValidationAndDigestContract(t *testing.T) {
 		"marker must match include directive": func(policy *model.TrafficPolicy) {
 			policy.Marker = "include /etc/nginx/snippets/areasong-ops/other.conf;"
 		},
+		"control plane hostname is protected": func(policy *model.TrafficPolicy) {
+			policy.Hostname = ControlPlaneHostname
+		},
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -83,8 +83,8 @@ func validateAutoUpdatePolicyInput(service string, policy *model.AutoUpdatePolic
 	if policy.Channel != "stable" && policy.Channel != "candidate" && policy.Channel != "security" {
 		return fmt.Errorf("服务 %s 的自动更新 channel 无效", service)
 	}
-	if policy.Enabled && !policy.RequireApproval {
-		return errors.New("自动更新必须保留人工批准门禁")
+	if policy.Enabled && (!policy.RequireApproval || !policy.RequireBackup || !policy.RollbackOnAlert) {
+		return errors.New("自动更新必须同时启用人工批准、新鲜备份和告警回滚门禁")
 	}
 	if policy.CanaryPercent < 0 || policy.CanaryPercent > 100 || policy.MaxUnavailable < 0 || policy.MaxUnavailable > 100 {
 		return errors.New("自动更新批次参数无效")

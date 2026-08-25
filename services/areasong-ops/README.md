@@ -23,10 +23,13 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 扩展默认关闭；启用时必须使用受信发布者、签名和 `rootless`/`wasm` 沙箱，扩展权限不能越过对象和租户边界。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
+- 公开计划创建必须携带幂等键；计划固定租户、服务器和可选 `scheduleAt`。未来调度在时间到达前保持 `scheduled`，重复请求只追加重放审计，不重复创建任务。
 - 生产变更任务成功后进入声明的观察窗口；到期后重新核对运行身份并原子写入收口审计，才将计划标记为完成。
 - Runner 从本机 Alertmanager 只读投影 Git 声明映射的活动阻断告警；Prometheus 仍是唯一告警规则源，Alertmanager 仍是告警和静默的唯一权威。
 - 中高风险生产变更执行前必须通过告警门禁。Runner 只按声明创建最长 4 小时的精确维护静默，操作者不能输入 matcher、告警名或时长。
 - 任务失败时提前解除维护静默；任务成功时保留到观察期结束。收口先解除静默，再复核包括被其他静默覆盖的活动阻断告警和运行身份。
+- `ops.areasong.top` 是控制面自身域名，永远不能出现在任何 `trafficPolicy.hostname`，避免控制面被自己的流量开关切断。
+- 自动更新启用时强制 `requireApproval`、`requireBackup` 和 `rollbackOnAlert` 同时为真；扩展、终端、文件、Runner 更新等能力继续默认关闭。
 - 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
 - AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点。Runner 校验声明的全部必需产物角色、路径、大小、时间和 SHA-256，并把恢复点绑定到批准时的变更前身份；每个变更阶段执行前都会重新核验。
 - 有效恢复点和仍可回滚任务的操作目录不会被定期清理；恢复点按服务声明的 1 小时至 7 天窗口过期，过期后才重新进入普通产物留存清理范围。
@@ -52,7 +55,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 ### 生命周期动作
 
-当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。`enter-maintenance`/`drain`/`resume-traffic` 只写入目标状态，`start`/`stop` 才调用服务适配器并执行健康检查。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
+当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
 
 ### 高风险边界
 
@@ -82,6 +85,8 @@ npm ci
 npm run lint
 npm run typecheck
 npm run build
+# 需要 Web、Runner 和开发身份同时在线
+OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 ```
 
 ## 构建

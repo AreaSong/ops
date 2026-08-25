@@ -17,7 +17,7 @@ type ReleasePlanInput struct {
 }
 
 const planSelect = `
-	SELECT id, actor_hash, service, action, target, risk, state, digest,
+	SELECT id, actor_hash, service, action, target, tenant_id, server_id, schedule_at, risk, state, digest,
 	       approval_summary_json, confirmation_phrase, approved_by_hash, approved_at,
 	       invalidated_reason, task_id, observation_seconds, observation_started_at,
 	       observation_ends_at, closure_reason, maintenance_silence_id,
@@ -45,7 +45,7 @@ func (store *Store) createReleasePlan(ctx context.Context, db planExecer, input 
 	}
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO release_plans (
-			id, actor_hash, service, action, target, risk, state, digest,
+			id, actor_hash, service, action, target, tenant_id, server_id, schedule_at, risk, state, digest,
 			approval_summary_json, confirmation_hash, confirmation_phrase,
 			observation_seconds, created_at, updated_at, request_idempotency_key,
 			request_digest, restore_mode, recovery_point_id, requires_dual_approval,
@@ -53,9 +53,10 @@ func (store *Store) createReleasePlan(ctx context.Context, db planExecer, input 
 			restore_expected_before_digest, restore_contract_digest,
 			restore_revalidation_digest, restore_revalidated_at, executed_by_hash,
 			restore_outcome, restore_evidence_digest
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Plan.ID, input.Plan.ActorHash, input.Plan.Service, input.Plan.Action,
-		input.Plan.Target, input.Plan.Risk, input.Plan.State, input.Plan.Digest,
+		input.Plan.Target, input.Plan.TenantID, input.Plan.ServerID, nullableTimeValue(input.Plan.ScheduleAt), input.Plan.Risk, input.Plan.State, input.Plan.Digest,
 		summary, input.ConfirmationHash, input.Plan.ConfirmationPhrase,
 		input.Plan.ObservationSeconds, timeText(input.Plan.CreatedAt), timeText(input.Plan.UpdatedAt),
 		input.Plan.RequestIdempotencyKey, input.Plan.RequestDigest, input.Plan.RestoreMode,
@@ -117,11 +118,13 @@ func (store *Store) CreateReleasePlanIdempotent(
 func scanPlan(row scanner) (model.ReleasePlan, error) {
 	var plan model.ReleasePlan
 	var risk, state, summaryJSON, createdAt, updatedAt string
+	var scheduleAt sql.NullString
+	var tenantID, serverID string
 	var approvedAt, observationStartedAt, observationEndsAt, silenceEndsAt, silenceReleasedAt,
 		closedAt, restoreRevalidatedAt sql.NullString
 	var blockingAlertsJSON string
 	err := row.Scan(&plan.ID, &plan.ActorHash, &plan.Service, &plan.Action, &plan.Target,
-		&risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
+		&tenantID, &serverID, &scheduleAt, &risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.InvalidatedReason, &plan.TaskID,
 		&plan.ObservationSeconds, &observationStartedAt, &observationEndsAt,
 		&plan.ClosureReason, &plan.MaintenanceSilenceID, &silenceEndsAt, &silenceReleasedAt,
@@ -137,6 +140,11 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	}
 	plan.Risk = model.Risk(risk)
 	plan.State = model.PlanState(state)
+	plan.TenantID, plan.ServerID = tenantID, serverID
+	plan.ScheduleAt, err = nullableTime(scheduleAt)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
 	plan.RequiresConfirmation = plan.Risk != model.RiskReadOnly
 	if err := decodeJSON(summaryJSON, &plan.ApprovalSummary); err != nil {
 		return model.ReleasePlan{}, err
@@ -177,6 +185,19 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	}
 	plan.RestoreRevalidatedAt, parseErr = nullableTime(restoreRevalidatedAt)
 	return plan, parseErr
+}
+
+// ActivateScheduledPlan 在到达调度时间后释放计划；条件更新保证 cron/systemd 重试不会重复释放。
+func (store *Store) ActivateScheduledPlan(ctx context.Context, id string, now time.Time) (bool, error) {
+	result, err := store.db.ExecContext(ctx, `
+		UPDATE release_plans SET state = ?, updated_at = ?
+		WHERE id = ? AND state = ? AND schedule_at IS NOT NULL AND schedule_at <= ?
+	`, model.PlanApproved, timeText(now), id, model.PlanScheduled, timeText(now))
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
 }
 
 func (store *Store) GetReleasePlan(ctx context.Context, id string) (model.ReleasePlan, error) {
@@ -265,7 +286,14 @@ func (store *Store) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if plan.ActorHash != actorHash && !(plan.RequiresDualApproval && plan.ApprovedByHash != "") {
+	// 高风险计划必须由独立批准人批准；其他计划保留创建者批准规则，
+	// 只有显式双人审批流程的第二步允许非创建者批准。
+	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash {
+		return model.ReleasePlan{}, ErrActorMismatch
+	}
+	if plan.ActorHash != actorHash &&
+		plan.Risk != model.RiskHigh &&
+		!(plan.RequiresDualApproval && plan.ApprovedByHash != "") {
 		return model.ReleasePlan{}, ErrActorMismatch
 	}
 	if (plan.State != model.PlanPendingApproval && plan.State != model.PlanApproved) || plan.Digest != digest {
@@ -279,6 +307,10 @@ func (store *Store) ApproveReleasePlan(
 		return model.ReleasePlan{}, ErrConfirmation
 	}
 	now := store.now()
+	targetState := model.PlanApproved
+	if plan.ScheduleAt != nil && now.Before(*plan.ScheduleAt) {
+		targetState = model.PlanScheduled
+	}
 	if plan.RequiresDualApproval {
 		if plan.State == model.PlanApproved {
 			if plan.SecondApprovedByHash == actorHash || plan.ApprovedByHash == actorHash {
@@ -306,20 +338,20 @@ func (store *Store) ApproveReleasePlan(
 		result, err := tx.ExecContext(ctx, `
 			UPDATE release_plans SET state = ?, second_approved_by_hash = ?, updated_at = ?
 			WHERE id = ? AND state = ? AND digest = ? AND approved_by_hash != '' AND second_approved_by_hash = ''
-		`, model.PlanApproved, actorHash, timeText(now), id, model.PlanPendingApproval, digest)
+		`, targetState, actorHash, timeText(now), id, model.PlanPendingApproval, digest)
 		if err = requireOne(result, err, "生产恢复第二批准无法写入"); err != nil {
 			return model.ReleasePlan{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return model.ReleasePlan{}, err
 		}
-		plan.State, plan.SecondApprovedByHash, plan.UpdatedAt = model.PlanApproved, actorHash, now
+		plan.State, plan.SecondApprovedByHash, plan.UpdatedAt = targetState, actorHash, now
 		return plan, nil
 	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE release_plans SET state = ?, approved_by_hash = ?, approved_at = ?, updated_at = ?
 		WHERE id = ? AND state = ? AND digest = ?
-	`, model.PlanApproved, actorHash, timeText(now), timeText(now), id,
+	`, targetState, actorHash, timeText(now), timeText(now), id,
 		model.PlanPendingApproval, digest)
 	if err = requireOne(result, err, "发布计划批准失败"); err != nil {
 		return model.ReleasePlan{}, err
@@ -327,7 +359,7 @@ func (store *Store) ApproveReleasePlan(
 	if err := tx.Commit(); err != nil {
 		return model.ReleasePlan{}, err
 	}
-	plan.State = model.PlanApproved
+	plan.State = targetState
 	plan.ApprovedByHash = actorHash
 	plan.ApprovedAt = &now
 	plan.UpdatedAt = now

@@ -37,8 +37,8 @@ func validateAutoUpdatePolicy(service string, policy *model.AutoUpdatePolicy) er
 	// An enabled production policy can prepare a plan automatically, but a
 	// human approval remains mandatory. This prevents a catalog typo from
 	// turning a scheduler into an unreviewed deployment channel.
-	if policy.Enabled && !policy.RequireApproval {
-		return fmt.Errorf("服务 %s 的自动更新必须保留人工批准门禁", service)
+	if policy.Enabled && (!policy.RequireApproval || !policy.RequireBackup || !policy.RollbackOnAlert) {
+		return fmt.Errorf("服务 %s 的自动更新必须同时启用人工批准、新鲜备份和告警回滚门禁", service)
 	}
 	return nil
 }

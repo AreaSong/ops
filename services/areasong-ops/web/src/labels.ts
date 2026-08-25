@@ -22,6 +22,7 @@ export const stateLabel: Record<TaskState, string> = {
 
 export const planStateLabel: Record<PlanState, string> = {
   pending_approval: '等待批准',
+  scheduled: '已批准，等待调度',
   approved: '等待执行',
   executing: '执行中',
   observing: '观察中',

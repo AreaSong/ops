@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	legacySchemaVersion = 3
-	schemaVersion       = 4
+	ControlPlaneHostname = "ops.areasong.top"
+	legacySchemaVersion  = 3
+	schemaVersion        = 4
 
 	RunnerUpdateArtifactRoot    = "/var/lib/areasong-ops/runner-updates/incoming"
 	RunnerUpdateBinaryPath      = "/usr/local/libexec/areasong-ops/runner/areasong-ops-runner"
@@ -609,6 +610,9 @@ func validateTrafficPolicy(service string, policy *model.TrafficPolicy, requireR
 	}
 	if !trafficHostnamePattern.MatchString(policy.Hostname) || !strings.Contains(policy.Hostname, ".") {
 		return fmt.Errorf("服务 %s 的流量 hostname 无效", service)
+	}
+	if strings.EqualFold(policy.Hostname, ControlPlaneHostname) {
+		return fmt.Errorf("服务 %s 禁止绑定控制面自身域名 %s", service, ControlPlaneHostname)
 	}
 	if !strings.HasSuffix(policy.SiteFile, ".conf") ||
 		!strings.HasSuffix(policy.IncludeFile, ".conf") ||

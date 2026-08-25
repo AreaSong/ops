@@ -85,7 +85,7 @@
 
 动作仍在同一服务对象的 `actions` 中声明。更新动作使用 `targetMode: signed_release_tag` 和 `readinessGate: prepared_release`；准备动作使用相同目标格式并在成功后发布动态 prepared 记录。包含 `runtime_mutation` 或 `data_mutation` 的生产变更动作必须声明 60 到 86400 秒的 `observationSeconds`，该值会进入不可变批准摘要。
 
-`metadata.lifecycle: active` 的服务还会得到 Runner 动态生成的 `enter-maintenance`、`drain`、`resume-traffic`、`start`、`stop` 动作。它们不需要复制到 JSON；调用路径仍必须经过预览、RBAC、确认短语、服务锁和审计。维护/排空动作只改变目标状态，启动/停止动作才委托适配器。
+`metadata.lifecycle: active` 的服务还会得到 Runner 动态生成的 `enter-maintenance`、`drain`、`resume-traffic`、`start`、`stop` 动作。它们不需要复制到 JSON；调用路径仍必须经过预览、RBAC、确认短语、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。`ops.areasong.top` 永远不能作为受管 hostname。
 
 ## Hook 契约
 

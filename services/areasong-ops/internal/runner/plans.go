@@ -100,16 +100,17 @@ func (engine *Engine) CreateReleasePlan(
 	if !actorPattern.MatchString(actorHash) {
 		return model.ReleasePlan{}, errors.New("操作者标识无效")
 	}
+	requestDigest := request.RequestDigest
+	if requestDigest == "" {
+		requestDigest = digestText(strings.Join([]string{actorHash, request.Service, request.Action, request.Target,
+			request.RestoreMode, request.RecoveryPointID, scheduleText(request.ScheduleAt)}, "\x00"))
+	}
 	if request.IdempotencyKey != "" {
 		if existing, found, err := engine.store.GetReleasePlanByRequest(ctx, request.IdempotencyKey); err != nil {
 			return model.ReleasePlan{}, err
 		} else if found {
 			if existing.ActorHash != actorHash {
 				return model.ReleasePlan{}, store.ErrActorMismatch
-			}
-			requestDigest := request.RequestDigest
-			if requestDigest == "" {
-				requestDigest = digestText(strings.Join([]string{actorHash, request.Service, request.Action, request.Target, request.RestoreMode, request.RecoveryPointID}, "\x00"))
 			}
 			if existing.RequestDigest != requestDigest {
 				return model.ReleasePlan{}, store.ErrIdempotency
@@ -120,6 +121,10 @@ func (engine *Engine) CreateReleasePlan(
 	service, action, err := engine.resolveAction(request.Service, request.Action, request.Target)
 	if err != nil {
 		return model.ReleasePlan{}, err
+	}
+	tenantID := service.TenantID
+	if tenantID == "" {
+		tenantID = "default"
 	}
 	var restorePoint *model.RecoveryPoint
 	if request.RestoreMode != "" {
@@ -186,12 +191,12 @@ func (engine *Engine) CreateReleasePlan(
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
-		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds,
+		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds, TimeoutSeconds: action.TimeoutSeconds,
 		AlertPolicy:        service.AlertPolicy,
 		ConfirmationPhrase: phrase,
 		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
-		TenantID: request.RestoreTenantID, ServerID: request.RestoreServerID,
+		TenantID: tenantID, ServerID: service.ServerID, ScheduleAt: request.ScheduleAt,
 		ExpectedBeforeDigest:        request.RestoreExpectedBeforeDigest,
 		RecoveryPointBindingDigest:  request.RestoreContractDigest,
 		RecoveryPointEvidenceDigest: request.RestoreEvidenceDigest,
@@ -208,10 +213,11 @@ func (engine *Engine) CreateReleasePlan(
 	plan := model.ReleasePlan{
 		ID: id, ActorHash: actorHash, Service: service.Name, Action: action.Name,
 		Target: request.Target, Risk: action.Risk, State: model.PlanPendingApproval,
+		TenantID: tenantID, ServerID: service.ServerID, ScheduleAt: request.ScheduleAt,
 		Digest: digest, ApprovalSummary: summary, ConfirmationPhrase: phrase,
 		RequiresConfirmation: action.Risk != model.RiskReadOnly,
 		ObservationSeconds:   action.ObservationSeconds, CreatedAt: now, UpdatedAt: now,
-		RequestIdempotencyKey: request.IdempotencyKey, RequestDigest: request.RequestDigest,
+		RequestIdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
 		RequiresDualApproval: request.RequiresDualApproval,
 		RestoreTenantID:      request.RestoreTenantID, RestoreServerID: request.RestoreServerID,
@@ -222,14 +228,17 @@ func (engine *Engine) CreateReleasePlan(
 	_ = restorePoint // retained to make the binding lookup explicit above
 	input := store.ReleasePlanInput{Plan: plan, ConfirmationHash: store.HashConfirmation(phrase)}
 	if request.IdempotencyKey != "" {
-		requestDigest := request.RequestDigest
-		if requestDigest == "" {
-			requestDigest = digestText(strings.Join([]string{actorHash, request.Service, request.Action, request.Target, request.RestoreMode, request.RecoveryPointID}, "\x00"))
-		}
-		stored, _, err := engine.store.CreateReleasePlanIdempotent(ctx, input, actorHash, request.IdempotencyKey, requestDigest)
+		stored, created, err := engine.store.CreateReleasePlanIdempotent(ctx, input, actorHash, request.IdempotencyKey, requestDigest)
 		if err != nil {
 			return model.ReleasePlan{}, err
 		}
+		event := "plan.created.replayed"
+		outcome := "replayed"
+		if created {
+			event, outcome = "plan.created", "accepted"
+		}
+		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: event, Resource: stored.ID, Outcome: outcome,
+			Detail: map[string]any{"service": stored.Service, "action": stored.Action, "target": stored.Target, "digest": stored.Digest, "idempotencyKey": request.IdempotencyKey}})
 		return stored, nil
 	}
 	if err := engine.store.CreateReleasePlan(ctx, input); err != nil {
@@ -240,6 +249,13 @@ func (engine *Engine) CreateReleasePlan(
 		Detail: map[string]any{"service": plan.Service, "action": plan.Action, "target": plan.Target, "digest": plan.Digest},
 	})
 	return plan, nil
+}
+
+func scheduleText(value *time.Time) string {
+	if value == nil {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func (engine *Engine) ApproveReleasePlan(
@@ -254,6 +270,9 @@ func (engine *Engine) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash {
+		return model.ReleasePlan{}, store.ErrActorMismatch
+	}
 	service, exists := engine.catalog.Object(plan.Service)
 	if !exists {
 		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
@@ -266,8 +285,8 @@ func (engine *Engine) ApproveReleasePlan(
 		return model.ReleasePlan{}, err
 	}
 	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actorHash, Event: "plan.approved", Resource: plan.ID, Outcome: "approved",
-		Detail: map[string]any{"digest": plan.Digest},
+		ActorHash: actorHash, Event: "plan.approved", Outcome: string(plan.State), Resource: plan.ID,
+		Detail: map[string]any{"digest": plan.Digest, "scheduleAt": plan.ScheduleAt},
 	})
 	return plan, nil
 }
@@ -294,6 +313,23 @@ func (engine *Engine) ExecuteReleasePlan(
 	}
 	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), serviceForAuth.ObjectID); err != nil {
 		return model.Task{}, false, err
+	}
+	if plan.State == model.PlanScheduled {
+		if plan.ScheduleAt == nil || time.Now().UTC().Before(*plan.ScheduleAt) {
+			return model.Task{}, false, errors.New("发布计划尚未到达调度时间")
+		}
+		activated, activateErr := engine.store.ActivateScheduledPlan(ctx, plan.ID, time.Now().UTC())
+		if activateErr != nil {
+			return model.Task{}, false, activateErr
+		}
+		plan, err = engine.store.GetReleasePlan(ctx, id)
+		if err != nil {
+			return model.Task{}, false, err
+		}
+		if activated {
+			_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: "plan.schedule.released", Resource: plan.ID, Outcome: "approved",
+				Detail: map[string]any{"scheduleAt": plan.ScheduleAt}})
+		}
 	}
 	if plan.State == model.PlanExecuting || plan.State == model.PlanObserving ||
 		plan.State == model.PlanNeedsAttention || plan.State == model.PlanCompleted {
@@ -337,12 +373,12 @@ func (engine *Engine) ExecuteReleasePlan(
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
 		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
-		ObservationSeconds: action.ObservationSeconds,
+		ObservationSeconds: action.ObservationSeconds, TimeoutSeconds: action.TimeoutSeconds,
 		AlertPolicy:        actionAlertPolicy(service),
 		ConfirmationPhrase: renderConfirmation(action.ConfirmationTemplate, service.Name, plan.Target),
 		ExpectedBefore:     observed, TargetEvidence: targetEvidence,
 		RestoreMode: plan.RestoreMode, RecoveryPointID: plan.RecoveryPointID,
-		TenantID: plan.RestoreTenantID, ServerID: plan.RestoreServerID,
+		TenantID: plan.TenantID, ServerID: plan.ServerID, ScheduleAt: plan.ScheduleAt,
 		ExpectedBeforeDigest:        plan.RestoreExpectedBeforeDigest,
 		RecoveryPointBindingDigest:  plan.RestoreContractDigest,
 		RecoveryPointEvidenceDigest: plan.RestoreEvidenceDigest,

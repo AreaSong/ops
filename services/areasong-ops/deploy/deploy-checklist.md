@@ -48,6 +48,7 @@
 ## 阶段 3：隔离能力验收
 
 - [ ] 生命周期动作 `enter-maintenance`、`drain`、`resume-traffic`、`start`、`stop` 在隔离服务上验证预览、确认、RBAC、锁、目标状态、健康检查和审计。
+- [ ] `stop`/`start` 验证网站保护顺序；`drain` 保存旧 worker 与活动连接归零或明确超时的证据，失败保持维护页并进入 `needs_attention`。
 - [ ] Compose 依次验证 `validate`、`propose`、摘要 digest、审批失效条件、受控 apply、health/smoke/identity、观察窗口和失败回滚；验证任意路径、依赖容器和过期 digest 被拒绝。
 - [ ] 恢复演练只使用 `isolated` 模式和临时资源，验证备份角色、SHA-256、expected-before、清理和生产数据不变；不得以演练替代生产恢复批准。
 - [ ] fleet 批量只在非生产或明确隔离目标上验证 selector、DAG、canary、并发上限、暂停/失败策略、变更窗口、心跳租约和审计；禁止通配符扩大目标。
@@ -56,6 +57,7 @@
 ## 阶段 4：生产变更与观察收口
 
 - [ ] 每个生产动作单独创建预览/计划，摘要固定 service、tenant、server、target digest、影响、回滚、告警门禁和观察秒数。
+- [ ] 公开计划创建携带 UUID 幂等键；需要延迟执行的计划验证 `scheduleAt`、`scheduled` 状态和到时前拒绝执行。
 - [ ] 中高风险动作先检查 Alertmanager 活动阻断告警；通过后才创建声明生成的精确静默，不能由操作者输入 matcher/告警名/时长。
 - [ ] Compose apply 或版本更新必须先有 fresh recovery point；生产恢复必须另有双确认、恢复点复验和目标身份复核。
 - [ ] 观察期内保持任务/静默/恢复点证据；失败提前解除静默并进入人工关注，成功收口前重新 inspect、解除静默、复核告警后再标记完成。

@@ -13,6 +13,7 @@ export type TaskState =
 
 export type PlanState =
   | 'pending_approval'
+  | 'scheduled'
   | 'approved'
   | 'executing'
   | 'observing'
@@ -156,6 +157,7 @@ export interface Preview {
   service: string
   action: string
   target?: string
+  scheduleAt?: string
   risk: Risk
   impact: string
   rollback: string
@@ -172,6 +174,7 @@ export interface ApprovalSummary {
   service: string
   action: string
   target?: string
+  scheduleAt?: string
   risk: Risk
   impact: string
   rollback: string
@@ -185,6 +188,7 @@ export interface ApprovalSummary {
     recoveryPhase?: string
   }>
   observationSeconds?: number
+  timeoutSeconds?: number
   alertPolicy?: AlertPolicyDefinition
   confirmationPhrase?: string
   expectedBefore: ServiceStatus
@@ -197,6 +201,9 @@ export interface ReleasePlan {
   service: string
   action: string
   target?: string
+  tenantId: string
+  serverId: string
+  scheduleAt?: string
   risk: Risk
   state: PlanState
   digest: string

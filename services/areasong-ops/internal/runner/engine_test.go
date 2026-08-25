@@ -398,8 +398,9 @@ func TestHighRiskTaskRequiresExactPhraseAndCompletes(t *testing.T) {
 func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
+	creator, approver := actorHash(), strings.Repeat("b", 64)
 	discoverRelease(t, engine)
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
 		Service: "demo", Action: "update", Target: "v1.1.0",
 	})
 	if err != nil {
@@ -408,19 +409,19 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	if plan.State != model.PlanPendingApproval || plan.Digest == "" {
 		t.Fatalf("plan=%+v", plan)
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{
+	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	}); err == nil {
 		t.Fatal("unapproved plan executed")
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
 		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
 	})
 	if err != nil || approved.State != model.PlanApproved {
 		t.Fatalf("approved=%+v err=%v", approved, err)
 	}
 	executionKey := mustUUID(t)
-	task, created, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{
+	task, created, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
 		IdempotencyKey: executionKey,
 	})
 	if err != nil || !created || task.PlanID != plan.ID {
@@ -431,7 +432,7 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	if err != nil || finished.State != model.TaskSucceeded || len(finished.Stages) != 5 {
 		t.Fatalf("task=%+v err=%v", finished, err)
 	}
-	replayed, created, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{
+	replayed, created, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
 		IdempotencyKey: executionKey,
 	})
 	if err != nil || created || replayed.ID != task.ID {
@@ -442,25 +443,26 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
+	creator, approver := actorHash(), strings.Repeat("b", 64)
 	service := engine.catalog.Services["demo"]
 	action := service.Actions["update"]
 	action.ObservationSeconds = 1
 	service.Actions["update"] = action
 	engine.catalog.Services["demo"] = service
 	discoverRelease(t, engine)
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
 		Service: "demo", Action: "update", Target: "v1.1.0",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
 		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
 	if err != nil {
@@ -478,7 +480,7 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	}
 	request := httptest.NewRequest(http.MethodPost, "/v1/plans/"+plan.ID+"/close", bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set(actorHeader, actorHash())
+	request.Header.Set(actorHeader, creator)
 	response := httptest.NewRecorder()
 	NewServer(engine, database).ServeHTTP(response, request)
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "当前版本与计划目标不一致") {
@@ -487,6 +489,23 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	blocked, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || blocked.State != model.PlanObserving || blocked.ClosureReason == "" {
 		t.Fatalf("blocked=%+v err=%v", blocked, err)
+	}
+}
+
+func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
+	ctx := context.Background()
+	engine, _ := testEngine(t, &fakeExecutor{})
+	discoverRelease(t, engine)
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "update", Target: "v1.1.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	}); !errors.Is(err, store.ErrActorMismatch) {
+		t.Fatalf("creator approval err=%v, want actor mismatch", err)
 	}
 }
 
@@ -715,6 +734,7 @@ func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
 func TestControlledRollbackPlanRevalidatesCurrentSource(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
+	creator, approver := actorHash(), strings.Repeat("b", 64)
 	preview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
 		Service: "demo", Action: "update", Target: "v1.0.0",
 	})
@@ -728,19 +748,19 @@ func TestControlledRollbackPlanRevalidatesCurrentSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine.Wait()
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
 		Service: "demo", Action: "rollback", Target: source.ID,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
 		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
 	if err != nil {

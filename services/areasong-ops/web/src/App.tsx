@@ -221,7 +221,7 @@ export default function App() {
     if (previousAudit.length === 0) setAuditHasMore(auditData.hasMore)
     setSelectedTask((current) => current ? nextTasks.find((item) => item.id === current.id) ?? current : null)
     setSelectedPlan((current) => current
-      ? planData.items.find((item) => item.id === current.id && ['pending_approval', 'approved', 'observing'].includes(item.state)) ?? null
+      ? planData.items.find((item) => item.id === current.id && ['pending_approval', 'scheduled', 'approved', 'observing'].includes(item.state)) ?? null
       : null)
   }, [api, updateAudit, updateTasks])
 

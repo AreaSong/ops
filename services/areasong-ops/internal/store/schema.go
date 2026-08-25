@@ -705,4 +705,8 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 			ON task_assignment_events(event_sequence);`,
 	`ALTER TABLE batch_jobs ADD COLUMN executed_by_hash TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE batch_jobs ADD COLUMN executed_at TEXT;`,
+	`ALTER TABLE release_plans ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
+	 ALTER TABLE release_plans ADD COLUMN server_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE release_plans ADD COLUMN schedule_at TEXT;
+	 CREATE INDEX idx_release_plans_schedule ON release_plans(state, schedule_at);`,
 }

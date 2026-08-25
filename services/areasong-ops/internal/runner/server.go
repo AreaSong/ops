@@ -1640,6 +1640,10 @@ func (server *Server) createPlan(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !uuidPattern.MatchString(input.IdempotencyKey) {
+		writeError(response, http.StatusBadRequest, "发布计划必须携带有效幂等键")
+		return
+	}
 	plan, err := server.engine.CreateReleasePlan(request.Context(), actor, input)
 	if err != nil {
 		writeError(response, http.StatusConflict, err.Error())

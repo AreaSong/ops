@@ -169,6 +169,41 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// 开发 Runner 没有独立心跳进程；持续续租用于本地验收 Fleet 门禁，生产 API 门禁不变。
+	if catalog.Fleet != nil && catalog.Fleet.Enabled {
+		lease := time.Duration(catalog.Fleet.HeartbeatTimeoutSeconds) * time.Second
+		if lease <= 0 {
+			lease = 90 * time.Second
+		}
+		for _, node := range catalog.Fleet.Inventory.Runners {
+			if _, err := database.HeartbeatRunner(context.Background(), node.ID, "development", lease); err != nil {
+				log.Fatal(err)
+			}
+		}
+		heartbeatStop := make(chan struct{})
+		heartbeatDone := make(chan struct{})
+		go func() {
+			defer close(heartbeatDone)
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					for _, node := range catalog.Fleet.Inventory.Runners {
+						if _, err := database.HeartbeatRunner(context.Background(), node.ID, "development", lease); err != nil {
+							log.Printf("development Fleet heartbeat failed: %v", err)
+						}
+					}
+				case <-heartbeatStop:
+					return
+				}
+			}
+		}()
+		defer func() {
+			close(heartbeatStop)
+			<-heartbeatDone
+		}()
+	}
 	socket := envOr("OPS_RUNNER_SOCKET", "/tmp/areasong-ops-dev.sock")
 	_ = os.Remove(socket)
 	listener, err := net.Listen("unix", socket)

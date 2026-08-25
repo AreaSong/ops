@@ -69,7 +69,13 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 | `start` | `running` | 通过 adapter 启动应用并健康检查 | 失败按运行时变更策略处理 |
 | `stop` | `stopped` | 停止应用，可能造成公网不可用 | 高风险确认，失败按已改变处理 |
 
-动作仍需预览、确认短语、RBAC、服务锁、心跳和审计。`desired`、`actual`、`health` 和 `drift` 是不同维度：目标状态由控制面写入，实际状态由 inspect/reconcile 观察；发现漂移不能自动假定恢复成功。`autoReconcile: false` 时不会因为漂移自动执行 start/stop。
+动作仍需预览、确认短语、RBAC、服务锁、心跳和审计。网站 `stop` 固定执行 `preflight -> drain -> enter-maintenance -> stop -> health`，`start` 固定执行 `preflight -> enter-maintenance -> start -> health -> resume-traffic -> verify`；健康失败或恢复流量失败都保持维护状态并进入 `needs_attention`。`drain` 必须证明旧 worker 与活动连接都归零，或达到声明超时。`desired`、`actual`、`health` 和 `drift` 是不同维度：目标状态由控制面写入，实际状态由 inspect/reconcile 观察；发现漂移不能自动假定恢复成功。
+
+### ReleasePlan 合同
+
+所有公开生产写请求必须携带 UUID `idempotencyKey`。计划摘要和计划外壳同时固定 `tenantId`、`serverId`、目标、影响、回滚、版本/配置快照和 `trafficPolicyDigest`；重复提交同一幂等键只返回原计划，并追加重放审计，不会创建第二个任务。
+
+`state` 的批准/执行顺序为 `pending_approval -> scheduled -> approved -> executing -> observing -> completed`（没有未来 `scheduleAt` 时批准直接进入 `approved`）。进入 `scheduled` 后，只有受控 cron/systemd 或人工补跑在 `scheduleAt` 到达后才能原子释放为 `approved`；执行接口不会提前绕过时间门禁。公开 API 只允许创建、批准和查看计划，不能直接写 desired state。
 
 ## 5. Compose 受控提案流
 

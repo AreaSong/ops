@@ -31,13 +31,14 @@ export function Overview({
   onService, onTask, onPlan, onAutomaticTasks,
 }: OverviewProps) {
   const pendingPlans = plans.filter((plan) => plan.state === 'pending_approval')
+  const scheduledPlans = plans.filter((plan) => plan.state === 'scheduled')
   const approvedPlans = plans.filter((plan) => plan.state === 'approved')
   const observingPlans = plans.filter((plan) => plan.state === 'observing')
   const attentionPlans = plans.filter((plan) => plan.state === 'needs_attention')
   const activeTasks = tasks.filter((task) => activeTaskStates.has(task.state))
   const attentionTasks = tasks.filter((task) => attentionTaskStates.has(task.state))
   const orphanedAttentionPlans = attentionPlans.filter((plan) => !attentionTasks.some((task) => task.id === plan.taskId))
-  const actionablePlans = [...pendingPlans, ...approvedPlans]
+  const actionablePlans = [...pendingPlans, ...scheduledPlans, ...approvedPlans]
   const failedAutomaticTasks = automaticTasks.filter((task) =>
     Boolean(task.statusError) || !task.status || task.status.health !== 'healthy')
   const handlingCount = alerts.length + actionablePlans.length + observingPlans.length + attentionTasks.length +
@@ -98,7 +99,7 @@ export function Overview({
             {actionablePlans.map((plan) => (
               <button key={plan.id} type="button" className="task-row" onClick={() => onPlan(plan)}>
                 <span><strong>{plan.service}</strong><small>{plan.action}{plan.target ? ` · ${plan.target}` : ''}</small></span>
-                <span className="task-summary">{plan.state === 'approved' ? '批准已绑定，等待执行' : '等待明确批准'}</span>
+                <span className="task-summary">{plan.state === 'approved' ? '批准已绑定，等待执行' : plan.state === 'scheduled' ? `等待 ${formatTime(plan.scheduleAt)} 调度` : '等待明确批准'}</span>
                 <time>{formatTime(plan.updatedAt)}</time>
                 <StatusBadge kind="plan" value={plan.state} />
               </button>

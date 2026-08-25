@@ -158,6 +158,8 @@ class NginxTrafficAdapterTests(unittest.TestCase):
                 mutation = self.payload(self.run_adapter(action, action))
                 self.assertEqual(mutation["data"]["trafficState"], expected_state)
                 self.assertTrue(mutation["data"]["productionChanged"])
+                if action == "drain":
+                    self.assertEqual(mutation["data"]["activeConnections"], 0)
                 content = self.include.read_text(encoding="utf-8")
                 self.assertIn(expected_text, content)
                 self.assertEqual(

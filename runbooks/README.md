@@ -54,6 +54,7 @@
 
 | 记录 | 文件 |
 | --- | --- |
+| AreaSong Ops 生产变更包草案（2026-08-24） | [records/areasong-ops-production-change-package-draft-20260824.md](records/areasong-ops-production-change-package-draft-20260824.md) |
 | standards/09 阶段 9 当前验收（2026-08-19） | [records/losangeles-standards-09-phase9-20260819.md](records/losangeles-standards-09-phase9-20260819.md) |
 | 当前运维状态 | [records/losangeles-current-status.md](records/losangeles-current-status.md) |
 | 第二轮治理、批准与验收 | [records/losangeles-round2-governance-20260718.md](records/losangeles-round2-governance-20260718.md) |

@@ -12,6 +12,7 @@ service="${OPS_SERVICE_NAME:-}"
 policy_json="${OPS_TRAFFIC_POLICY_JSON:-}"
 nginx_executable="${OPS_TRAFFIC_NGINX_EXECUTABLE:-${NGINX_EXECUTABLE:-/usr/sbin/nginx}}"
 systemctl_executable="${OPS_TRAFFIC_SYSTEMCTL_EXECUTABLE:-${SYSTEMCTL_EXECUTABLE:-/usr/bin/systemctl}}"
+ss_executable="${OPS_TRAFFIC_SS_EXECUTABLE:-${SS_EXECUTABLE:-/usr/bin/ss}}"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -88,17 +89,22 @@ fi
 test_drain_state_file="${OPS_TRAFFIC_TEST_DRAIN_STATE_FILE:-}"
 test_drain_timeout="${OPS_TRAFFIC_TEST_DRAIN_TIMEOUT_SECONDS:-}"
 test_drain_poll="${OPS_TRAFFIC_TEST_DRAIN_POLL_SECONDS:-}"
+test_drain_connections_file="${OPS_TRAFFIC_TEST_DRAIN_CONNECTIONS_FILE:-}"
 if [[ -n "$test_root" ]]; then
   if [[ -n "$test_drain_state_file" ]]; then
     [[ "$test_drain_state_file" == "$test_root"/* && -f "$test_drain_state_file" && ! -L "$test_drain_state_file" ]] ||
       fail "traffic test drain state file is unsafe"
+  fi
+  if [[ -n "$test_drain_connections_file" ]]; then
+    [[ "$test_drain_connections_file" == "$test_root"/* && -f "$test_drain_connections_file" && ! -L "$test_drain_connections_file" ]] ||
+      fail "traffic test drain connections file is unsafe"
   fi
   [[ -z "$test_drain_timeout" || "$test_drain_timeout" =~ ^[1-9][0-9]*$ ]] || fail "traffic test drain timeout is invalid"
   [[ -z "$test_drain_poll" || "$test_drain_poll" =~ ^0\.[0-9]+$|^[1-9][0-9]*(\.[0-9]+)?$ ]] ||
     fail "traffic test drain poll is invalid"
 else
   [[ "$EUID" -eq 0 ]] || fail "traffic adapter requires root"
-  [[ -z "$test_drain_state_file$test_drain_timeout$test_drain_poll" ]] || fail "traffic test controls are forbidden in production"
+  [[ -z "$test_drain_state_file$test_drain_timeout$test_drain_poll$test_drain_connections_file" ]] || fail "traffic test controls are forbidden in production"
 fi
 
 runtime_path() {
@@ -315,7 +321,7 @@ nginx_worker_pids() {
 }
 
 wait_for_old_workers() {
-	local old_workers="$1" timeout="$drain_timeout" poll=1 started now current pid remaining
+	local old_workers="$1" timeout="$drain_timeout" poll=1 started now current pid remaining connections
 	[[ -n "${old_workers//[[:space:]]/}" ]] || {
 		[[ -n "$test_root" ]] && return 0
 		fail "no Nginx workers were found before drain"
@@ -329,11 +335,34 @@ wait_for_old_workers() {
 		for pid in $old_workers; do
 			[[ "$current" == *" $pid "* ]] && remaining+=" $pid"
 		done
-		[[ -z "$remaining" ]] && return 0
+		connections="$(nginx_active_connections "$old_workers")"
+		[[ -z "$remaining" && "$connections" == 0 ]] && return 0
 		now="$(date +%s)"
-		(( now - started < timeout )) || fail "Nginx drain timed out with old workers:$remaining"
+		(( now - started < timeout )) || fail "Nginx drain timed out with old workers:$remaining active connections:$connections"
 		sleep "$poll"
 	done
+}
+
+nginx_active_connections() {
+	local old_workers="$1" line pid count=0
+	if [[ -n "$test_root" ]]; then
+		if [[ -n "$test_drain_connections_file" ]]; then
+			count="$(tr -d '[:space:]' <"$test_drain_connections_file")"
+		fi
+		[[ "$count" =~ ^[0-9]+$ ]] || fail "test drain connection count is invalid"
+		printf '%s\n' "$count"
+		return 0
+	fi
+	[[ -x "$ss_executable" ]] || fail "ss executable is unavailable for drain verification"
+	while IFS= read -r line; do
+		for pid in $old_workers; do
+			if [[ "$line" == *"pid=$pid,"* || "$line" == *"pid=$pid)"* ]]; then
+				count=$((count + 1))
+				break
+			fi
+		done
+	done < <("$ss_executable" -Hntp state established 2>/dev/null || true)
+	printf '%s\n' "$count"
 }
 
 restore_snapshot() {
@@ -417,7 +446,7 @@ case "$phase" in
 		if [[ "$action" == drain || "$action" == drain-traffic ]]; then
 			wait_for_old_workers "$old_workers"
 			result "Nginx traffic state changed and existing workers drained" \
-				"$(state_data "$current_state" true | jq -c '. + {drainCompleted:true}')"
+				"$(state_data "$current_state" true | jq -c '. + {drainCompleted:true,activeConnections:0}')"
 		else
 			result "Nginx traffic state changed" "$(state_data "$current_state" true)"
 		fi

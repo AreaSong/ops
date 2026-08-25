@@ -109,6 +109,7 @@ export class OpsAPI {
   private csrfToken = ''
   private executionKeys = new Map<string, string>()
   private closureKeys = new Map<string, string>()
+  private planKeys = new Map<string, string>()
   private credentialRotationKey = ''
   private credentialClosureKeys = new Map<string, string>()
   private runnerPrepareKey = ''
@@ -292,7 +293,13 @@ export class OpsAPI {
   }
 
   async createPlan(service: string, action: string, target = ''): Promise<ReleasePlan> {
-    return this.mutate<ReleasePlan>('/api/plans', { service, action, target })
+    const requestKey = `${service}\u0000${action}\u0000${target}`
+    const idempotencyKey = this.planKeys.get(requestKey) ?? crypto.randomUUID()
+    this.planKeys.set(requestKey, idempotencyKey)
+    const plan = await this.mutate<ReleasePlan>('/api/plans', { service, action, target, idempotencyKey })
+    // 服务端确认创建后，后续有意发起同一动作必须使用新键；失败重试才保留旧键。
+    this.planKeys.delete(requestKey)
+    return plan
   }
 
   async approvePlan(plan: ReleasePlan, confirmation = ''): Promise<ReleasePlan> {

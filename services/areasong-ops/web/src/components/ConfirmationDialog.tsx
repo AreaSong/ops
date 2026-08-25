@@ -16,6 +16,7 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
   useEffect(() => setValue(''), [plan.id, plan.state])
   const phrase = plan.confirmationPhrase ?? ''
   const approving = plan.state === 'pending_approval'
+  const scheduled = plan.state === 'scheduled'
   const observing = plan.state === 'observing'
   const canClose = Boolean(plan.observationEndsAt && Date.now() >= new Date(plan.observationEndsAt).getTime())
   const matches = !plan.requiresConfirmation || value === phrase
@@ -30,7 +31,7 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
           <div className="modal-title-group">
             <span className="warning-icon"><AlertTriangle size={20} aria-hidden="true" /></span>
             <div>
-              <h2 id="confirm-title">{observing ? '收口观察计划' : approving ? '批准发布计划' : '执行已批准计划'}</h2>
+              <h2 id="confirm-title">{observing ? '收口观察计划' : approving ? '批准发布计划' : scheduled ? '等待调度时间' : '执行已批准计划'}</h2>
               <span>{plan.service} · {plan.action}</span>
             </div>
           </div>
@@ -42,11 +43,13 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
         <div className="modal-body">
           <dl className="governance-list">
             <div><dt>计划摘要</dt><dd><code>{plan.digest}</code></dd></div>
+            <div><dt>租户 / 服务器</dt><dd><code>{plan.tenantId} / {plan.serverId || '未绑定'}</code></dd></div>
             <div><dt>目标版本</dt><dd>{summary.target || '当前版本'}</dd></div>
             <div><dt>当前身份</dt><dd><code>{summary.expectedBefore.runtimeIdentityHash ?? '未提供'}</code></dd></div>
             <div><dt>影响范围</dt><dd>{summary.scope}</dd></div>
             <div><dt>预期影响</dt><dd>{summary.impact}</dd></div>
             <div><dt>失败处理</dt><dd>{summary.rollback}</dd></div>
+            {summary.timeoutSeconds && <div><dt>执行超时</dt><dd>{summary.timeoutSeconds} 秒</dd></div>}
             {plan.observationStartedAt && <div><dt>观察开始</dt><dd>{formatTime(plan.observationStartedAt)}</dd></div>}
             {plan.observationEndsAt && <div><dt>最早收口</dt><dd>{formatTime(plan.observationEndsAt)}</dd></div>}
             {plan.maintenanceSilenceEndsAt && (
@@ -56,6 +59,7 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
               <div><dt>阻断告警</dt><dd>{plan.blockingAlertFingerprints.length} 项仍在触发</dd></div>
             )}
             {plan.closureReason && <div><dt>收口阻断</dt><dd>{plan.closureReason}</dd></div>}
+            {plan.scheduleAt && <div><dt>计划执行时间</dt><dd>{formatTime(plan.scheduleAt)}</dd></div>}
           </dl>
           <div className="step-line" aria-label="执行阶段">
             {summary.steps.map((step, index) => (
@@ -84,11 +88,11 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
           <button
             type="button"
             className={observing ? 'button secondary' : 'button danger'}
-            disabled={(approving && !matches) || (observing && !canClose) || pending}
+            disabled={scheduled || (approving && !matches) || (observing && !canClose) || pending}
             onClick={() => observing ? onClosePlan() : onConfirm(value)}
           >
             <Check size={17} aria-hidden="true" />
-            {pending ? '提交中' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? '批准计划' : '执行计划'}
+            {pending ? '提交中' : scheduled ? '等待调度' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? '批准计划' : '执行计划'}
           </button>
         </footer>
       </section>

@@ -428,8 +428,11 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", "sha256:changed", "更新 demo"); err == nil {
 		t.Fatal("changed digest was approved")
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "更新 demo")
-	if err != nil || approved.State != model.PlanApproved || approved.ApprovedAt == nil {
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "更新 demo"); err != ErrActorMismatch {
+		t.Fatalf("creator self-approval err=%v, want ErrActorMismatch", err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, "更新 demo")
+	if err != nil || approved.State != model.PlanApproved || approved.ApprovedAt == nil || approved.ApprovedByHash != "b" {
 		t.Fatalf("plan=%+v err=%v", approved, err)
 	}
 	silenceEndsAt := now.Add(20 * time.Minute)
@@ -485,6 +488,40 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	auditEntries, err := database.ListAudit(ctx, 10, 0)
 	if err != nil || len(auditEntries) != 4 || auditEntries[0].Event != "plan.closed" {
 		t.Fatalf("audit=%+v err=%v", auditEntries, err)
+	}
+}
+
+func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	database.now = func() time.Time { return now }
+	scheduleAt := now.Add(10 * time.Minute)
+	plan := model.ReleasePlan{
+		ID: "plan-scheduled", ActorHash: "a", Service: "demo", Action: "restart", TenantID: "tenant-a", ServerID: "server-a",
+		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:scheduled", ScheduleAt: &scheduleAt,
+		ConfirmationPhrase: "重启 demo", RequiresConfirmation: true,
+		ApprovalSummary: model.ApprovalSummary{SchemaVersion: 1, Service: "demo", Action: "restart", TenantID: "tenant-a", ServerID: "server-a",
+			Risk: model.RiskHigh, Steps: []string{"preflight", "restart"}, ExpectedBefore: map[string]any{"currentVersion": "1"}},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, plan.ConfirmationPhrase)
+	if err != nil || approved.State != model.PlanScheduled || approved.ApprovedByHash != "b" {
+		t.Fatalf("approved=%+v err=%v", approved, err)
+	}
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, now); err != nil || activated {
+		t.Fatalf("early activation=%v err=%v", activated, err)
+	}
+	due := scheduleAt.Add(time.Second)
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, due); err != nil || !activated {
+		t.Fatalf("due activation=%v err=%v", activated, err)
+	}
+	stored, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || stored.State != model.PlanApproved || stored.TenantID != "tenant-a" || stored.ServerID != "server-a" || stored.ScheduleAt == nil {
+		t.Fatalf("stored=%+v err=%v", stored, err)
 	}
 }
 

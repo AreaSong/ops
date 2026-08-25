@@ -140,6 +140,7 @@ type PlanState string
 
 const (
 	PlanPendingApproval PlanState = "pending_approval"
+	PlanScheduled       PlanState = "scheduled"
 	PlanApproved        PlanState = "approved"
 	PlanExecuting       PlanState = "executing"
 	PlanObserving       PlanState = "observing"
@@ -187,6 +188,7 @@ type ApprovalSummary struct {
 	RecoveryPointID             string                    `json:"recoveryPointId,omitempty"`
 	TenantID                    string                    `json:"tenantId,omitempty"`
 	ServerID                    string                    `json:"serverId,omitempty"`
+	ScheduleAt                  *time.Time                `json:"scheduleAt,omitempty"`
 	ExpectedBeforeDigest        string                    `json:"expectedBeforeDigest,omitempty"`
 	RecoveryPointBindingDigest  string                    `json:"recoveryPointBindingDigest,omitempty"`
 	RecoveryPointEvidenceDigest string                    `json:"recoveryPointEvidenceDigest,omitempty"`
@@ -197,6 +199,7 @@ type ApprovalSummary struct {
 	Steps                       []string                  `json:"steps"`
 	PhaseSemantics              map[string]PhaseSemantics `json:"phaseSemantics,omitempty"`
 	ObservationSeconds          int                       `json:"observationSeconds,omitempty"`
+	TimeoutSeconds              int                       `json:"timeoutSeconds,omitempty"`
 	AlertPolicy                 AlertPolicyDefinition     `json:"alertPolicy,omitempty"`
 	ConfirmationPhrase          string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore              map[string]any            `json:"expectedBefore"`
@@ -209,6 +212,9 @@ type ReleasePlan struct {
 	Service                      string          `json:"service"`
 	Action                       string          `json:"action"`
 	Target                       string          `json:"target,omitempty"`
+	TenantID                     string          `json:"tenantId"`
+	ServerID                     string          `json:"serverId"`
+	ScheduleAt                   *time.Time      `json:"scheduleAt,omitempty"`
 	Risk                         Risk            `json:"risk"`
 	State                        PlanState       `json:"state"`
 	Digest                       string          `json:"digest"`
@@ -637,19 +643,20 @@ type AuditEntry struct {
 }
 
 type PreviewRequest struct {
-	Service                     string `json:"service"`
-	Action                      string `json:"action"`
-	Target                      string `json:"target,omitempty"`
-	IdempotencyKey              string `json:"-"`
-	RequestDigest               string `json:"-"`
-	RestoreMode                 string `json:"-"`
-	RecoveryPointID             string `json:"-"`
-	RequiresDualApproval        bool   `json:"-"`
-	RestoreTenantID             string `json:"-"`
-	RestoreServerID             string `json:"-"`
-	RestoreExpectedBeforeDigest string `json:"-"`
-	RestoreContractDigest       string `json:"-"`
-	RestoreEvidenceDigest       string `json:"-"`
+	Service                     string     `json:"service"`
+	Action                      string     `json:"action"`
+	Target                      string     `json:"target,omitempty"`
+	IdempotencyKey              string     `json:"idempotencyKey,omitempty"`
+	RequestDigest               string     `json:"-"`
+	ScheduleAt                  *time.Time `json:"scheduleAt,omitempty"`
+	RestoreMode                 string     `json:"-"`
+	RecoveryPointID             string     `json:"-"`
+	RequiresDualApproval        bool       `json:"-"`
+	RestoreTenantID             string     `json:"-"`
+	RestoreServerID             string     `json:"-"`
+	RestoreExpectedBeforeDigest string     `json:"-"`
+	RestoreContractDigest       string     `json:"-"`
+	RestoreEvidenceDigest       string     `json:"-"`
 }
 
 type StartTaskRequest struct {
