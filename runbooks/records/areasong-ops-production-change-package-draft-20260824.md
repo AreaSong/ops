@@ -16,7 +16,7 @@
 | 变更负责人 | 待填写 |
 | 第一批准人 | 待填写 |
 | 第二批准人 | 待填写；不得与高风险操作人相同 |
-| 目标 Git commit | 待填写；必须是已通过本地门禁的 40 字符 commit |
+| 目标 Git commit | `e9b8b3e2d2d814841da356d45f15ce7c69a14dcf`；已通过本地门禁，生产窗口仍需复核仓库与该 commit 一致 |
 | 观察窗口 | 每个成功任务按计划中的 `observationSeconds` 单独记录 |
 
 ## 2. 本包范围
@@ -171,7 +171,8 @@
 
 - 运行环境：macOS ARM64；Docker OrbStack `29.4.0`、Compose `v5.1.2`、buildx 可用。
 - 已通过：`OPS_PREFLIGHT_REPO_ROOT=/Users/as/Ai-Project/project/ops deploy/preflight.sh source`、schema JSON `jq` 校验、`CGO_ENABLED=0 go test ./...`、`go vet ./...`、适配器 Python 测试（30 项）、`bash -n`、`shellcheck`、Web lint/typecheck/build、Compose 结构校验（使用非生产命令行插值值和 `--no-env-resolution`；未读取或创建 `/etc/areasong-ops/web.env`）。默认 `/opt/ops` 预检路径在 macOS 本地不适用，使用脚本提供的只读路径覆盖参数。
-- 历史本地制品证据（不可用于最终发布）：曾使用 `--network host` 构建成功，Runner 导出为 Linux ARM64 静态 ELF；Web 镜像 `sha256:5f4085f22d6444a8cd784aba2ffa559242c983d95b4ae9d09d6d5366725a43fd` 对应修复前 dirty tree 的 commit `c8033c294e4baecdf5d3ad574224de7d3caf2ba7`。最终发布必须基于本次批准 commit 重新构建并记录新 digest。
+- 历史本地制品证据（不可用于最终发布）：曾使用 `--network host` 构建成功，Runner 导出为 Linux ARM64 静态 ELF；Web 镜像 `sha256:5f4085f22d6444a8cd784aba2ffa559242c983d95b4ae9d09d6d5366725a43fd` 对应修复前 dirty tree 的 commit `c8033c294e4baecdf5d3ad574224de7d3caf2ba7`。
+- 基于批准代码 commit `e9b8b3e2d2d814841da356d45f15ce7c69a14dcf` 的本地候选制品（非生产凭证）：Runner `sha256:a66d113ef4b307fb8448e6c7eed102dfc5ca92951112cb5052f313ab7560ade5`，Runner updater `sha256:73817acb74ee2dde4b548c3108196e018b670faff3dc0b3e9bf316cacd7995ff`，Web 镜像本地 image ID `sha256:ef60f08eb8c0556e4683cc3d601523224f1d2ed3f5453e88da38efaaf9726525`，OCI revision `e9b8b3e`。生产 C1 仍需在目标架构、批准制品仓库和签名流程中重新构建/登记并回验 digest。
 - 隔离运行态：临时 SQLite、Unix Socket、开发身份；Runner/Web `/healthz` 200，Fleet 单服务器和 Runner 心跳在线。
 - 容器运行约束：Web 实测 `User=65532:65532`、只读 rootfs、`CapDrop=ALL`、`no-new-privileges`；共享 Runner GID 后 Web 镜像 `/healthz=200`，Fleet API 返回 200。
 - 负向门禁：注入 `BusinessHttp5xxHigh` 时执行被拒绝；终端和文件模块关闭时 API 返回 `409`；公开 desired-state 路径 `GET/POST` 均 `404`。
