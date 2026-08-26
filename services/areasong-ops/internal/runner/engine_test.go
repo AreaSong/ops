@@ -509,6 +509,45 @@ func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
 	}
 }
 
+func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	engine.catalog.Services["areaforge"] = model.ServiceDefinition{
+		Name: "areaforge", ObjectID: "service:areaforge", TenantID: "production",
+		Adapter: "/tmp/areaforge", Metadata: model.ObjectMetadata{Type: "service", Environment: "production", Lifecycle: "active"},
+	}
+	actor := actorHash()
+	plan, err := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{Service: "areaforge", Action: "stop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Risk != model.RiskHigh || plan.ApprovalSummary.ApprovalException != model.ApprovalExceptionC2LifecycleSingleActor {
+		t.Fatalf("plan exception not bound: %+v", plan)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actor, plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil || approved.State != model.PlanApproved || approved.ApprovedByHash != actor {
+		t.Fatalf("self approval failed: plan=%+v err=%v", approved, err)
+	}
+	audit, err := database.ListAudit(ctx, 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range audit {
+		if entry.Event == "plan.approved" && entry.Resource == plan.ID {
+			if entry.Detail["approvalException"] != model.ApprovalExceptionC2LifecycleSingleActor || entry.Detail["selfApproval"] != true {
+				t.Fatalf("approval audit missing exception marker: %+v", entry)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("approval audit for %s not found: %+v", plan.ID, audit)
+	}
+}
+
 func TestPlanExecutionRejectsActiveBlockingAlert(t *testing.T) {
 	ctx := context.Background()
 	engine, _ := testEngine(t, &fakeExecutor{})

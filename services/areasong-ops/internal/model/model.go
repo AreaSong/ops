@@ -176,9 +176,13 @@ type RecoveryAction struct {
 }
 
 type ApprovalSummary struct {
-	SchemaVersion       int    `json:"schemaVersion"`
-	Service             string `json:"service"`
-	Action              string `json:"action"`
+	SchemaVersion int    `json:"schemaVersion"`
+	Service       string `json:"service"`
+	Action        string `json:"action"`
+	// ApprovalException records a narrowly-scoped, policy-approved deviation
+	// from the default high-risk approval gate. It is part of the signed
+	// summary so the exception cannot be added after approval.
+	ApprovalException   string `json:"approvalException,omitempty"`
 	Target              string `json:"target,omitempty"`
 	TrafficPolicyDigest string `json:"trafficPolicyDigest,omitempty"`
 	// Restore fields are part of the signed approval summary.  Keeping them in
@@ -204,6 +208,25 @@ type ApprovalSummary struct {
 	ConfirmationPhrase          string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore              map[string]any            `json:"expectedBefore"`
 	TargetEvidence              map[string]any            `json:"targetEvidence,omitempty"`
+}
+
+const ApprovalExceptionC2LifecycleSingleActor = "c2_lifecycle_single_actor"
+
+// AllowsC2LifecycleSingleActorApproval is intentionally strict. It applies
+// only to the production AreaForge lifecycle plan and never to an explicit
+// dual-approval plan or to any other action/service.
+func (plan ReleasePlan) AllowsC2LifecycleSingleActorApproval() bool {
+	if plan.RequiresDualApproval || plan.TenantID != "production" || plan.Service != "areaforge" {
+		return false
+	}
+	if plan.Action != "start" && plan.Action != "stop" {
+		return false
+	}
+	if plan.ApprovalSummary.Service != plan.Service || plan.ApprovalSummary.Action != plan.Action ||
+		plan.ApprovalSummary.TenantID != plan.TenantID || plan.ApprovalSummary.Risk != plan.Risk {
+		return false
+	}
+	return plan.ApprovalSummary.ApprovalException == ApprovalExceptionC2LifecycleSingleActor
 }
 
 type ReleasePlan struct {

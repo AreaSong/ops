@@ -491,6 +491,50 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	}
 }
 
+func TestC2LifecycleSingleActorApprovalIsStrictlyScoped(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	actor := strings.Repeat("a", 64)
+	plan := model.ReleasePlan{
+		ID: "c2-plan", ActorHash: actor, Service: "areaforge", Action: "stop", TenantID: "production",
+		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:c2",
+		ConfirmationPhrase: "停止服务 areaforge", RequiresConfirmation: true,
+		ApprovalSummary: model.ApprovalSummary{SchemaVersion: 1, Service: "areaforge", Action: "stop",
+			TenantID: "production", Risk: model.RiskHigh, ApprovalException: model.ApprovalExceptionC2LifecycleSingleActor,
+			Steps: []string{"preflight", "stop"}, ExpectedBefore: map[string]any{"state": "running"}},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, actor, plan.Digest, plan.ConfirmationPhrase)
+	if err != nil || approved.State != model.PlanApproved {
+		t.Fatalf("C2 self approval failed: plan=%+v err=%v", approved, err)
+	}
+	for _, altered := range []struct {
+		name    string
+		service string
+		action  string
+		tenant  string
+	}{
+		{name: "wrong service", service: "sub2api", action: "stop", tenant: "production"},
+		{name: "wrong action", service: "areaforge", action: "update", tenant: "production"},
+		{name: "wrong tenant", service: "areaforge", action: "stop", tenant: "staging"},
+	} {
+		candidate := plan
+		candidate.ID = "c2-negative-" + altered.name
+		candidate.Service, candidate.Action, candidate.TenantID = altered.service, altered.action, altered.tenant
+		candidate.ApprovalSummary.Service, candidate.ApprovalSummary.Action, candidate.ApprovalSummary.TenantID = altered.service, altered.action, altered.tenant
+		if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: candidate, ConfirmationHash: HashConfirmation(candidate.ConfirmationPhrase)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.ApproveReleasePlan(ctx, candidate.ID, actor, candidate.Digest, candidate.ConfirmationPhrase); err != ErrActorMismatch {
+			t.Fatalf("%s: got err=%v, want ErrActorMismatch", altered.name, err)
+		}
+	}
+}
+
 func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
 	ctx := context.Background()
 	database := openTestStore(t)

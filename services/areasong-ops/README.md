@@ -56,6 +56,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 ### 生命周期动作
 
 当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
+当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。生产 C2 仅对 `service:areaforge` 的 `start`/`stop` 允许同一操作者审批自己的计划，且必须在签名摘要和审计中标记 `c2_lifecycle_single_actor`；其他高风险操作仍保持独立双人审批。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
 
 ### 高风险边界
 

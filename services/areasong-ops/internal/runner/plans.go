@@ -201,6 +201,12 @@ func (engine *Engine) CreateReleasePlan(
 		RecoveryPointBindingDigest:  request.RestoreContractDigest,
 		RecoveryPointEvidenceDigest: request.RestoreEvidenceDigest,
 	}
+	if service.ObjectID == "service:areaforge" && tenantID == "production" &&
+		(action.Name == "start" || action.Name == "stop") && !request.RequiresDualApproval {
+		// C2 lifecycle is the sole approved single-actor exception. Keep the
+		// marker in the signed summary so it is visible and immutable.
+		summary.ApprovalException = model.ApprovalExceptionC2LifecycleSingleActor
+	}
 	digest, err := approvalDigest(summary)
 	if err != nil {
 		return model.ReleasePlan{}, err
@@ -237,16 +243,24 @@ func (engine *Engine) CreateReleasePlan(
 		if created {
 			event, outcome = "plan.created", "accepted"
 		}
+		detail := map[string]any{"service": stored.Service, "action": stored.Action, "target": stored.Target, "digest": stored.Digest, "idempotencyKey": request.IdempotencyKey}
+		if stored.AllowsC2LifecycleSingleActorApproval() {
+			detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
+		}
 		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: event, Resource: stored.ID, Outcome: outcome,
-			Detail: map[string]any{"service": stored.Service, "action": stored.Action, "target": stored.Target, "digest": stored.Digest, "idempotencyKey": request.IdempotencyKey}})
+			Detail: detail})
 		return stored, nil
 	}
 	if err := engine.store.CreateReleasePlan(ctx, input); err != nil {
 		return model.ReleasePlan{}, err
 	}
+	detail := map[string]any{"service": plan.Service, "action": plan.Action, "target": plan.Target, "digest": plan.Digest}
+	if plan.AllowsC2LifecycleSingleActorApproval() {
+		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
+	}
 	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
 		ActorHash: actorHash, Event: "plan.created", Resource: plan.ID, Outcome: "accepted",
-		Detail: map[string]any{"service": plan.Service, "action": plan.Action, "target": plan.Target, "digest": plan.Digest},
+		Detail: detail,
 	})
 	return plan, nil
 }
@@ -270,7 +284,8 @@ func (engine *Engine) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash {
+	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash &&
+		!plan.AllowsC2LifecycleSingleActorApproval() {
 		return model.ReleasePlan{}, store.ErrActorMismatch
 	}
 	service, exists := engine.catalog.Object(plan.Service)
@@ -284,9 +299,14 @@ func (engine *Engine) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	detail := map[string]any{"digest": plan.Digest, "scheduleAt": plan.ScheduleAt}
+	if plan.AllowsC2LifecycleSingleActorApproval() {
+		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
+		detail["selfApproval"] = true
+	}
 	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
 		ActorHash: actorHash, Event: "plan.approved", Outcome: string(plan.State), Resource: plan.ID,
-		Detail: map[string]any{"digest": plan.Digest, "scheduleAt": plan.ScheduleAt},
+		Detail: detail,
 	})
 	return plan, nil
 }

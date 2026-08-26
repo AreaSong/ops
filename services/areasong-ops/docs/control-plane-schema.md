@@ -71,6 +71,8 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 
 动作仍需预览、确认短语、RBAC、服务锁、心跳和审计。网站 `stop` 固定执行 `preflight -> drain -> enter-maintenance -> stop -> health`，`start` 固定执行 `preflight -> enter-maintenance -> start -> health -> resume-traffic -> verify`；健康失败或恢复流量失败都保持维护状态并进入 `needs_attention`。`drain` 必须证明旧 worker 与活动连接都归零，或达到声明超时。`desired`、`actual`、`health` 和 `drift` 是不同维度：目标状态由控制面写入，实际状态由 inspect/reconcile 观察；发现漂移不能自动假定恢复成功。
 
+经批准的 C2 例外仅适用于生产 `service:areaforge` 的 `start`/`stop` 生命周期计划：允许同一操作者审批自己的计划。例外以 `approvalException: c2_lifecycle_single_actor` 写入签名摘要和审计；更新、回滚、恢复、批量、Compose、文件、终端、RBAC、Runner 和 Kubernetes 等其他高风险操作仍必须独立双人审批。
+
 ### ReleasePlan 合同
 
 所有公开生产写请求必须携带 UUID `idempotencyKey`。计划摘要和计划外壳同时固定 `tenantId`、`serverId`、目标、影响、回滚、版本/配置快照和 `trafficPolicyDigest`；重复提交同一幂等键只返回原计划，并追加重放审计，不会创建第二个任务。

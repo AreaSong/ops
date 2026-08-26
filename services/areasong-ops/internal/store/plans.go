@@ -288,7 +288,8 @@ func (store *Store) ApproveReleasePlan(
 	}
 	// 高风险计划必须由独立批准人批准；其他计划保留创建者批准规则，
 	// 只有显式双人审批流程的第二步允许非创建者批准。
-	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash {
+	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash &&
+		!plan.AllowsC2LifecycleSingleActorApproval() {
 		return model.ReleasePlan{}, ErrActorMismatch
 	}
 	if plan.ActorHash != actorHash &&
