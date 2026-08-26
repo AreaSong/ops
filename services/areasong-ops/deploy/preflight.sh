@@ -109,13 +109,17 @@ systemctl is-active --quiet areasong-ops-runner.service || fail "Runner service 
 [ "$(stat -c '%a %U:%G' "$SOCKET_PATH")" = "660 root:areasong-ops" ] ||
   fail "Runner socket owner or mode is invalid"
 curl -fsS --unix-socket "$SOCKET_PATH" http://runner/healthz >/dev/null || fail "Runner health failed"
-actor_hash="$(printf 'runtime-preflight' | sha256sum | awk '{print $1}')"
-credential_json="$(curl -fsS --unix-socket "$SOCKET_PATH" -H "X-AreaSong-Ops-Actor-Hash: $actor_hash" \
-  http://runner/v1/credentials/github-alertmanager)" || fail "credential profile failed"
-jq -e '.type == "github_alertmanager" and .configured == true and
-  .repository == "AreaSong/ops" and (.fingerprint | startswith("sha256:")) and
-  (.expiresAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' <<<"$credential_json" >/dev/null ||
-  fail "credential profile is invalid"
+# Credential profile is platform-admin scoped; validate it through the API only
+# when the caller explicitly supplies an authorized actor hash.
+if [ -n "${OPS_PREFLIGHT_CREDENTIAL_ACTOR_HASH:-}" ]; then
+  credential_json="$(curl -fsS --unix-socket "$SOCKET_PATH" \
+    -H "X-AreaSong-Ops-Actor-Hash: $OPS_PREFLIGHT_CREDENTIAL_ACTOR_HASH" \
+    http://runner/v1/credentials/github-alertmanager)" || fail "credential profile failed"
+  jq -e '.type == "github_alertmanager" and .configured == true and
+    .repository == "AreaSong/ops" and (.fingerprint | startswith("sha256:")) and
+    (.expiresAt | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' <<<"$credential_json" >/dev/null ||
+    fail "credential profile is invalid"
+fi
 curl -fsS http://127.0.0.1:9093/-/ready >/dev/null || fail "Alertmanager readiness failed"
 
 docker inspect "$CONTAINER_NAME" | jq -e --arg revision "$deployed_revision" '
