@@ -150,12 +150,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           tag="areasong-ops-$REVISION"
-          gh release create "$tag" \
-            --target "$REVISION" \
-            --title "AreaSong Ops $VERSION ($REVISION)" \
-            --notes "Signed linux/amd64 control-plane artifacts for $REVISION. Production deployment remains separately approved." \
-            "areasong-ops-release-$REVISION.json" \
-            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz" \
-            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sha256" \
-            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore" \
+          assets=(
+            "areasong-ops-release-$REVISION.json"
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sha256"
+            "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore"
             "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore.json"
+          )
+          if gh release view "$tag" --json tagName >/dev/null 2>&1; then
+            gh release upload "$tag" --clobber "${assets[@]}"
+          else
+            gh release create "$tag" \
+              --target "$REVISION" \
+              --title "AreaSong Ops $VERSION ($REVISION)" \
+              --notes "Signed linux/amd64 control-plane artifacts for $REVISION. Production deployment remains separately approved." \
+              "${assets[@]}"
+          fi
