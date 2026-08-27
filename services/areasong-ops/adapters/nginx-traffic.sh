@@ -127,7 +127,9 @@ assert_safe_chain() {
   [[ -z "$test_root" ]] || boundary="$test_root"
   cursor="$path"
   while [[ "$cursor" != "$boundary" ]]; do
-    [[ "$cursor" == "$boundary"/* ]] || fail "runtime path escaped the traffic test root"
+    # The production boundary is `/`; prefixing it with `/*` would produce
+    # `//*` and reject every normal absolute path.
+    [[ "$boundary" == "/" || "$cursor" == "$boundary"/* ]] || fail "runtime path escaped the traffic test root"
     if [[ -L "$cursor" ]]; then
       fail "symlink is forbidden in controlled Nginx path: $cursor"
     fi
