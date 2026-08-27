@@ -92,8 +92,11 @@ servers:
       按门禁拒绝，未改变生产状态；2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx
       站点与 snippet 安装、权限校验、nginx -t、reload 和 HTTPS 200 健康检查，traffic 状态
       保持 running，areaforge-web/postgres healthy。sites-enabled 中两个旧备份符号链接仍会造成
-      重复 server_name 警告，按本轮批准保留。runtime preflight 当前因 /opt/ops HEAD=e9b8b3e2
-      与运行 OPS_BUILD_REVISION=c74fe0c2 不满足 ancestor 门禁而失败，未执行控制面重建、
+      重复 server_name 警告，按本轮批准保留。2026-08-28 经即时明确批准，已先将
+      /opt/ops 的 3 个未提交文件备份到 /var/backups/ops/ops-sync-20260827-161153，
+      再将仓库 HEAD 与 origin/main 对齐到 57db5852；Sub2API 独立镜像 digest 修改和
+      preflight.sh.bak.20260826-1247 均保留。运行制品仍为 c74fe0c2，该 revision 是
+      源码 HEAD 的祖先，runtime preflight 通过；未执行控制面重建、Runner 重启、
       TrafficPolicy 写入或生命周期 stop/start。
 
 # Ansible 分组（自动生成 inventory 时使用）

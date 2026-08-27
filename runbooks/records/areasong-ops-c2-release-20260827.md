@@ -38,12 +38,20 @@
 - `forge.areasong.top` 的受管 traffic include 恰好一次；traffic snippet 保持 `running`，未改变公网流量状态。
 - `nginx -t` 通过后执行 `systemctl reload nginx`；reload 后 Nginx 为 `active`，`https://forge.areasong.top/` 返回 HTTP 200，`areaforge-web` 与 `areaforge-postgres` 仍为 healthy。
 - `nginx -t` 和 reload 仍报告既有重复 `server_name forge.areasong.top` 警告，来源是 `sites-enabled` 中两个旧备份符号链接；本轮按批准保留，未删除或改名。
-- 运行态 preflight 未通过：生产 `/opt/ops` HEAD 为 `e9b8b3e2…`，而 `/opt/services/areasong-ops/.env` 的 `OPS_BUILD_REVISION` 为 `c74fe0c2…`，两者不是祖先关系。未因此执行任何控制面重建、Runner 重启或其他服务变更。
+- 当时运行态 preflight 未通过：生产 `/opt/ops` HEAD 为 `e9b8b3e2…`，而 `/opt/services/areasong-ops/.env` 的 `OPS_BUILD_REVISION` 为 `c74fe0c2…`，两者不是祖先关系。未因此执行任何控制面重建、Runner 重启或其他服务变更。该门禁已于 2026-08-28 通过下述仓库同步收口。
 
 ## 仓库与安全边界
 
 - 生产 `/opt/ops` 的旧 HEAD 为 `e9b8b3e2…`，本轮未 checkout、merge 或覆盖其原有未提交修改；新 revision 通过 `git fetch --no-tags origin main` 获取，并在临时 detached worktree 中完成 preflight。
 - 已执行远端 `sudo -k` 并关闭 `la-share` 会话；未读取、输出或持久化 cookie、token、密码。
+
+## 2026-08-28 生产仓库同步与 runtime preflight 收口
+
+- 经用户即时明确批准，通过 `la-share` 备份生产 `/opt/ops` 的 3 个未提交文件及完整 worktree diff，备份目录为 `/var/backups/ops/ops-sync-20260827-161153`（服务器 UTC 时间戳）。目录权限为 `0700 root:root`，文件权限为 `0600 root:root`；3 个文件的备份 SHA-256 与同步前原文件一致，完整 diff 为 2608 字节。
+- 将生产 `/opt/ops` HEAD 和 `origin/main` 对齐到已推送提交 `57db5852f7770503514a397f06fa9a34b812bb7a`。同步前单独保存并同步后恢复 `services/sub2api/compose.yml` 的镜像 digest 修改，内容仍为 `sha256:cff6bc3ed1a6eba7ea240bad8637cf12856161a4efb98be0882c2fa7aff371e3`；未跟踪的 `preflight.sh.bak.20260826-1247` 也原样保留。
+- 同步后工作树只剩上述 Sub2API 未暂存修改和原 `.bak` 文件，`git diff --check` 通过；`services/areasong-ops/deploy/preflight.sh` 与目标提交一致。
+- `preflight.sh runtime` 输出源码 revision `57db5852…`、运行制品 revision `c74fe0c2…` 和 `source/runtime drift: source HEAD is ahead of the deployed revision`，最终结果为 `runtime preflight: PASS`。运行制品是源码 HEAD 的祖先，符合 revision 门禁。
+- 本次未重建 Web 容器、未重启 Runner、未写入 TrafficPolicy、未执行 AreaForge stop/start，也未修改 Sub2API 运行状态。`la-share` 会话已退出，sudo 时间戳已清理。
 
 ## AreaForge stop 计划门禁结果
 
@@ -61,4 +69,4 @@
 
 ## 收口状态
 
-状态：Nginx 受控配置修复已部署并通过语法、reload 与公网健康检查；控制面已完成认证读取链路 smoke。AreaForge stop 仍因 TrafficPolicy 缺失被安全拒绝；整体验收另被 runtime revision ancestor 门禁阻断。待确认生产制品与 `/opt/ops` 提交关系、补齐 TrafficPolicy 后重新审批。
+状态：Nginx 受控配置修复已部署并通过语法、reload 与公网健康检查；控制面已完成认证读取链路 smoke。生产 `/opt/ops` 已对齐 `57db5852…`，runtime revision ancestor 门禁已通过。AreaForge stop 仍因 TrafficPolicy 缺失被安全拒绝；下一步是单独审批 TrafficPolicy 写入和摘要复验，然后重新创建 AreaForge 生命周期计划。
