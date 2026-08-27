@@ -54,9 +54,12 @@ servers:
       audit_or_security_notifications: none
       billing_expiry_alerts: deferred_by_user
     phase9_acceptance:
-      validated_at: "2026-08-19"
-      ops_revision: "8961cafcea1ab013bd974825a3554b076bff7249"
+      validated_at: "2026-08-27"
+      ops_revision: "c74fe0c2a19d71db71fd8a8fb8ab84eb9e0a96cf"
       ops_version: phase9
+      ops_release_version: "1.0.0"
+      ops_web_image_digest: "sha256:ba98c087a8748cbe8f1b9bfb2aa475a95f2c126d3bb8c17ddb53a895c583a832"
+      ops_runner_bundle_sha256: "c301e6f1bf061aa9017da172f4f346fd688eb8e7b6dc377740bf9ff49b60ab47"
       running_containers: 19
       prometheus_targets: "23/23 up"
       auditd_rule_keys: 7
@@ -80,7 +83,11 @@ servers:
       720h/30 天；critical 告警到 GitHub Issue 第二通道 enabled，fine-grained PAT 仅 Issues RW，
       到期日 2027-08-12，每月自动演练；镜像 CVE 周扫描 enabled；GitHub 只读 deploy key
       /root/.ssh/id_ed25519_ops_deploy 仅 fetch；x-ui/xray 流量审计与 TCP 长肥管道调优已启用；
-      AreaSong Ops phase9@8961caf 于 2026-08-19 完成服务器侧生产验收。
+      AreaSong Ops phase9@8961caf 于 2026-08-19 完成服务器侧生产验收；2026-08-27 C2 单人审批发布
+      已更新至 release 1.0.0、revision c74fe0c2，Web digest 与 Runner bundle 签名复验通过，
+      runtime preflight 通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare
+      Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的
+      authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:
