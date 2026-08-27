@@ -88,6 +88,8 @@ servers:
       runtime preflight 通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare
       Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的
       authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。
+      AreaForge stop 生命周期 preflight 于 2026-08-27 因 service:areaforge trafficPolicy=null
+      按门禁拒绝，未改变生产状态；需单独补齐 TrafficPolicy 并重新审批。
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:

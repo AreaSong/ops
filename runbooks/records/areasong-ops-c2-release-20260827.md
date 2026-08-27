@@ -37,6 +37,15 @@
 - 生产 `/opt/ops` 的旧 HEAD 为 `e9b8b3e2…`，本轮未 checkout、merge 或覆盖其原有未提交修改；新 revision 通过 `git fetch --no-tags origin main` 获取，并在临时 detached worktree 中完成 preflight。
 - 已执行远端 `sudo -k` 并关闭 `la-share` 会话；未读取、输出或持久化 cookie、token、密码。
 
+## AreaForge stop 计划门禁结果
+
+2026-08-27 在已确认的 C2 窗口内执行只读 preflight，未创建或执行 stop 计划。生产证据如下：
+
+- `areaforge-web` 与 `areaforge-postgres` 均为 `running/healthy`；Runner `healthz` 返回 `ok`，revision 为 `c74fe0c2…`。
+- `/etc/areasong-ops/services.json` 中 `service:areaforge` 的 `trafficPolicy` 为 `null`。
+- 按控制面合同，缺失 TrafficPolicy 时禁止 `maintenance`、`drain`、`stop` 和 `resume-traffic`；因此本次变更在门禁处安全停止，未改变生产状态。
+- 修复前不得通过 Nginx、Docker 或任意宿主命令绕过控制面；应先提交 TrafficPolicy 配置变更，完成摘要绑定、Runner 复验和独立验收，再重新创建生命周期计划。
+
 ## 收口状态
 
-状态：已部署并完成认证读取链路 smoke；台账与本记录待提交收口 commit。
+状态：控制面已部署并完成认证读取链路 smoke；AreaForge stop 因 TrafficPolicy 缺失被安全拒绝，待单独补齐 TrafficPolicy 后重新审批。
