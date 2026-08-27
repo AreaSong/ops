@@ -69,4 +69,14 @@
 
 ## 收口状态
 
-状态：Nginx 受控配置修复已部署并通过语法、reload 与公网健康检查；控制面已完成认证读取链路 smoke。生产 `/opt/ops` 已对齐 `57db5852…`，runtime revision ancestor 门禁已通过。AreaForge stop 仍因 TrafficPolicy 缺失被安全拒绝；下一步是单独审批 TrafficPolicy 写入和摘要复验，然后重新创建 AreaForge 生命周期计划。
+状态：Nginx 受控配置修复已部署并通过语法、reload 与公网健康检查；控制面已完成认证读取链路 smoke。生产 `/opt/ops` 已对齐 `57db5852…`，runtime revision ancestor 门禁已通过。
+
+## 2026-08-28 AreaForge TrafficPolicy 写入
+
+- 经用户明确批准，通过 `la-share` 在 LosAngeles 生产 `/etc/areasong-ops/services.json` 写入 `service:areaforge` 的 TrafficPolicy；未执行 stop/start、Nginx reload、流量切换或其他服务变更。
+- 写入前备份：`/var/backups/ops/traffic-policy-20260827-163429/services.json`，目录/文件权限为 `0700/0600 root:root`；备份与原文件 SHA-256 均为 `0b4f40c84495530982289e016479dc00b43ff475e657c732fa2c0aa32b1ebd83`。
+- 仅替换 `.services.areaforge.trafficPolicy`，其余 JSON 语义摘要保持不变；生产文件仍为 `0600 root:root`，JSON 解析通过。
+- TrafficPolicy 为受信 Nginx 适配器合同，摘要为 `sha256:a9dff1228a924e952ef792526fcffad65e9f84f9dd8f165545d315595ba45881`；绑定 `forge.areasong.top`、受控站点/snippet/maintenance 文件和 `drainTimeoutSeconds=300`。
+- 三个受控 Nginx 文件均为 root-owned 普通可读文件、无组/其他写权限；`nginx -t` 成功。既有 `forge.areasong.top` 重复 `server_name` 警告仍存在，按本次批准未处理。
+- `preflight.sh runtime`：`PASS`；源码 `57db5852…`，运行制品 `c74fe0c2…`，输出既有 `source/runtime drift: source HEAD is ahead of the deployed revision` 提示但满足祖先关系门禁。
+- 远端已执行 `sudo -k` 并退出 `la-share`。下一步如需生命周期操作，仍须单独创建、预览、审批并执行 AreaForge Release Plan；本次 TrafficPolicy 写入本身未改变业务流量。

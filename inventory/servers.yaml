@@ -96,8 +96,10 @@ servers:
       /opt/ops 的 3 个未提交文件备份到 /var/backups/ops/ops-sync-20260827-161153，
       再将仓库 HEAD 与 origin/main 对齐到 57db5852；Sub2API 独立镜像 digest 修改和
       preflight.sh.bak.20260826-1247 均保留。运行制品仍为 c74fe0c2，该 revision 是
-      源码 HEAD 的祖先，runtime preflight 通过；未执行控制面重建、Runner 重启、
-      TrafficPolicy 写入或生命周期 stop/start。
+      源码 HEAD 的祖先，runtime preflight 通过；2026-08-28 已经明确批准通过 la-share
+      写入 service:areaforge TrafficPolicy（摘要 sha256:a9dff122…ba45881），写入后
+      JSON、受控 Nginx 文件、nginx -t 与 runtime preflight 均通过；未执行控制面重建、
+      Runner 重启、stop/start、reload 或流量切换。
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:
