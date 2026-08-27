@@ -273,7 +273,7 @@ services:
       prometheus_jobs: [areasong_ops, blackbox_access_policy]
       log_jobs: [docker, syslog, nginx]
       dashboards: [areasong-ops-control-plane]
-      notes: "Runner/Web 已于 2026-08-27 在 C2 单人审批窗口完成 release 1.0.0、revision c74fe0c2 生产部署；Web digest 与 Runner bundle 签名复验通过，runtime preflight 通过；Prometheus、Blackbox Access 探针、Loki 标签链路与 Grafana 看板健康；控制面状态已纳入十角色备份集与隔离恢复演练。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的 authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。AreaForge stop 生命周期 preflight 因 service:areaforge trafficPolicy=null 按门禁拒绝，未改变生产状态；候选 TrafficPolicy 引用的两个 Nginx snippet 不存在，forge 站点文件权限为 777，需先完成 Nginx 配置/权限修复和 nginx -t 验收。"
+      notes: "Runner/Web 已于 2026-08-27 在 C2 单人审批窗口完成 release 1.0.0、revision c74fe0c2 生产部署；Web digest 与 Runner bundle 签名复验通过，runtime preflight 通过；Prometheus、Blackbox Access 探针、Loki 标签链路与 Grafana 看板健康；控制面状态已纳入十角色备份集与隔离恢复演练。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的 authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。AreaForge stop 生命周期 preflight 因 service:areaforge trafficPolicy=null 按门禁拒绝，未改变生产状态；候选 TrafficPolicy 引用的两个 Nginx snippet 不存在，forge 站点文件权限为 777，需先完成 Nginx 配置/权限修复和 nginx -t 验收；修复尝试仅创建站点备份并因 shell 历史展开错误停止，未安装正式配置。"
 
 routes:
   - service_id: resume-jadeai

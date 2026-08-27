@@ -47,6 +47,8 @@
 - 按仓库候选定义预检引用文件时，发现 `/etc/nginx/snippets/areasong-ops/areaforge-traffic.conf` 与 `/etc/nginx/snippets/areasong-ops/areaforge-maintenance.conf` 均不存在，且 `/etc/nginx/sites-enabled/forge.areasong.top.conf` 权限为 `777`，未达到配置安全基线。
 - 因此本次连 TrafficPolicy 写入也未执行；修复前不得通过 Nginx、Docker 或任意宿主命令绕过控制面。应先单独提交 Nginx 文件与权限修复计划，完成 `nginx -t`、摘要绑定、Runner 复验和独立验收，再写入 TrafficPolicy 并重新创建生命周期计划。
 
+后续 Nginx 修复尝试仍未安装正式配置：已按批准创建站点备份 `/etc/nginx/sites-enabled/forge.areasong.top.conf.bak.20260827-0601`，生成临时 running/site 文件时因 Bash 历史展开错误（`!doctype`）停止，临时目录已清理，原站点与生产流量保持不变。下一次执行应使用不触发 shell 展开的受控文件传输方式，并重新走预检与批准。
+
 ## 收口状态
 
 状态：控制面已部署并完成认证读取链路 smoke；AreaForge stop 因 TrafficPolicy 缺失被安全拒绝，待单独补齐 TrafficPolicy 后重新审批。
