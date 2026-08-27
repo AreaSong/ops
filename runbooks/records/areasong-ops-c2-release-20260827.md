@@ -44,7 +44,8 @@
 - `areaforge-web` 与 `areaforge-postgres` 均为 `running/healthy`；Runner `healthz` 返回 `ok`，revision 为 `c74fe0c2…`。
 - `/etc/areasong-ops/services.json` 中 `service:areaforge` 的 `trafficPolicy` 为 `null`。
 - 按控制面合同，缺失 TrafficPolicy 时禁止 `maintenance`、`drain`、`stop` 和 `resume-traffic`；因此本次变更在门禁处安全停止，未改变生产状态。
-- 修复前不得通过 Nginx、Docker 或任意宿主命令绕过控制面；应先提交 TrafficPolicy 配置变更，完成摘要绑定、Runner 复验和独立验收，再重新创建生命周期计划。
+- 按仓库候选定义预检引用文件时，发现 `/etc/nginx/snippets/areasong-ops/areaforge-traffic.conf` 与 `/etc/nginx/snippets/areasong-ops/areaforge-maintenance.conf` 均不存在，且 `/etc/nginx/sites-enabled/forge.areasong.top.conf` 权限为 `777`，未达到配置安全基线。
+- 因此本次连 TrafficPolicy 写入也未执行；修复前不得通过 Nginx、Docker 或任意宿主命令绕过控制面。应先单独提交 Nginx 文件与权限修复计划，完成 `nginx -t`、摘要绑定、Runner 复验和独立验收，再写入 TrafficPolicy 并重新创建生命周期计划。
 
 ## 收口状态
 
