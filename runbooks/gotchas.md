@@ -42,6 +42,8 @@
 
 - **location 里 `include` 已含 `proxy_read_timeout` / `proxy_send_timeout` 的 snippet 后，不能再写同名指令想“覆盖”**——Nginx 同上下文重复指令会直接 `nginx -t` 失败（`directive is duplicate`），不会以后者为准。长连接（WebSocket / 反代隧道）需要更长超时时应去掉该 include，改为在 location 内联 headers + 目标超时，或单独维护不含超时的 snippet。
   → 详见 [records/losangeles-xui-tcp-nginx-tuning-20260721.md](records/losangeles-xui-tcp-nginx-tuning-20260721.md)
+- **不要把 `.bak` 配置留在 `sites-enabled/*` 这类通配 include 目录**——Nginx 不按扩展名判断备份，目录中的普通文件和符号链接都会被加载；备份会造成重复 `server_name`、旧配置抢占或 reload 后行为漂移。备份应放到 include 目录之外，变更前后用 `nginx -T` 或精确检索确认目标站点只加载一次。
+  → 详见 [records/areasong-ops-c2-release-20260827.md](records/areasong-ops-c2-release-20260827.md)
 
 ## Prometheus
 

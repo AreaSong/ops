@@ -89,10 +89,12 @@ servers:
       Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的
       authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。
       AreaForge stop 生命周期 preflight 于 2026-08-27 因 service:areaforge trafficPolicy=null
-      按门禁拒绝，未改变生产状态；候选引用的两个 Nginx snippet 不存在，forge 站点文件权限为
-      777，需单独完成 Nginx 配置/权限修复、nginx -t 和 TrafficPolicy 摘要验收后重新审批；
-      修复尝试仅创建站点备份并因 shell 历史展开错误停止，未安装正式配置；2026-08-27
-      再次尝试因 la-share sudo 授权未稳定而中止，未 reload、未写入 TrafficPolicy。
+      按门禁拒绝，未改变生产状态；2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx
+      站点与 snippet 安装、权限校验、nginx -t、reload 和 HTTPS 200 健康检查，traffic 状态
+      保持 running，areaforge-web/postgres healthy。sites-enabled 中两个旧备份符号链接仍会造成
+      重复 server_name 警告，按本轮批准保留。runtime preflight 当前因 /opt/ops HEAD=e9b8b3e2
+      与运行 OPS_BUILD_REVISION=c74fe0c2 不满足 ancestor 门禁而失败，未执行控制面重建、
+      TrafficPolicy 写入或生命周期 stop/start。
 
 # Ansible 分组（自动生成 inventory 时使用）
 groups:

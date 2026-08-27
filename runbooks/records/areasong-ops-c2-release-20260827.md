@@ -32,6 +32,14 @@
 - 缺失 Access 身份或内部 actor 的 API 请求返回 `401`（`内部身份无效`）；该结果证明匿名写入保护生效。
 - 已认证 API smoke：通过 Cloudflare Access 身份 `song80184@gmail.com` 登录控制面，依次加载服务、状态、受管对象、Fleet 与 Runner 更新视图；服务状态与受管对象正常渲染，Fleet/Runner 自更新按策略返回“尚未启用”，实时连接正常且无 API 错误提示。该 UI-backed smoke 覆盖 `/v1/services`、`/v1/states`、`/v1/objects`、`/v1/fleet`、`/v1/runner/update` 对应的控制面读取链路。
 
+## 2026-08-27 Nginx 受控配置修复
+
+- 在独立批准范围内安装 AreaForge 站点配置及两个受管 snippet；站点文件与本地候选 SHA-256 一致，权限为 `0644 root:root`，snippet 目录为 `0755 root:root`，snippet 文件为 `0644 root:root`。
+- `forge.areasong.top` 的受管 traffic include 恰好一次；traffic snippet 保持 `running`，未改变公网流量状态。
+- `nginx -t` 通过后执行 `systemctl reload nginx`；reload 后 Nginx 为 `active`，`https://forge.areasong.top/` 返回 HTTP 200，`areaforge-web` 与 `areaforge-postgres` 仍为 healthy。
+- `nginx -t` 和 reload 仍报告既有重复 `server_name forge.areasong.top` 警告，来源是 `sites-enabled` 中两个旧备份符号链接；本轮按批准保留，未删除或改名。
+- 运行态 preflight 未通过：生产 `/opt/ops` HEAD 为 `e9b8b3e2…`，而 `/opt/services/areasong-ops/.env` 的 `OPS_BUILD_REVISION` 为 `c74fe0c2…`，两者不是祖先关系。未因此执行任何控制面重建、Runner 重启或其他服务变更。
+
 ## 仓库与安全边界
 
 - 生产 `/opt/ops` 的旧 HEAD 为 `e9b8b3e2…`，本轮未 checkout、merge 或覆盖其原有未提交修改；新 revision 通过 `git fetch --no-tags origin main` 获取，并在临时 detached worktree 中完成 preflight。
@@ -49,8 +57,8 @@
 
 后续 Nginx 修复尝试仍未安装正式配置：已按批准创建站点备份 `/etc/nginx/sites-enabled/forge.areasong.top.conf.bak.20260827-0601`，生成临时 running/site 文件时因 Bash 历史展开错误（`!doctype`）停止，临时目录已清理，原站点与生产流量保持不变。下一次执行应使用不触发 shell 展开的受控文件传输方式，并重新走预检与批准。
 
-2026-08-27 再次按批准尝试修复时，`la-share` 共享会话的 sudo 授权持续失败并循环提示密码；未安装任何 Nginx 文件、未 reload、未写入 TrafficPolicy，生产状态保持不变。该项需在 sudo 授权稳定后重新进入独立变更窗口。
+2026-08-27 再次按批准尝试修复时，`la-share` 共享会话的 sudo 授权持续失败并循环提示密码；未安装任何 Nginx 文件、未 reload、未写入 TrafficPolicy，生产状态保持不变。该项需在 sudo 授权稳定后重新进入独立变更窗口。随后 sudo 授权确认已生效，已完成受控文件安装、`nginx -t`、reload 与健康检查；整体验收仍受 runtime revision ancestor 门禁阻断。
 
 ## 收口状态
 
-状态：控制面已部署并完成认证读取链路 smoke；AreaForge stop 因 TrafficPolicy 缺失被安全拒绝，待单独补齐 TrafficPolicy 后重新审批。
+状态：Nginx 受控配置修复已部署并通过语法、reload 与公网健康检查；控制面已完成认证读取链路 smoke。AreaForge stop 仍因 TrafficPolicy 缺失被安全拒绝；整体验收另被 runtime revision ancestor 门禁阻断。待确认生产制品与 `/opt/ops` 提交关系、补齐 TrafficPolicy 后重新审批。
