@@ -49,6 +49,8 @@
 
 后续 Nginx 修复尝试仍未安装正式配置：已按批准创建站点备份 `/etc/nginx/sites-enabled/forge.areasong.top.conf.bak.20260827-0601`，生成临时 running/site 文件时因 Bash 历史展开错误（`!doctype`）停止，临时目录已清理，原站点与生产流量保持不变。下一次执行应使用不触发 shell 展开的受控文件传输方式，并重新走预检与批准。
 
+2026-08-27 再次按批准尝试修复时，`la-share` 共享会话的 sudo 授权持续失败并循环提示密码；未安装任何 Nginx 文件、未 reload、未写入 TrafficPolicy，生产状态保持不变。该项需在 sudo 授权稳定后重新进入独立变更窗口。
+
 ## 收口状态
 
 状态：控制面已部署并完成认证读取链路 smoke；AreaForge stop 因 TrafficPolicy 缺失被安全拒绝，待单独补齐 TrafficPolicy 后重新审批。
