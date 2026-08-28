@@ -192,7 +192,7 @@ func (engine *Engine) CreateReleasePlan(
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
 		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds, TimeoutSeconds: action.TimeoutSeconds,
-		AlertPolicy:        service.AlertPolicy,
+		AlertPolicy:        actionAlertPolicy(service),
 		ConfirmationPhrase: phrase,
 		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,

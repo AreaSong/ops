@@ -524,6 +524,11 @@ func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T
 	if plan.Risk != model.RiskHigh || plan.ApprovalSummary.ApprovalException != model.ApprovalExceptionC2LifecycleSingleActor {
 		t.Fatalf("plan exception not bound: %+v", plan)
 	}
+	// The signed summary must use the same normalized alert policy shape that
+	// execution revalidates; nil and empty map/slice JSON forms are distinct.
+	if plan.ApprovalSummary.AlertPolicy.Matchers == nil {
+		t.Fatalf("plan alert policy is not normalized: %+v", plan.ApprovalSummary.AlertPolicy)
+	}
 	approved, err := engine.ApproveReleasePlan(ctx, actor, plan.ID, model.ApprovePlanRequest{
 		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
 	})
