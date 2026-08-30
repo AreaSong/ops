@@ -188,6 +188,7 @@ func (engine *Engine) CreateReleasePlan(
 	}
 	summary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: request.Target,
+		ApprovalException:   approvalExceptionFor(service, tenantID, action.Name, request.RequiresDualApproval),
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
@@ -200,12 +201,6 @@ func (engine *Engine) CreateReleasePlan(
 		ExpectedBeforeDigest:        request.RestoreExpectedBeforeDigest,
 		RecoveryPointBindingDigest:  request.RestoreContractDigest,
 		RecoveryPointEvidenceDigest: request.RestoreEvidenceDigest,
-	}
-	if service.ObjectID == "service:areaforge" && tenantID == "production" &&
-		(action.Name == "start" || action.Name == "stop") && !request.RequiresDualApproval {
-		// C2 lifecycle is the sole approved single-actor exception. Keep the
-		// marker in the signed summary so it is visible and immutable.
-		summary.ApprovalException = model.ApprovalExceptionC2LifecycleSingleActor
 	}
 	digest, err := approvalDigest(summary)
 	if err != nil {
@@ -390,6 +385,7 @@ func (engine *Engine) ExecuteReleasePlan(
 	}
 	currentSummary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: plan.Target,
+		ApprovalException:   approvalExceptionFor(service, plan.TenantID, action.Name, plan.RequiresDualApproval),
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
 		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
@@ -500,6 +496,18 @@ func actionAlertPolicy(service model.ServiceDefinition) model.AlertPolicyDefinit
 		BlockingAlerts:    append([]string(nil), service.AlertPolicy.BlockingAlerts...),
 		MaintenanceAlerts: append([]string(nil), service.AlertPolicy.MaintenanceAlerts...),
 	}
+}
+
+func approvalExceptionFor(
+	service model.ServiceDefinition,
+	tenantID, action string,
+	requiresDualApproval bool,
+) string {
+	if service.ObjectID == "service:areaforge" && tenantID == "production" &&
+		(action == "start" || action == "stop") && !requiresDualApproval {
+		return model.ApprovalExceptionC2LifecycleSingleActor
+	}
+	return ""
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

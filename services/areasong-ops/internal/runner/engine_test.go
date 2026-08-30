@@ -511,10 +511,15 @@ func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
 
 func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T) {
 	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
+	executor := &fakeExecutor{}
+	engine, database := testEngine(t, executor)
 	engine.catalog.Services["areaforge"] = model.ServiceDefinition{
 		Name: "areaforge", ObjectID: "service:areaforge", TenantID: "production",
 		Adapter: "/tmp/areaforge", Metadata: model.ObjectMetadata{Type: "service", Environment: "production", Lifecycle: "active"},
+		AlertPolicy: model.AlertPolicyDefinition{
+			Matchers:          map[string]string{"service": "areaforge"},
+			MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+		},
 	}
 	actor := actorHash()
 	plan, err := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{Service: "areaforge", Action: "stop"})
@@ -550,6 +555,17 @@ func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T
 	}
 	if !found {
 		t.Fatalf("approval audit for %s not found: %+v", plan.ID, audit)
+	}
+	task, created, err := engine.ExecuteReleasePlan(ctx, actor, approved.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil || !created || task.PlanID != plan.ID {
+		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+	}
+	engine.Wait()
+	finished, err := database.GetTask(ctx, task.ID)
+	if err != nil || finished.State != model.TaskSucceeded {
+		t.Fatalf("task=%+v err=%v", finished, err)
 	}
 }
 
