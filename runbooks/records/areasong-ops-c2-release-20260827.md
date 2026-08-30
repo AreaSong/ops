@@ -80,3 +80,14 @@
 - 三个受控 Nginx 文件均为 root-owned 普通可读文件、无组/其他写权限；`nginx -t` 成功。既有 `forge.areasong.top` 重复 `server_name` 警告仍存在，按本次批准未处理。
 - `preflight.sh runtime`：`PASS`；源码 `57db5852…`，运行制品 `c74fe0c2…`，输出既有 `source/runtime drift: source HEAD is ahead of the deployed revision` 提示但满足祖先关系门禁。
 - 远端已执行 `sudo -k` 并退出 `la-share`。下一步如需生命周期操作，仍须单独创建、预览、审批并执行 AreaForge Release Plan；本次 TrafficPolicy 写入本身未改变业务流量。
+
+## 2026-08-30 C2 摘要复验修复同 revision 发布
+
+- 变更级别：L2；操作人/批准人：`song80184@gmail.com`；范围为 AreaSong Ops Web 与 Runner 同 revision 发布，不包含 AreaForge stop/start、其他业务服务或流量变更。
+- 修复提交：`9d4d0e2d2e26218616b81f2c4619909a8877bfd9`；修复 C2 生命周期计划创建摘要与执行复验摘要的 `approvalException` 计算不一致问题，正式发布版本为 `1.0.2`。
+- 制品来源：GHCR 与 GitHub Release，workflow run `33292683051`；Web 镜像为 `ghcr.io/areasong/areasong-ops-web:9d4d0e2d2e26218616b81f2c4619909a8877bfd9@sha256:f59f78801c664ea1d0ebd962dcb1c6a4f1931f7954d4aa9b829622416487a62b`；Runner bundle SHA-256 为 `402a19f2570f69fadf60c8684ace734bf6a8288d889b0b4569ad65d24b0ee972`，Runner 与 updater 的 Sigstore/Cosign 校验通过。
+- 通过 `la-share` 创建回滚备份：`/var/backups/ops/deployments/areasong-ops-20260830T044850Z-26d1e9bff14fc817d16b0ecda19f28ef6031b43e`；包含旧 Runner 双路径、updater、Web `.env`、Compose、systemd unit、Web image inspect、SQLite 一致性快照和既有未提交文件，SHA-256 清单校验通过。
+- 生产 `/opt/ops` 以 fast-forward 对齐至 `9d4d0e2…`，原有 `services/sub2api/compose.yml` 修改和 `preflight.sh.bak.20260826-1247` 未覆盖且字节级保留。
+- Web `.env` 仅更新 `OPS_BUILD_VERSION=1.0.2` 与 `OPS_BUILD_REVISION=9d4d0e2…`；仅重建 `areasong-ops-web`，容器为 `65532:65532`、只读 rootfs、健康；Runner 双合同路径 SHA-256 一致，systemd active，健康端点返回 `1.0.2/9d4d0e2…`。
+- `deploy/preflight.sh runtime`：`PASS`；源码与运行制品 revision 一致，source/runtime drift 为 none。Web/Runner metrics 均暴露 `1.0.2/9d4d0e2…`。
+- 业务无关性验收：AreaForge Web/Postgres 仍 `healthy`，desired/actual/app/traffic 均为 `running`，`productionChanged=false`，公网 `https://forge.areasong.top/` 返回 HTTP 200；本轮未创建、审批或执行新的 AreaForge stop/start 计划。
