@@ -152,11 +152,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	applyDevelopmentPathOverrides(catalog)
 	stateRoot, err := os.MkdirTemp("/tmp", "areasong-ops-dev-state-")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer os.RemoveAll(stateRoot)
+	applyDevelopmentFeatureOverrides(catalog)
 	database, err := store.Open(filepath.Join(stateRoot, "ops.db"))
 	if err != nil {
 		log.Fatal(err)
@@ -223,6 +225,110 @@ func main() {
 	<-stop
 	_ = server.Shutdown(context.Background())
 	engine.Wait()
+}
+
+// Development catalogs intentionally keep production-shaped absolute paths.
+// Remapping is opt-in and local to this demo entrypoint so production config
+// loading never silently changes a declared target.
+func applyDevelopmentPathOverrides(catalog *config.Catalog) {
+	repoRoot := strings.TrimRight(os.Getenv("OPS_DEV_REPO_ROOT"), "/")
+	runtimeRoot := strings.TrimRight(os.Getenv("OPS_DEV_RUNTIME_ROOT"), "/")
+	if repoRoot == "" && runtimeRoot == "" {
+		return
+	}
+	rewrite := func(value string) string {
+		if repoRoot != "" && strings.HasPrefix(value, "/opt/ops/") {
+			return repoRoot + strings.TrimPrefix(value, "/opt/ops")
+		}
+		if runtimeRoot != "" && strings.HasPrefix(value, "/opt/services/") {
+			return runtimeRoot + strings.TrimPrefix(value, "/opt/services")
+		}
+		return value
+	}
+	for name, service := range catalog.Services {
+		if service.Runtime != nil {
+			service.Runtime.ControlledCompose = rewrite(service.Runtime.ControlledCompose)
+			service.Runtime.RuntimeCompose = rewrite(service.Runtime.RuntimeCompose)
+			service.Runtime.EnvFile = rewrite(service.Runtime.EnvFile)
+			service.Runtime.ReleaseCatalog = rewrite(service.Runtime.ReleaseCatalog)
+			service.Runtime.PreparedReleaseDir = rewrite(service.Runtime.PreparedReleaseDir)
+			service.Runtime.InspectExecutable = rewrite(service.Runtime.InspectExecutable)
+			service.Runtime.BackupEvidenceExecutable = rewrite(service.Runtime.BackupEvidenceExecutable)
+			service.Runtime.RestoreDrillExecutable = rewrite(service.Runtime.RestoreDrillExecutable)
+			service.Runtime.RestoreExecutable = rewrite(service.Runtime.RestoreExecutable)
+			service.Runtime.PrepareExecutable = rewrite(service.Runtime.PrepareExecutable)
+			service.Runtime.UpdateExecutable = rewrite(service.Runtime.UpdateExecutable)
+			for index, path := range service.Runtime.BackupExecutables {
+				service.Runtime.BackupExecutables[index] = rewrite(path)
+			}
+		}
+		catalog.Services[name] = service
+	}
+	if catalog.Files != nil {
+		for name, root := range catalog.Files.Roots {
+			catalog.Files.Roots[name] = rewrite(root)
+		}
+	}
+}
+
+// 开发功能开关仅在 cmd/dev-runner 中显式生效，不改变生产目录或放宽生产校验门禁。
+func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
+	requested := strings.TrimSpace(os.Getenv("OPS_DEV_ENABLE_FEATURES"))
+	if requested == "" {
+		return
+	}
+	features := map[string]bool{}
+	for _, item := range strings.Split(requested, ",") {
+		item = strings.TrimSpace(strings.ToLower(item))
+		if item != "" {
+			features[item] = true
+		}
+	}
+	if features["all"] {
+		for _, item := range []string{"terminal", "files", "extensions", "runner-update"} {
+			features[item] = true
+		}
+	}
+	runtimeRoot := strings.TrimRight(os.Getenv("OPS_DEV_RUNTIME_ROOT"), "/")
+	if runtimeRoot == "" {
+		runtimeRoot = "/tmp/areasong-runtime"
+	}
+	if features["terminal"] && catalog.Terminal != nil {
+		catalog.Terminal.Enabled = true
+		// 默认开发命令是确定性的只读命令；Break-glass Shell 仍需单独显式开启。
+		catalog.Terminal.Commands = map[string]model.TerminalCommand{
+			"service-status": {
+				Name: "service-status", Executable: "/bin/echo",
+				Arguments: []string{"development terminal ready"}, ReadOnly: true, TimeoutSeconds: 30,
+			},
+		}
+		if features["break-glass"] || os.Getenv("OPS_DEV_ENABLE_BREAK_GLASS") == "1" {
+			catalog.Terminal.BreakGlass = true
+			catalog.Terminal.ShellExecutable = "/bin/bash"
+			catalog.Terminal.ShellWorkingDir = filepath.Join(runtimeRoot, "shell")
+			if err := os.MkdirAll(catalog.Terminal.ShellWorkingDir, 0o700); err != nil {
+				log.Printf("development shell root unavailable: %v", err)
+			}
+		}
+	}
+	if features["files"] && catalog.Files != nil {
+		catalog.Files.Enabled = true
+		catalog.Files.Roots = map[string]string{"ops-config": runtimeRoot}
+		if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
+			log.Printf("development file root unavailable: %v", err)
+		}
+	}
+	if features["extensions"] && catalog.Extensions != nil {
+		catalog.Extensions.Enabled = true
+	}
+	if features["runner-update"] && catalog.RunnerUpdate != nil {
+		catalog.RunnerUpdate.Enabled = true
+		catalog.RunnerUpdate.ArtifactRoot = filepath.Join(runtimeRoot, "runner-updates", "incoming")
+		catalog.RunnerUpdate.BinaryPath = filepath.Join(runtimeRoot, "runner", "areasong-ops-runner")
+		if err := os.MkdirAll(catalog.RunnerUpdate.ArtifactRoot, 0o700); err != nil {
+			log.Printf("development runner update root unavailable: %v", err)
+		}
+	}
 }
 
 func envOr(name, fallback string) string {

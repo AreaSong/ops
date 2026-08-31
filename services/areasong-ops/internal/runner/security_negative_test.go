@@ -116,6 +116,48 @@ func TestPlatformPermissionDoesNotGrantGlobalResourceIDOR(t *testing.T) {
 	}
 }
 
+func TestPlatformReaderCanReadGlobalViewsButCannotMutateThem(t *testing.T) {
+	fixture := newSecurityEngine(t)
+	ctx := context.Background()
+	reader := config.AccessHashForEmail("platform-reader@example.test")
+	policy, snapshot, err := fixture.engine.effectiveAccessPolicy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.Principals[reader] = config.AccessPrincipal{Subject: reader, TenantID: "tenant-a", Roles: []string{"tenant-reader"}}
+	policy.Bindings = append(policy.Bindings,
+		model.RoleBinding{ID: "reader-access", Subject: reader, TenantID: "tenant-a", RoleID: "platform-reader", ObjectIDs: []string{"access"}},
+		model.RoleBinding{ID: "reader-credentials", Subject: reader, TenantID: "tenant-a", RoleID: "platform-reader", ObjectIDs: []string{"credentials"}},
+		model.RoleBinding{ID: "reader-files", Subject: reader, TenantID: "tenant-a", RoleID: "platform-reader", ObjectIDs: []string{"files"}},
+	)
+	policyJSON, err := json.Marshal(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.SaveAccessPolicySnapshot(ctx, model.AccessPolicySnapshot{
+		Digest: digestText(string(policyJSON)), PolicyJSON: string(policyJSON), ActorHash: "test",
+	}, snapshot.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.engine.AccessControl(ctx, reader); err != nil {
+		t.Fatalf("platform reader could not read access policy: %v", err)
+	}
+	if _, err := fixture.engine.AccessChanges(ctx, reader); err != nil {
+		t.Fatalf("platform reader could not list access changes: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.root, "managed", "reader.txt"), []byte("read-only"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.engine.ManagedFile(ctx, reader, "managed", "reader.txt"); err != nil {
+		t.Fatalf("platform reader could not read managed file: %v", err)
+	}
+	if _, err := fixture.engine.UpdateAccess(ctx, reader, model.AccessControlUpdateRequest{
+		IdempotencyKey: mustUUID(t),
+	}); err == nil {
+		t.Fatal("platform reader unexpectedly mutated access policy")
+	}
+}
+
 func TestKubernetesViewAndOperationsStayWithinActorTenant(t *testing.T) {
 	fixture := newSecurityEngine(t)
 	ctx := context.Background()

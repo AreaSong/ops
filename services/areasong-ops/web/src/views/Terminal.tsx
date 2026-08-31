@@ -9,6 +9,7 @@ interface TerminalProps {
   lastOutput?: TerminalOutput | null
   loading: boolean
   available: boolean
+  breakGlassAvailable: boolean
   error: string
   busy: string
   onRefresh: () => void
@@ -36,7 +37,7 @@ function stateTone(state: string): 'healthy' | 'warning' | 'error' | 'unknown' {
 
 export function Terminal({
   commands, plans, lastOutput, loading, available, error, busy,
-  onRefresh, onCreatePlan, onApprove, onExecute, onRun,
+  breakGlassAvailable, onRefresh, onCreatePlan, onApprove, onExecute, onRun,
 }: TerminalProps) {
   const [objectId, setObjectId] = useState('')
   const [shellInput, setShellInput] = useState('')
@@ -120,7 +121,7 @@ export function Terminal({
           </button>)}</div>}
         </section>
 
-        <section className="page-section">
+        {breakGlassAvailable && <section className="page-section">
           <div className="section-heading"><h2>创建 Shell 计划</h2><span>两人批准后才能执行</span></div>
           <form className="runner-update-form" onSubmit={(event) => void createPlan(event)}>
             <label><span>对象 ID</span><input required value={objectId} onChange={(event) => setObjectId(event.target.value)} placeholder="受控对象 objectId" /></label>
@@ -128,7 +129,9 @@ export function Terminal({
             <label className="wide runner-prepare-confirm"><span>申请确认</span><code>{requestPhrase || '先填写对象 ID'}</code><input required value={requestConfirmation} onChange={(event) => setRequestConfirmation(event.target.value)} /></label>
             <div className="form-actions"><button className="button danger" type="submit" disabled={!objectId || !shellInput || requestConfirmation !== requestPhrase || busy === 'terminal-create'}><ShieldCheck size={14} />{busy === 'terminal-create' ? '提交中' : '创建待批准计划'}</button></div>
           </form>
-        </section>
+        </section>}
+
+        {!breakGlassAvailable && <div className="recovery-warning"><ShieldCheck size={15} />Break-glass Shell 当前关闭；只读命令仍可按权限执行。</div>}
 
         {onRun && <section className="page-section">
           <div className="section-heading"><h2>受控命令会话</h2><span>只使用命令目录中的固定能力</span></div>
@@ -141,7 +144,7 @@ export function Terminal({
           {lastOutput && <pre className="terminal-output"><code>{lastOutput.output || '(无输出)'}</code></pre>}
         </section>}
 
-        <section className="page-section">
+        {breakGlassAvailable && <section className="page-section">
           <div className="section-heading"><h2>Shell 计划</h2><span>{plans.length} 项</span></div>
           {plans.length === 0 ? <div className="empty-state compact">暂无终端计划</div> : <div className="runner-update-list">{plans.map((plan) => {
             const confirmation = planConfirmations[plan.id] ?? ''
@@ -160,9 +163,8 @@ export function Terminal({
               {plan.state === 'succeeded' && <div className="runner-update-progress"><CheckCircle2 size={15} />命令已完成</div>}
             </article>
           })}</div>}
-        </section>
+        </section>}
       </>}
     </div>
   )
 }
-

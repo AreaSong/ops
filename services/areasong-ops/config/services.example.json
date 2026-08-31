@@ -45,6 +45,12 @@
         "permissions": ["ops.read", "ops.inspect"],
         "builtIn": true
       },
+      "platform-reader": {
+        "id": "platform-reader",
+        "displayName": "平台只读观察者",
+        "permissions": ["ops.read", "ops.inspect"],
+        "builtIn": true
+      },
       "operator": {
         "id": "operator",
         "displayName": "运维操作员",
@@ -77,6 +83,29 @@
           "automatic-task:docker-metrics"
         ],
         "createdAt": "2026-08-20T00:00:00Z",
+        "createdBy": "bootstrap"
+      },
+      {
+        "id": "binding-production-platform-reader",
+        "subject": "1f9f71bd340ebf8794dd8cda3a0bc438888023d7877def3e138736fdbabe2938",
+        "tenantId": "production",
+        "roleId": "platform-reader",
+        "objectIds": [
+          "access",
+          "audit",
+          "auto-updates",
+          "batch",
+          "credentials",
+          "events",
+          "extensions",
+          "files",
+          "fleet",
+          "fleet:losangeles",
+          "kubernetes",
+          "runner:runner-losangeles",
+          "terminal"
+        ],
+        "createdAt": "2026-08-31T00:00:00Z",
         "createdBy": "bootstrap"
       },
       {
@@ -215,6 +244,17 @@
       "recoveryPointPolicy": {
         "requiredArtifactRoles": ["postgres-areaforge", "volume-areaforge-uploads", "volume-areaforge-ops-state"],
         "recoverableSeconds": 604800
+      },
+      "autoUpdate": {
+        "enabled": false,
+        "channel": "stable",
+        "maintenanceWindow": "02:00-04:00",
+        "canaryPercent": 10,
+        "maxUnavailable": 1,
+        "requireBackup": true,
+        "requireApproval": true,
+        "rollbackOnAlert": true,
+        "observationSeconds": 900
       },
       "alertPolicy": {
         "matchers": {"service": "areaforge"},
@@ -394,6 +434,17 @@
       "recoveryPointPolicy": {
         "requiredArtifactRoles": ["postgres-sub2api", "redis", "volume-sub2api-data"],
         "recoverableSeconds": 604800
+      },
+      "autoUpdate": {
+        "enabled": false,
+        "channel": "stable",
+        "maintenanceWindow": "03:00-05:00",
+        "canaryPercent": 10,
+        "maxUnavailable": 1,
+        "requireBackup": true,
+        "requireApproval": true,
+        "rollbackOnAlert": true,
+        "observationSeconds": 900
       },
       "alertPolicy": {
         "matchers": {"service": "sub2api"},

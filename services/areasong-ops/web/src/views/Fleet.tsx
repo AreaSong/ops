@@ -86,12 +86,12 @@ export function FleetView({
           </section>
 
           <section className="page-section fleet-section">
-            <div className="section-heading"><h2>服务器清单</h2><div className="section-actions">
+            <div className="section-heading"><h2>服务器清单</h2>{fleet.canManage && <div className="section-actions">
               <button className="button secondary" type="button" onClick={() => setServerOpen((value) => !value)}><Plus size={14} />登记服务器</button>
               <button className="button secondary" type="button" onClick={() => setRunnerOpen((value) => !value)}><Plus size={14} />登记 Runner</button>
-            </div></div>
+            </div>}</div>
 
-            {serverOpen && <form className="inline-form fleet-form" onSubmit={(event) => void submitServer(event)}>
+            {fleet.canManage && serverOpen && <form className="inline-form fleet-form" onSubmit={(event) => void submitServer(event)}>
               <label><span>服务器 ID</span><input required pattern="[A-Za-z][A-Za-z0-9_.:-]{0,127}" value={server.id} onChange={(event) => setServer({ ...server, id: event.target.value })} /></label>
               <label><span>主机名</span><input required value={server.hostname} onChange={(event) => setServer({ ...server, hostname: event.target.value })} /></label>
               <label><span>环境</span><input required value={server.environment} onChange={(event) => setServer({ ...server, environment: event.target.value })} /></label>
@@ -100,7 +100,7 @@ export function FleetView({
               <button className="button secondary" type="submit" disabled={busy}>保存服务器</button>
             </form>}
 
-            {runnerOpen && <form className="inline-form fleet-form" onSubmit={(event) => void submitRunner(event)}>
+            {fleet.canManage && runnerOpen && <form className="inline-form fleet-form" onSubmit={(event) => void submitRunner(event)}>
               <label><span>Runner ID</span><input required pattern="[A-Za-z][A-Za-z0-9_.:-]{0,127}" value={runner.id} onChange={(event) => setRunner({ ...runner, id: event.target.value })} /></label>
               <label><span>服务器 ID</span><input required value={runner.serverId} onChange={(event) => setRunner({ ...runner, serverId: event.target.value })} /></label>
               <label><span>版本</span><input required value={runner.version} onChange={(event) => setRunner({ ...runner, version: event.target.value })} /></label>

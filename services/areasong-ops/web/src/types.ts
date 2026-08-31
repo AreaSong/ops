@@ -79,6 +79,7 @@ export interface CredentialProfile {
   risk: Risk
   confirmationPhrase: string
   configured: boolean
+  canManage: boolean
   fingerprint?: string
   expiresAt?: string
   lastRotation?: CredentialRotation
@@ -378,6 +379,7 @@ export interface RunnerNode {
 export interface Fleet {
   servers: ServerNode[]
   runners: RunnerNode[]
+  canManage: boolean
 }
 
 export type BatchTaskState =
@@ -747,6 +749,7 @@ export interface ComposeServiceView {
   source?: string
   content?: string
   validated?: boolean
+  validationError?: string
   controlledCompose?: string
   runtimeCompose?: string
   envFile?: string
@@ -989,6 +992,7 @@ export interface AccessChange {
 
 export interface AccessControlView {
   enforced: boolean
+  canManage: boolean
   defaultTenant?: string
   principals?: Record<string, { email?: string; emailHash?: string; tenantId: string; roles: string[] }>
   tenants?: AccessTenant[] | Record<string, AccessTenant>

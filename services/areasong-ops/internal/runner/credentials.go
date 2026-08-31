@@ -63,7 +63,7 @@ func (unavailableCredentialRotator) RemoveRollback(context.Context, model.Creden
 	return errors.New("凭据轮换当前不可用")
 }
 
-func (engine *Engine) CredentialProfile(ctx context.Context) (model.CredentialProfileView, error) {
+func (engine *Engine) CredentialProfile(ctx context.Context, actor string) (model.CredentialProfileView, error) {
 	current, err := engine.credentials.Current(ctx)
 	if err != nil {
 		return model.CredentialProfileView{}, err
@@ -76,6 +76,7 @@ func (engine *Engine) CredentialProfile(ctx context.Context) (model.CredentialPr
 		Type: model.GitHubAlertmanagerCredential, DisplayName: "GitHub 告警同步 Token",
 		Target: credentialTarget, Repository: githubRepository, Risk: model.RiskHigh,
 		ConfirmationPhrase: credentialConfirmation, Configured: current.Configured,
+		CanManage:   engine.authorizePlatform(ctx, actor, model.PermissionManageConfig, "credentials") == nil,
 		Fingerprint: current.Fingerprint, ExpiresAt: current.ExpiresAt,
 	}
 	if found {

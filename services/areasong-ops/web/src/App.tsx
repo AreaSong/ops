@@ -171,6 +171,7 @@ export default function App() {
   const [terminalOutput, setTerminalOutput] = useState<TerminalOutput | null>(null)
   const [terminalLoading, setTerminalLoading] = useState(false)
   const [terminalAvailable, setTerminalAvailable] = useState(true)
+  const [terminalShellAvailable, setTerminalShellAvailable] = useState(true)
   const [terminalError, setTerminalError] = useState('')
   const [managedFile, setManagedFile] = useState<ManagedFileView | null>(null)
   const [fileProposals, setFileProposals] = useState<ManagedFileProposal[]>([])
@@ -286,14 +287,33 @@ export default function App() {
     setAutoUpdatesAvailable, setAutoUpdatesError, '自动更新策略读取失败',
   ), [api])
 
-  const refreshTerminal = useCallback(() => loadFeature(
-    async () => {
-      const [commands, plans] = await Promise.all([api.terminalCommands(), api.terminalShellPlans()])
-      return { commands, plans }
-    },
-    (value) => { setTerminalCommands(value.commands); setTerminalPlans(value.plans) },
-    setTerminalLoading, setTerminalAvailable, setTerminalError, '终端状态读取失败',
-  ), [api])
+  const refreshTerminal = useCallback(async () => {
+    setTerminalLoading(true)
+    setTerminalError('')
+    try {
+      const commands = await api.terminalCommands()
+      setTerminalCommands(commands)
+      setTerminalAvailable(true)
+      try {
+        setTerminalPlans(await api.terminalShellPlans())
+        setTerminalShellAvailable(true)
+      } catch (reason) {
+        if (isFeatureUnavailable(reason)) {
+          setTerminalPlans([])
+          setTerminalShellAvailable(false)
+        } else {
+          setTerminalShellAvailable(true)
+          setTerminalError(errorMessage(reason, '终端计划读取失败'))
+        }
+      }
+    } catch (reason) {
+      setTerminalAvailable(!isFeatureUnavailable(reason))
+      setTerminalShellAvailable(false)
+      setTerminalError(errorMessage(reason, '终端状态读取失败'))
+    } finally {
+      setTerminalLoading(false)
+    }
+  }, [api])
 
   const refreshFiles = useCallback(() => loadFeature(
     async () => ({ proposals: await api.managedFileProposals() }),
@@ -552,7 +572,12 @@ export default function App() {
 
   function openService(name: string) {
     setSelectedService(name)
-    setView('services')
+    navigateTo('services')
+  }
+
+  function navigateTo(nextView: ViewName) {
+    setError('')
+    setView(nextView)
   }
 
   async function reconcileService(service: string) {
@@ -1112,7 +1137,7 @@ export default function App() {
   }
 
   return (
-    <Shell view={view} onView={setView} email={email} connected={connected} links={links}>
+    <Shell view={view} onView={navigateTo} email={email} connected={connected} links={links}>
       {error && (
         <div className="toast error-toast" role="alert">
           <AlertCircle size={17} aria-hidden="true" /><span>{error}</span>
@@ -1123,7 +1148,7 @@ export default function App() {
         <Overview services={services} automaticTasks={automaticTasks} tasks={tasks} plans={plans} alerts={alerts}
           alertsError={alertsError} alertsURL={links.alerts}
           onService={openService} onTask={openTask} onPlan={setSelectedPlan}
-          onAutomaticTasks={() => setView('automatic-tasks')} />
+          onAutomaticTasks={() => navigateTo('automatic-tasks')} />
       )}
       {view === 'lifecycle' && (
         <Lifecycle states={serviceStates} services={services} loading={statesLoading} available={statesAvailable}
@@ -1168,7 +1193,8 @@ export default function App() {
       )}
       {view === 'terminal' && (
         <Terminal commands={terminalCommands} plans={terminalPlans} lastOutput={terminalOutput}
-          loading={terminalLoading} available={terminalAvailable} error={terminalError} busy={busyAction}
+          loading={terminalLoading} available={terminalAvailable} breakGlassAvailable={terminalShellAvailable}
+          error={terminalError} busy={busyAction}
           onRefresh={() => void refreshTerminal()} onCreatePlan={createTerminalPlan}
           onApprove={approveTerminalPlan} onExecute={executeTerminalPlan} onRun={runTerminal} />
       )}

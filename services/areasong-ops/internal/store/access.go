@@ -392,8 +392,8 @@ func (store *Store) ListRoleBindings(ctx context.Context) ([]model.RoleBinding, 
 	result := make([]model.RoleBinding, 0)
 	for rows.Next() {
 		var binding model.RoleBinding
-		var objects, created, createdBy, approvedAt, secondApprovedAt string
-		var expires sql.NullString
+		var objects, created, createdBy string
+		var expires, approvedAt, secondApprovedAt sql.NullString
 		if err := rows.Scan(&binding.ID, &binding.Subject, &binding.TenantID, &binding.RoleID, &objects, &expires, &created, &createdBy,
 			&binding.JIT, &binding.RequiresDualApproval, &binding.ApprovalState, &binding.ApprovedByHash,
 			&binding.SecondApprovedByHash, &approvedAt, &secondApprovedAt); err != nil {
@@ -407,15 +407,15 @@ func (store *Store) ListRoleBindings(ctx context.Context) ([]model.RoleBinding, 
 			return nil, err
 		}
 		binding.CreatedBy = createdBy
-		if approvedAt != "" {
-			value, parseErr := time.Parse(time.RFC3339Nano, approvedAt)
+		if approvedAt.Valid {
+			value, parseErr := time.Parse(time.RFC3339Nano, approvedAt.String)
 			if parseErr != nil {
 				return nil, parseErr
 			}
 			binding.ApprovedAt = &value
 		}
-		if secondApprovedAt != "" {
-			value, parseErr := time.Parse(time.RFC3339Nano, secondApprovedAt)
+		if secondApprovedAt.Valid {
+			value, parseErr := time.Parse(time.RFC3339Nano, secondApprovedAt.String)
 			if parseErr != nil {
 				return nil, parseErr
 			}

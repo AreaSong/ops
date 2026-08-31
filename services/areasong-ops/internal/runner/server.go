@@ -497,11 +497,11 @@ func (server *Server) credentialProfile(response http.ResponseWriter, request *h
 	if !ok {
 		return
 	}
-	if err := server.engine.authorizePlatform(request.Context(), actor, model.PermissionManageConfig, "credentials"); err != nil {
+	if err := server.engine.authorizePlatform(request.Context(), actor, model.PermissionRead, "credentials"); err != nil {
 		writeError(response, http.StatusForbidden, err.Error())
 		return
 	}
-	profile, err := server.engine.CredentialProfile(request.Context())
+	profile, err := server.engine.CredentialProfile(request.Context(), actor)
 	if err != nil {
 		writeError(response, http.StatusServiceUnavailable, err.Error())
 		return
@@ -2206,7 +2206,11 @@ func (engine *Engine) FleetForActor(ctx context.Context, actor string) (model.Fl
 		return model.Fleet{}, err
 	}
 	visibleServers := make(map[string]bool, len(fleet.Servers))
-	filtered := model.Fleet{Servers: make([]model.ServerNode, 0, len(fleet.Servers)), Runners: make([]model.RunnerNode, 0, len(fleet.Runners))}
+	filtered := model.Fleet{
+		Servers:   make([]model.ServerNode, 0, len(fleet.Servers)),
+		Runners:   make([]model.RunnerNode, 0, len(fleet.Runners)),
+		CanManage: engine.authorizePlatform(ctx, actor, model.PermissionManageFleet, "fleet") == nil,
+	}
 	for _, server := range fleet.Servers {
 		if engine.fleetNodeVisible(ctx, actor, "fleet:"+server.ID, server.ID) {
 			visibleServers[server.ID] = true

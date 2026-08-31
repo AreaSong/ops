@@ -33,11 +33,24 @@ func (engine *Engine) ComposeFile(ctx context.Context, serviceName string) (mode
 		return model.ComposeFileView{}, err
 	}
 	digest := digestText(content)
+	validationErr := validateComposeContent(content)
 	revisions, err := engine.store.ListComposeRevisions(ctx, serviceName, 20)
 	if err != nil {
 		return model.ComposeFileView{}, err
 	}
-	return model.ComposeFileView{Service: serviceName, ControlledPath: service.Runtime.ControlledCompose, RuntimePath: service.Runtime.RuntimeCompose, Digest: digest, Content: content, Revisions: revisions}, nil
+	validationError := ""
+	if validationErr != nil {
+		validationError = validationErr.Error()
+	}
+	return model.ComposeFileView{
+		Service: serviceName, ControlledPath: service.Runtime.ControlledCompose, RuntimePath: service.Runtime.RuntimeCompose,
+		Digest: digest, Content: content, Source: "controlled-file", Validated: validationErr == nil,
+		ValidationError: validationError, ControlledCompose: service.Runtime.ControlledCompose,
+		RuntimeCompose: service.Runtime.RuntimeCompose, EnvFile: service.Runtime.EnvFile,
+		ApplicationService: service.Runtime.ApplicationService, ApplicationContainer: service.Runtime.ApplicationContainer,
+		DependencyContainers: append([]string(nil), service.Runtime.DependencyContainers...), HealthURL: service.Runtime.HealthURL,
+		Revisions: revisions,
+	}, nil
 }
 
 func (engine *Engine) ProposeCompose(ctx context.Context, actor string, request model.ComposeEditRequest) (model.ComposeRevision, error) {
@@ -118,7 +131,7 @@ func validateComposeContent(content string) error {
 	var services *yaml.Node
 	for index := 0; index < len(top.Content); index += 2 {
 		key, value := top.Content[index].Value, top.Content[index+1]
-		if !allowedTop[key] {
+		if !allowedTop[key] && !strings.HasPrefix(key, "x-") {
 			return fmt.Errorf("Compose 顶层字段 %q 不在受控白名单", key)
 		}
 		if key == "services" {
@@ -148,12 +161,28 @@ func validateComposeContent(content string) error {
 var composeNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$`)
 
 func validateComposeNode(node *yaml.Node, path string) error {
+	return validateComposeNodeWithState(node, path, make(map[*yaml.Node]bool))
+}
+
+// 跟随普通 YAML alias 以支持复用不可变配置块，同时拒绝活动递归，保证校验有界且确定。
+func validateComposeNodeWithState(node *yaml.Node, path string, active map[*yaml.Node]bool) error {
 	if node == nil {
 		return errors.New("Compose YAML 节点为空")
 	}
 	if node.Kind == yaml.AliasNode {
-		return fmt.Errorf("Compose %s 不允许 YAML alias/anchor", path)
+		if node.Alias == nil {
+			return fmt.Errorf("Compose %s 的 YAML alias 没有目标", path)
+		}
+		if active[node.Alias] {
+			return fmt.Errorf("Compose %s 存在循环 YAML alias", path)
+		}
+		return validateComposeNodeWithState(node.Alias, path+" (alias)", active)
 	}
+	if active[node] {
+		return fmt.Errorf("Compose %s 存在循环 YAML alias", path)
+	}
+	active[node] = true
+	defer delete(active, node)
 	if node.Kind == yaml.MappingNode {
 		seen := make(map[string]struct{}, len(node.Content)/2)
 		for index := 0; index < len(node.Content); index += 2 {
@@ -168,13 +197,13 @@ func validateComposeNode(node *yaml.Node, path string) error {
 			if key.Value == "<<" {
 				return fmt.Errorf("Compose %s 不允许 YAML merge key", path)
 			}
-			if err := validateComposeNode(value, path+"."+key.Value); err != nil {
+			if err := validateComposeNodeWithState(value, path+"."+key.Value, active); err != nil {
 				return err
 			}
 		}
 	} else {
 		for index, child := range node.Content {
-			if err := validateComposeNode(child, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+			if err := validateComposeNodeWithState(child, fmt.Sprintf("%s[%d]", path, index), active); err != nil {
 				return err
 			}
 		}

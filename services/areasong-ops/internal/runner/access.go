@@ -17,7 +17,7 @@ func (engine *Engine) AccessControl(
 	ctx context.Context,
 	actor string,
 ) (model.AccessControlView, error) {
-	if err := engine.authorizePlatform(ctx, actor, model.PermissionManageAccess, "access"); err != nil {
+	if err := engine.authorizePlatform(ctx, actor, model.PermissionRead, "access"); err != nil {
 		return model.AccessControlView{}, err
 	}
 	policy, snapshot, err := engine.effectiveAccessPolicy(ctx)
@@ -31,6 +31,7 @@ func (engine *Engine) AccessControl(
 	if policy == nil {
 		return model.AccessControlView{}, errors.New("访问策略尚未配置")
 	}
+	canManage := engine.authorizePlatform(ctx, actor, model.PermissionManageAccess, "access") == nil
 	tenants, err := engine.store.ListTenants(ctx)
 	if err != nil {
 		return model.AccessControlView{}, err
@@ -56,7 +57,7 @@ func (engine *Engine) AccessControl(
 		})
 	}
 	return model.AccessControlView{
-		Enforced: policy.Enforced, DefaultTenant: policy.DefaultTenant,
+		Enforced: policy.Enforced, CanManage: canManage, DefaultTenant: policy.DefaultTenant,
 		Principals: principals, PrincipalList: principalList, Tenants: tenants, Roles: roles, Bindings: bindings,
 		CurrentSubject: model.AccessSubject{Subject: actor, TenantID: policy.Principals[actor].TenantID},
 		Version:        snapshot.Version, Digest: snapshot.Digest, PendingChanges: pendingChanges,

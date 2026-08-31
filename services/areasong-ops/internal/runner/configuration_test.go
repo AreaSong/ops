@@ -97,6 +97,19 @@ volumes:
 	if err := validateComposeContent(valid); err != nil {
 		t.Fatalf("valid compose rejected: %v", err)
 	}
+	anchored := `x-json-log-options: &json-log-options
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+services:
+  web:
+    image: example/web:v1
+    logging: *json-log-options
+`
+	if err := validateComposeContent(anchored); err != nil {
+		t.Fatalf("safe Compose alias rejected: %v", err)
+	}
 	cases := map[string]string{
 		"duplicate key": `services:
   web:
@@ -127,6 +140,17 @@ services:
     image: example/web:v1
     environment:
       API_TOKEN: plain-secret
+`,
+		"merge key": `defaults: &defaults
+  image: example/web:v1
+services:
+  web:
+    <<: *defaults
+`,
+		"cyclic alias": `services:
+  web: &web
+    environment: *web
+    image: example/web:v1
 `,
 	}
 	for name, content := range cases {

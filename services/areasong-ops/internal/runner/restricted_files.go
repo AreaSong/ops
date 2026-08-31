@@ -19,7 +19,7 @@ func (engine *Engine) ManagedFile(
 	ctx context.Context,
 	actor, rootID, relativePath string,
 ) (model.ManagedFileView, error) {
-	if err := engine.authorize(ctx, actor, model.PermissionRead, "file:"+rootID); err != nil {
+	if err := engine.authorizeManagedFileRead(ctx, actor, rootID); err != nil {
 		return model.ManagedFileView{}, err
 	}
 	root, target, cleanPath, err := engine.resolveManagedPath(rootID, relativePath)
@@ -47,6 +47,17 @@ func (engine *Engine) ManagedFile(
 	}
 	view.Digest = digestText(view.Content)
 	return view, nil
+}
+
+func (engine *Engine) authorizeManagedFileRead(ctx context.Context, actor, rootID string) error {
+	err := engine.authorize(ctx, actor, model.PermissionRead, "file:"+rootID)
+	if err == nil {
+		return nil
+	}
+	if platformErr := engine.authorizePlatform(ctx, actor, model.PermissionRead, "files"); platformErr == nil {
+		return nil
+	}
+	return err
 }
 
 func (engine *Engine) ProposeManagedFile(

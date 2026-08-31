@@ -156,7 +156,7 @@ export class OpsAPI {
   async fleet(): Promise<Fleet> {
     const response = await fetch('/api/fleet', { cache: 'no-store' })
     const payload = await parseResponse<Fleet & { fleet?: Fleet }>(response)
-    return payload.fleet ?? { servers: payload.servers ?? [], runners: payload.runners ?? [] }
+    return payload.fleet ?? { servers: payload.servers ?? [], runners: payload.runners ?? [], canManage: false }
   }
 
   async registerServer(node: ServerNode): Promise<ServerNode> {

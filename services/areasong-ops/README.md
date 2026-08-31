@@ -50,6 +50,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 - 每个服务/自动任务的 `tenantId`、`serverId`、能力声明；服务还声明 `statePolicy`，但 `autoReconcile` 默认关闭。
 - `access` 租户、principal、角色和对象范围绑定。principal key 是 Cloudflare Access 邮箱规范化后的 SHA-256，不把邮箱明文当作授权标识。
+- `platform-reader` 仅授予控制面资源的读取范围，不能修改 RBAC、Fleet、凭据、扩展或其他平台配置；平台写入仍需对应管理权限和审批。
 - `fleet` 的 server/Runner 清单、心跳租约和能力标签；当前示例只登记一台服务器，不代表已启用跨机生产执行。
 - `extensions` 签名与沙箱策略（默认 `enabled: false`）以及受控 Kubernetes 目标清单。
 
@@ -89,6 +90,13 @@ npm run build
 # 需要 Web、Runner 和开发身份同时在线
 OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 ```
+
+本地要逐页验收默认关闭的终端、受管文件、扩展和 Runner 更新，可在开发 Runner
+启动时显式设置 `OPS_DEV_ENABLE_FEATURES=all`。该开关只存在于 `cmd/dev-runner`
+的开发入口，会把文件根目录和 Runner 制品目录重映射到临时目录，并保留只读终端
+和人工批准门禁；生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
+如需在本地演练 Break-glass Shell，再额外设置 `OPS_DEV_ENABLE_BREAK_GLASS=1`；该
+开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
 
 ## 构建
 

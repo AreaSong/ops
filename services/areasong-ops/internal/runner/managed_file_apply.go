@@ -23,7 +23,7 @@ func (engine *Engine) ManagedFileProposals(ctx context.Context, actor string) ([
 	}
 	result := make([]model.ManagedFileProposal, 0, len(items))
 	for _, item := range items {
-		if engine.authorize(ctx, actor, model.PermissionRead, "file:"+item.RootID) != nil {
+		if engine.authorizeManagedFileRead(ctx, actor, item.RootID) != nil {
 			continue
 		}
 		// Proposal content can contain configuration secrets. The list surface

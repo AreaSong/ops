@@ -51,6 +51,7 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 | 角色 | 允许 | 不允许 |
 | --- | --- | --- |
 | `viewer` | 读对象、状态、告警和审计 | 所有写入、生命周期、恢复和批量 |
+| `platform-reader` | 读取访问、Fleet、策略、凭据元数据和能力状态 | 所有平台配置、凭据轮换、节点登记、终端和其他写入 |
 | `operator` | 单服务生命周期、恢复演练和只读检查 | 发布、Compose apply、生产恢复、fleet/RBAC 管理 |
 | `release-manager` | 已绑定对象的发布、生命周期、备份/演练 | 修改租户/角色、扩展、任意 server |
 | `platform-admin` | 仅在单独 break-glass 审计下管理平台策略 | 不得把 wildcard 权限当作日常账号 |
@@ -84,7 +85,7 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 控制面没有默认任意 Shell/文件写能力。Compose 变更必须遵循以下顺序：
 
 1. **inspect**：读取当前受控 revision、运行 Compose 身份、容器 allowlist 和 expected digest。
-2. **validate**：校验候选文本的 Compose 语法、固定服务/依赖边界、资源和日志约束；失败只返回诊断，不写运行文件。
+2. **validate**：校验候选文本的 Compose 语法、固定服务/依赖边界、资源和日志约束；允许非循环 YAML anchor/alias 复用只读配置块，但拒绝 merge key、循环引用和危险字段；失败只返回诊断，不写运行文件。
 3. **propose**：把候选内容写入 root-owned 提案目录，生成不可变 SHA-256 digest、操作者和过期时间；候选不等于已生效。
 4. **approve**：计划摘要固定 service、tenant、server、digest、影响、备份、观察窗口和回滚；具备 `config.manage`/`ops.deploy` 的主体逐字确认，任何字段变化都使批准失效。
 5. **apply**：受信 adapter 再次核对 digest、声明路径、当前身份、告警门禁和 fresh recovery point，只能更新声明的受控 Compose 副本并重建允许的应用服务。

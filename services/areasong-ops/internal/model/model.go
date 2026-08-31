@@ -43,6 +43,7 @@ type CredentialProfileView struct {
 	Risk               Risk                `json:"risk"`
 	ConfirmationPhrase string              `json:"confirmationPhrase"`
 	Configured         bool                `json:"configured"`
+	CanManage          bool                `json:"canManage"`
 	Fingerprint        string              `json:"fingerprint,omitempty"`
 	ExpiresAt          string              `json:"expiresAt,omitempty"`
 	LastRotation       *CredentialRotation `json:"lastRotation,omitempty"`

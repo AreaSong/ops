@@ -11,7 +11,7 @@ import (
 )
 
 func (engine *Engine) AccessChanges(ctx context.Context, actor string) ([]model.AccessChange, error) {
-	if err := engine.authorizePlatform(ctx, actor, model.PermissionManageAccess, "access"); err != nil {
+	if err := engine.authorizePlatform(ctx, actor, model.PermissionRead, "access"); err != nil {
 		return nil, err
 	}
 	return engine.store.ListAccessChanges(ctx, 100)

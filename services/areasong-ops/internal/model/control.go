@@ -101,6 +101,7 @@ type AuthorizationDecision struct {
 
 type AccessControlView struct {
 	Enforced       bool              `json:"enforced"`
+	CanManage      bool              `json:"canManage"`
 	DefaultTenant  string            `json:"defaultTenant,omitempty"`
 	Principals     map[string]any    `json:"principals,omitempty"`
 	PrincipalList  []AccessPrincipal `json:"principalList,omitempty"`
@@ -298,12 +299,22 @@ type ComposeRollbackRequest struct {
 }
 
 type ComposeFileView struct {
-	Service        string            `json:"service"`
-	ControlledPath string            `json:"controlledPath"`
-	RuntimePath    string            `json:"runtimePath"`
-	Digest         string            `json:"digest"`
-	Content        string            `json:"content"`
-	Revisions      []ComposeRevision `json:"revisions,omitempty"`
+	Service              string            `json:"service"`
+	ControlledPath       string            `json:"controlledPath"`
+	RuntimePath          string            `json:"runtimePath"`
+	Digest               string            `json:"digest"`
+	Content              string            `json:"content"`
+	Source               string            `json:"source"`
+	Validated            bool              `json:"validated"`
+	ValidationError      string            `json:"validationError,omitempty"`
+	ControlledCompose    string            `json:"controlledCompose,omitempty"`
+	RuntimeCompose       string            `json:"runtimeCompose,omitempty"`
+	EnvFile              string            `json:"envFile,omitempty"`
+	ApplicationService   string            `json:"applicationService,omitempty"`
+	ApplicationContainer string            `json:"applicationContainer,omitempty"`
+	DependencyContainers []string          `json:"dependencyContainers,omitempty"`
+	HealthURL            string            `json:"healthUrl,omitempty"`
+	Revisions            []ComposeRevision `json:"revisions,omitempty"`
 }
 
 type KubernetesTarget struct {

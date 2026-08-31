@@ -98,7 +98,7 @@ export function Credentials({ profile, loading, onRefresh, onRotate, onClose }: 
                   <small>新凭据 {profile.lastRotation.fingerprint} · 到期 {profile.lastRotation.expiresAt}</small>
                 </div>
               </div>
-              {activeRotation && (
+              {activeRotation && profile.canManage && (
                 <div className="credential-closure">
                   <div>
                     <strong>{profile.lastRotation.state === 'revocation_verified' ? '继续完成轮换收口' : '在 GitHub 撤销旧 Token 后收口'}</strong>
@@ -121,7 +121,7 @@ export function Credentials({ profile, loading, onRefresh, onRotate, onClose }: 
             </section>
           )}
 
-          <section className="page-section">
+          {profile.canManage && <section className="page-section">
             <div className="section-heading"><h2>轮换新凭据</h2><span>固定目标 · 固定仓库 · Issues 读写</span></div>
             <form className="credential-form" onSubmit={(event) => void submit(event)} autoComplete="off">
               <input className="credential-username" type="text" name="username"
@@ -150,7 +150,8 @@ export function Credentials({ profile, loading, onRefresh, onRotate, onClose }: 
                 {submitting ? <><LoaderCircle className="spin" size={15} />验证并切换</> : '验证并轮换'}
               </button>
             </form>
-          </section>
+          </section>}
+          {!profile.canManage && <div className="recovery-warning">当前身份只有凭据元数据读取权限，凭据轮换需要 `config.manage`。</div>}
         </>
       )}
     </div>

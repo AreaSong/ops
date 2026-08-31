@@ -20,6 +20,45 @@ type fakeComposeCommandRunner struct {
 	dependency  string
 }
 
+func TestComposeFileExposesValidatedRuntimeMetadata(t *testing.T) {
+	root := t.TempDir()
+	controlledPath := filepath.Join(root, "controlled.yml")
+	runtimePath := filepath.Join(root, "runtime.yml")
+	content := "services:\n  web:\n    image: example/web:v1\n"
+	if err := os.WriteFile(controlledPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	engine, _ := testEngine(t, &fakeExecutor{})
+	engine.catalog.Services["demo"] = model.ServiceDefinition{
+		Name: "demo", ObjectID: "service:demo",
+		Runtime: &model.ComposeServiceRuntime{
+			ControlledCompose: controlledPath, RuntimeCompose: runtimePath, EnvFile: filepath.Join(root, ".env"),
+			ApplicationService: "web", ApplicationContainer: "demo-web", DependencyContainers: []string{"db"},
+			HealthURL: "https://demo.example.test/health",
+		},
+	}
+	view, err := engine.ComposeFile(context.Background(), "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Validated || view.Source != "controlled-file" || view.ApplicationService != "web" || view.ApplicationContainer != "demo-web" {
+		t.Fatalf("unexpected compose metadata: %+v", view)
+	}
+	if len(view.DependencyContainers) != 1 || view.DependencyContainers[0] != "db" || view.HealthURL == "" {
+		t.Fatalf("runtime metadata missing: %+v", view)
+	}
+	if err := os.WriteFile(controlledPath, []byte("services:\n  web:\n    privileged: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	view, err = engine.ComposeFile(context.Background(), "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Validated || view.ValidationError == "" {
+		t.Fatalf("invalid compose was reported as valid: %+v", view)
+	}
+}
+
 func (runner *fakeComposeCommandRunner) Run(
 	_ context.Context, _ string, args ...string,
 ) (string, error) {

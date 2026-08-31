@@ -312,7 +312,31 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 	if err := catalog.validateAdapters(requireRoot); err != nil {
 		return err
 	}
-	objectIDs := make(map[string]string, len(catalog.Services)+len(catalog.AutomaticTasks))
+	objectIDs := map[string]string{
+		"access": "access policy",
+		"audit": "audit records",
+		"auto-updates": "automatic update policy",
+		"batch": "batch operations",
+		"credentials": "credential metadata",
+		"events": "event stream",
+		"extensions": "extension policy",
+		"files": "managed files",
+		"fleet": "fleet inventory",
+		"kubernetes": "Kubernetes policy",
+		"terminal": "restricted terminal",
+	}
+	if catalog.Fleet != nil {
+		for _, server := range catalog.Fleet.Inventory.Servers {
+			objectIDs["fleet:"+server.ID] = "fleet server"
+			objectIDs["server:"+server.ID] = "server"
+		}
+		for _, runner := range catalog.Fleet.Inventory.Runners {
+			objectIDs["runner:"+runner.ID] = "runner"
+		}
+	}
+	for cluster := range catalog.Kubernetes {
+		objectIDs["kubernetes:"+cluster] = "Kubernetes cluster"
+	}
 	if catalog.RunnerUpdate != nil && catalog.RunnerUpdate.Enabled {
 		objectIDs["runner:"+catalog.RunnerUpdate.RunnerID] = "runner update"
 	}

@@ -273,8 +273,9 @@ func (node RunnerNode) AvailableAt(now time.Time, heartbeatTimeout time.Duration
 }
 
 type Fleet struct {
-	Servers []ServerNode `json:"servers"`
-	Runners []RunnerNode `json:"runners"`
+	Servers   []ServerNode `json:"servers"`
+	Runners   []RunnerNode `json:"runners"`
+	CanManage bool         `json:"canManage"`
 }
 
 func (fleet Fleet) Validate() error {
