@@ -261,10 +261,10 @@ services:
       containers: [areasong-ops-web]
       config_paths: [/etc/areasong-ops/services.json, /etc/areasong-ops/web.env]
       observed_version: phase9
-      observed_release_version: "1.0.2"
-      observed_revision: "9d4d0e2d2e26218616b81f2c4619909a8877bfd9"
-      observed_web_image_digest: "sha256:f59f78801c664ea1d0ebd962dcb1c6a4f1931f7954d4aa9b829622416487a62b"
-      observed_runner_bundle_sha256: "402a19f2570f69fadf60c8684ace734bf6a8288d889b0b4569ad65d24b0ee972"
+      observed_release_version: "1.0.3"
+      observed_revision: "9fb1da8fd5ed63a686a7ab7ac9cdf71fd09dba46"
+      observed_web_image_digest: "sha256:ae3f70e14e2651435ddc4ef740459497059d20a264b013458bde4b6e836d87f5"
+      observed_runner_bundle_sha256: "48d6a94e201089609443175021fb83594d4cffa24c119465da6a287a9ebe4b3a"
     ports:
       - { bind: 127.0.0.1, host_port: 3200, container_port: 8080, protocol: tcp, exposure: loopback }
     data: { type: sqlite-and-operation-evidence, path: /var/lib/areasong-ops, classification: confidential }
@@ -273,7 +273,7 @@ services:
       prometheus_jobs: [areasong_ops, blackbox_access_policy]
       log_jobs: [docker, syslog, nginx]
       dashboards: [areasong-ops-control-plane]
-      notes: "Runner/Web 已于 2026-08-30 在 C2 单人审批窗口完成 release 1.0.2、revision 9d4d0e2 生产部署；Web digest 与 Runner bundle 签名复验通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的 authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx 站点/snippet 安装、权限校验、nginx -t、reload 与 HTTPS 200 健康检查；traffic 状态保持 running，areaforge-web/postgres healthy。Nginx 仍有两个旧备份符号链接造成重复 server_name 警告，按批准保留。2026-08-28 已将生产 /opt/ops HEAD 与 origin/main 对齐到 57db5852，对齐前备份 3 个未提交文件，并保留 Sub2API 独立镜像 digest 修改和 preflight.sh.bak.20260826-1247。2026-08-28 经明确批准通过 la-share 写入 service:areaforge TrafficPolicy，备份 /var/backups/ops/traffic-policy-20260827-163429，摘要 sha256:a9dff1228a924e952ef792526fcffad65e9f84f9dd8f165545d315595ba45881；JSON、受控文件安全属性、nginx -t 与 runtime preflight 均通过，未执行 stop/start、reload 或流量切换。2026-08-30 C2 摘要复验修复发布通过 runtime preflight；本轮仅更新 Ops Web/Runner，未执行 AreaForge stop/start 或其他业务变更。"
+      notes: "Runner/Web 已于 2026-09-01 在 C2 单人审批窗口完成 release 1.0.3、revision 9fb1da8 生产部署；Web digest、Runner bundle 与 Sigstore/Cosign 身份复验通过，仓库 systemd unit 已替换旧 Runner 启动路径，Runner socket/health、Web health、build metrics 与 runtime preflight 均通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的 authenticated UI-backed API smoke；2026-09-01 再次完成登录后只读 UI smoke，生命周期两个受控服务均健康，服务操作、执行记录与变更审计正常加载，实时连接正常且前端无 console error；Fleet、受管文件和 Runner 自更新仍按策略未启用，Kubernetes、扩展和访问控制仍受平台级权限门禁。2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx 站点/snippet 安装、权限校验、nginx -t、reload 与 HTTPS 200 健康检查；traffic 状态保持 running，areaforge-web/postgres healthy。Nginx 仍有两个旧备份符号链接造成重复 server_name 警告，按批准保留。2026-08-28 已将生产 /opt/ops HEAD 与 origin/main 对齐到 57db5852，对齐前备份 3 个未提交文件，并保留 Sub2API 独立镜像 digest 修改和 preflight.sh.bak.20260826-1247。2026-08-28 经明确批准通过 la-share 写入 service:areaforge TrafficPolicy，备份 /var/backups/ops/traffic-policy-20260827-163429，摘要 sha256:a9dff1228a924e952ef792526fcffad65e9f84f9dd8f165545d315595ba45881；JSON、受控文件安全属性、nginx -t 与 runtime preflight 均通过，未执行 stop/start、reload 或流量切换。2026-08-30 C2 摘要复验修复发布通过 runtime preflight；2026-09-01 发布仅更新 Ops Web/Runner，未执行 AreaForge stop/start、Sub2API、数据库、Nginx 流量或其他业务变更。"
 
 routes:
   - service_id: resume-jadeai

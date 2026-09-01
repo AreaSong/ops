@@ -91,3 +91,17 @@
 - Web `.env` 仅更新 `OPS_BUILD_VERSION=1.0.2` 与 `OPS_BUILD_REVISION=9d4d0e2…`；仅重建 `areasong-ops-web`，容器为 `65532:65532`、只读 rootfs、健康；Runner 双合同路径 SHA-256 一致，systemd active，健康端点返回 `1.0.2/9d4d0e2…`。
 - `deploy/preflight.sh runtime`：`PASS`；源码与运行制品 revision 一致，source/runtime drift 为 none。Web/Runner metrics 均暴露 `1.0.2/9d4d0e2…`。
 - 业务无关性验收：AreaForge Web/Postgres 仍 `healthy`，desired/actual/app/traffic 均为 `running`，`productionChanged=false`，公网 `https://forge.areasong.top/` 返回 HTTP 200；本轮未创建、审批或执行新的 AreaForge stop/start 计划。
+
+## 2026-09-01 AreaSong Ops 1.0.3 同 revision 发布
+
+- 变更级别：L2；变更窗口：2026-09-01 11:00–13:00（Asia/Shanghai）；操作人/批准人：`song80184@gmail.com`。范围仅为 AreaSong Ops Web 与 Runner，不包含 AreaForge、Sub2API、数据库、Nginx 流量或其他业务变更。
+- 发布提交：`9fb1da8fd5ed63a686a7ab7ac9cdf71fd09dba46`；正式版本：`1.0.3`；GitHub Actions workflow run：`33463199200`。
+- Web 制品：`ghcr.io/areasong/areasong-ops-web@sha256:ae3f70e14e2651435ddc4ef740459497059d20a264b013458bde4b6e836d87f5`；Runner release archive SHA-256：`48d6a94e201089609443175021fb83594d4cffa24c119465da6a287a9ebe4b3a`。Web 与 Runner 签名均验证为 `AreaSong/ops/.github/workflows/areasong-ops-release.yml@refs/heads/main`。
+- 通过 `la-share` 创建 root-only 回滚备份：`/var/backups/ops/deployments/areasong-ops-20260901T025805Z-9d4d0e2`；保存旧 Web 环境、Compose、镜像身份、Runner/updater、systemd unit、仓库状态、配置摘要和 SQLite 快照。旧 Web image ID 为 `sha256:f59f78801c664ea1d0ebd962dcb1c6a4f1931f7954d4aa9b829622416487a62b`。
+- 生产 `/opt/ops` 以 fast-forward 对齐到 `9fb1da8…`；恢复并保留既有 `services/sub2api/compose.yml` digest 修改和未跟踪的 `services/areasong-ops/deploy/preflight.sh.bak.20260826-1247`，未产生冲突或覆盖。
+- 首次重启验证发现生产旧 unit 仍指向 legacy Runner 路径 `/usr/local/libexec/areasong-ops/areasong-ops-runner`，因此尚未切换到已校验的新二进制；在 Web 发布前停止后续步骤，备份 legacy 二进制，使用仓库 unit 替换并执行 `systemctl daemon-reload`。最终进程实际可执行文件为 `/usr/local/libexec/areasong-ops/runner/areasong-ops-runner`，SHA-256 为 `45625cb6d7ef8a6d099c0b9fc651c80a113815228414d6e62dd47ea47bdb2712`；unit SHA-256 为 `a6bd22e9ce3ab6132062835da9e057862f8a40faeae546326da6493ee2c8db45`。
+- Runner 重启后 systemd 为 `active`，Unix socket `/var/lib/areasong-ops/run/runner.sock` 正常监听，健康端点返回 `1.0.3/9fb1da8…`；新 SQLite 快照为 `/var/lib/areasong-ops/snapshots/ops-20260901T034218Z.db`。
+- Web `.env` 仅更新 `OPS_BUILD_VERSION=1.0.3` 与 `OPS_BUILD_REVISION=9fb1da8…`；按不可变 digest 拉取并仅以 `--no-deps --force-recreate web` 重建 Web。运行容器健康、用户为 `65532:65532`、只读 rootfs、Runner socket 只读挂载且未挂载 Docker Socket。
+- `deploy/preflight.sh runtime`：`PASS`；源码和运行制品 revision 一致，source/runtime drift 为 none。Web 本地健康返回 HTTP 200，公网未认证请求返回 Cloudflare Access HTTP 302；Web/Runner metrics 均暴露 `1.0.3/9fb1da8…`。
+- 发布后通过 Cloudflare Access 身份 `song80184@gmail.com` 完成只读 UI smoke：实时连接正常；生命周期页面显示 AreaForge 与 Sub2API 两个受控服务均为实际运行且健康；服务操作、自动任务、执行记录和变更审计正常加载；浏览器 console 无 error/warn。Fleet、受管文件、Runner 自更新仍明确显示未启用，Kubernetes、扩展与访问控制仍受平台级权限门禁，属于配置/权限状态而非本次发布故障。
+- 写操作均在变更窗口内完成，未触发回滚。后续 UI 验收与台账更新均为只读或本地仓库操作；`la-share` 会话已退出，未再同步生产 `/opt/ops`。

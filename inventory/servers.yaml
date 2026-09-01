@@ -54,12 +54,12 @@ servers:
       audit_or_security_notifications: none
       billing_expiry_alerts: deferred_by_user
     phase9_acceptance:
-      validated_at: "2026-08-30"
-      ops_revision: "9d4d0e2d2e26218616b81f2c4619909a8877bfd9"
+      validated_at: "2026-09-01"
+      ops_revision: "9fb1da8fd5ed63a686a7ab7ac9cdf71fd09dba46"
       ops_version: phase9
-      ops_release_version: "1.0.2"
-      ops_web_image_digest: "sha256:f59f78801c664ea1d0ebd962dcb1c6a4f1931f7954d4aa9b829622416487a62b"
-      ops_runner_bundle_sha256: "402a19f2570f69fadf60c8684ace734bf6a8288d889b0b4569ad65d24b0ee972"
+      ops_release_version: "1.0.3"
+      ops_web_image_digest: "sha256:ae3f70e14e2651435ddc4ef740459497059d20a264b013458bde4b6e836d87f5"
+      ops_runner_bundle_sha256: "48d6a94e201089609443175021fb83594d4cffa24c119465da6a287a9ebe4b3a"
       running_containers: 19
       prometheus_targets: "23/23 up"
       auditd_rule_keys: 7
@@ -83,11 +83,14 @@ servers:
       720h/30 天；critical 告警到 GitHub Issue 第二通道 enabled，fine-grained PAT 仅 Issues RW，
       到期日 2027-08-12，每月自动演练；镜像 CVE 周扫描 enabled；GitHub 只读 deploy key
       /root/.ssh/id_ed25519_ops_deploy 仅 fetch；x-ui/xray 流量审计与 TCP 长肥管道调优已启用；
-      AreaSong Ops phase9@8961caf 于 2026-08-19 完成服务器侧生产验收；2026-08-30 C2 单人审批修复发布
-      已更新至 release 1.0.2、revision 9d4d0e2，Web digest 与 Runner bundle 签名复验通过，
-      runtime preflight 通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare
+      AreaSong Ops phase9@8961caf 于 2026-08-19 完成服务器侧生产验收；2026-09-01 C2 单人审批发布
+      已更新至 release 1.0.3、revision 9fb1da8，Web digest 与 Runner bundle 签名复验通过；
+      仓库 unit 已替换旧 Runner 启动路径，Runner socket/health、Web health、build metrics 与
+      runtime preflight 均通过。未认证 Web API 负向请求返回 401；2026-08-27 通过 Cloudflare
       Access 身份 song80184@gmail.com 完成服务、状态、对象、Fleet 与 Runner 更新视图的
-      authenticated UI-backed API smoke，实时连接正常，禁用能力按策略保持关闭。
+      authenticated UI-backed API smoke；2026-09-01 再次完成登录后只读 UI smoke，生命周期
+      两个受控服务均健康、服务操作与审计页面正常、实时连接正常且前端无 console error，
+      未启用能力和平台级权限仍按策略保持关闭。
       AreaForge stop 生命周期 preflight 于 2026-08-27 因 service:areaforge trafficPolicy=null
       按门禁拒绝，未改变生产状态；2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx
       站点与 snippet 安装、权限校验、nginx -t、reload 和 HTTPS 200 健康检查，traffic 状态
