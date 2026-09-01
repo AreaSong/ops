@@ -37,6 +37,22 @@ require_owner_mode() {
   [ "$(stat -c '%a' "$path")" = "$expected_mode" ] || fail "unexpected mode for $path"
 }
 
+require_unit_read_write_path() {
+  local unit_path="$1" expected_path="$2"
+  grep -Fxq "ReadWritePaths=$expected_path" "$unit_path" ||
+    fail "Runner unit does not declare the required writable path: $expected_path"
+}
+
+require_effective_read_write_path() {
+  local unit_name="$1" expected_path="$2" configured_paths
+  configured_paths="$(systemctl show "$unit_name" --property=ReadWritePaths --value)" ||
+    fail "cannot inspect Runner writable paths"
+  case " $configured_paths " in
+    *" $expected_path "*) ;;
+    *) fail "Runner writable path is not effective: $expected_path" ;;
+  esac
+}
+
 read_env_value() {
   local name="$1" path="$2"
   awk -F= -v key="$name" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$path"
@@ -80,6 +96,7 @@ require_owner_mode "$RUNNER_ROOT/runner/areasong-ops-runner" root root 755
 require_owner_mode "$RUNNER_ROOT/areasong-ops-runner-updater" root root 755
 require_owner_mode "$UNIT_PATH" root root 644
 require_owner_mode "$UPDATER_UNIT_PATH" root root 644
+require_unit_read_write_path "$UNIT_PATH" /etc/nginx/snippets/areasong-ops
 for adapter in "$RUNNER_ROOT"/adapters/*.sh; do
   require_owner_mode "$adapter" root root 755
 done
@@ -101,6 +118,7 @@ if [ "$mode" = installed ]; then
 fi
 
 systemctl is-active --quiet areasong-ops-runner.service || fail "Runner service is not active"
+require_effective_read_write_path areasong-ops-runner.service /etc/nginx/snippets/areasong-ops
 [ "$(stat -c '%a %U:%G' /var/lib/areasong-ops)" = "710 root:areasong-ops" ] ||
   fail "Runner state root owner or mode is invalid"
 [ "$(stat -c '%a %U:%G' /var/lib/areasong-ops/run)" = "750 root:areasong-ops" ] ||

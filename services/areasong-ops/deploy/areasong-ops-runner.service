@@ -59,6 +59,7 @@ ReadWritePaths=/opt/areaforge
 ReadWritePaths=/opt/services/sub2api
 ReadWritePaths=/opt/ops/services/areaforge
 ReadWritePaths=/opt/ops/services/sub2api
+ReadWritePaths=/etc/nginx/snippets/areasong-ops
 
 [Install]
 WantedBy=multi-user.target

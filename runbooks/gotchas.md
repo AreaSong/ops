@@ -56,6 +56,7 @@
 
 ## 系统 / 启动链路
 
+- **`ProtectSystem=strict` 的特权服务必须把适配器真实写入目录逐项加入 `ReadWritePaths`**——root 身份不会绕过 systemd 的只读挂载；如果预检只验证 unit 语法和服务健康，任务可能在 mutation 阶段创建同目录临时文件时才以 `Read-only file system` 失败。发布门禁应同时检查 unit 声明和 `systemctl show` 的实际生效写路径，并只放行适配器合同内的最小目录，不能扩大到整个 `/etc`。
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
   → 详见 [records/losangeles-standards-09-b3-fstab-uuid-20260706.md](records/losangeles-standards-09-b3-fstab-uuid-20260706.md)
 - **Ansible `systemd_service` 不能可靠强制 mask `/etc/systemd/system` 下的真实 unit 文件**——模块调用 `systemctl mask` 时不带 `--force`，部分版本还会在目标已存在时忽略失败返回，随后只完成 disable；表面显示 changed，运行态却仍不是 masked。清退本地 unit 时必须先保存原文件，再以指向 `/dev/null` 的持久符号链接替换并回验 `LoadState`、`ActiveState` 与 `UnitFileState`，失败时恢复原文件和原状态。
