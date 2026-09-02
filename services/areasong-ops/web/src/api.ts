@@ -98,9 +98,20 @@ function isComposeRevision(value: ComposeServiceView | ComposeRevision): value i
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & { error?: string }
+  const body = await response.text()
+  let payload: (T & { error?: string }) | undefined
+  if (body.trim() !== '') {
+    try {
+      payload = JSON.parse(body) as T & { error?: string }
+    } catch {
+      throw new APIError(response.status, `服务返回了无效响应（HTTP ${response.status}）`)
+    }
+  }
   if (!response.ok) {
-    throw new APIError(response.status, payload.error ?? `请求失败（HTTP ${response.status}）`, payload)
+    throw new APIError(response.status, payload?.error ?? `请求失败（HTTP ${response.status}）`, payload)
+  }
+  if (payload === undefined) {
+    throw new APIError(response.status, `服务返回了空响应（HTTP ${response.status}）`)
   }
   return payload
 }
