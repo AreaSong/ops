@@ -20,18 +20,21 @@ interface TerminalProps {
 }
 
 const stateLabel: Record<string, string> = {
-  pending_approval: '等待批准',
+  pending_approval: '等待第一批准',
+  pending_second_approval: '等待第二批准',
   approved: '等待执行',
   running: '执行中',
   succeeded: '成功',
   failed: '失败',
+  timed_out: '执行超时',
+  expired: '已过期',
   needs_attention: '需要人工核对',
 }
 
 function stateTone(state: string): 'healthy' | 'warning' | 'error' | 'unknown' {
   if (state === 'succeeded') return 'healthy'
-  if (state === 'pending_approval' || state === 'approved' || state === 'running') return 'warning'
-  if (state === 'failed' || state === 'needs_attention') return 'error'
+  if (state === 'pending_approval' || state === 'pending_second_approval' || state === 'approved' || state === 'running') return 'warning'
+  if (state === 'failed' || state === 'timed_out' || state === 'needs_attention') return 'error'
   return 'unknown'
 }
 
@@ -122,7 +125,7 @@ export function Terminal({
         </section>
 
         {breakGlassAvailable && <section className="page-section">
-          <div className="section-heading"><h2>创建 Shell 计划</h2><span>两人批准后才能执行</span></div>
+          <div className="section-heading"><h2>创建 Shell 计划</h2><span>两名独立批准人确认后才能执行</span></div>
           <form className="runner-update-form" onSubmit={(event) => void createPlan(event)}>
             <label><span>对象 ID</span><input required value={objectId} onChange={(event) => setObjectId(event.target.value)} placeholder="受控对象 objectId" /></label>
             <label className="wide"><span>Shell 输入</span><textarea required rows={5} value={shellInput} onChange={(event) => setShellInput(event.target.value)} spellCheck={false} placeholder="仅填写必要的受控命令" /></label>
@@ -150,12 +153,13 @@ export function Terminal({
             const confirmation = planConfirmations[plan.id] ?? ''
             const input = executionInputs[plan.id] ?? ''
             const phrase = plan.confirmationPhrase ?? ''
-            const approval = plan.state === 'pending_approval'
+            const approval = plan.state === 'pending_approval' || plan.state === 'pending_second_approval'
+            const approvalLabel = plan.state === 'pending_second_approval' ? '第二批准' : '第一批准'
             const executable = plan.state === 'approved'
             return <article className={`runner-update-card runner-update-${stateTone(plan.state)}`} key={plan.id}>
               <header><div className="runner-update-title"><span className={`service-indicator ${stateTone(plan.state)}`} /><div><strong>{plan.objectId}</strong><small>{stateLabel[plan.state] || plan.state} · {formatTime(plan.createdAt)}</small></div></div><span className={`credential-health ${stateTone(plan.state)}`}>{stateLabel[plan.state] || plan.state}</span></header>
-              <dl className="runner-update-detail"><div><dt>输入摘要</dt><dd><code>{shortHash(plan.inputDigest)}</code></dd></div><div><dt>计划 ID</dt><dd><code>{shortHash(plan.id)}</code></dd></div><div><dt>批准人</dt><dd><code>{shortHash(plan.approvedByHash)}</code></dd></div><div><dt>结束时间</dt><dd>{formatTime(plan.finishedAt)}</dd></div></dl>
-              {approval && <div className="runner-update-actions attention"><label><span>批准确认</span><code>{phrase}</code><input value={confirmation} onChange={(event) => setPlanConfirmation(plan.id, event.target.value)} /></label><button className="button danger" type="button" disabled={!phrase || confirmation !== phrase || busy === `terminal-approve:${plan.id}`} onClick={() => void approve(plan)}><ShieldCheck size={14} />{busy === `terminal-approve:${plan.id}` ? '批准中' : '批准计划'}</button></div>}
+              <dl className="runner-update-detail"><div><dt>输入摘要</dt><dd><code>{shortHash(plan.inputDigest)}</code></dd></div><div><dt>计划 ID</dt><dd><code>{shortHash(plan.id)}</code></dd></div><div><dt>第一批准人</dt><dd><code>{shortHash(plan.approvedByHash)}</code></dd></div><div><dt>第二批准人</dt><dd><code>{shortHash(plan.secondApprovedByHash)}</code></dd></div><div><dt>结束时间</dt><dd>{formatTime(plan.finishedAt)}</dd></div></dl>
+              {approval && <div className="runner-update-actions attention"><label><span>{approvalLabel}确认</span><code>{phrase}</code><input value={confirmation} onChange={(event) => setPlanConfirmation(plan.id, event.target.value)} /></label><button className="button danger" type="button" disabled={!phrase || confirmation !== phrase || busy === `terminal-approve:${plan.id}`} onClick={() => void approve(plan)}><ShieldCheck size={14} />{busy === `terminal-approve:${plan.id}` ? '批准中' : approvalLabel}</button></div>}
               {executable && <div className="runner-update-actions attention"><label><span>执行时再次提供原始输入</span><textarea rows={3} value={input} onChange={(event) => setExecutionInput(plan.id, event.target.value)} spellCheck={false} /></label><button className="button danger" type="button" disabled={!input || busy === `terminal-execute:${plan.id}`} onClick={() => void execute(plan)}><Play size={14} />{busy === `terminal-execute:${plan.id}` ? '执行中' : '独立执行'}</button></div>}
               {plan.state === 'running' && <div className="runner-update-progress"><LoaderCircle className="spin" size={16} />终端命令执行中</div>}
               {plan.output && <pre className="terminal-output"><code>{plan.output}</code></pre>}

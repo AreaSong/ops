@@ -159,6 +159,9 @@ func main() {
 	}
 	defer os.RemoveAll(stateRoot)
 	applyDevelopmentFeatureOverrides(catalog)
+	if err := applyDevelopmentAccessOverride(catalog); err != nil {
+		log.Fatal(err)
+	}
 	database, err := store.Open(filepath.Join(stateRoot, "ops.db"))
 	if err != nil {
 		log.Fatal(err)
@@ -337,6 +340,39 @@ func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
 			log.Printf("development runner update root unavailable: %v", err)
 		}
 	}
+}
+
+func applyDevelopmentAccessOverride(catalog *config.Catalog) error {
+	email := config.NormalizeAccessSubject(os.Getenv("OPS_DEV_ADMIN_EMAIL"))
+	if email == "" {
+		return nil
+	}
+	if catalog.Access == nil || catalog.Access.Roles["platform-admin"].ID == "" {
+		return errors.New("OPS_DEV_ADMIN_EMAIL 需要包含 platform-admin 的访问策略")
+	}
+	hash := config.AccessHashForEmail(email)
+	principal := catalog.Access.Principals[hash]
+	principal.Email, principal.EmailHash, principal.Subject = email, hash, hash
+	if principal.TenantID == "" {
+		principal.TenantID = catalog.Access.DefaultTenant
+	}
+	if !containsString(principal.Roles, "platform-admin") {
+		principal.Roles = append(principal.Roles, "platform-admin")
+	}
+	if catalog.Access.Principals == nil {
+		catalog.Access.Principals = make(map[string]config.AccessPrincipal)
+	}
+	catalog.Access.Principals[hash] = principal
+	return nil
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func envOr(name, fallback string) string {

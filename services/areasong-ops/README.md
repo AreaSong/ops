@@ -97,6 +97,9 @@ OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 和人工批准门禁；生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
 如需在本地演练 Break-glass Shell，再额外设置 `OPS_DEV_ENABLE_BREAK_GLASS=1`；该
 开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
+需要验收平台级写能力时，必须再显式设置 `OPS_DEV_ADMIN_EMAIL=<开发邮箱>`；该变量
+只由 `cmd/dev-runner` 读取，并只给对应开发身份临时加入 `platform-admin`，生产 Runner
+和生产访问策略均不识别此开关。
 
 ## 构建
 

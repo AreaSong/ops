@@ -381,7 +381,7 @@ export class OpsAPI {
       mode: action === 'restore' ? 'production' : 'isolated',
       confirmation: action === 'restore'
         ? `创建生产恢复计划 ${service}`
-        : `创建隔离恢复演练恢复计划 ${service}`,
+        : `创建隔离恢复演练计划 ${service}`,
     })
   }
 

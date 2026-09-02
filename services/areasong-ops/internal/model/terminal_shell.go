@@ -10,6 +10,7 @@ type TerminalShellPlan struct {
 	InputDigest             string     `json:"inputDigest"`
 	ConfirmationPhrase      string     `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash          string     `json:"approvedByHash,omitempty"`
+	SecondApprovedByHash    string     `json:"secondApprovedByHash,omitempty"`
 	ExecutionIdempotencyKey string     `json:"-"`
 	ExitCode                int        `json:"exitCode,omitempty"`
 	Output                  string     `json:"output,omitempty"`
@@ -17,6 +18,7 @@ type TerminalShellPlan struct {
 	CreatedAt               time.Time  `json:"createdAt"`
 	ExpiresAt               time.Time  `json:"expiresAt"`
 	ApprovedAt              *time.Time `json:"approvedAt,omitempty"`
+	SecondApprovedAt        *time.Time `json:"secondApprovedAt,omitempty"`
 	StartedAt               *time.Time `json:"startedAt,omitempty"`
 	FinishedAt              *time.Time `json:"finishedAt,omitempty"`
 }

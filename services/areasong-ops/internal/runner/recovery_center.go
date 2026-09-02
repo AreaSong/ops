@@ -131,11 +131,10 @@ func (engine *Engine) CreateRestorePlan(ctx context.Context, actor string, reque
 			return model.ReleasePlan{}, errors.New("当前恢复点缺少 30 天内成功的隔离恢复演练证据")
 		}
 	}
-	confirmationLabel := "隔离恢复演练"
+	expectedConfirmation := fmt.Sprintf("创建隔离恢复演练计划 %s", request.Service)
 	if request.Mode == "production" {
-		confirmationLabel = "生产"
+		expectedConfirmation = fmt.Sprintf("创建生产恢复计划 %s", request.Service)
 	}
-	expectedConfirmation := fmt.Sprintf("创建%s恢复计划 %s", confirmationLabel, request.Service)
 	if request.Confirmation != expectedConfirmation {
 		return model.ReleasePlan{}, errors.New("恢复请求确认短语不匹配")
 	}

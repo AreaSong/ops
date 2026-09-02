@@ -665,7 +665,7 @@ export interface TerminalSession {
   createdAt: string
 }
 
-export type TerminalShellPlanState = 'pending_approval' | 'approved' | 'running' | 'succeeded' | 'failed' | 'needs_attention'
+export type TerminalShellPlanState = 'pending_approval' | 'pending_second_approval' | 'approved' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'expired' | 'needs_attention'
 
 export interface TerminalShellPlan {
   id: string
@@ -675,12 +675,14 @@ export interface TerminalShellPlan {
   inputDigest: string
   confirmationPhrase?: string
   approvedByHash?: string
+  secondApprovedByHash?: string
   exitCode?: number
   output?: string
   error?: string
   createdAt: string
   expiresAt: string
   approvedAt?: string
+  secondApprovedAt?: string
   startedAt?: string
   finishedAt?: string
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
+	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
 func TestApplyDevelopmentFeatureOverridesIsOptInAndScoped(t *testing.T) {
@@ -41,5 +42,38 @@ func TestApplyDevelopmentFeatureOverridesIsOptInAndScoped(t *testing.T) {
 	applyDevelopmentFeatureOverrides(catalog)
 	if !catalog.Terminal.BreakGlass || catalog.Terminal.ShellWorkingDir != filepath.Join(runtimeRoot, "shell") {
 		t.Fatalf("break-glass override=%+v", catalog.Terminal)
+	}
+}
+
+func TestApplyDevelopmentAccessOverrideIsExplicit(t *testing.T) {
+	catalog := &config.Catalog{Access: &config.AccessPolicy{
+		DefaultTenant: "production",
+		Principals:    map[string]config.AccessPrincipal{},
+		Roles: map[string]model.Role{
+			"platform-admin": {ID: "platform-admin", Permissions: []model.Permission{"*"}},
+		},
+	}}
+	if err := applyDevelopmentAccessOverride(catalog); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Access.Principals) != 0 {
+		t.Fatal("development admin changed without explicit opt-in")
+	}
+	t.Setenv("OPS_DEV_ADMIN_EMAIL", "Admin@Example.Test")
+	if err := applyDevelopmentAccessOverride(catalog); err != nil {
+		t.Fatal(err)
+	}
+	hash := config.AccessHashForEmail("admin@example.test")
+	principal := catalog.Access.Principals[hash]
+	if principal.Email != "admin@example.test" || principal.TenantID != "production" ||
+		len(principal.Roles) != 1 || principal.Roles[0] != "platform-admin" {
+		t.Fatalf("principal=%+v", principal)
+	}
+	if err := applyDevelopmentAccessOverride(catalog); err != nil {
+		t.Fatal(err)
+	}
+	principal = catalog.Access.Principals[hash]
+	if len(principal.Roles) != 1 {
+		t.Fatalf("repeat principal=%+v", principal)
 	}
 }

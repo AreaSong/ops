@@ -63,8 +63,8 @@ func (store *Store) GetTerminalShellPlan(ctx context.Context, id string) (model.
 
 func (store *Store) ListTerminalShellPlans(ctx context.Context, limit int) ([]model.TerminalShellPlan, error) {
 	rows, err := store.db.QueryContext(ctx, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,execution_idempotency_key,exit_code,output,error,
-		created_at,expires_at,approved_at,started_at,finished_at
+		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at
 		FROM terminal_shell_plans ORDER BY created_at DESC LIMIT ?`, clampLimit(limit, 200))
 	if err != nil {
 		return nil, err
@@ -79,6 +79,53 @@ func (store *Store) ListTerminalShellPlans(ctx context.Context, limit int) ([]mo
 		result = append(result, item.plan)
 	}
 	return result, rows.Err()
+}
+
+func (store *Store) ExpireTerminalShellPlans(ctx context.Context, now time.Time) ([]model.TerminalShellPlan, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM terminal_shell_plans
+		WHERE state IN ('pending_approval','pending_second_approval','approved') AND expires_at<=?
+		ORDER BY created_at`, timeText(now))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	result := make([]model.TerminalShellPlan, 0, len(ids))
+	for _, id := range ids {
+		stored, found, err := terminalShellPlanByID(ctx, tx, id)
+		if err != nil || !found {
+			if err == nil {
+				err = ErrNotFound
+			}
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE terminal_shell_plans
+			SET state='expired',finished_at=?
+			WHERE id=? AND state IN ('pending_approval','pending_second_approval','approved')`, timeText(now), id); err != nil {
+			return nil, err
+		}
+		stored.plan.State, stored.plan.FinishedAt = "expired", &now
+		result = append(result, stored.plan)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (store *Store) ApproveTerminalShellPlan(
@@ -96,7 +143,7 @@ func (store *Store) ApproveTerminalShellPlan(
 		}
 		return model.TerminalShellPlan{}, err
 	}
-	if stored.plan.State != "pending_approval" {
+	if stored.plan.State != "pending_approval" && stored.plan.State != "pending_second_approval" {
 		return model.TerminalShellPlan{}, errors.New("紧急终端计划不在待批准状态")
 	}
 	if stored.plan.ActorHash == actor {
@@ -110,7 +157,24 @@ func (store *Store) ApproveTerminalShellPlan(
 		return model.TerminalShellPlan{}, ErrConfirmation
 	}
 	now := store.now()
-	result, err := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='approved',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval'`, actor, timeText(now), id)
+	if stored.plan.State == "pending_approval" {
+		result, updateErr := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='pending_second_approval',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval'`, actor, timeText(now), id)
+		if updateErr != nil {
+			return model.TerminalShellPlan{}, updateErr
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return model.TerminalShellPlan{}, errors.New("紧急终端计划状态已变化")
+		}
+		if err := tx.Commit(); err != nil {
+			return model.TerminalShellPlan{}, err
+		}
+		stored.plan.State, stored.plan.ApprovedByHash, stored.plan.ApprovedAt = "pending_second_approval", actor, &now
+		return stored.plan, nil
+	}
+	if stored.plan.ApprovedByHash == actor {
+		return model.TerminalShellPlan{}, errors.New("紧急终端两名批准人必须独立")
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='approved',second_approved_by_hash=?,second_approved_at=? WHERE id=? AND state='pending_second_approval' AND approved_by_hash<>?`, actor, timeText(now), id, actor)
 	if err != nil {
 		return model.TerminalShellPlan{}, err
 	}
@@ -120,7 +184,7 @@ func (store *Store) ApproveTerminalShellPlan(
 	if err := tx.Commit(); err != nil {
 		return model.TerminalShellPlan{}, err
 	}
-	stored.plan.State, stored.plan.ApprovedByHash, stored.plan.ApprovedAt = "approved", actor, &now
+	stored.plan.State, stored.plan.SecondApprovedByHash, stored.plan.SecondApprovedAt = "approved", actor, &now
 	return stored.plan, nil
 }
 
@@ -160,8 +224,9 @@ func (store *Store) StartTerminalShellPlan(
 		}
 		return plan, false, nil
 	}
-	if plan.State != "approved" || plan.ApprovedByHash == "" {
-		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划尚未完成独立批准")
+	if plan.State != "approved" || plan.ApprovedByHash == "" || plan.SecondApprovedByHash == "" ||
+		plan.ApprovedByHash == plan.SecondApprovedByHash {
+		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划尚未完成两名独立批准")
 	}
 	if !store.now().Before(plan.ExpiresAt) {
 		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划已过期")
@@ -200,14 +265,14 @@ func (store *Store) FinishTerminalShellPlan(
 
 func terminalShellPlanByID(ctx context.Context, db queryer, id string) (storedTerminalShellPlan, bool, error) {
 	return terminalShellPlanQuery(ctx, db, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,execution_idempotency_key,exit_code,output,error,
-		created_at,expires_at,approved_at,started_at,finished_at FROM terminal_shell_plans WHERE id=?`, id)
+		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at FROM terminal_shell_plans WHERE id=?`, id)
 }
 
 func terminalShellPlanByIdempotency(ctx context.Context, db queryer, key string) (storedTerminalShellPlan, bool, error) {
 	return terminalShellPlanQuery(ctx, db, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,execution_idempotency_key,exit_code,output,error,
-		created_at,expires_at,approved_at,started_at,finished_at FROM terminal_shell_plans WHERE idempotency_key=?`, key)
+		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at FROM terminal_shell_plans WHERE idempotency_key=?`, key)
 }
 
 func terminalShellPlanQuery(ctx context.Context, db queryer, query, value string) (storedTerminalShellPlan, bool, error) {
@@ -228,12 +293,12 @@ func scanTerminalShellPlanRow(scanner terminalShellScanner) (storedTerminalShell
 func scanTerminalShellPlanScanner(scanner terminalShellScanner) (storedTerminalShellPlan, bool, error) {
 	var item storedTerminalShellPlan
 	var created, expires string
-	var approved, started, finished sql.NullString
+	var approved, secondApproved, started, finished sql.NullString
 	err := scanner.Scan(&item.plan.ID, &item.idempotencyKey, &item.requestDigest, &item.plan.ObjectID,
 		&item.plan.State, &item.plan.ActorHash, &item.plan.InputDigest, &item.confirmation,
-		&item.plan.ConfirmationPhrase, &item.plan.ApprovedByHash, &item.plan.ExecutionIdempotencyKey,
+		&item.plan.ConfirmationPhrase, &item.plan.ApprovedByHash, &item.plan.SecondApprovedByHash, &item.plan.ExecutionIdempotencyKey,
 		&item.plan.ExitCode, &item.plan.Output, &item.plan.Error, &created, &expires,
-		&approved, &started, &finished)
+		&approved, &secondApproved, &started, &finished)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedTerminalShellPlan{}, false, nil
 	}
@@ -246,6 +311,9 @@ func scanTerminalShellPlanScanner(scanner terminalShellScanner) (storedTerminalS
 	}
 	if err == nil {
 		item.plan.ApprovedAt, err = nullableTime(approved)
+	}
+	if err == nil {
+		item.plan.SecondApprovedAt, err = nullableTime(secondApproved)
 	}
 	if err == nil {
 		item.plan.StartedAt, err = nullableTime(started)

@@ -35,7 +35,7 @@ export function RecoveryCenter({ items, loading, available, error, busy, onRefre
   const restorePhrase = restore
     ? restore.mode === 'production'
       ? `创建生产恢复计划 ${restore.service}`
-      : `创建隔离恢复演练恢复计划 ${restore.service}`
+      : `创建隔离恢复演练计划 ${restore.service}`
     : ''
 
   return (

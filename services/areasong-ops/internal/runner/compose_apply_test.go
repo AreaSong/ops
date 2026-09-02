@@ -119,6 +119,13 @@ func TestComposeApplyAndRollbackAreBoundedAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+		model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}); err == nil {
+		t.Fatal("unapproved Compose revision was applied")
+	}
+	if content, _ := os.ReadFile(runtimePath); string(content) != oldContent {
+		t.Fatalf("unapproved apply changed runtime content=%q", content)
+	}
 	if _, err := engine.ApproveComposeRevision(ctx, actorB, "demo", revision.ID,
 		model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase}); err != nil {
 		t.Fatal(err)

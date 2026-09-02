@@ -17,6 +17,9 @@ func (engine *Engine) TerminalShellPlans(ctx context.Context, actor string) ([]m
 	if engine.catalog.Terminal == nil || !engine.catalog.Terminal.Enabled || !engine.catalog.Terminal.BreakGlass {
 		return nil, errors.New("紧急终端尚未启用")
 	}
+	if err := engine.expireTerminalShellPlans(ctx); err != nil {
+		return nil, err
+	}
 	items, err := engine.store.ListTerminalShellPlans(ctx, 100)
 	if err != nil {
 		return nil, err
@@ -28,6 +31,20 @@ func (engine *Engine) TerminalShellPlans(ctx context.Context, actor string) ([]m
 		}
 	}
 	return result, nil
+}
+
+func (engine *Engine) expireTerminalShellPlans(ctx context.Context) error {
+	expired, err := engine.store.ExpireTerminalShellPlans(ctx, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	for _, plan := range expired {
+		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
+			ActorHash: "system", Event: "terminal.shell.expired", Resource: plan.ID, Outcome: "expired",
+			Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "expiresAt": plan.ExpiresAt},
+		})
+	}
+	return nil
 }
 
 func (engine *Engine) CreateTerminalShellPlan(
@@ -78,6 +95,9 @@ func (engine *Engine) ApproveTerminalShellPlan(
 	if !actorPattern.MatchString(actor) || !uuidPattern.MatchString(id) {
 		return model.TerminalShellPlan{}, errors.New("紧急终端批准标识无效")
 	}
+	if err := engine.expireTerminalShellPlans(ctx); err != nil {
+		return model.TerminalShellPlan{}, err
+	}
 	plan, err := engine.store.GetTerminalShellPlan(ctx, id)
 	if err != nil {
 		return model.TerminalShellPlan{}, err
@@ -85,11 +105,18 @@ func (engine *Engine) ApproveTerminalShellPlan(
 	if err := engine.authorize(ctx, actor, model.PermissionBreakGlass, plan.ObjectID); err != nil {
 		return model.TerminalShellPlan{}, err
 	}
+	if plan.State == "expired" {
+		return model.TerminalShellPlan{}, errors.New("紧急终端计划已过期")
+	}
 	approved, err := engine.store.ApproveTerminalShellPlan(ctx, id, actor, request.Confirmation)
 	if err != nil {
 		return model.TerminalShellPlan{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "terminal.shell.approved", Resource: id, Outcome: "approved", Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest}})
+	approvalStep := "first"
+	if approved.SecondApprovedByHash != "" {
+		approvalStep = "second"
+	}
+	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "terminal.shell.approved", Resource: id, Outcome: approved.State, Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "approvalStep": approvalStep}})
 	return approved, nil
 }
 
@@ -106,12 +133,18 @@ func (engine *Engine) ExecuteTerminalShellPlan(
 	if len(request.Input) == 0 || len(request.Input) > maxTerminalShellInputBytes || strings.ContainsRune(request.Input, '\x00') {
 		return model.TerminalShellPlan{}, errors.New("紧急终端输入为空、过大或包含非法字符")
 	}
+	if err := engine.expireTerminalShellPlans(ctx); err != nil {
+		return model.TerminalShellPlan{}, err
+	}
 	plan, err := engine.store.GetTerminalShellPlan(ctx, id)
 	if err != nil {
 		return model.TerminalShellPlan{}, err
 	}
 	if err := engine.authorize(ctx, actor, model.PermissionBreakGlass, plan.ObjectID); err != nil {
 		return model.TerminalShellPlan{}, err
+	}
+	if plan.State == "expired" {
+		return plan, errors.New("紧急终端计划已过期")
 	}
 	plan, started, err := engine.store.StartTerminalShellPlan(ctx, id, actor, request.IdempotencyKey, digestText(request.Input))
 	if err != nil {

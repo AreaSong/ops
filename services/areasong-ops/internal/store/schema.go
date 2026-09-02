@@ -709,4 +709,9 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 ALTER TABLE release_plans ADD COLUMN server_id TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE release_plans ADD COLUMN schedule_at TEXT;
 	 CREATE INDEX idx_release_plans_schedule ON release_plans(state, schedule_at);`,
+	`ALTER TABLE terminal_shell_plans ADD COLUMN second_approved_by_hash TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE terminal_shell_plans ADD COLUMN second_approved_at TEXT;
+	 UPDATE terminal_shell_plans
+	 SET state = 'pending_second_approval'
+	 WHERE state = 'approved' AND approved_by_hash != '' AND execution_idempotency_key = '';`,
 }
