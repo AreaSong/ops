@@ -207,19 +207,27 @@ func main() {
 		}()
 	}
 	socket := envOr("OPS_RUNNER_SOCKET", "/tmp/areasong-ops-dev.sock")
-	_ = os.Remove(socket)
-	listener, err := net.Listen("unix", socket)
+	listenAddr := strings.TrimSpace(os.Getenv("OPS_DEV_LISTEN_ADDR"))
+	listenerNetwork, listenerAddress := "unix", socket
+	if listenAddr != "" {
+		listenerNetwork, listenerAddress = "tcp", listenAddr
+	} else {
+		_ = os.Remove(socket)
+	}
+	listener, err := net.Listen(listenerNetwork, listenerAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.Remove(socket)
+	if listenerNetwork == "unix" {
+		defer os.Remove(socket)
+	}
 	server := &http.Server{Handler: runner.NewServer(engine, database), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("serve: %v", err)
 		}
 	}()
-	log.Printf("development runner listening on %s", socket)
+	log.Printf("development runner listening on %s://%s", listenerNetwork, listenerAddress)
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
