@@ -23,7 +23,7 @@
 - [ ] 每个服务/自动任务的 `tenantId`、`serverId` 与 inventory 对齐；`statePolicy` 的默认目标、维护 TTL、排空超时和 `autoReconcile` 经审核，默认不自动协调生产。
 - [ ] `access` 的 default tenant、principal SHA-256、角色 permission、对象范围和过期时间已核对；无绑定主体、越租户和越对象请求预期为拒绝。
 - [ ] `fleet` 只登记已批准的 server/Runner、能力标签和心跳超时；`allowRemoteRunners`、mTLS 和在线租约状态符合窗口要求，示例单机不等于允许跨机执行。
-- [ ] `extensions.enabled` 默认关闭；若启用，trusted publisher、签名、`rootless`/`wasm` 沙箱和最小权限逐项留证。
+- [ ] `extensions.enabled` 默认关闭；若启用，trusted publisher、`areasong-ops.extension` 用途签名、`wasm` 沙箱和最小权限逐项留证。
 - [ ] Kubernetes 目标的 cluster/context/namespace、resourceKinds 和对象 allowlist 已核对；没有 kubeconfig、token 或任意 manifest 路径进入 Git/浏览器。
 - [ ] schema 4 适配器及全部服务 hook 只输出带匹配 `schemaVersion: 2`、action 和 phase 的单个 JSON 对象。
 - [ ] 使用恢复点的服务声明完整 `requiredArtifactRoles` 和 1 小时至 7 天有效期；通用 Compose 服务配置专属 `backupEvidenceExecutable`。
@@ -54,6 +54,8 @@
 - [ ] Compose 依次验证 `validate`、`propose`、摘要 digest、审批失效条件、受控 apply、health/smoke/identity、观察窗口和失败回滚；验证任意路径、依赖容器和过期 digest 被拒绝。
 - [ ] 恢复演练只使用 `isolated` 模式和临时资源，验证备份角色、SHA-256、expected-before、清理和生产数据不变；不得以演练替代生产恢复批准。
 - [ ] fleet 批量只在非生产或明确隔离目标上验证 selector、DAG、canary、并发上限、暂停/失败策略、变更窗口、心跳租约和审计；禁止通配符扩大目标。
+- [ ] Runner Fleet 自更新验证四方独立身份、显式目标、v2 签名心跳、mTLS 指纹、制品/策略摘要、assignment fencing、Canary 观察、临时错误退避、重启回执恢复、失败停止和逐节点回滚；生产开关仍保持关闭。
+- [ ] WASM 扩展验证用途隔离签名、双人批准、独立执行、输入/输出/内存/超时限制以及无宿主文件、网络、环境变量和 Docker Socket 权限；生产开关仍保持关闭。
 - [ ] Kubernetes 只验证声明 allowlist 内的 dry-run、manifest digest、命名空间和资源 kind；任何 apply 另建计划并单独批准。
 
 ## 阶段 4：生产变更与观察收口

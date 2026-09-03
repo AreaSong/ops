@@ -3,6 +3,8 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -323,6 +325,62 @@ func TestOrdinaryActorCannotForgeRunnerHeartbeat(t *testing.T) {
 	}
 }
 
+func TestRemoteRunnerListenerRejectsHumanControlPlaneAPI(t *testing.T) {
+	next := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+	handler := RemoteRunnerHandler(next)
+	for _, test := range []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{http.MethodGet, "/v1/services", http.StatusNotFound},
+		{http.MethodGet, "/v1/runner/fleet-updates", http.StatusNotFound},
+		{http.MethodPost, "/v1/runner/fleet-updates", http.StatusNotFound},
+		{http.MethodPost, "/v1/fleet/runners/runner-a/heartbeat", http.StatusNoContent},
+		{http.MethodPost, "/v1/fleet/runners/runner-a/fleet-updates/claim", http.StatusNoContent},
+	} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != test.want {
+			t.Fatalf("%s %s status=%d want=%d", test.method, test.path, response.Code, test.want)
+		}
+	}
+}
+
+func TestRunnerMTLSIdentityRequiresNameAndPinnedFingerprint(t *testing.T) {
+	certificate := &x509.Certificate{Raw: []byte("runner-a-certificate")}
+	certificate.Subject.CommonName = "runner-a"
+	policy := &config.FleetPolicy{Enabled: true, AllowRemoteRunners: true, RequiremTLS: true}
+	node := model.RunnerNode{
+		ID: "runner-a", CertificateFingerprint: certificateFingerprint(certificate.Raw),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/fleet/runners/runner-a/heartbeat", nil)
+	request.Header.Set(runnerIDHeader, node.ID)
+	request.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{certificate},
+		VerifiedChains:   [][]*x509.Certificate{{certificate}},
+	}
+	if err := requireRunnerTransportIdentity(request, policy, node); err != nil {
+		t.Fatalf("valid mTLS identity rejected: %v", err)
+	}
+	wrongName := *certificate
+	wrongName.Subject.CommonName = "runner-b"
+	request.TLS.PeerCertificates = []*x509.Certificate{&wrongName}
+	request.TLS.VerifiedChains = [][]*x509.Certificate{{&wrongName}}
+	if err := requireRunnerTransportIdentity(request, policy, node); err == nil || !strings.Contains(err.Error(), "Runner ID") {
+		t.Fatalf("wrong certificate name err=%v", err)
+	}
+	request.TLS.PeerCertificates = []*x509.Certificate{certificate}
+	request.TLS.VerifiedChains = [][]*x509.Certificate{{certificate}}
+	node.CertificateFingerprint = "sha256:" + strings.Repeat("0", 64)
+	if err := requireRunnerTransportIdentity(request, policy, node); err == nil || !strings.Contains(err.Error(), "指纹") {
+		t.Fatalf("wrong certificate fingerprint err=%v", err)
+	}
+}
+
 func TestManagedFileRejectsTraversalAndSymlink(t *testing.T) {
 	fixture := newSecurityEngine(t)
 	root := fixture.engine.catalog.Files.Roots["managed"]
@@ -351,6 +409,7 @@ func TestExtensionStagingFailureDoesNotReportStored(t *testing.T) {
 	content := []byte("#!/bin/sh\necho extension\n")
 	digest := digestText(string(content))
 	manifest := model.ExtensionManifest{
+		Purpose: model.ExtensionManifestPurpose, SchemaVersion: model.ExtensionManifestSchema,
 		ID: "demo-ext", Version: "v1", Type: "script", Entrypoint: "main.sh",
 		Digest: digest, Publisher: "test-publisher",
 	}

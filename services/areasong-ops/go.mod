@@ -6,7 +6,10 @@ require modernc.org/sqlite v1.31.1
 
 require github.com/golang-jwt/jwt/v5 v5.2.1
 
-require gopkg.in/yaml.v3 v3.0.1
+require (
+	github.com/tetratelabs/wazero v1.8.2
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

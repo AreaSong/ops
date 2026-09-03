@@ -161,6 +161,34 @@ func (engine *Engine) authorizePlatform(
 	return authorizationError{message: "当前角色没有平台资源权限"}
 }
 
+func (engine *Engine) actorTenantID(ctx context.Context, actor string) (string, error) {
+	if !actorPattern.MatchString(actor) {
+		return "", authorizationError{message: "操作者标识无效"}
+	}
+	policy, _, err := engine.effectiveAccessPolicy(ctx)
+	if err != nil {
+		return "", authorizationError{message: "访问策略快照不可用"}
+	}
+	if policy == nil || !policy.Enforced {
+		if engine.catalog.SchemaVersion <= 3 {
+			return "default", nil
+		}
+		return "", authorizationError{message: "生产访问策略未启用"}
+	}
+	principal, ok := policy.Principals[actor]
+	if !ok || !principalUsable(policy, actor, principal, time.Now().UTC()) {
+		return "", authorizationError{message: "操作者未登记、已禁用或授权已过期"}
+	}
+	tenantID := principal.TenantID
+	if tenantID == "" {
+		tenantID = policy.DefaultTenant
+	}
+	if !tenantIsActive(policy, tenantID) {
+		return "", authorizationError{message: "操作者所属租户未启用"}
+	}
+	return tenantID, nil
+}
+
 func (engine *Engine) authorizeTask(ctx context.Context, actor string, task model.Task, permission model.Permission) error {
 	service, ok := engine.catalog.Object(task.Service)
 	if !ok {

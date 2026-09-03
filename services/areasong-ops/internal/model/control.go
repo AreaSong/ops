@@ -515,9 +515,11 @@ type ExtensionUploadResult struct {
 }
 
 type ExtensionManifest struct {
+	Purpose        string   `json:"purpose"`
+	SchemaVersion  int      `json:"schemaVersion"`
 	ID             string   `json:"id"`
 	Version        string   `json:"version"`
-	Type           string   `json:"type"` // script or plugin
+	Type           string   `json:"type"` // script, wasm or plugin
 	Entrypoint     string   `json:"entrypoint"`
 	Digest         string   `json:"digest"`
 	Signature      string   `json:"signature"`
@@ -525,6 +527,11 @@ type ExtensionManifest struct {
 	AllowedObjects []string `json:"allowedObjects,omitempty"`
 	Publisher      string   `json:"publisher"`
 }
+
+const (
+	ExtensionManifestPurpose = "areasong-ops.extension"
+	ExtensionManifestSchema  = 1
+)
 
 type RunnerUpdate struct {
 	ID                         string                         `json:"id"`

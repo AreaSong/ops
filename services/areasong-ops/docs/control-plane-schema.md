@@ -106,7 +106,7 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 
 ## 7. Fleet 与多服务器批量
 
-`fleet.inventory.servers` 描述 server，`runners` 描述其执行器；节点状态为 `unknown/online/offline/draining/disabled`，Runner 以心跳租约证明在线。`allowRemoteRunners: false` 和 `requireMTLS: true` 是示例的保守默认；真实启用前要完成证书、租约和网络边界验收。
+`fleet.inventory.servers` 描述 server，`runners` 描述其执行器；节点状态为 `unknown/online/offline/draining/disabled`，Runner 以心跳租约证明在线。`allowRemoteRunners: false` 和 `requireMTLS: true` 是示例的保守默认；真实启用前要完成证书、租约和网络边界验收。Runner 自更新还必须显式设置 `runnerUpdate.fleetEnabled: true`，否则 Fleet API 和协调器保持关闭。
 
 批量任务必须携带明确的 `targetIds` 或带标签/能力的 `targetSelector`，并通过 DAG、批次策略、并发策略、失败策略和变更窗口验证：
 
@@ -115,13 +115,19 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 - 失败策略必须显式选择 stop/continue/rollback/pause/needs_attention；生产不允许静默跳过失败节点。
 - **多服务器批量是红线**：禁止 wildcard/空 selector、跨租户混跑、离线 Runner、无变更窗口、未经审批的全量 rollout，以及把一次批准当作后续批量授权。任一节点失败都要停止后续批次或按批准的回滚策略逐节点处理。
 
+Runner Fleet 自更新计划必须进一步绑定签名制品摘要、策略摘要、每个目标的 mTLS 指纹和 v2 心跳身份，并要求创建人、第一批准人、第二批准人和执行人四方独立；首批只能是 Canary，观察窗口结束且身份复验通过后才释放后续批次。失败会停止后续批次，已成功节点逐节点回滚，无法确认旧身份时进入 `needs_attention`。
+
+远程 Runner 在本地持久化 assignment 回执和 fencing token，重启后从 `prepared/launching/launched` 状态继续，不能重新猜测或重复激活。控制面 408/425/429、5xx、网络中断和响应超时采用最长 30 秒的指数退避；401/403、mTLS 身份、签名、策略摘要、制品摘要和 assignment fence 不一致立即失败。传输中断可重新下载，但长度、摘要或响应身份不一致不得降级放行。
+
 示例只登记 LosAngeles 一台 server/Runner；这表示 schema 的 inventory 形状，不表示已经获准执行多服务器生产任务。
 
 ## 8. 扩展与 Kubernetes
 
 ### Extensions
 
-`extensions.enabled` 默认是 `false`。开启前必须登记 `trustedPublishers`，强制 `requireSignature: true`，并选择 `rootless` 或 `wasm` 沙箱。扩展 manifest 的 digest、签名、publisher、权限和 `allowedObjects` 必须可审计；扩展不能获得任意 Shell、宿主文件写或未绑定对象访问。没有独立批准时，保持关闭比添加空权限更安全。
+`extensions.enabled` 默认是 `false`。当前执行器只接受显式 `sandbox: wasm`，开启前必须登记 `trustedPublishers`、Ed25519 公钥并强制 `requireSignature: true`。扩展 manifest 固定 `purpose: areasong-ops.extension` 和 `schemaVersion: 1`，用途、版本、digest、publisher、只读权限和 `allowedObjects` 均纳入签名及审计；执行计划还必须绑定租户、目标对象、输入摘要、签名 manifest 摘要、执行策略摘要、超时、包/输入/输出上限和内存上限，审批后任何策略或发布者公钥变化都会阻止执行。上传、计划、双人批准、独立执行和终态均写入审计；WASM 不启用宿主文件预开放、网络、环境变量或 Docker Socket。脚本类型可以登记为历史制品，但不能进入执行计划。没有独立批准时，保持关闭比添加空权限更安全。
+
+扩展执行计划状态为 `pending_approval -> pending_second_approval -> approved -> running -> succeeded/failed/needs_attention`，计划过期后不可批准或执行。创建人、两名批准人和执行人必须相互独立，重试只能由同一执行主体复用同一执行幂等键；Runner 重启发现 `running` 计划时必须进入 `needs_attention`，禁止猜测执行结果。WASI 仅开放 `fd_read`（受控 stdin）、`fd_write` 和 `proc_exit`，不开放文件、网络、环境变量或宿主句柄。
 
 ### Kubernetes
 

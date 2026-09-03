@@ -13,18 +13,31 @@ import (
 )
 
 type FleetPolicy struct {
-	Enabled                 bool              `json:"enabled"`
-	HeartbeatTimeoutSeconds int               `json:"heartbeatTimeoutSeconds"`
-	HeartbeatMaxSkewSeconds int               `json:"heartbeatMaxSkewSeconds,omitempty"`
-	AllowRemoteRunners      bool              `json:"allowRemoteRunners"`
-	RequiremTLS             bool              `json:"requireMTLS"`
-	RequireSignedHeartbeat  bool              `json:"requireSignedHeartbeat,omitempty"`
-	MTLSListenAddress       string            `json:"mtlsListenAddress,omitempty"`
-	MTLSCertificateFile     string            `json:"mtlsCertificateFile,omitempty"`
-	MTLSKeyFile             string            `json:"mtlsKeyFile,omitempty"`
-	MTLSClientCAFile        string            `json:"mtlsClientCAFile,omitempty"`
-	RunnerPublicKeys        map[string]string `json:"runnerPublicKeys,omitempty"`
-	Inventory               model.Fleet       `json:"inventory,omitempty"`
+	Enabled                 bool                `json:"enabled"`
+	HeartbeatTimeoutSeconds int                 `json:"heartbeatTimeoutSeconds"`
+	HeartbeatMaxSkewSeconds int                 `json:"heartbeatMaxSkewSeconds,omitempty"`
+	AllowRemoteRunners      bool                `json:"allowRemoteRunners"`
+	RequiremTLS             bool                `json:"requireMTLS"`
+	RequireSignedHeartbeat  bool                `json:"requireSignedHeartbeat,omitempty"`
+	MTLSListenAddress       string              `json:"mtlsListenAddress,omitempty"`
+	MTLSCertificateFile     string              `json:"mtlsCertificateFile,omitempty"`
+	MTLSKeyFile             string              `json:"mtlsKeyFile,omitempty"`
+	MTLSClientCAFile        string              `json:"mtlsClientCAFile,omitempty"`
+	RunnerPublicKeys        map[string]string   `json:"runnerPublicKeys,omitempty"`
+	RemoteWorker            *RemoteWorkerPolicy `json:"remoteWorker,omitempty"`
+	Inventory               model.Fleet         `json:"inventory,omitempty"`
+}
+
+type RemoteWorkerPolicy struct {
+	Enabled                  bool   `json:"enabled"`
+	RunnerID                 string `json:"runnerId"`
+	ControlPlaneURL          string `json:"controlPlaneUrl"`
+	MTLSCertificateFile      string `json:"mtlsCertificateFile"`
+	MTLSKeyFile              string `json:"mtlsKeyFile"`
+	ControlPlaneCAFile       string `json:"controlPlaneCaFile"`
+	HeartbeatPrivateKeyFile  string `json:"heartbeatPrivateKeyFile"`
+	PollIntervalSeconds      int    `json:"pollIntervalSeconds,omitempty"`
+	HeartbeatIntervalSeconds int    `json:"heartbeatIntervalSeconds,omitempty"`
 }
 
 type ExtensionPolicy struct {
@@ -34,6 +47,10 @@ type ExtensionPolicy struct {
 	RequireSignature     bool              `json:"requireSignature"`
 	Sandbox              string            `json:"sandbox"`
 	MaxPackageBytes      int64             `json:"maxPackageBytes,omitempty"`
+	MaxInputBytes        int64             `json:"maxInputBytes,omitempty"`
+	MaxOutputBytes       int64             `json:"maxOutputBytes,omitempty"`
+	MaxExecutionSeconds  int               `json:"maxExecutionSeconds,omitempty"`
+	MaxMemoryPages       uint32            `json:"maxMemoryPages,omitempty"`
 }
 
 type TerminalPolicy struct {
@@ -54,6 +71,7 @@ type FilePolicy struct {
 
 type RunnerUpdatePolicy struct {
 	Enabled              bool              `json:"enabled"`
+	FleetEnabled         bool              `json:"fleetEnabled,omitempty"`
 	RunnerID             string            `json:"runnerId"`
 	ArtifactRoot         string            `json:"artifactRoot"`
 	BinaryPath           string            `json:"binaryPath,omitempty"`

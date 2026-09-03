@@ -58,11 +58,16 @@ func (engine *Engine) ExtensionPolicyView(
 		return nil, err
 	}
 	return map[string]any{
-		"enabled":           engine.catalog.Extensions.Enabled,
-		"trustedPublishers": engine.catalog.Extensions.TrustedPublishers,
-		"requireSignature":  engine.catalog.Extensions.RequireSignature,
-		"sandbox":           engine.catalog.Extensions.Sandbox,
-		"extensions":        packages,
+		"enabled":             engine.catalog.Extensions.Enabled,
+		"trustedPublishers":   engine.catalog.Extensions.TrustedPublishers,
+		"requireSignature":    engine.catalog.Extensions.RequireSignature,
+		"sandbox":             engine.catalog.Extensions.Sandbox,
+		"maxPackageBytes":     engine.catalog.Extensions.MaxPackageBytes,
+		"maxInputBytes":       engine.catalog.Extensions.MaxInputBytes,
+		"maxOutputBytes":      engine.catalog.Extensions.MaxOutputBytes,
+		"maxExecutionSeconds": engine.catalog.Extensions.MaxExecutionSeconds,
+		"maxMemoryPages":      engine.catalog.Extensions.MaxMemoryPages,
+		"extensions":          packages,
 	}, nil
 }
 

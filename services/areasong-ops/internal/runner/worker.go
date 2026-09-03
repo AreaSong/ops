@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
+	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
 const (
@@ -28,14 +30,20 @@ const (
 // RemoteWorker claims durable assignments from the control plane and executes
 // only the immutable dispatch contract returned by a successful claim.
 type RemoteWorker struct {
-	RunnerID     string
-	Endpoint     string
-	Client       *http.Client
-	Catalog      *config.Catalog
-	Executor     Executor
-	StateRoot    string
-	Lease        time.Duration
-	PollInterval time.Duration
+	RunnerID            string
+	Endpoint            string
+	Client              *http.Client
+	Catalog             *config.Catalog
+	Store               *store.Store
+	Executor            Executor
+	StateRoot           string
+	RunnerUpdater       RunnerUpdateLauncher
+	Identity            func() (string, string, string, error)
+	HeartbeatPrivateKey ed25519.PrivateKey
+	Now                 func() time.Time
+	Lease               time.Duration
+	PollInterval        time.Duration
+	HeartbeatInterval   time.Duration
 }
 
 func (worker *RemoteWorker) Run(ctx context.Context) error {
@@ -48,20 +56,95 @@ func (worker *RemoteWorker) Run(ctx context.Context) error {
 	if worker.PollInterval <= 0 {
 		worker.PollInterval = defaultWorkerPollInterval
 	}
-	for {
-		claimed, err := worker.claim(ctx)
-		if err != nil {
+	if worker.fleetRunnerUpdatesConfigured() && worker.Store == nil {
+		return errors.New("Runner Fleet 更新 worker 缺少本地状态存储")
+	}
+	var heartbeatErrors <-chan error
+	if worker.remoteWorkerConfigured() {
+		if len(worker.HeartbeatPrivateKey) != ed25519.PrivateKeySize {
+			return errors.New("远程 Runner worker 心跳签名私钥无效")
+		}
+		if worker.HeartbeatInterval <= 0 {
+			worker.HeartbeatInterval = time.Duration(
+				worker.Catalog.Fleet.RemoteWorker.HeartbeatIntervalSeconds,
+			) * time.Second
+		}
+		if err := worker.establishIdentityHeartbeat(ctx); err != nil {
 			return err
 		}
-		if claimed != nil {
-			worker.execute(ctx, *claimed)
+		if ctx.Err() != nil {
+			return nil
+		}
+		channel := make(chan error, 1)
+		heartbeatErrors = channel
+		go worker.identityHeartbeatLoop(ctx, channel)
+	}
+	retryAttempt := 0
+	for {
+		if err := remoteWorkerBackgroundError(heartbeatErrors); err != nil {
+			return err
+		}
+		continueImmediately, err := worker.runRemoteWorkerCycle(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			if !isRetryableRemoteWorkerError(err) {
+				return err
+			}
+			delay := remoteWorkerRetryDelay(retryAttempt, worker.PollInterval)
+			retryAttempt++
+			logRemoteWorkerRetry("控制面轮询", err, delay)
+			if stopped, waitErr := worker.waitForInterval(ctx, heartbeatErrors, delay); stopped || waitErr != nil {
+				return waitErr
+			}
 			continue
 		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(worker.PollInterval):
+		retryAttempt = 0
+		if continueImmediately {
+			continue
 		}
+		if stopped, err := worker.waitForPoll(ctx, heartbeatErrors); stopped || err != nil {
+			return err
+		}
+	}
+}
+
+func (worker *RemoteWorker) runRemoteWorkerCycle(ctx context.Context) (bool, error) {
+	if worker.fleetRunnerUpdatesConfigured() {
+		pending, err := worker.resumeFleetRunnerUpdateReceipts(ctx)
+		if err != nil || pending {
+			return false, err
+		}
+		assignment, err := worker.claimFleetRunnerUpdate(ctx)
+		if err != nil {
+			return false, err
+		}
+		if assignment != nil {
+			return true, worker.acceptFleetRunnerUpdate(ctx, *assignment)
+		}
+	}
+	claimed, err := worker.claim(ctx)
+	if err != nil {
+		return false, err
+	}
+	if claimed == nil {
+		return false, nil
+	}
+	worker.execute(ctx, *claimed)
+	return true, nil
+}
+
+func (worker *RemoteWorker) waitForPoll(ctx context.Context, heartbeatErrors <-chan error) (bool, error) {
+	return worker.waitForInterval(ctx, heartbeatErrors, worker.PollInterval)
+}
+
+func remoteWorkerBackgroundError(errors <-chan error) error {
+	select {
+	case err := <-errors:
+		return err
+	default:
+		return nil
 	}
 }
 
@@ -225,7 +308,7 @@ func (worker *RemoteWorker) request(ctx context.Context, method, suffix string, 
 		return response.StatusCode, errors.New("控制面响应超过限制")
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response.StatusCode, fmt.Errorf("控制面请求失败: %s", response.Status)
+		return response.StatusCode, newRemoteWorkerHTTPError("控制面请求", response)
 	}
 	if output != nil && len(body) > 0 {
 		if err := json.Unmarshal(body, output); err != nil {

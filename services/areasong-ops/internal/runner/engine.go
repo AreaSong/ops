@@ -23,24 +23,27 @@ var (
 )
 
 type Engine struct {
-	catalog        *config.Catalog
-	store          *store.Store
-	executor       Executor
-	broker         *Broker
-	stateRoot      string
-	lockMu         sync.Mutex
-	locks          map[string]string
-	credentialMu   sync.Mutex
-	wait           sync.WaitGroup
-	owner          string
-	backupRoot     string
-	alertmanager   Alertmanager
-	credentials    CredentialRotator
-	runnerUpdater  RunnerUpdateLauncher
-	composeRunner  ComposeCommandRunner
-	terminalMu     sync.Mutex
-	terminals      map[string]model.TerminalSession
-	remoteDispatch bool
+	catalog         *config.Catalog
+	store           *store.Store
+	executor        Executor
+	broker          *Broker
+	stateRoot       string
+	lockMu          sync.Mutex
+	locks           map[string]string
+	credentialMu    sync.Mutex
+	wait            sync.WaitGroup
+	owner           string
+	backupRoot      string
+	alertmanager    Alertmanager
+	credentials     CredentialRotator
+	runnerUpdater   RunnerUpdateLauncher
+	extensionRunner ExtensionRuntime
+	composeRunner   ComposeCommandRunner
+	terminalMu      sync.Mutex
+	terminals       map[string]model.TerminalSession
+	remoteDispatch  bool
+	fleetUpdateCtx  context.Context
+	fleetUpdateStop context.CancelFunc
 }
 
 type EngineOption func(*Engine)
@@ -65,6 +68,14 @@ func WithRunnerUpdateLauncher(launcher RunnerUpdateLauncher) EngineOption {
 	return func(engine *Engine) {
 		if launcher != nil {
 			engine.runnerUpdater = launcher
+		}
+	}
+}
+
+func WithExtensionRuntime(runtime ExtensionRuntime) EngineOption {
+	return func(engine *Engine) {
+		if runtime != nil {
+			engine.extensionRunner = runtime
 		}
 	}
 }
@@ -111,6 +122,7 @@ func NewEngineChecked(
 	stateRoot string,
 	options ...EngineOption,
 ) (*Engine, error) {
+	fleetUpdateCtx, fleetUpdateStop := context.WithCancel(context.Background())
 	owner, err := newUUID()
 	if err != nil {
 		owner = fmt.Sprintf("runner-%d", os.Getpid())
@@ -119,9 +131,12 @@ func NewEngineChecked(
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
 		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
 		backupRoot: "/var/backups/ops", alertmanager: unavailableAlertmanager{},
-		credentials:   unavailableCredentialRotator{},
-		composeRunner: systemComposeCommandRunner{executable: "/usr/bin/docker"},
-		terminals:     make(map[string]model.TerminalSession),
+		credentials:     unavailableCredentialRotator{},
+		extensionRunner: wasmExtensionRuntime{},
+		composeRunner:   systemComposeCommandRunner{executable: "/usr/bin/docker"},
+		terminals:       make(map[string]model.TerminalSession),
+		fleetUpdateCtx:  fleetUpdateCtx,
+		fleetUpdateStop: fleetUpdateStop,
 	}
 	for _, option := range options {
 		option(engine)
@@ -138,7 +153,21 @@ func NewEngineChecked(
 	if err := engine.resumeBatchOperations(); err != nil {
 		return nil, fmt.Errorf("恢复批量协调器失败: %w", err)
 	}
+	if err := engine.resumeFleetRunnerUpdates(); err != nil {
+		return nil, fmt.Errorf("恢复 Runner Fleet 更新协调器失败: %w", err)
+	}
+	if err := engine.store.RecoverInterruptedExtensionPlans(context.Background()); err != nil {
+		return nil, fmt.Errorf("恢复扩展执行状态失败: %w", err)
+	}
 	return engine, nil
+}
+
+// Stop cancels restart-safe background coordinators before the caller waits
+// for goroutines. A Runner self-update would otherwise wait on its own restart.
+func (engine *Engine) Stop() {
+	if engine.fleetUpdateStop != nil {
+		engine.fleetUpdateStop()
+	}
 }
 
 func (engine *Engine) seedAccessPolicy() error {
@@ -194,7 +223,11 @@ func (engine *Engine) seedFleet() error {
 		}
 	}
 	for _, node := range engine.catalog.Fleet.Inventory.Runners {
-		if err := engine.store.UpsertRunnerNode(ctx, node, "default"); err != nil {
+		tenantID := node.TenantID
+		if tenantID == "" && engine.catalog.Access != nil {
+			tenantID = engine.catalog.Access.DefaultTenant
+		}
+		if err := engine.store.UpsertRunnerNode(ctx, node, tenantID); err != nil {
 			return err
 		}
 	}

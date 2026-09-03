@@ -17,6 +17,7 @@ import (
 )
 
 var extensionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9._-]{1,63}$`)
+var extensionDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 func (engine *Engine) UploadExtension(
 	ctx context.Context,
@@ -100,11 +101,17 @@ func (engine *Engine) validateExtensionRequest(
 		return errors.New("扩展上传幂等键无效")
 	}
 	manifest := request.Manifest
+	if manifest.Purpose != model.ExtensionManifestPurpose || manifest.SchemaVersion != model.ExtensionManifestSchema {
+		return errors.New("扩展 manifest 用途或 Schema 版本无效")
+	}
 	if !extensionNamePattern.MatchString(manifest.ID) || !extensionNamePattern.MatchString(manifest.Version) {
 		return errors.New("扩展 ID 或版本格式无效")
 	}
-	if manifest.Type != "script" && manifest.Type != "plugin" {
-		return errors.New("扩展类型必须是 script 或 plugin")
+	if manifest.Type != "script" && manifest.Type != "wasm" && manifest.Type != "plugin" {
+		return errors.New("扩展类型必须是 script、wasm 或 plugin")
+	}
+	if !extensionDigestPattern.MatchString(manifest.Digest) {
+		return errors.New("扩展摘要格式无效")
 	}
 	if err := validateRelativeEntrypoint(manifest.Entrypoint); err != nil {
 		return err
@@ -142,6 +149,9 @@ func validateRelativeEntrypoint(value string) error {
 
 func (engine *Engine) verifyExtensionSignature(manifest model.ExtensionManifest) error {
 	policy := engine.catalog.Extensions
+	if policy == nil || !contains(policy.TrustedPublishers, manifest.Publisher) {
+		return errors.New("扩展发布者已被撤销或不在受信白名单")
+	}
 	if !policy.RequireSignature {
 		return nil
 	}
@@ -163,6 +173,8 @@ func (engine *Engine) verifyExtensionSignature(manifest model.ExtensionManifest)
 
 func extensionSigningPayload(manifest model.ExtensionManifest) ([]byte, error) {
 	type signedManifest struct {
+		Purpose        string   `json:"purpose"`
+		SchemaVersion  int      `json:"schemaVersion"`
 		ID             string   `json:"id"`
 		Version        string   `json:"version"`
 		Type           string   `json:"type"`
@@ -173,6 +185,7 @@ func extensionSigningPayload(manifest model.ExtensionManifest) ([]byte, error) {
 		Publisher      string   `json:"publisher"`
 	}
 	return json.Marshal(signedManifest{
+		Purpose: manifest.Purpose, SchemaVersion: manifest.SchemaVersion,
 		ID: manifest.ID, Version: manifest.Version, Type: manifest.Type,
 		Entrypoint: manifest.Entrypoint, Digest: manifest.Digest,
 		Permissions: manifest.Permissions, AllowedObjects: manifest.AllowedObjects,

@@ -19,11 +19,16 @@ import (
 // HeartbeatPayloadVersion identifies the signed wire representation. It is
 // deliberately independent from RunnerHeartbeatRequest.Version, which is the
 // software version reported by the Runner.
-const HeartbeatPayloadVersion = 1
+const (
+	HeartbeatPayloadVersion      = 1
+	RunnerIdentityPayloadVersion = 2
+)
 
 type RunnerHeartbeatRequest struct {
 	RunnerID       string            `json:"runnerId"`
 	Version        string            `json:"version"`
+	Revision       string            `json:"revision,omitempty"`
+	BinaryDigest   string            `json:"binaryDigest,omitempty"`
 	PayloadVersion int               `json:"payloadVersion,omitempty"`
 	Capabilities   []string          `json:"capabilities,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty"`
@@ -46,12 +51,24 @@ type canonicalHeartbeatPayload struct {
 	Labels         map[string]string `json:"labels"`
 }
 
+type canonicalRunnerIdentityHeartbeatPayload struct {
+	PayloadVersion int               `json:"payloadVersion"`
+	RunnerID       string            `json:"runnerId"`
+	Version        string            `json:"version"`
+	Revision       string            `json:"revision"`
+	BinaryDigest   string            `json:"binaryDigest"`
+	Timestamp      string            `json:"timestamp"`
+	Nonce          string            `json:"nonce"`
+	Capabilities   []string          `json:"capabilities"`
+	Labels         map[string]string `json:"labels"`
+}
+
 func (input RunnerHeartbeatRequest) CanonicalPayload() ([]byte, error) {
 	version := input.PayloadVersion
 	if version == 0 {
 		version = HeartbeatPayloadVersion
 	}
-	if version != HeartbeatPayloadVersion {
+	if version != HeartbeatPayloadVersion && version != RunnerIdentityPayloadVersion {
 		return nil, fmt.Errorf("不支持的 Runner 心跳 payload 版本: %d", version)
 	}
 	if strings.TrimSpace(input.RunnerID) == "" || strings.TrimSpace(input.Version) == "" {
@@ -70,6 +87,11 @@ func (input RunnerHeartbeatRequest) CanonicalPayload() ([]byte, error) {
 	if err := validateHeartbeatNonce(input.Nonce); err != nil {
 		return nil, err
 	}
+	if version == RunnerIdentityPayloadVersion {
+		if !runnerRevisionPattern.MatchString(input.Revision) || !runnerDigestPattern.MatchString(input.BinaryDigest) {
+			return nil, errors.New("Runner 身份心跳缺少完整 revision 或二进制摘要")
+		}
+	}
 	capabilities := append([]string(nil), input.Capabilities...)
 	sort.Strings(capabilities)
 	if capabilities == nil {
@@ -81,6 +103,13 @@ func (input RunnerHeartbeatRequest) CanonicalPayload() ([]byte, error) {
 	}
 	if labels == nil {
 		labels = map[string]string{}
+	}
+	if version == RunnerIdentityPayloadVersion {
+		return json.Marshal(canonicalRunnerIdentityHeartbeatPayload{
+			PayloadVersion: version, RunnerID: input.RunnerID, Version: input.Version,
+			Revision: input.Revision, BinaryDigest: input.BinaryDigest,
+			Timestamp: timestamp, Nonce: input.Nonce, Capabilities: capabilities, Labels: labels,
+		})
 	}
 	return json.Marshal(canonicalHeartbeatPayload{
 		PayloadVersion: version,
@@ -197,7 +226,15 @@ func (engine *Engine) RegisterRunner(ctx context.Context, actor string, node mod
 	if engine.catalog.Fleet == nil || !engine.catalog.Fleet.Enabled {
 		return errors.New("多服务器管理尚未启用")
 	}
-	if err := engine.store.UpsertRunnerNode(ctx, node, "default"); err != nil {
+	tenantID, err := engine.actorTenantID(ctx, actor)
+	if err != nil {
+		return err
+	}
+	if node.TenantID != "" && node.TenantID != tenantID {
+		return errors.New("Runner 租户与操作者租户不一致")
+	}
+	node.TenantID = tenantID
+	if err := engine.store.UpsertRunnerNode(ctx, node, tenantID); err != nil {
 		return err
 	}
 	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "fleet.runner_registered", Resource: node.ID, Outcome: "accepted", Detail: map[string]any{"serverId": node.ServerID, "version": node.Version}})
@@ -275,6 +312,11 @@ func (engine *Engine) HeartbeatRunnerAuthenticated(ctx context.Context, id strin
 	lease := time.Duration(engine.catalog.Fleet.HeartbeatTimeoutSeconds) * time.Second
 	if lease <= 0 {
 		lease = 90 * time.Second
+	}
+	if input.PayloadVersion == RunnerIdentityPayloadVersion {
+		return engine.store.HeartbeatRunnerIdentityAuthenticated(ctx, id, input.Version,
+			input.Revision, input.BinaryDigest, input.PayloadVersion, input.Capabilities,
+			input.Labels, lease, input.Nonce, payloadDigest)
 	}
 	if len(input.Capabilities) == 0 && len(input.Labels) == 0 {
 		return engine.store.HeartbeatRunnerWithReceipt(ctx, id, input.Version, lease, input.Nonce, payloadDigest)

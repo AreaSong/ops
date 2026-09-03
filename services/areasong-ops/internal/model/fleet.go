@@ -186,8 +186,12 @@ type ServerNode struct {
 type RunnerNode struct {
 	ID                     string            `json:"id"`
 	ServerID               string            `json:"serverId"`
+	TenantID               string            `json:"tenantId,omitempty"`
 	Hostname               string            `json:"hostname,omitempty"`
 	Version                string            `json:"version"`
+	Revision               string            `json:"revision,omitempty"`
+	BinaryDigest           string            `json:"binaryDigest,omitempty"`
+	IdentityPayloadVersion int               `json:"identityPayloadVersion,omitempty"`
 	Labels                 map[string]string `json:"labels,omitempty"`
 	Capabilities           []string          `json:"capabilities,omitempty"`
 	CapabilityDefinitions  []Capability      `json:"capabilityDefinitions,omitempty"`

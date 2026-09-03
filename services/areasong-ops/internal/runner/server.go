@@ -86,11 +86,22 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("POST /v1/files/proposals/{id}/apply", server.applyManagedFileProposal)
 	mux.HandleFunc("POST /v1/files/proposals/{id}/rollback", server.rollbackManagedFileProposal)
 	mux.HandleFunc("POST /v1/extensions", server.uploadExtension)
+	mux.HandleFunc("GET /v1/extensions/plans", server.extensionPlans)
+	mux.HandleFunc("GET /v1/extensions/plans/{id}", server.extensionPlan)
+	mux.HandleFunc("POST /v1/extensions/plans", server.createExtensionPlan)
+	mux.HandleFunc("POST /v1/extensions/plans/{id}/approve", server.approveExtensionPlan)
+	mux.HandleFunc("POST /v1/extensions/plans/{id}/execute", server.executeExtensionPlan)
 	mux.HandleFunc("GET /v1/runner/update", server.runnerUpdateStatus)
 	mux.HandleFunc("POST /v1/runner/update/prepare", server.prepareRunnerUpdate)
 	mux.HandleFunc("POST /v1/runner/update/{id}/activate", server.activateRunnerUpdate)
 	mux.HandleFunc("POST /v1/runner/update/{id}/cancel", server.cancelRunnerUpdate)
 	mux.HandleFunc("POST /v1/runner/update/{id}/resolve", server.resolveRunnerUpdate)
+	mux.HandleFunc("GET /v1/runner/fleet-updates", server.fleetRunnerUpdateStatus)
+	mux.HandleFunc("POST /v1/runner/fleet-updates", server.createFleetRunnerUpdatePlan)
+	mux.HandleFunc("GET /v1/runner/fleet-updates/{id}", server.fleetRunnerUpdatePlan)
+	mux.HandleFunc("POST /v1/runner/fleet-updates/{id}/approve", server.approveFleetRunnerUpdatePlan)
+	mux.HandleFunc("POST /v1/runner/fleet-updates/{id}/execute", server.executeFleetRunnerUpdatePlan)
+	mux.HandleFunc("POST /v1/runner/fleet-updates/{id}/cancel", server.cancelFleetRunnerUpdatePlan)
 	mux.HandleFunc("GET /v1/access", server.accessControl)
 	mux.HandleFunc("PUT /v1/access", server.updateAccess)
 	mux.HandleFunc("GET /v1/access/changes", server.accessChanges)
@@ -110,6 +121,10 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("POST /v1/fleet/runners/{id}/assignments/{taskId}/progress", server.assignmentProgress)
 	mux.HandleFunc("POST /v1/fleet/runners/{id}/assignments/{taskId}/events", server.assignmentEvent)
 	mux.HandleFunc("POST /v1/fleet/runners/{id}/assignments/{taskId}/complete", server.completeAssignment)
+	mux.HandleFunc("POST /v1/fleet/runners/{id}/fleet-updates/claim", server.claimFleetRunnerUpdate)
+	mux.HandleFunc("POST /v1/fleet/runners/{id}/fleet-updates/{itemId}/heartbeat", server.heartbeatFleetRunnerUpdate)
+	mux.HandleFunc("POST /v1/fleet/runners/{id}/fleet-updates/{itemId}/artifact", server.fleetRunnerUpdateArtifact)
+	mux.HandleFunc("POST /v1/fleet/runners/{id}/fleet-updates/{itemId}/complete", server.completeFleetRunnerUpdate)
 	mux.HandleFunc("GET /v1/credentials/github-alertmanager", server.credentialProfile)
 	mux.HandleFunc("POST /v1/credentials/github-alertmanager/rotate", server.rotateCredential)
 	mux.HandleFunc("POST /v1/credential-rotations/{id}/close", server.closeCredentialRotation)
@@ -157,8 +172,11 @@ func RemoteRunnerHandler(next http.Handler) http.Handler {
 		if valid {
 			valid = (len(parts) == 5 && parts[4] == "heartbeat") ||
 				(len(parts) == 6 && parts[4] == "assignments" && parts[5] == "claim") ||
+				(len(parts) == 6 && parts[4] == "fleet-updates" && parts[5] == "claim") ||
 				(len(parts) == 7 && parts[4] == "assignments" &&
-					(parts[6] == "heartbeat" || parts[6] == "progress" || parts[6] == "events" || parts[6] == "complete"))
+					(parts[6] == "heartbeat" || parts[6] == "progress" || parts[6] == "events" || parts[6] == "complete")) ||
+				(len(parts) == 7 && parts[4] == "fleet-updates" &&
+					(parts[6] == "heartbeat" || parts[6] == "artifact" || parts[6] == "complete"))
 		}
 		if !valid {
 			writeError(response, http.StatusNotFound, "远程 Runner 监听器仅提供受控执行协议")
@@ -286,6 +304,123 @@ func (server *Server) completeAssignment(response http.ResponseWriter, request *
 	}
 	server.engine.broker.Publish(sequence)
 	writeJSON(response, http.StatusOK, model.AssignmentCompletionResponse{Task: task, Assignment: assignment, EventSequence: sequence})
+}
+
+func (server *Server) claimFleetRunnerUpdate(response http.ResponseWriter, request *http.Request) {
+	runnerID, ok := server.assignmentIdentity(request)
+	if !ok {
+		writeError(response, http.StatusUnauthorized, "Runner 身份无效")
+		return
+	}
+	var input model.FleetRunnerUpdateClaimRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	assignment, claimed, err := server.engine.ClaimFleetRunnerUpdate(
+		request.Context(), runnerID, fleetRunnerUpdateLeaseDuration(input.LeaseSeconds, server.engine.catalog.RunnerUpdate),
+	)
+	if err != nil {
+		writeFleetRunnerUpdateError(response, err)
+		return
+	}
+	if !claimed {
+		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(response, http.StatusOK, assignment)
+}
+
+func (server *Server) heartbeatFleetRunnerUpdate(response http.ResponseWriter, request *http.Request) {
+	runnerID, ok := server.assignmentIdentity(request)
+	if !ok {
+		writeError(response, http.StatusUnauthorized, "Runner 身份无效")
+		return
+	}
+	var input model.FleetRunnerUpdateHeartbeatRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := server.engine.HeartbeatFleetRunnerUpdate(
+		request.Context(), runnerID, request.PathValue("itemId"), input,
+		fleetRunnerUpdateLeaseDuration(0, server.engine.catalog.RunnerUpdate),
+	)
+	if err != nil {
+		writeFleetRunnerUpdateError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
+}
+
+func (server *Server) fleetRunnerUpdateArtifact(response http.ResponseWriter, request *http.Request) {
+	runnerID, ok := server.assignmentIdentity(request)
+	if !ok {
+		writeError(response, http.StatusUnauthorized, "Runner 身份无效")
+		return
+	}
+	var input model.FleetRunnerUpdateArtifactRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	file, size, digest, err := server.engine.OpenFleetRunnerUpdateArtifact(
+		request.Context(), runnerID, request.PathValue("itemId"), input,
+	)
+	if err != nil {
+		writeFleetRunnerUpdateError(response, err)
+		return
+	}
+	defer file.Close()
+	response.Header().Set("Content-Type", "application/octet-stream")
+	response.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set("X-AreaSong-Artifact-Digest", digest)
+	response.WriteHeader(http.StatusOK)
+	_, _ = io.CopyN(response, file, size)
+}
+
+func (server *Server) completeFleetRunnerUpdate(response http.ResponseWriter, request *http.Request) {
+	runnerID, ok := server.assignmentIdentity(request)
+	if !ok {
+		writeError(response, http.StatusUnauthorized, "Runner 身份无效")
+		return
+	}
+	var input model.FleetRunnerUpdateCompletionRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, _, err := server.engine.CompleteFleetRunnerUpdate(
+		request.Context(), runnerID, request.PathValue("itemId"), input,
+	)
+	if err != nil {
+		writeFleetRunnerUpdateError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
+}
+
+func fleetRunnerUpdateLeaseDuration(seconds int, policy *config.RunnerUpdatePolicy) time.Duration {
+	if seconds <= 0 && policy != nil {
+		seconds = policy.LeaseSeconds
+	}
+	if seconds <= 0 {
+		seconds = 120
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func writeFleetRunnerUpdateError(response http.ResponseWriter, err error) {
+	status := http.StatusConflict
+	if errors.Is(err, store.ErrNotFound) {
+		status = http.StatusNotFound
+	} else if errors.Is(err, store.ErrFleetRunnerUpdateFence) ||
+		errors.Is(err, store.ErrFleetRunnerUpdateExpired) ||
+		errors.Is(err, store.ErrFleetRunnerUpdateCompleted) {
+		status = http.StatusPreconditionFailed
+	}
+	writeError(response, status, err.Error())
 }
 
 func assignmentLeaseDuration(seconds int, policy *config.FleetPolicy) time.Duration {
@@ -990,6 +1125,94 @@ func (server *Server) uploadExtension(response http.ResponseWriter, request *htt
 	writeJSON(response, status, result)
 }
 
+func (server *Server) extensionPlans(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	plans, err := server.engine.ExtensionPlans(request.Context(), actor, queryLimit(request, 50, 200))
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"plans": plans})
+}
+
+func (server *Server) extensionPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	plan, err := server.engine.ExtensionPlan(request.Context(), actor, request.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(response, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) createExtensionPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ExtensionPlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, created, err := server.engine.CreateExtensionPlan(request.Context(), actor, input)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(response, status, plan)
+}
+
+func (server *Server) approveExtensionPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ExtensionPlanApprovalRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.ApproveExtensionPlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) executeExtensionPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.ExtensionPlanExecuteRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.ExecuteExtensionPlan(request.Context(), actor, request.PathValue("id"), input)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, map[string]any{"error": redactText(err.Error()), "plan": plan})
+		return
+	}
+	writeJSON(response, http.StatusAccepted, plan)
+}
+
 func (server *Server) runnerUpdateStatus(response http.ResponseWriter, request *http.Request) {
 	actor, ok := requireActor(response, request)
 	if !ok {
@@ -1077,6 +1300,124 @@ func (server *Server) resolveRunnerUpdate(response http.ResponseWriter, request 
 		return
 	}
 	writeJSON(response, http.StatusOK, update)
+}
+
+func (server *Server) fleetRunnerUpdateStatus(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	status, err := server.engine.FleetRunnerUpdateStatus(request.Context(), actor)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, status)
+}
+
+func (server *Server) fleetRunnerUpdatePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	plan, err := server.engine.FleetRunnerUpdatePlan(request.Context(), actor, request.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(response, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) createFleetRunnerUpdatePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.FleetRunnerUpdatePlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, created, err := server.engine.CreateFleetRunnerUpdatePlan(request.Context(), actor, input)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(response, status, plan)
+}
+
+func (server *Server) approveFleetRunnerUpdatePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.FleetRunnerUpdateApprovalRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, err := server.engine.ApproveFleetRunnerUpdatePlan(
+		request.Context(), actor, request.PathValue("id"), input,
+	)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (server *Server) executeFleetRunnerUpdatePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.FleetRunnerUpdateExecuteRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, created, err := server.engine.ExecuteFleetRunnerUpdatePlan(
+		request.Context(), actor, request.PathValue("id"), input,
+	)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, map[string]any{
+			"error": redactText(err.Error()), "plan": plan,
+		})
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+	}
+	writeJSON(response, status, plan)
+}
+
+func (server *Server) cancelFleetRunnerUpdatePlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.FleetRunnerUpdateCancelRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, _, err := server.engine.CancelFleetRunnerUpdatePlan(
+		request.Context(), actor, request.PathValue("id"), input,
+	)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	writeJSON(response, http.StatusOK, plan)
 }
 
 func (server *Server) accessControl(response http.ResponseWriter, request *http.Request) {

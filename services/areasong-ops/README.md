@@ -20,7 +20,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 没有默认的任意 Shell、任意路径文件写入、动态可执行路径或任意 Compose/Kubernetes 目标；所有可执行能力必须来自 root-owned 适配器、声明的路径和固定 allowlist。
 - Compose 编辑只允许提交候选内容或执行离线 validate；只有 expected digest 未漂移、校验通过、计划摘要已批准且满足备份/观察门禁时，受控适配器才可 apply 到声明的 Compose 副本。
 - Kubernetes 目标只接受 `config/services.example.json` 中登记的 cluster/context/namespace、资源 kind 和对象 allowlist；网页输入不能扩大目标范围，默认只做 dry-run/检查。
-- 扩展默认关闭；启用时必须使用受信发布者、签名和 `rootless`/`wasm` 沙箱，扩展权限不能越过对象和租户边界。
+- 扩展默认关闭；启用时必须使用受信发布者、用途隔离签名和 `wasm` 沙箱，扩展权限不能越过对象和租户边界。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
 - 公开计划创建必须携带幂等键；计划固定租户、服务器和可选 `scheduleAt`。未来调度在时间到达前保持 `scheduled`，重复请求只追加重放审计，不重复创建任务。
@@ -91,10 +91,11 @@ npm run build
 OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 ```
 
-本地要逐页验收默认关闭的终端、受管文件、扩展和 Runner 更新，可在开发 Runner
+本地要逐页验收默认关闭的终端、受管文件、扩展、Runner 单机/Fleet 更新，可在开发 Runner
 启动时显式设置 `OPS_DEV_ENABLE_FEATURES=all`。该开关只存在于 `cmd/dev-runner`
 的开发入口，会把文件根目录和 Runner 制品目录重映射到临时目录，并保留只读终端
-和人工批准门禁；生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
+和人工批准门禁；Fleet 页面使用开发态 v2 Runner 身份，不会建立生产 mTLS 通道或执行
+真实 Runner 更新。生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
 如需在本地演练 Break-glass Shell，再额外设置 `OPS_DEV_ENABLE_BREAK_GLASS=1`；该
 开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
 需要验收平台级写能力时，必须再显式设置 `OPS_DEV_ADMIN_EMAIL=<开发邮箱>`；该变量

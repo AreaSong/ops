@@ -6,6 +6,7 @@ import (
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/config"
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
+	"github.com/AreaSong/ops/services/areasong-ops/internal/runner"
 )
 
 func TestApplyDevelopmentFeatureOverridesIsOptInAndScoped(t *testing.T) {
@@ -14,7 +15,10 @@ func TestApplyDevelopmentFeatureOverridesIsOptInAndScoped(t *testing.T) {
 		Terminal:     &config.TerminalPolicy{},
 		Files:        &config.FilePolicy{},
 		Extensions:   &config.ExtensionPolicy{},
-		RunnerUpdate: &config.RunnerUpdatePolicy{},
+		RunnerUpdate: &config.RunnerUpdatePolicy{RunnerID: "runner-a"},
+		Fleet: &config.FleetPolicy{Inventory: model.Fleet{Runners: []model.RunnerNode{
+			{ID: "runner-a", Capabilities: []string{"inspect"}},
+		}}},
 	}
 	applyDevelopmentFeatureOverrides(catalog)
 	if catalog.Terminal.Enabled || catalog.Files.Enabled || catalog.Extensions.Enabled || catalog.RunnerUpdate.Enabled {
@@ -29,11 +33,23 @@ func TestApplyDevelopmentFeatureOverridesIsOptInAndScoped(t *testing.T) {
 	if !catalog.Files.Enabled || catalog.Files.Roots["ops-config"] != runtimeRoot {
 		t.Fatalf("files override=%+v", catalog.Files)
 	}
-	if !catalog.Extensions.Enabled || !catalog.RunnerUpdate.Enabled {
+	if !catalog.Extensions.Enabled || !catalog.RunnerUpdate.Enabled || !catalog.RunnerUpdate.FleetEnabled {
 		t.Fatalf("policy overrides extensions=%+v runner=%+v", catalog.Extensions, catalog.RunnerUpdate)
+	}
+	if catalog.Extensions.Sandbox != "wasm" || !catalog.Extensions.RequireSignature ||
+		catalog.Extensions.MaxPackageBytes == 0 || catalog.Extensions.MaxInputBytes == 0 ||
+		catalog.Extensions.MaxOutputBytes == 0 || catalog.Extensions.MaxExecutionSeconds == 0 ||
+		catalog.Extensions.MaxMemoryPages == 0 {
+		t.Fatalf("extension execution limits were not initialized: %+v", catalog.Extensions)
 	}
 	if catalog.RunnerUpdate.ArtifactRoot != filepath.Join(runtimeRoot, "runner-updates", "incoming") {
 		t.Fatalf("runner artifact root=%s", catalog.RunnerUpdate.ArtifactRoot)
+	}
+	node := catalog.Fleet.Inventory.Runners[0]
+	if !containsString(node.Capabilities, "runner-update") ||
+		node.IdentityPayloadVersion != runner.RunnerIdentityPayloadVersion ||
+		node.Revision == "" || node.BinaryDigest == "" || node.CertificateFingerprint == "" {
+		t.Fatalf("fleet runner development identity=%+v", node)
 	}
 	if catalog.Terminal.BreakGlass {
 		t.Fatal("break-glass must remain opt-in")

@@ -55,7 +55,19 @@ func TestTerminalShellMigrationDowngradesLegacySingleApproval(t *testing.T) {
 	if _, err := raw.Exec(schema); err != nil {
 		t.Fatal(err)
 	}
-	for index, migration := range migrations[:len(migrations)-1] {
+	// Locate the exact dual-approval migration so later additive migrations do
+	// not silently change which legacy schema this fixture represents.
+	legacyVersion := -1
+	for index, migration := range migrations {
+		if strings.Contains(migration, "ALTER TABLE terminal_shell_plans ADD COLUMN second_approved_by_hash") {
+			legacyVersion = index
+			break
+		}
+	}
+	if legacyVersion < 0 {
+		t.Fatal("terminal dual-approval migration not found")
+	}
+	for index, migration := range migrations[:legacyVersion] {
 		if _, err := raw.Exec(migration); err != nil {
 			t.Fatalf("migration %d: %v", index+1, err)
 		}
@@ -71,7 +83,7 @@ func TestTerminalShellMigrationDowngradesLegacySingleApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Exec("PRAGMA user_version = " + strconv.Itoa(len(migrations)-1)); err != nil {
+	if _, err := raw.Exec("PRAGMA user_version = " + strconv.Itoa(legacyVersion)); err != nil {
 		t.Fatal(err)
 	}
 	if err := raw.Close(); err != nil {

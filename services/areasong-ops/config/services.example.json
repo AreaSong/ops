@@ -189,6 +189,7 @@
   },
   "runnerUpdate": {
     "enabled": false,
+    "fleetEnabled": false,
     "runnerId": "runner-losangeles",
     "artifactRoot": "/var/lib/areasong-ops/runner-updates/incoming",
     "binaryPath": "/usr/local/libexec/areasong-ops/runner/areasong-ops-runner",

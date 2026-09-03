@@ -1,7 +1,7 @@
 import { Check, Code2, FlaskConical, LoaderCircle, RefreshCw, ShieldCheck, TerminalSquare } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { shortHash } from '../labels'
-import type { ComposeRevision, ComposeServiceView, ExtensionPolicyView, KubernetesConfigView, KubernetesOperation, KubernetesPlan, ServiceView } from '../types'
+import type { ComposeRevision, ComposeServiceView, ExtensionPlan, ExtensionPolicyView, KubernetesConfigView, KubernetesOperation, KubernetesPlan, ServiceView } from '../types'
 
 type ConfigTab = 'compose' | 'kubernetes' | 'extensions'
 
@@ -33,6 +33,9 @@ interface ConfigurationProps {
   onKubernetesApprove: (plan: KubernetesPlan, confirmation: string) => Promise<void>
   onKubernetesExecute: (plan: KubernetesPlan) => Promise<void>
   onExtensionsRefresh: () => void
+  onExtensionPlan: (body: { extensionId: string; extensionVersion: string; objectId: string; input: Record<string, unknown>; timeoutSeconds?: number }) => Promise<void>
+  onExtensionApprove: (plan: ExtensionPlan, confirmation: string) => Promise<void>
+  onExtensionExecute: (plan: ExtensionPlan) => Promise<void>
 }
 
 const tabs: Array<{ id: ConfigTab; label: string; icon: typeof Code2 }> = [
@@ -54,7 +57,7 @@ export function Configuration({
   onService, onComposeRefresh, onSaveCompose, onComposeApprove, onComposeApply, onComposeRollback,
   onKubernetesRefresh, onKubernetesOperation,
   onKubernetesPlan, onKubernetesApprove, onKubernetesExecute,
-  onExtensionsRefresh,
+  onExtensionsRefresh, onExtensionPlan, onExtensionApprove, onExtensionExecute,
 }: ConfigurationProps) {
   const [tab, setTab] = useState<ConfigTab>('compose')
   const [composeContent, setComposeContent] = useState('')
@@ -64,6 +67,11 @@ export function Configuration({
   const [manifest, setManifest] = useState('')
   const [kubeConfirmations, setKubeConfirmations] = useState<Record<string, string>>({})
   const [targetKey, setTargetKey] = useState('')
+  const [extensionKey, setExtensionKey] = useState('')
+  const [extensionTarget, setExtensionTarget] = useState('')
+  const [extensionInput, setExtensionInput] = useState('{"operation":"inspect"}')
+  const [extensionInputError, setExtensionInputError] = useState('')
+  const [extensionConfirmations, setExtensionConfirmations] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setComposeContent(compose?.current?.content ?? compose?.content ?? '')
@@ -73,6 +81,13 @@ export function Configuration({
   useEffect(() => {
     if (!targetKey && targetEntries(kubernetes).length > 0) setTargetKey(targetEntries(kubernetes)[0][0])
   }, [kubernetes, targetKey])
+  useEffect(() => {
+    if (!extensionTarget && services.length > 0) setExtensionTarget(services[0].objectId)
+    if (!extensionKey && (extensions?.extensions?.length ?? 0) > 0) {
+      const item = extensions?.extensions?.find((candidate) => candidate.state === 'stored') ?? extensions?.extensions?.[0]
+      if (item?.id && item.version) setExtensionKey(`${item.id}:${item.version}`)
+    }
+  }, [extensions, extensionKey, extensionTarget, services])
 
   const targets = useMemo(() => targetEntries(kubernetes), [kubernetes])
   const selectedTarget = targets.find(([key]) => key === targetKey)?.[1] ?? targets[0]?.[1]
@@ -117,6 +132,30 @@ export function Configuration({
 
   function updateKubernetesConfirmation(planId: string, value: string) {
     setKubeConfirmations((current) => ({ ...current, [planId]: value }))
+  }
+
+  function extensionConfirmation(planId: string): string {
+    return extensionConfirmations[planId] ?? ''
+  }
+
+  function updateExtensionConfirmation(planId: string, value: string) {
+    setExtensionConfirmations((current) => ({ ...current, [planId]: value }))
+  }
+
+  async function createExtensionExecutionPlan() {
+    const [extensionId, extensionVersion] = extensionKey.split(':')
+    if (!extensionId || !extensionVersion || !extensionTarget) return
+    let input: Record<string, unknown>
+    try {
+      const parsed: unknown = JSON.parse(extensionInput)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('输入必须是 JSON 对象')
+      input = parsed as Record<string, unknown>
+    } catch (reason) {
+      setExtensionInputError(reason instanceof Error ? reason.message : '扩展输入 JSON 无效')
+      return
+    }
+    setExtensionInputError('')
+    await onExtensionPlan({ extensionId, extensionVersion, objectId: extensionTarget, input })
   }
 
   return (
@@ -207,7 +246,7 @@ export function Configuration({
         {!extensionsAvailable && !extensionsLoading && <div className="empty-state compact"><FlaskConical size={17} />{extensionsError || '扩展能力尚未启用'}</div>}
         {extensionsAvailable && extensionsError && <div className="inline-error">{extensionsError}</div>}
         {extensionsAvailable && extensionsLoading && !extensions && <div className="empty-state compact"><LoaderCircle className="spin" size={17} />读取扩展策略</div>}
-        {extensionsAvailable && extensions && <><dl className="config-facts"><div><dt>状态</dt><dd>{extensions.enabled ? '已启用' : '已关闭'}</dd></div><div><dt>签名校验</dt><dd>{extensions.requireSignature ? '强制' : '未强制'}</dd></div><div><dt>沙箱</dt><dd>{extensions.sandbox ?? '未配置'}</dd></div><div><dt>受信发布者</dt><dd>{extensions.trustedPublishers?.length ?? 0} 个</dd></div></dl><div className="page-section"><div className="section-heading"><h2>受信发布者</h2><span>受控配置</span></div>{(extensions.trustedPublishers?.length ?? 0) === 0 ? <div className="empty-state compact">暂无受信发布者</div> : <div className="permission-list">{extensions.trustedPublishers?.map((publisher) => <code key={publisher}>{publisher}</code>)}</div>}</div><div className="page-section"><div className="section-heading"><h2>已登记扩展</h2><span>{extensions.extensions?.length ?? 0} 项</span></div>{(extensions.extensions?.length ?? 0) === 0 ? <div className="empty-state compact">暂无扩展登记</div> : <div className="extension-list">{extensions.extensions?.map((item) => <div className="extension-row" key={`${item.id}:${item.version ?? 'unknown'}`}><span><strong>{item.id}</strong><small>{item.publisher ?? '发布者未知'} · {item.type ?? 'extension'}</small></span><code>{shortHash(item.digest)}</code><span>{item.state ?? item.version ?? '—'}</span></div>)}</div>}</div></>}
+        {extensionsAvailable && extensions && <><dl className="config-facts"><div><dt>状态</dt><dd>{extensions.enabled ? '已启用' : '已关闭'}</dd></div><div><dt>签名校验</dt><dd>{extensions.requireSignature ? '强制' : '未强制'}</dd></div><div><dt>沙箱</dt><dd>{extensions.sandbox ?? '未配置'}</dd></div><div><dt>受信发布者</dt><dd>{extensions.trustedPublishers?.length ?? 0} 个</dd></div><div><dt>执行限制</dt><dd>{extensions.maxExecutionSeconds ?? '—'} 秒 / {extensions.maxMemoryPages ?? '—'} pages</dd></div></dl><div className="page-section"><div className="section-heading"><h2>受信发布者</h2><span>受控配置</span></div>{(extensions.trustedPublishers?.length ?? 0) === 0 ? <div className="empty-state compact">暂无受信发布者</div> : <div className="permission-list">{extensions.trustedPublishers?.map((publisher) => <code key={publisher}>{publisher}</code>)}</div>}</div><div className="page-section"><div className="section-heading"><h2>已登记扩展</h2><span>{extensions.extensions?.length ?? 0} 项</span></div>{(extensions.extensions?.length ?? 0) === 0 ? <div className="empty-state compact">暂无扩展登记</div> : <div className="extension-list">{extensions.extensions?.map((item) => <div className="extension-row" key={`${item.id}:${item.version ?? 'unknown'}`}><span><strong>{item.id}</strong><small>{item.publisher ?? '发布者未知'} · {item.type ?? 'extension'}</small></span><code>{shortHash(item.digest)}</code><span>{item.state ?? item.version ?? '—'}</span></div>)}</div>}</div><div className="page-section"><div className="section-heading"><h2>扩展执行计划</h2><span>{extensions.plans?.length ?? 0} 项</span></div><div className="extension-policy-grid"><label><span>扩展版本</span><select value={extensionKey} onChange={(event) => setExtensionKey(event.target.value)}><option value="">选择已登记扩展</option>{extensions.extensions?.filter((item) => item.state === 'stored' && item.version).map((item) => <option key={`${item.id}:${item.version}`} value={`${item.id}:${item.version}`}>{item.id} · {item.version}</option>)}</select></label><label><span>目标对象</span><select value={extensionTarget} onChange={(event) => setExtensionTarget(event.target.value)}>{services.map((service) => <option key={service.objectId} value={service.objectId}>{service.displayName}</option>)}</select></label><label><span>输入 JSON</span><textarea value={extensionInput} onChange={(event) => setExtensionInput(event.target.value)} rows={3} spellCheck={false} /></label><button className="button secondary" type="button" disabled={!extensionKey || !extensionTarget || busy === 'extension-plan'} onClick={() => { void createExtensionExecutionPlan() }}>{busy === 'extension-plan' ? '创建中' : '创建执行计划'}</button></div>{extensionInputError && <div className="inline-error" role="alert">{extensionInputError}</div>}{(extensions.plans?.length ?? 0) === 0 ? <div className="empty-state compact">暂无扩展执行计划</div> : <div className="operation-list">{extensions.plans?.map((plan) => { const confirmation = extensionConfirmation(plan.id); const approvable = plan.state === 'pending_approval' || plan.state === 'pending_second_approval'; return <div className="operation-row" key={plan.id}><span><strong>{plan.extensionId} · {plan.extensionVersion}</strong><small>{plan.objectId} · {plan.state} · {plan.sandbox} · {plan.maxMemoryPages} pages / {plan.maxOutputBytes} B 输出</small></span><code>{shortHash(plan.planDigest)}</code>{approvable && <label className="inline-confirm"><span>批准确认</span><code>{plan.confirmationPhrase}</code><input value={confirmation} onChange={(event) => updateExtensionConfirmation(plan.id, event.target.value)} placeholder="输入确认短语" /></label>}{approvable && <button className="button secondary" type="button" disabled={confirmation !== plan.confirmationPhrase || busy === `extension-approve:${plan.id}`} onClick={() => void onExtensionApprove(plan, confirmation)}>{busy === `extension-approve:${plan.id}` ? '批准中' : plan.state === 'pending_approval' ? '第一人批准' : '第二人批准'}</button>}{plan.state === 'approved' && <button className="button danger" type="button" disabled={busy === `extension-execute:${plan.id}`} onClick={() => void onExtensionExecute(plan)}>{busy === `extension-execute:${plan.id}` ? '执行中' : '独立执行'}</button>}{plan.output && <pre className="extension-output">{plan.output}</pre>}{plan.error && <small className="inline-error">{plan.error}</small>}</div>})}</div>}</div></>}
       </section>}
     </div>
   )

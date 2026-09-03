@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -40,6 +41,142 @@ func TestFleetRemoteTransportValidation(t *testing.T) {
 	local := &FleetPolicy{Enabled: true, AllowRemoteRunners: false, MTLSListenAddress: "127.0.0.1:8443"}
 	if err := validateFleetTransport(local, false); err == nil {
 		t.Fatal("local-only Fleet with remote listener was accepted")
+	}
+}
+
+func TestRunnerFleetUpdateRequiresCompleteSecurityBoundary(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorRole := model.Role{ID: "runner-updater", Permissions: []model.Permission{model.PermissionRunnerUpdate}}
+	access := &AccessPolicy{
+		Enforced: true, DefaultTenant: "tenant-a",
+		Tenants:    map[string]model.Tenant{"tenant-a": {ID: "tenant-a", Status: "active"}},
+		Roles:      map[string]model.Role{actorRole.ID: actorRole},
+		Principals: map[string]AccessPrincipal{},
+	}
+	for index, subject := range []string{"actor-a", "actor-b", "actor-c", "actor-d"} {
+		hash := AccessHashForEmail(subject + "@example.test")
+		access.Principals[hash] = AccessPrincipal{Subject: hash, TenantID: "tenant-a"}
+		access.Bindings = append(access.Bindings, model.RoleBinding{
+			ID: "binding-" + string(rune('a'+index)), Subject: hash, TenantID: "tenant-a",
+			RoleID: actorRole.ID, ObjectIDs: []string{"runner:runner-test"},
+		})
+	}
+	runnerNode := model.RunnerNode{
+		ID: "runner-test", ServerID: "server-test", TenantID: "tenant-a", Version: "v1",
+		State: model.NodeUnknown, Capabilities: []string{"runner-update"},
+		CertificateFingerprint: "sha256:" + strings.Repeat("a", 64),
+		HeartbeatPublicKey:     base64.StdEncoding.EncodeToString(publicKey),
+	}
+	catalog := &Catalog{
+		SchemaVersion: 4, Access: access,
+		Fleet: &FleetPolicy{
+			Enabled: true, AllowRemoteRunners: true, RequiremTLS: true, RequireSignedHeartbeat: true,
+			Inventory: model.Fleet{Runners: []model.RunnerNode{runnerNode}},
+		},
+		RunnerUpdate: &RunnerUpdatePolicy{Enabled: true, FleetEnabled: true},
+	}
+	if err := catalog.validateRunnerFleetUpdate(); err != nil {
+		t.Fatalf("complete Fleet update boundary rejected: %v", err)
+	}
+
+	tests := map[string]func(*Catalog){
+		"remote disabled": func(value *Catalog) { value.Fleet.AllowRemoteRunners = false },
+		"mTLS disabled":   func(value *Catalog) { value.Fleet.RequiremTLS = false },
+		"signed heartbeat disabled": func(value *Catalog) {
+			value.Fleet.RequireSignedHeartbeat = false
+		},
+		"capability missing": func(value *Catalog) { value.Fleet.Inventory.Runners[0].Capabilities = nil },
+		"fingerprint missing": func(value *Catalog) {
+			value.Fleet.Inventory.Runners[0].CertificateFingerprint = ""
+		},
+		"heartbeat key missing": func(value *Catalog) {
+			value.Fleet.Inventory.Runners[0].HeartbeatPublicKey = ""
+		},
+		"fourth actor missing": func(value *Catalog) {
+			value.Access.Bindings = value.Access.Bindings[:3]
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			copyCatalog := *catalog
+			fleetCopy := *catalog.Fleet
+			fleetCopy.Inventory.Runners = append([]model.RunnerNode(nil), catalog.Fleet.Inventory.Runners...)
+			accessCopy := *catalog.Access
+			accessCopy.Bindings = append([]model.RoleBinding(nil), catalog.Access.Bindings...)
+			copyCatalog.Fleet, copyCatalog.Access = &fleetCopy, &accessCopy
+			mutate(&copyCatalog)
+			if err := copyCatalog.validateRunnerFleetUpdate(); err == nil {
+				t.Fatal("incomplete Fleet update boundary was accepted")
+			}
+		})
+	}
+}
+
+func TestRemoteWorkerPolicyValidation(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerID := "runner-test"
+	base := func() *Catalog {
+		return &Catalog{
+			Fleet: &FleetPolicy{
+				Enabled: true, HeartbeatTimeoutSeconds: 90,
+				RunnerPublicKeys: map[string]string{runnerID: base64.StdEncoding.EncodeToString(publicKey)},
+				Inventory:        model.Fleet{Runners: []model.RunnerNode{{ID: runnerID, ServerID: "server-test", Version: "v1"}}},
+				RemoteWorker: &RemoteWorkerPolicy{
+					Enabled: true, RunnerID: runnerID, ControlPlaneURL: "https://control.example.test/",
+					MTLSCertificateFile:     "/etc/areasong-ops/tls/runner.crt",
+					MTLSKeyFile:             "/etc/areasong-ops/tls/runner.key",
+					ControlPlaneCAFile:      "/etc/areasong-ops/tls/ca.crt",
+					HeartbeatPrivateKeyFile: "/etc/areasong-ops/tls/heartbeat.key",
+				},
+			},
+			RunnerUpdate: &RunnerUpdatePolicy{Enabled: true, RunnerID: runnerID},
+		}
+	}
+	catalog := base()
+	if err := catalog.validateRemoteWorker(false); err != nil {
+		t.Fatal(err)
+	}
+	if catalog.Fleet.RemoteWorker.ControlPlaneURL != "https://control.example.test" ||
+		catalog.Fleet.RemoteWorker.PollIntervalSeconds != 2 ||
+		catalog.Fleet.RemoteWorker.HeartbeatIntervalSeconds != 30 ||
+		!catalog.Fleet.RequireSignedHeartbeat {
+		t.Fatalf("remote worker defaults were not normalized: %+v", catalog.Fleet.RemoteWorker)
+	}
+
+	tests := map[string]func(*Catalog){
+		"plain HTTP": func(value *Catalog) {
+			value.Fleet.RemoteWorker.ControlPlaneURL = "http://control.example.test"
+		},
+		"URL path": func(value *Catalog) {
+			value.Fleet.RemoteWorker.ControlPlaneURL = "https://control.example.test/v1"
+		},
+		"different runner": func(value *Catalog) {
+			value.Fleet.RemoteWorker.RunnerID = "runner-other"
+		},
+		"slow heartbeat": func(value *Catalog) {
+			value.Fleet.RemoteWorker.HeartbeatIntervalSeconds = 90
+		},
+		"missing public key": func(value *Catalog) {
+			value.Fleet.RunnerPublicKeys = nil
+		},
+		"relative private key": func(value *Catalog) {
+			value.Fleet.RemoteWorker.HeartbeatPrivateKeyFile = "heartbeat.key"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			catalog := base()
+			mutate(catalog)
+			if err := catalog.validateRemoteWorker(false); err == nil {
+				t.Fatal("invalid remote worker policy was accepted")
+			}
+		})
 	}
 }
 
@@ -128,6 +265,33 @@ func TestCatalogBindsTrafficPolicyDigest(t *testing.T) {
 	catalog.Services["demo"] = service
 	if err := catalog.Validate(false); err == nil {
 		t.Fatal("mismatched traffic policy digest was accepted")
+	}
+}
+
+func TestEnabledExtensionsRequireWasmAndSignature(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := &Catalog{
+		SchemaVersion: 3,
+		Services:      map[string]model.ServiceDefinition{"demo": {Name: "demo", ObjectID: "service:demo", DisplayName: "Demo", Template: "custom", Adapter: "/tmp/demo", Actions: map[string]model.ActionDefinition{"inspect": {Name: "inspect", DisplayName: "检查", Enabled: true, Risk: model.RiskReadOnly, TargetMode: "none", Steps: []string{"inspect"}, TimeoutSeconds: 30, Impact: "none", Rollback: "none", Scope: "demo"}}}},
+		Extensions: &ExtensionPolicy{
+			Enabled: true, TrustedPublishers: []string{"release"},
+			TrustedPublisherKeys: map[string]string{"release": base64.StdEncoding.EncodeToString(publicKey)},
+		},
+	}
+	if err := base.Validate(false); err == nil {
+		t.Fatal("enabled extensions without explicit wasm/signature policy were accepted")
+	}
+	base.Extensions.Sandbox = "wasm"
+	base.Extensions.RequireSignature = true
+	if err := base.Validate(false); err != nil {
+		t.Fatalf("valid extension policy rejected: %v", err)
+	}
+	base.Extensions.Sandbox = "rootless"
+	if err := base.Validate(false); err == nil {
+		t.Fatal("rootless extension execution policy was accepted")
 	}
 }
 

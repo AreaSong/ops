@@ -68,3 +68,40 @@ func TestHeartbeatEd25519SignatureAndDigestBindPayload(t *testing.T) {
 		t.Fatal("signature remained valid after signed payload mutation")
 	}
 }
+
+func TestRunnerIdentityHeartbeatV2BindsRevisionAndBinaryDigest(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := RunnerHeartbeatRequest{
+		PayloadVersion: RunnerIdentityPayloadVersion,
+		RunnerID:       "runner-a", Version: "v2", Revision: strings.Repeat("a", 40),
+		BinaryDigest: "sha256:" + strings.Repeat("b", 64),
+		Timestamp:    time.Now().UTC().Format(time.RFC3339Nano), Nonce: "identity-nonce-123",
+		Capabilities: []string{"runner-update"}, Labels: map[string]string{"tenant": "a"},
+	}
+	input.Signature, err = SignHeartbeatPayload(privateKey, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid, verifyErr := VerifyHeartbeatPayload(publicKey, input); verifyErr != nil || !valid {
+		t.Fatalf("v2 identity signature valid=%v err=%v", valid, verifyErr)
+	}
+	for name, mutate := range map[string]func(*RunnerHeartbeatRequest){
+		"revision": func(value *RunnerHeartbeatRequest) { value.Revision = strings.Repeat("c", 40) },
+		"digest": func(value *RunnerHeartbeatRequest) {
+			value.BinaryDigest = "sha256:" + strings.Repeat("d", 64)
+		},
+		"capability": func(value *RunnerHeartbeatRequest) { value.Capabilities = []string{"backup"} },
+		"label":      func(value *RunnerHeartbeatRequest) { value.Labels = map[string]string{"tenant": "b"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := input
+			mutate(&changed)
+			if valid, verifyErr := VerifyHeartbeatPayload(publicKey, changed); verifyErr != nil || valid {
+				t.Fatalf("mutated v2 identity valid=%v err=%v", valid, verifyErr)
+			}
+		})
+	}
+}

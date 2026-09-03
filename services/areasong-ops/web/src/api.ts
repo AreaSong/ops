@@ -1,8 +1,8 @@
 import type {
   ActiveAlert, AuditEntry, AutomaticTaskView, CredentialProfile, CredentialRotation, ManagedObjectView, OpsEvent, Page, Preview,
   AccessChange, AccessControlUpdate, AccessControlView, AutoUpdateEvaluation, AutoUpdatePolicyInput, AutoUpdatePolicyView,
-  BatchOperation, BatchTask, ComposeRevision, ComposeServiceView, ExtensionPolicyView, ExtensionView, Fleet, KubernetesConfigView, KubernetesOperation, KubernetesPlan,
-  ManagedFileProposal, ManagedFileView, RecoveryCenterView, RecoveryPoint, ReleasePlan, RunnerNode, RunnerUpdate, RunnerUpdatePrepareInput, RunnerUpdateResolutionEvidence, RunnerUpdateStatus,
+  BatchOperation, BatchTask, ComposeRevision, ComposeServiceView, ExtensionPlan, ExtensionPolicyView, ExtensionView, Fleet, KubernetesConfigView, KubernetesOperation, KubernetesPlan,
+  ManagedFileProposal, ManagedFileView, RecoveryCenterView, RecoveryPoint, ReleasePlan, RunnerNode, RunnerUpdate, RunnerUpdatePrepareInput, RunnerUpdateResolutionEvidence, RunnerUpdateStatus, FleetRunnerUpdatePlan, FleetRunnerUpdatePlanInput, FleetRunnerUpdateStatus,
   TerminalCommand, TerminalOutput, TerminalShellPlan,
   ServiceState, ServerNode, ServiceView, SessionResponse, Task,
 } from './types'
@@ -72,7 +72,13 @@ interface ExtensionPolicyPayload {
   trustedPublishers?: string[]
   requireSignature?: boolean
   sandbox?: string
+  maxPackageBytes?: number
+  maxInputBytes?: number
+  maxOutputBytes?: number
+  maxExecutionSeconds?: number
+  maxMemoryPages?: number
   extensions?: ExtensionPayload[]
+  plans?: ExtensionPlan[]
 }
 
 function normalizeExtension(value: ExtensionPayload): ExtensionView {
@@ -134,6 +140,11 @@ export class OpsAPI {
   private fileRollbackKeys = new Map<string, string>()
   private composeApplyKeys = new Map<string, string>()
   private composeRollbackKeys = new Map<string, string>()
+  private extensionPlanKeys = new Map<string, string>()
+  private extensionExecutionKeys = new Map<string, string>()
+  private fleetRunnerPlanKeys = new Map<string, string>()
+  private fleetRunnerExecutionKeys = new Map<string, string>()
+  private fleetRunnerCancellationKeys = new Map<string, string>()
 
   async session(): Promise<SessionResponse> {
     const response = await fetch('/api/session', { credentials: 'same-origin' })
@@ -626,14 +637,119 @@ export class OpsAPI {
   }
 
   async extensions(): Promise<ExtensionPolicyView> {
-    const response = await fetch('/api/extensions', { cache: 'no-store' })
+    const [response, plansResponse] = await Promise.all([
+      fetch('/api/extensions', { cache: 'no-store' }),
+      fetch('/api/extensions/plans', { cache: 'no-store' }),
+    ])
     const payload = await parseResponse<ExtensionPolicyPayload>(response)
-    return { ...payload, extensions: (payload.extensions ?? []).map(normalizeExtension).filter((item) => item.id) }
+    let plans: ExtensionPlan[] = []
+    if (plansResponse.ok) {
+      plans = (await parseResponse<{ plans?: ExtensionPlan[] }>(plansResponse)).plans ?? []
+    } else {
+      const body = await plansResponse.clone().text()
+      if (!isFeatureUnavailable(new APIError(plansResponse.status, body))) {
+        await parseResponse<{ plans?: ExtensionPlan[] }>(plansResponse)
+      }
+    }
+    return { ...payload, plans, extensions: (payload.extensions ?? []).map(normalizeExtension).filter((item) => item.id) }
+  }
+
+  async createExtensionPlan(body: {
+    extensionId: string
+    extensionVersion: string
+    objectId: string
+    input: Record<string, unknown>
+    timeoutSeconds?: number
+  }): Promise<ExtensionPlan> {
+    const requestIdentity = JSON.stringify(body)
+    const key = this.extensionPlanKeys.get(requestIdentity) ?? crypto.randomUUID()
+    this.extensionPlanKeys.set(requestIdentity, key)
+    const plan = await this.mutate<ExtensionPlan>('/api/extensions/plans', { ...body, idempotencyKey: key })
+    this.extensionPlanKeys.delete(requestIdentity)
+    return plan
+  }
+
+  async approveExtensionPlan(plan: ExtensionPlan, confirmation: string): Promise<ExtensionPlan> {
+    return this.mutate<ExtensionPlan>(`/api/extensions/plans/${encodeURIComponent(plan.id)}/approve`, {
+      digest: plan.planDigest, confirmation,
+    })
+  }
+
+  async executeExtensionPlan(plan: ExtensionPlan): Promise<ExtensionPlan> {
+    const key = this.extensionExecutionKeys.get(plan.id) ?? crypto.randomUUID()
+    this.extensionExecutionKeys.set(plan.id, key)
+    try {
+      const result = await this.mutate<ExtensionPlan>(`/api/extensions/plans/${encodeURIComponent(plan.id)}/execute`, {
+        idempotencyKey: key,
+      })
+      this.extensionExecutionKeys.delete(plan.id)
+      return result
+    } catch (reason) {
+      if (reason instanceof APIError) this.extensionExecutionKeys.delete(plan.id)
+      throw reason
+    }
   }
 
   async runnerUpdateStatus(): Promise<RunnerUpdateStatus> {
     const response = await fetch('/api/runner/update', { cache: 'no-store' })
     return parseResponse<RunnerUpdateStatus>(response)
+  }
+
+  async fleetRunnerUpdateStatus(): Promise<FleetRunnerUpdateStatus> {
+    const response = await fetch('/api/runner/fleet-updates', { cache: 'no-store' })
+    return parseResponse<FleetRunnerUpdateStatus>(response)
+  }
+
+  async createFleetRunnerUpdatePlan(input: FleetRunnerUpdatePlanInput): Promise<FleetRunnerUpdatePlan> {
+    const requestIdentity = JSON.stringify(input)
+    const key = this.fleetRunnerPlanKeys.get(requestIdentity) ?? crypto.randomUUID()
+    this.fleetRunnerPlanKeys.set(requestIdentity, key)
+    try {
+      const plan = await this.mutate<FleetRunnerUpdatePlan>('/api/runner/fleet-updates', {
+        ...input, idempotencyKey: key,
+      })
+      this.fleetRunnerPlanKeys.delete(requestIdentity)
+      return plan
+    } catch (reason) {
+      if (reason instanceof APIError) this.fleetRunnerPlanKeys.delete(requestIdentity)
+      throw reason
+    }
+  }
+
+  async approveFleetRunnerUpdatePlan(plan: FleetRunnerUpdatePlan, confirmation: string): Promise<FleetRunnerUpdatePlan> {
+    return this.mutate<FleetRunnerUpdatePlan>(`/api/runner/fleet-updates/${encodeURIComponent(plan.id)}/approve`, {
+      digest: plan.planDigest, confirmation,
+    })
+  }
+
+  async executeFleetRunnerUpdatePlan(plan: FleetRunnerUpdatePlan): Promise<FleetRunnerUpdatePlan> {
+    const key = this.fleetRunnerExecutionKeys.get(plan.id) ?? crypto.randomUUID()
+    this.fleetRunnerExecutionKeys.set(plan.id, key)
+    try {
+      const result = await this.mutate<FleetRunnerUpdatePlan>(`/api/runner/fleet-updates/${encodeURIComponent(plan.id)}/execute`, {
+        idempotencyKey: key,
+      })
+      this.fleetRunnerExecutionKeys.delete(plan.id)
+      return result
+    } catch (reason) {
+      if (reason instanceof APIError) this.fleetRunnerExecutionKeys.delete(plan.id)
+      throw reason
+    }
+  }
+
+  async cancelFleetRunnerUpdatePlan(plan: FleetRunnerUpdatePlan, confirmation: string): Promise<FleetRunnerUpdatePlan> {
+    const key = this.fleetRunnerCancellationKeys.get(plan.id) ?? crypto.randomUUID()
+    this.fleetRunnerCancellationKeys.set(plan.id, key)
+    try {
+      const result = await this.mutate<FleetRunnerUpdatePlan>(`/api/runner/fleet-updates/${encodeURIComponent(plan.id)}/cancel`, {
+        idempotencyKey: key, confirmation,
+      })
+      this.fleetRunnerCancellationKeys.delete(plan.id)
+      return result
+    } catch (reason) {
+      if (reason instanceof APIError) this.fleetRunnerCancellationKeys.delete(plan.id)
+      throw reason
+    }
   }
 
   async prepareRunnerUpdate(input: RunnerUpdatePrepareInput): Promise<RunnerUpdate> {

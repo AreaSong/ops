@@ -296,9 +296,12 @@ func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
 		}
 	}
 	if features["all"] {
-		for _, item := range []string{"terminal", "files", "extensions", "runner-update"} {
+		for _, item := range []string{"terminal", "files", "extensions", "runner-update", "runner-fleet-update"} {
 			features[item] = true
 		}
+	}
+	if features["runner-fleet-update"] {
+		features["runner-update"] = true
 	}
 	runtimeRoot := strings.TrimRight(os.Getenv("OPS_DEV_RUNTIME_ROOT"), "/")
 	if runtimeRoot == "" {
@@ -331,6 +334,26 @@ func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
 	}
 	if features["extensions"] && catalog.Extensions != nil {
 		catalog.Extensions.Enabled = true
+		catalog.Extensions.Sandbox = "wasm"
+		catalog.Extensions.RequireSignature = true
+		// The example catalog is intentionally disabled and therefore has no
+		// runtime defaults applied by config validation. Keep local all-features
+		// mode usable while retaining conservative limits.
+		if catalog.Extensions.MaxPackageBytes == 0 {
+			catalog.Extensions.MaxPackageBytes = 1 << 20
+		}
+		if catalog.Extensions.MaxInputBytes == 0 {
+			catalog.Extensions.MaxInputBytes = 64 << 10
+		}
+		if catalog.Extensions.MaxOutputBytes == 0 {
+			catalog.Extensions.MaxOutputBytes = 64 << 10
+		}
+		if catalog.Extensions.MaxExecutionSeconds == 0 {
+			catalog.Extensions.MaxExecutionSeconds = 15
+		}
+		if catalog.Extensions.MaxMemoryPages == 0 {
+			catalog.Extensions.MaxMemoryPages = 256
+		}
 	}
 	if features["runner-update"] && catalog.RunnerUpdate != nil {
 		catalog.RunnerUpdate.Enabled = true
@@ -338,6 +361,25 @@ func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
 		catalog.RunnerUpdate.BinaryPath = filepath.Join(runtimeRoot, "runner", "areasong-ops-runner")
 		if err := os.MkdirAll(catalog.RunnerUpdate.ArtifactRoot, 0o700); err != nil {
 			log.Printf("development runner update root unavailable: %v", err)
+		}
+	}
+	if features["runner-fleet-update"] && catalog.RunnerUpdate != nil && catalog.Fleet != nil {
+		catalog.RunnerUpdate.FleetEnabled = true
+		catalog.RunnerUpdate.ManifestGOOS = config.RunnerUpdateManifestGOOS
+		catalog.RunnerUpdate.ManifestGOARCH = config.RunnerUpdateManifestGOARCH
+		for index := range catalog.Fleet.Inventory.Runners {
+			node := &catalog.Fleet.Inventory.Runners[index]
+			if node.ID != catalog.RunnerUpdate.RunnerID {
+				continue
+			}
+			if !containsString(node.Capabilities, "runner-update") {
+				node.Capabilities = append(node.Capabilities, "runner-update")
+			}
+			node.Version = "v1.0.3"
+			node.Revision = strings.Repeat("a", 40)
+			node.BinaryDigest = "sha256:" + strings.Repeat("b", 64)
+			node.IdentityPayloadVersion = runner.RunnerIdentityPayloadVersion
+			node.CertificateFingerprint = "sha256:" + strings.Repeat("c", 64)
 		}
 	}
 }

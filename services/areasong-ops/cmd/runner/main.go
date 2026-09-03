@@ -73,6 +73,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	remoteWorker, err := newConfiguredRemoteWorker(catalog, database, stateRoot)
+	if err != nil {
+		return err
+	}
 	listener, err := unixListener(socketPath)
 	if err != nil {
 		return err
@@ -110,10 +114,21 @@ func run() error {
 	if remoteServer != nil {
 		serveBuffer++
 	}
+	if remoteWorker != nil {
+		serveBuffer++
+	}
 	serveErrors := make(chan error, serveBuffer)
+	var remoteWorkerDone chan struct{}
 	go func() { serveErrors <- server.Serve(listener) }()
 	if remoteServer != nil {
 		go func() { serveErrors <- remoteServer.Serve(remoteListener) }()
+	}
+	if remoteWorker != nil {
+		remoteWorkerDone = make(chan struct{})
+		go func() {
+			defer close(remoteWorkerDone)
+			serveErrors <- remoteWorker.Run(maintenanceContext)
+		}()
 	}
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -125,12 +140,17 @@ func run() error {
 			return err
 		}
 	}
+	stopMaintenance()
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownContext)
 	if remoteServer != nil {
 		_ = remoteServer.Shutdown(shutdownContext)
 	}
+	if remoteWorkerDone != nil {
+		<-remoteWorkerDone
+	}
+	engine.Stop()
 	engine.Wait()
 	return nil
 }

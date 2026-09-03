@@ -24,7 +24,7 @@ import {
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { NavigationLinks } from '../types'
 
-export type ViewName = 'overview' | 'lifecycle' | 'services' | 'fleet' | 'batches' | 'recovery' | 'configuration' | 'auto-updates' | 'terminal' | 'files' | 'runner-update' | 'access' | 'automatic-tasks' | 'credentials' | 'tasks' | 'audit'
+export type ViewName = 'overview' | 'lifecycle' | 'services' | 'fleet' | 'batches' | 'recovery' | 'configuration' | 'auto-updates' | 'terminal' | 'files' | 'runner-update' | 'runner-fleet-update' | 'access' | 'automatic-tasks' | 'credentials' | 'tasks' | 'audit'
 
 interface ShellProps {
   view: ViewName
@@ -46,6 +46,7 @@ const navigation = [
   { id: 'terminal' as const, label: '受控终端', icon: TerminalSquare },
   { id: 'files' as const, label: '受管文件', icon: FileCode2 },
   { id: 'runner-update' as const, label: 'Runner 更新', icon: PackageCheck },
+  { id: 'runner-fleet-update' as const, label: 'Runner Fleet 更新', icon: PackageCheck },
   { id: 'access' as const, label: '访问控制', icon: Shield },
   { id: 'automatic-tasks' as const, label: '自动任务', icon: TimerReset },
   { id: 'credentials' as const, label: '凭据轮换', icon: KeyRound },

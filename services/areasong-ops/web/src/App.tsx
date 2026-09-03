@@ -19,8 +19,12 @@ import type {
   ComposeServiceView,
   CredentialProfile,
   CredentialRotation,
+  ExtensionPlan,
   ExtensionPolicyView,
   Fleet,
+  FleetRunnerUpdatePlan,
+  FleetRunnerUpdatePlanInput,
+  FleetRunnerUpdateStatus,
   KubernetesConfigView,
   KubernetesPlan,
   ManagedObjectView,
@@ -53,6 +57,7 @@ import { Lifecycle } from './views/Lifecycle'
 import { Overview } from './views/Overview'
 import { RecoveryCenter } from './views/RecoveryCenter'
 import { RunnerUpdate } from './views/RunnerUpdate'
+import { RunnerFleetUpdate } from './views/RunnerFleetUpdate'
 import { Services } from './views/Services'
 import { Tasks } from './views/Tasks'
 import { Files } from './views/Files'
@@ -157,6 +162,10 @@ export default function App() {
   const [runnerUpdateLoading, setRunnerUpdateLoading] = useState(false)
   const [runnerUpdateAvailable, setRunnerUpdateAvailable] = useState(true)
   const [runnerUpdateError, setRunnerUpdateError] = useState('')
+  const [fleetRunnerUpdate, setFleetRunnerUpdate] = useState<FleetRunnerUpdateStatus | null>(null)
+  const [fleetRunnerUpdateLoading, setFleetRunnerUpdateLoading] = useState(false)
+  const [fleetRunnerUpdateAvailable, setFleetRunnerUpdateAvailable] = useState(true)
+  const [fleetRunnerUpdateError, setFleetRunnerUpdateError] = useState('')
   const [access, setAccess] = useState<AccessControlView | null>(null)
   const [accessLoading, setAccessLoading] = useState(false)
   const [accessAvailable, setAccessAvailable] = useState(true)
@@ -275,6 +284,11 @@ export default function App() {
   const refreshRunnerUpdate = useCallback(() => loadFeature(
     () => api.runnerUpdateStatus(), setRunnerUpdate, setRunnerUpdateLoading,
     setRunnerUpdateAvailable, setRunnerUpdateError, 'Runner 更新状态读取失败',
+  ), [api])
+
+  const refreshFleetRunnerUpdate = useCallback(() => loadFeature(
+    () => api.fleetRunnerUpdateStatus(), setFleetRunnerUpdate, setFleetRunnerUpdateLoading,
+    setFleetRunnerUpdateAvailable, setFleetRunnerUpdateError, 'Runner Fleet 更新状态读取失败',
   ), [api])
 
   const refreshAccess = useCallback(() => loadFeature(
@@ -402,10 +416,11 @@ export default function App() {
     if (view === 'terminal') void refreshTerminal()
     if (view === 'files') void refreshFiles()
     if (view === 'runner-update') void refreshRunnerUpdate()
+    if (view === 'runner-fleet-update') void refreshFleetRunnerUpdate()
     if (view === 'access') void refreshAccess()
   }, [
     refreshAccess, refreshAutoUpdates, refreshBatches, refreshCompose, refreshExtensions, refreshFiles,
-    refreshFleet, refreshKubernetes, refreshRecoveryCenter, refreshRunnerUpdate, refreshStates,
+    refreshFleet, refreshFleetRunnerUpdate, refreshKubernetes, refreshRecoveryCenter, refreshRunnerUpdate, refreshStates,
     refreshTerminal, view,
   ])
 
@@ -417,6 +432,16 @@ export default function App() {
     }, hasActiveUpdate ? 2_000 : 15_000)
     return () => window.clearInterval(timer)
   }, [refreshRunnerUpdate, runnerUpdate?.pending, view])
+
+  useEffect(() => {
+    if (view !== 'runner-fleet-update') return undefined
+    const hasActiveUpdate = fleetRunnerUpdate?.plans.some((plan) =>
+      ['running', 'observing', 'rolling_back'].includes(plan.state)) ?? false
+    const timer = window.setInterval(() => {
+      void refreshFleetRunnerUpdate()
+    }, hasActiveUpdate ? 2_000 : 15_000)
+    return () => window.clearInterval(timer)
+  }, [fleetRunnerUpdate?.plans, refreshFleetRunnerUpdate, view])
 
   async function beginAction(service: ManagedObjectView, action: ActionDefinition, target = '') {
     const key = `${service.name}/${action.name}`
@@ -811,6 +836,47 @@ export default function App() {
     }
   }
 
+  async function createExtensionPlan(body: Parameters<OpsAPI['createExtensionPlan']>[0]) {
+    setBusyAction('extension-plan')
+    setError('')
+    try {
+      await api.createExtensionPlan(body)
+      await refreshExtensions()
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, '扩展计划创建失败'))
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function approveExtensionPlan(plan: ExtensionPlan, confirmation: string) {
+    setBusyAction(`extension-approve:${plan.id}`)
+    setError('')
+    try {
+      await api.approveExtensionPlan(plan, confirmation)
+      await refreshExtensions()
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, '扩展计划批准失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function executeExtensionPlan(plan: ExtensionPlan) {
+    setBusyAction(`extension-execute:${plan.id}`)
+    setError('')
+    try {
+      await api.executeExtensionPlan(plan)
+      await refreshExtensions()
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, '扩展计划执行失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
   async function saveAutoUpdatePolicy(service: string, input: AutoUpdatePolicyInput) {
     setBusyAction(`auto-updates:${service}`)
     setError('')
@@ -1101,6 +1167,62 @@ export default function App() {
     }
   }
 
+  async function createFleetRunnerUpdate(input: FleetRunnerUpdatePlanInput) {
+    setBusyAction('runner-fleet-create')
+    setError('')
+    try {
+      const plan = await api.createFleetRunnerUpdatePlan(input)
+      setFleetRunnerUpdate((current) => current ? { ...current, plans: [plan, ...current.plans.filter((item) => item.id !== plan.id)] } : current)
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, 'Runner Fleet 更新计划创建失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function approveFleetRunnerUpdate(plan: FleetRunnerUpdatePlan, confirmation: string) {
+    setBusyAction(`runner-fleet-approve:${plan.id}`)
+    setError('')
+    try {
+      const updated = await api.approveFleetRunnerUpdatePlan(plan, confirmation)
+      setFleetRunnerUpdate((current) => current ? { ...current, plans: [updated, ...current.plans.filter((item) => item.id !== updated.id)] } : current)
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, 'Runner Fleet 更新计划批准失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function executeFleetRunnerUpdate(plan: FleetRunnerUpdatePlan) {
+    setBusyAction(`runner-fleet-execute:${plan.id}`)
+    setError('')
+    try {
+      const updated = await api.executeFleetRunnerUpdatePlan(plan)
+      setFleetRunnerUpdate((current) => current ? { ...current, plans: [updated, ...current.plans.filter((item) => item.id !== updated.id)] } : current)
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, 'Runner Fleet 更新计划执行失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function cancelFleetRunnerUpdate(plan: FleetRunnerUpdatePlan, confirmation: string) {
+    setBusyAction(`runner-fleet-cancel:${plan.id}`)
+    setError('')
+    try {
+      const updated = await api.cancelFleetRunnerUpdatePlan(plan, confirmation)
+      setFleetRunnerUpdate((current) => current ? { ...current, plans: [updated, ...current.plans.filter((item) => item.id !== updated.id)] } : current)
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, 'Runner Fleet 更新计划取消失败'))
+      throw reasonValue
+    } finally {
+      setBusyAction('')
+    }
+  }
+
   async function rotateCredential(secret: string, expiresAt: string, confirmation: string) {
     setError('')
     try {
@@ -1183,7 +1305,9 @@ export default function App() {
           onKubernetesRefresh={() => void refreshKubernetes()}
           onKubernetesOperation={createKubernetesOperation} onKubernetesPlan={createKubernetesPlan}
           onKubernetesApprove={approveKubernetesPlan} onKubernetesExecute={executeKubernetesPlan}
-          onExtensionsRefresh={() => void refreshExtensions()} />
+          onExtensionsRefresh={() => void refreshExtensions()}
+          onExtensionPlan={createExtensionPlan} onExtensionApprove={approveExtensionPlan}
+          onExtensionExecute={executeExtensionPlan} />
       )}
       {view === 'auto-updates' && (
         <AutoUpdates policies={autoUpdates} evaluations={autoUpdateEvaluations}
@@ -1209,6 +1333,13 @@ export default function App() {
           available={runnerUpdateAvailable} error={runnerUpdateError} busy={busyAction}
           onRefresh={() => void refreshRunnerUpdate()} onPrepare={prepareRunnerUpdate}
           onActivate={activateRunnerUpdate} onCancel={cancelRunnerUpdate} onResolve={resolveRunnerUpdate} />
+      )}
+      {view === 'runner-fleet-update' && (
+        <RunnerFleetUpdate status={fleetRunnerUpdate} loading={fleetRunnerUpdateLoading}
+          available={fleetRunnerUpdateAvailable} error={fleetRunnerUpdateError} busy={busyAction}
+          onRefresh={() => void refreshFleetRunnerUpdate()} onCreate={createFleetRunnerUpdate}
+          onApprove={approveFleetRunnerUpdate} onExecute={executeFleetRunnerUpdate}
+          onCancel={cancelFleetRunnerUpdate} />
       )}
       {view === 'access' && (
         <AccessControl access={access} loading={accessLoading} available={accessAvailable} error={accessError}

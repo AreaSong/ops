@@ -364,8 +364,13 @@ export interface ServerNode {
 export interface RunnerNode {
   id: string
   serverId: string
+  tenantId?: string
   hostname?: string
   version: string
+  revision?: string
+  binaryDigest?: string
+  certificateFingerprint?: string
+  heartbeatPublicKey?: string
   labels?: Record<string, string>
   capabilities?: string[]
   capabilityDefinitions?: Capability[]
@@ -819,23 +824,65 @@ export interface ExtensionPolicyView {
   trustedPublishers?: string[]
   requireSignature?: boolean
   sandbox?: string
+  maxPackageBytes?: number
+  maxInputBytes?: number
+  maxOutputBytes?: number
+  maxExecutionSeconds?: number
+  maxMemoryPages?: number
   extensions?: ExtensionView[]
+  plans?: ExtensionPlan[]
   [key: string]: unknown
 }
 
 export interface ExtensionView {
-    id: string
-    version?: string
-    type?: string
-    entrypoint?: string
-    digest?: string
-    signature?: string
-    permissions?: string[]
-    allowedObjects?: string[]
-    publisher?: string
-    state?: string
-    stored?: boolean
-    createdAt?: string
+  purpose?: string
+  schemaVersion?: number
+  id: string
+  version?: string
+  type?: string
+  entrypoint?: string
+  digest?: string
+  signature?: string
+  permissions?: string[]
+  allowedObjects?: string[]
+  publisher?: string
+  state?: string
+  stored?: boolean
+  createdAt?: string
+}
+
+export interface ExtensionPlan {
+  id: string
+  tenantId?: string
+  objectId: string
+  extensionId: string
+  extensionVersion: string
+  extensionDigest: string
+  publisher: string
+  manifestDigest: string
+  policyDigest: string
+  sandbox: string
+  inputDigest: string
+  timeoutSeconds: number
+  maxPackageBytes: number
+  maxInputBytes: number
+  maxOutputBytes: number
+  maxMemoryPages: number
+  planDigest: string
+  state: string
+  confirmationPhrase?: string
+  approvedByHash?: string
+  secondApprovedByHash?: string
+  executedByHash?: string
+  output?: string
+  exitCode?: number
+  error?: string
+  createdAt: string
+  expiresAt: string
+  approvedAt?: string
+  secondApprovedAt?: string
+  startedAt?: string
+  finishedAt?: string
 }
 
 export type RunnerUpdateState =
@@ -898,6 +945,122 @@ export interface RunnerUpdateStatus {
   canManage: boolean
   pending?: RunnerUpdate[]
   recent?: RunnerUpdate[]
+}
+
+export type FleetRunnerUpdatePlanState =
+  | 'pending_approval' | 'pending_second_approval' | 'approved' | 'running'
+  | 'observing' | 'rolling_back' | 'succeeded' | 'rolled_back'
+  | 'needs_attention' | 'cancelled' | 'expired'
+
+export type FleetRunnerUpdateItemState =
+  | 'pending' | 'ready' | 'running' | 'succeeded' | 'failed'
+  | 'rollback_ready' | 'rolling_back' | 'rolled_back' | 'needs_attention' | 'skipped'
+
+export type FleetBatchStrategy = 'serial' | 'fixed' | 'percentage' | 'canary'
+
+export interface FleetBatchPolicy {
+  strategy: FleetBatchStrategy
+  batchSize?: number
+  batchPercentage?: number
+  canarySize?: number
+  canaryPercentage?: number
+  pauseSeconds?: number
+  observationSeconds?: number
+}
+
+export interface FleetRunnerUpdateManifest {
+  purpose: string
+  schema: number
+  goos: string
+  goarch: string
+  targetVersion: string
+  artifactDigest: string
+  artifactRevision: string
+  publisher: string
+}
+
+export interface FleetRunnerUpdateItem {
+  id: string
+  planId: string
+  runnerId: string
+  serverId: string
+  batchIndex: number
+  state: FleetRunnerUpdateItemState
+  previousVersion: string
+  previousRevision: string
+  previousDigest: string
+  expectedLeaseGeneration: number
+  certificateFingerprint?: string
+  observedVersion?: string
+  observedRevision?: string
+  observedDigest?: string
+  error?: string
+  rollbackError?: string
+  claimedAt?: string
+  lastHeartbeatAt?: string
+  leaseExpiresAt?: string
+  executionDeadlineAt?: string
+  startedAt?: string
+  finishedAt?: string
+  updatedAt: string
+}
+
+export interface FleetRunnerUpdatePlan {
+  id: string
+  requestDigest: string
+  planDigest: string
+  policyDigest: string
+  actorHash: string
+  tenantId: string
+  manifest: FleetRunnerUpdateManifest
+  artifactPath?: string
+  targetRunnerIds: string[]
+  batchPolicy: FleetBatchPolicy
+  maxConcurrent: number
+  changeWindow?: { startAt: string; endAt: string; timezone?: string }
+  rollbackOnFailure: boolean
+  state: FleetRunnerUpdatePlanState
+  currentBatch: number
+  confirmationPhrase?: string
+  approvedByHash?: string
+  secondApprovedByHash?: string
+  executedByHash?: string
+  summary?: string
+  error?: string
+  items: FleetRunnerUpdateItem[]
+  createdAt: string
+  expiresAt: string
+  approvedAt?: string
+  secondApprovedAt?: string
+  startedAt?: string
+  observationStartedAt?: string
+  observationEndsAt?: string
+  finishedAt?: string
+}
+
+export interface FleetRunnerUpdateStatus {
+  available: boolean
+  canManage: boolean
+  currentActorHash: string
+  publisher: string
+  manifestPurpose: string
+  manifestSchema: number
+  manifestGoos: string
+  manifestGoarch: string
+  runners: RunnerNode[]
+  plans: FleetRunnerUpdatePlan[]
+}
+
+export interface FleetRunnerUpdatePlanInput {
+  manifest: FleetRunnerUpdateManifest
+  artifactPath: string
+  artifactSignature: string
+  targetRunnerIds: string[]
+  batchPolicy: FleetBatchPolicy
+  maxConcurrent: number
+  changeWindow: { startAt: string; endAt: string; timezone?: string }
+  rollbackOnFailure: boolean
+  confirmation: string
 }
 
 export interface RunnerUpdatePrepareInput {

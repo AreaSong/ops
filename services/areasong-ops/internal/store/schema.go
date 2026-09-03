@@ -714,4 +714,155 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 UPDATE terminal_shell_plans
 	 SET state = 'pending_second_approval'
 	 WHERE state = 'approved' AND approved_by_hash != '' AND execution_idempotency_key = '';`,
+	`CREATE TABLE extension_plans (
+		id TEXT PRIMARY KEY,
+		idempotency_key TEXT NOT NULL UNIQUE,
+		request_digest TEXT NOT NULL,
+		plan_digest TEXT NOT NULL,
+		actor_hash TEXT NOT NULL,
+		tenant_id TEXT NOT NULL,
+		object_id TEXT NOT NULL,
+		extension_id TEXT NOT NULL,
+		extension_version TEXT NOT NULL,
+		extension_digest TEXT NOT NULL,
+		publisher TEXT NOT NULL,
+		manifest_digest TEXT NOT NULL,
+		policy_digest TEXT NOT NULL,
+		sandbox TEXT NOT NULL,
+		input_json TEXT NOT NULL,
+		input_digest TEXT NOT NULL,
+		timeout_seconds INTEGER NOT NULL,
+		max_package_bytes INTEGER NOT NULL,
+		max_input_bytes INTEGER NOT NULL,
+		max_output_bytes INTEGER NOT NULL,
+		max_memory_pages INTEGER NOT NULL,
+		state TEXT NOT NULL CHECK (state IN ('pending_approval','pending_second_approval','approved','running','succeeded','failed','needs_attention','expired')),
+		confirmation_hash TEXT NOT NULL,
+		confirmation_phrase TEXT NOT NULL,
+		approved_by_hash TEXT NOT NULL DEFAULT '',
+		second_approved_by_hash TEXT NOT NULL DEFAULT '',
+		executed_by_hash TEXT NOT NULL DEFAULT '',
+		execution_idempotency_key TEXT NOT NULL DEFAULT '',
+		output TEXT NOT NULL DEFAULT '',
+		exit_code INTEGER NOT NULL DEFAULT 0,
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		approved_at TEXT,
+		second_approved_at TEXT,
+		started_at TEXT,
+		finished_at TEXT
+	);
+	CREATE INDEX idx_extension_plans_tenant_created ON extension_plans(tenant_id,created_at DESC);
+	CREATE INDEX idx_extension_plans_state_expiry ON extension_plans(state,expires_at);
+		CREATE UNIQUE INDEX idx_extension_plans_execution_key
+			ON extension_plans(execution_idempotency_key) WHERE execution_idempotency_key != '';`,
+	`ALTER TABLE runner_nodes ADD COLUMN revision TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE runner_nodes ADD COLUMN binary_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE runner_nodes ADD COLUMN identity_payload_version INTEGER NOT NULL DEFAULT 0;
+
+	 CREATE TABLE runner_fleet_update_plans (
+		id TEXT PRIMARY KEY,
+		idempotency_key TEXT NOT NULL UNIQUE,
+		execution_idempotency_key TEXT NOT NULL DEFAULT '',
+		cancellation_idempotency_key TEXT NOT NULL DEFAULT '',
+		request_digest TEXT NOT NULL,
+		plan_digest TEXT NOT NULL,
+		policy_digest TEXT NOT NULL,
+		actor_hash TEXT NOT NULL,
+		tenant_id TEXT NOT NULL,
+		manifest_json TEXT NOT NULL,
+		artifact_path TEXT NOT NULL,
+		artifact_signature TEXT NOT NULL,
+		staged_path TEXT NOT NULL,
+		target_runner_ids_json TEXT NOT NULL,
+		batch_policy_json TEXT NOT NULL,
+		max_concurrent INTEGER NOT NULL CHECK (max_concurrent > 0),
+		change_window_json TEXT NOT NULL,
+		rollback_on_failure INTEGER NOT NULL CHECK (rollback_on_failure = 1),
+		state TEXT NOT NULL CHECK (state IN ('pending_approval','pending_second_approval','approved','running','observing','rolling_back','succeeded','rolled_back','needs_attention','cancelled','expired')),
+		current_batch INTEGER NOT NULL DEFAULT -1,
+		confirmation_hash TEXT NOT NULL,
+		confirmation_phrase TEXT NOT NULL,
+		approved_by_hash TEXT NOT NULL DEFAULT '',
+		second_approved_by_hash TEXT NOT NULL DEFAULT '',
+		executed_by_hash TEXT NOT NULL DEFAULT '',
+		cancelled_by_hash TEXT NOT NULL DEFAULT '',
+		summary TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		approved_at TEXT,
+		second_approved_at TEXT,
+		started_at TEXT,
+		observation_started_at TEXT,
+		observation_ends_at TEXT,
+		finished_at TEXT,
+		updated_at TEXT NOT NULL
+	 );
+	 CREATE INDEX idx_runner_fleet_update_plans_state_created
+		ON runner_fleet_update_plans(state,created_at DESC);
+	 CREATE INDEX idx_runner_fleet_update_plans_tenant_created
+		ON runner_fleet_update_plans(tenant_id,created_at DESC);
+	 CREATE UNIQUE INDEX idx_runner_fleet_update_plans_execution_key
+		ON runner_fleet_update_plans(execution_idempotency_key) WHERE execution_idempotency_key != '';
+	 CREATE UNIQUE INDEX idx_runner_fleet_update_plans_cancellation_key
+		ON runner_fleet_update_plans(cancellation_idempotency_key) WHERE cancellation_idempotency_key != '';
+
+	 CREATE TABLE runner_fleet_update_items (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		runner_id TEXT NOT NULL,
+		server_id TEXT NOT NULL,
+		batch_index INTEGER NOT NULL CHECK (batch_index >= 0),
+		state TEXT NOT NULL CHECK (state IN ('pending','ready','running','succeeded','failed','rollback_ready','rolling_back','rolled_back','needs_attention','skipped')),
+		previous_version TEXT NOT NULL,
+		previous_revision TEXT NOT NULL,
+		previous_digest TEXT NOT NULL,
+		expected_lease_generation INTEGER NOT NULL CHECK (expected_lease_generation > 0),
+		certificate_fingerprint TEXT NOT NULL DEFAULT '',
+		assignment_action TEXT NOT NULL DEFAULT '',
+		assignment_generation INTEGER NOT NULL DEFAULT 0 CHECK (assignment_generation >= 0),
+		assignment_token_hash TEXT NOT NULL DEFAULT '',
+		assignment_idempotency_key TEXT NOT NULL DEFAULT '',
+		completion_idempotency_key TEXT NOT NULL DEFAULT '',
+		observed_version TEXT NOT NULL DEFAULT '',
+		observed_revision TEXT NOT NULL DEFAULT '',
+		observed_digest TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT '',
+		rollback_error TEXT NOT NULL DEFAULT '',
+		claimed_at TEXT,
+		last_heartbeat_at TEXT,
+		lease_expires_at TEXT,
+		execution_deadline_at TEXT,
+		started_at TEXT,
+		finished_at TEXT,
+		updated_at TEXT NOT NULL,
+		UNIQUE(plan_id,runner_id),
+		FOREIGN KEY(plan_id) REFERENCES runner_fleet_update_plans(id) ON DELETE CASCADE
+	 );
+	 CREATE INDEX idx_runner_fleet_update_items_claim
+		ON runner_fleet_update_items(runner_id,state,batch_index,updated_at);
+	 CREATE INDEX idx_runner_fleet_update_items_plan_state
+		ON runner_fleet_update_items(plan_id,state,batch_index);
+	 CREATE UNIQUE INDEX idx_runner_fleet_update_items_assignment_key
+		ON runner_fleet_update_items(assignment_idempotency_key) WHERE assignment_idempotency_key != '';
+	 CREATE UNIQUE INDEX idx_runner_fleet_update_items_completion_key
+		ON runner_fleet_update_items(completion_idempotency_key) WHERE completion_idempotency_key != '';
+
+	 CREATE TABLE runner_fleet_update_receipts (
+		item_id TEXT NOT NULL,
+		assignment_generation INTEGER NOT NULL,
+		plan_id TEXT NOT NULL,
+		claim_token TEXT NOT NULL,
+		control_plane_endpoint TEXT NOT NULL,
+		assignment_json TEXT NOT NULL,
+		local_update_id TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL CHECK (action IN ('update','rollback')),
+		state TEXT NOT NULL CHECK (state IN ('prepared','launching','launched','reported','needs_attention')),
+		last_error TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY(item_id,assignment_generation)
+	 );`,
 }

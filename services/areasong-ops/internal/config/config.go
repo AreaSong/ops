@@ -154,16 +154,43 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 	}
 	if catalog.Extensions != nil && catalog.Extensions.Enabled {
 		if catalog.Extensions.Sandbox == "" {
-			catalog.Extensions.Sandbox = "rootless"
+			return errors.New("启用扩展必须显式选择沙箱")
 		}
-		if catalog.Extensions.Sandbox != "rootless" && catalog.Extensions.Sandbox != "wasm" {
-			return errors.New("扩展沙箱类型无效")
+		if catalog.Extensions.Sandbox != "wasm" {
+			return errors.New("当前扩展执行链路只允许 wasm 沙箱")
+		}
+		if !catalog.Extensions.RequireSignature {
+			return errors.New("启用扩展必须强制校验签名")
 		}
 		if catalog.Extensions.MaxPackageBytes == 0 {
 			catalog.Extensions.MaxPackageBytes = 16 << 20
 		}
 		if catalog.Extensions.MaxPackageBytes < 1 || catalog.Extensions.MaxPackageBytes > 64<<20 {
 			return errors.New("扩展包大小限制无效")
+		}
+		if catalog.Extensions.MaxInputBytes == 0 {
+			catalog.Extensions.MaxInputBytes = 64 << 10
+		}
+		if catalog.Extensions.MaxInputBytes < 2 || catalog.Extensions.MaxInputBytes > 1<<20 {
+			return errors.New("扩展输入大小限制无效")
+		}
+		if catalog.Extensions.MaxOutputBytes == 0 {
+			catalog.Extensions.MaxOutputBytes = 64 << 10
+		}
+		if catalog.Extensions.MaxOutputBytes < 1 || catalog.Extensions.MaxOutputBytes > 1<<20 {
+			return errors.New("扩展输出大小限制无效")
+		}
+		if catalog.Extensions.MaxExecutionSeconds == 0 {
+			catalog.Extensions.MaxExecutionSeconds = 15
+		}
+		if catalog.Extensions.MaxExecutionSeconds < 1 || catalog.Extensions.MaxExecutionSeconds > 60 {
+			return errors.New("扩展执行超时必须为 1 到 60 秒")
+		}
+		if catalog.Extensions.MaxMemoryPages == 0 {
+			catalog.Extensions.MaxMemoryPages = 256
+		}
+		if catalog.Extensions.MaxMemoryPages < 16 || catalog.Extensions.MaxMemoryPages > 1024 {
+			return errors.New("扩展内存上限必须为 16 到 1024 个 WebAssembly page")
 		}
 		if err := validatePublisherKeys(catalog.Extensions); err != nil {
 			return err
@@ -306,6 +333,12 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 			}
 		}
 	}
+	if err := catalog.validateRunnerFleetUpdate(); err != nil {
+		return err
+	}
+	if err := catalog.validateRemoteWorker(requireRoot); err != nil {
+		return err
+	}
 	if catalog.SchemaVersion == schemaVersion && len(catalog.Adapters) == 0 {
 		return errors.New("受信适配器注册表不能为空")
 	}
@@ -313,17 +346,17 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 		return err
 	}
 	objectIDs := map[string]string{
-		"access": "access policy",
-		"audit": "audit records",
+		"access":       "access policy",
+		"audit":        "audit records",
 		"auto-updates": "automatic update policy",
-		"batch": "batch operations",
-		"credentials": "credential metadata",
-		"events": "event stream",
-		"extensions": "extension policy",
-		"files": "managed files",
-		"fleet": "fleet inventory",
-		"kubernetes": "Kubernetes policy",
-		"terminal": "restricted terminal",
+		"batch":        "batch operations",
+		"credentials":  "credential metadata",
+		"events":       "event stream",
+		"extensions":   "extension policy",
+		"files":        "managed files",
+		"fleet":        "fleet inventory",
+		"kubernetes":   "Kubernetes policy",
+		"terminal":     "restricted terminal",
 	}
 	if catalog.Fleet != nil {
 		for _, server := range catalog.Fleet.Inventory.Servers {
@@ -374,6 +407,44 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 	return nil
 }
 
+func (catalog *Catalog) validateRunnerFleetUpdate() error {
+	policy := catalog.RunnerUpdate
+	if policy == nil || !policy.FleetEnabled {
+		return nil
+	}
+	if !policy.Enabled || catalog.SchemaVersion != schemaVersion || catalog.Access == nil || !catalog.Access.Enforced {
+		return errors.New("Runner Fleet 自更新必须启用 schema 4、访问策略和 Runner 自更新")
+	}
+	if catalog.Fleet == nil || !catalog.Fleet.Enabled || !catalog.Fleet.AllowRemoteRunners ||
+		!catalog.Fleet.RequiremTLS || !catalog.Fleet.RequireSignedHeartbeat {
+		return errors.New("Runner Fleet 自更新必须启用远程 Fleet、mTLS 和签名心跳")
+	}
+	now := time.Now().UTC()
+	for _, node := range catalog.Fleet.Inventory.Runners {
+		if !slices.Contains(node.Capabilities, "runner-update") {
+			return fmt.Errorf("Runner Fleet 自更新目标 %s 缺少 runner-update 能力", node.ID)
+		}
+		if node.CertificateFingerprint == "" {
+			return fmt.Errorf("Runner Fleet 自更新目标 %s 缺少固定 mTLS 指纹", node.ID)
+		}
+		key := catalog.Fleet.RunnerPublicKeys[node.ID]
+		if key == "" {
+			key = node.HeartbeatPublicKey
+		}
+		decoded, err := base64.StdEncoding.Strict().DecodeString(strings.TrimSpace(key))
+		if err != nil || len(decoded) != ed25519.PublicKeySize {
+			return fmt.Errorf("Runner Fleet 自更新目标 %s 缺少有效心跳公钥", node.ID)
+		}
+		if runnerUpdateManagerCount(catalog.Access, node.ID, now) < 4 {
+			return fmt.Errorf("Runner Fleet 自更新目标 %s 至少需要四名独立授权主体", node.ID)
+		}
+	}
+	if len(catalog.Fleet.Inventory.Runners) == 0 {
+		return errors.New("Runner Fleet 自更新至少需要一个显式登记的 Runner")
+	}
+	return nil
+}
+
 func validateFleetTransport(policy *FleetPolicy, requireRoot bool) error {
 	if policy == nil {
 		return nil
@@ -409,6 +480,75 @@ func validateFleetTransport(policy *FleetPolicy, requireRoot bool) error {
 	// explicit switch. Mutating the normalized policy keeps runtime behavior
 	// and configuration review semantics aligned.
 	policy.RequireSignedHeartbeat = true
+	return nil
+}
+
+func (catalog *Catalog) validateRemoteWorker(requireRoot bool) error {
+	if catalog.Fleet == nil || catalog.Fleet.RemoteWorker == nil || !catalog.Fleet.RemoteWorker.Enabled {
+		return nil
+	}
+	policy := catalog.Fleet.RemoteWorker
+	if !catalog.Fleet.Enabled {
+		return errors.New("远程 Runner worker 必须启用 Fleet")
+	}
+	if catalog.RunnerUpdate == nil || !catalog.RunnerUpdate.Enabled {
+		return errors.New("远程 Runner worker 必须启用 Runner 更新策略")
+	}
+	if !namePattern.MatchString(policy.RunnerID) || !catalog.hasRunner(policy.RunnerID) {
+		return errors.New("远程 Runner worker 的 runnerId 未登记")
+	}
+	if policy.RunnerID != catalog.RunnerUpdate.RunnerID {
+		return errors.New("远程 Runner worker 与本地 Runner 更新身份不一致")
+	}
+	endpoint, err := url.Parse(strings.TrimSpace(policy.ControlPlaneURL))
+	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil ||
+		(endpoint.Path != "" && endpoint.Path != "/") || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+		return errors.New("远程 Runner worker 控制面地址必须是无路径、认证或查询参数的 HTTPS origin")
+	}
+	policy.ControlPlaneURL = strings.TrimRight(endpoint.String(), "/")
+	if policy.PollIntervalSeconds == 0 {
+		policy.PollIntervalSeconds = 2
+	}
+	if policy.PollIntervalSeconds < 1 || policy.PollIntervalSeconds > 60 {
+		return errors.New("远程 Runner worker 轮询间隔必须为 1 到 60 秒")
+	}
+	if policy.HeartbeatIntervalSeconds == 0 {
+		policy.HeartbeatIntervalSeconds = 30
+	}
+	if policy.HeartbeatIntervalSeconds < 5 ||
+		policy.HeartbeatIntervalSeconds >= catalog.Fleet.HeartbeatTimeoutSeconds {
+		return errors.New("远程 Runner worker 心跳间隔必须至少 5 秒且小于心跳超时")
+	}
+	for name, path := range map[string]string{
+		"客户端证书":  policy.MTLSCertificateFile,
+		"客户端私钥":  policy.MTLSKeyFile,
+		"控制面 CA": policy.ControlPlaneCAFile,
+		"心跳签名私钥": policy.HeartbeatPrivateKeyFile,
+	} {
+		path = strings.TrimSpace(path)
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return fmt.Errorf("远程 Runner worker %s路径必须是规范绝对路径", name)
+		}
+		if requireRoot {
+			if err := verifySecureFile(path); err != nil {
+				return fmt.Errorf("远程 Runner worker %s: %w", name, err)
+			}
+		}
+	}
+	key := catalog.Fleet.RunnerPublicKeys[policy.RunnerID]
+	if key == "" {
+		for _, node := range catalog.Fleet.Inventory.Runners {
+			if node.ID == policy.RunnerID {
+				key = node.HeartbeatPublicKey
+				break
+			}
+		}
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(strings.TrimSpace(key))
+	if err != nil || len(decoded) != ed25519.PublicKeySize {
+		return errors.New("远程 Runner worker 缺少匹配的心跳公钥")
+	}
+	catalog.Fleet.RequireSignedHeartbeat = true
 	return nil
 }
 
@@ -486,9 +626,6 @@ func (catalog *Catalog) validateAccessPolicy(objectIDs map[string]string) error 
 }
 
 func validatePublisherKeys(policy *ExtensionPolicy) error {
-	if !policy.RequireSignature {
-		return nil
-	}
 	if len(policy.TrustedPublishers) == 0 {
 		return errors.New("扩展签名策略缺少受信发布者")
 	}
@@ -1107,7 +1244,7 @@ func runnerUpdateManagerCount(policy *AccessPolicy, runnerID string, now time.Ti
 		if !accessTenantActive(policy, principal.TenantID) {
 			continue
 		}
-		allowed := accessRolesAllow(policy, principal.Roles, model.PermissionRunnerUpdate)
+		allowed := accessRolesAllow(policy, principal.Roles, model.Permission("*"))
 		if !allowed {
 			for _, binding := range policy.Bindings {
 				if binding.Subject != subject || (binding.TenantID != principal.TenantID && binding.TenantID != "*") ||

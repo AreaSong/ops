@@ -46,8 +46,12 @@ func (store *Store) UpsertRunnerNode(ctx context.Context, node model.RunnerNode,
 		return err
 	}
 	if tenantID == "" {
+		tenantID = node.TenantID
+	}
+	if tenantID == "" {
 		tenantID = "default"
 	}
+	node.TenantID = tenantID
 	labels, err := encodeJSON(node.Labels)
 	if err != nil {
 		return err
@@ -65,15 +69,20 @@ func (store *Store) UpsertRunnerNode(ctx context.Context, node model.RunnerNode,
 		lease = timeText(*node.LeaseExpiresAt)
 	}
 	_, err = store.db.ExecContext(ctx, `
-		INSERT INTO runner_nodes(id,server_id,hostname,tenant_id,labels_json,capabilities_json,version,status,max_concurrency,last_heartbeat_at,lease_expires_at,lease_generation,lease_token,certificate_fingerprint,heartbeat_public_key,disabled_reason,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO runner_nodes(id,server_id,hostname,tenant_id,labels_json,capabilities_json,version,revision,binary_digest,identity_payload_version,status,max_concurrency,last_heartbeat_at,lease_expires_at,lease_generation,lease_token,certificate_fingerprint,heartbeat_public_key,disabled_reason,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET server_id=excluded.server_id,hostname=excluded.hostname,tenant_id=excluded.tenant_id,
-		 labels_json=excluded.labels_json,capabilities_json=excluded.capabilities_json,version=excluded.version,status=excluded.status,
+		 labels_json=excluded.labels_json,capabilities_json=excluded.capabilities_json,version=excluded.version,
+		 revision=CASE WHEN excluded.revision='' THEN runner_nodes.revision ELSE excluded.revision END,
+		 binary_digest=CASE WHEN excluded.binary_digest='' THEN runner_nodes.binary_digest ELSE excluded.binary_digest END,
+		 identity_payload_version=CASE WHEN excluded.identity_payload_version=0 THEN runner_nodes.identity_payload_version ELSE excluded.identity_payload_version END,
+		 status=excluded.status,
 		 max_concurrency=excluded.max_concurrency,last_heartbeat_at=excluded.last_heartbeat_at,lease_expires_at=excluded.lease_expires_at,
 		 certificate_fingerprint=CASE WHEN excluded.certificate_fingerprint='' THEN runner_nodes.certificate_fingerprint ELSE excluded.certificate_fingerprint END,
 		 heartbeat_public_key=CASE WHEN excluded.heartbeat_public_key='' THEN runner_nodes.heartbeat_public_key ELSE excluded.heartbeat_public_key END,
 		 disabled_reason=excluded.disabled_reason,updated_at=excluded.updated_at`,
-		node.ID, node.ServerID, node.Hostname, tenantID, labels, capabilities, node.Version, node.State, node.MaxConcurrency,
+		node.ID, node.ServerID, node.Hostname, tenantID, labels, capabilities, node.Version,
+		node.Revision, node.BinaryDigest, node.IdentityPayloadVersion, node.State, node.MaxConcurrency,
 		heartbeat, lease, node.LeaseGeneration, node.LeaseToken, node.CertificateFingerprint, node.HeartbeatPublicKey,
 		node.DisabledReason, timeText(now), timeText(now))
 	return err
@@ -86,14 +95,14 @@ func (store *Store) HeartbeatRunner(ctx context.Context, id, version string, lea
 func (store *Store) HeartbeatRunnerWithReceipt(
 	ctx context.Context, id, version string, lease time.Duration, nonce, payloadDigest string,
 ) (model.RunnerNode, error) {
-	return store.heartbeatRunnerWithReceipt(ctx, id, version, nil, nil, lease, nonce, payloadDigest, false)
+	return store.heartbeatRunnerWithReceipt(ctx, id, version, "", "", 0, nil, nil, lease, nonce, payloadDigest, false)
 }
 
 func (store *Store) HeartbeatRunnerWithReceiptData(
 	ctx context.Context, id, version string, capabilities []string, labels map[string]string,
 	lease time.Duration, nonce, payloadDigest string,
 ) (model.RunnerNode, error) {
-	return store.heartbeatRunnerWithReceipt(ctx, id, version, capabilities, labels, lease, nonce, payloadDigest, true)
+	return store.heartbeatRunnerWithReceipt(ctx, id, version, "", "", 0, capabilities, labels, lease, nonce, payloadDigest, true)
 }
 
 // HeartbeatRunnerAuthenticated is an explicit storage API for the signed
@@ -106,8 +115,22 @@ func (store *Store) HeartbeatRunnerAuthenticated(
 	return store.HeartbeatRunnerWithReceiptData(ctx, id, version, capabilities, labels, lease, nonce, payloadDigest)
 }
 
+func (store *Store) HeartbeatRunnerIdentityAuthenticated(
+	ctx context.Context,
+	id, version, revision, binaryDigest string,
+	payloadVersion int,
+	capabilities []string,
+	labels map[string]string,
+	lease time.Duration,
+	nonce, payloadDigest string,
+) (model.RunnerNode, error) {
+	return store.heartbeatRunnerWithReceipt(ctx, id, version, revision, binaryDigest,
+		payloadVersion, capabilities, labels, lease, nonce, payloadDigest, true)
+}
+
 func (store *Store) heartbeatRunnerWithReceipt(
-	ctx context.Context, id, version string, capabilities []string, labels map[string]string,
+	ctx context.Context, id, version, revision, binaryDigest string, payloadVersion int,
+	capabilities []string, labels map[string]string,
 	lease time.Duration, nonce, payloadDigest string, updateMetadata bool,
 ) (model.RunnerNode, error) {
 	if nonce == "" {
@@ -149,11 +172,22 @@ func (store *Store) heartbeatRunnerWithReceipt(
 	if tokenErr != nil {
 		return model.RunnerNode{}, tokenErr
 	}
-	query := `UPDATE runner_nodes SET version=?,status=?,last_heartbeat_at=?,lease_expires_at=?,lease_generation=lease_generation+1,lease_token=?,updated_at=? WHERE id=? AND status NOT IN (?,?)`
-	arguments := []any{version, model.NodeOnline, timeText(now), timeText(expires), token, timeText(now), id, model.NodeDisabled, model.NodeDraining}
+	query := `UPDATE runner_nodes SET version=?,revision=CASE WHEN ?='' THEN revision ELSE ? END,
+		binary_digest=CASE WHEN ?='' THEN binary_digest ELSE ? END,
+		identity_payload_version=CASE WHEN ?=0 THEN identity_payload_version ELSE ? END,
+		status=?,last_heartbeat_at=?,lease_expires_at=?,lease_generation=lease_generation+1,lease_token=?,updated_at=?
+		WHERE id=? AND status NOT IN (?,?)`
+	arguments := []any{version, revision, revision, binaryDigest, binaryDigest, payloadVersion, payloadVersion,
+		model.NodeOnline, timeText(now), timeText(expires), token, timeText(now), id, model.NodeDisabled, model.NodeDraining}
 	if updateMetadata {
-		query = `UPDATE runner_nodes SET version=?,labels_json=?,capabilities_json=?,status=?,last_heartbeat_at=?,lease_expires_at=?,lease_generation=lease_generation+1,lease_token=?,updated_at=? WHERE id=? AND status NOT IN (?,?)`
-		arguments = []any{version, encodedLabels, encodedCapabilities, model.NodeOnline, timeText(now), timeText(expires), token, timeText(now), id, model.NodeDisabled, model.NodeDraining}
+		query = `UPDATE runner_nodes SET version=?,revision=CASE WHEN ?='' THEN revision ELSE ? END,
+			binary_digest=CASE WHEN ?='' THEN binary_digest ELSE ? END,
+			identity_payload_version=CASE WHEN ?=0 THEN identity_payload_version ELSE ? END,
+			labels_json=?,capabilities_json=?,status=?,last_heartbeat_at=?,lease_expires_at=?,
+			lease_generation=lease_generation+1,lease_token=?,updated_at=? WHERE id=? AND status NOT IN (?,?)`
+		arguments = []any{version, revision, revision, binaryDigest, binaryDigest, payloadVersion, payloadVersion,
+			encodedLabels, encodedCapabilities, model.NodeOnline, timeText(now), timeText(expires), token,
+			timeText(now), id, model.NodeDisabled, model.NodeDraining}
 	}
 	result, err := tx.ExecContext(ctx, query, arguments...)
 	if err = requireOne(result, err, "Runner 未登记或当前不可用"); err != nil {
@@ -245,7 +279,10 @@ func scanRunnerNode(row scanner) (model.RunnerNode, error) {
 	var node model.RunnerNode
 	var labels, capabilities, state string
 	var heartbeat, lease, token, fingerprint, publicKey sql.NullString
-	if err := row.Scan(&node.ID, &node.ServerID, &node.Hostname, &node.Version, &labels, &capabilities, &state, &node.MaxConcurrency, &heartbeat, &lease, &node.LeaseGeneration, &token, &fingerprint, &publicKey, &node.DisabledReason); err != nil {
+	if err := row.Scan(&node.ID, &node.ServerID, &node.TenantID, &node.Hostname, &node.Version, &node.Revision,
+		&node.BinaryDigest, &node.IdentityPayloadVersion, &labels, &capabilities, &state,
+		&node.MaxConcurrency, &heartbeat, &lease, &node.LeaseGeneration, &token,
+		&fingerprint, &publicKey, &node.DisabledReason); err != nil {
 		return node, err
 	}
 	node.State = model.NodeState(state)
@@ -274,7 +311,10 @@ func scanRunnerNode(row scanner) (model.RunnerNode, error) {
 	return node, nil
 }
 
-const runnerNodeSelect = `SELECT id,server_id,hostname,version,labels_json,capabilities_json,status,max_concurrency,last_heartbeat_at,lease_expires_at,lease_generation,lease_token,certificate_fingerprint,heartbeat_public_key,disabled_reason FROM runner_nodes`
+const runnerNodeSelect = `SELECT id,server_id,tenant_id,hostname,version,revision,binary_digest,
+	identity_payload_version,labels_json,capabilities_json,status,max_concurrency,last_heartbeat_at,
+	lease_expires_at,lease_generation,lease_token,certificate_fingerprint,heartbeat_public_key,
+	disabled_reason FROM runner_nodes`
 
 func (store *Store) ListFleet(ctx context.Context) (model.Fleet, error) {
 	fleet := model.Fleet{Servers: []model.ServerNode{}, Runners: []model.RunnerNode{}}

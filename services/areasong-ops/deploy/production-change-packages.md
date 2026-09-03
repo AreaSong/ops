@@ -57,12 +57,12 @@
 
 ## 包 C6：扩展与 Runner 自更新
 
-- **范围**：签名插件 WASM/rootless 沙箱、Runner signed bundle、分批激活和失败收口。
+- **范围**：用途隔离的签名插件 WASM 沙箱、Runner signed bundle、分批激活和失败收口。
 - **等级**：L3；Runner 更新至少两名独立授权主体，插件默认关闭。
 - **前置证据**：发布者公钥、Sigstore/Ed25519 签名、artifact digest、Runner mTLS、当前二进制备份和 systemd 状态。
 - **执行**：先准备和验证制品，再独立激活；重启单个 Runner 后验证 socket、revision、版本和 preflight。
 - **回滚**：恢复旧二进制和 unit 状态，只重启 Runner；插件失败删除隔离暂存，不触碰宿主 Docker Socket。
-- **当前状态**：签名校验、更新状态机和本地全功能页面已具备；生产开关和第二授权主体仍需单独批准。
+- **当前状态**：签名校验、WASM 计划/双审批/独立执行状态机、Runner Fleet 显式目标/Canary/分批/并发/失败停止/逐节点回滚、失败收口和本地页面已具备；扩展与 Fleet 自更新均默认关闭，生产启用前还需制品、mTLS/心跳、WASM/Fleet 负向验收及单独批准。
 
 ## 包 C7：Kubernetes Namespace 级计划
 
