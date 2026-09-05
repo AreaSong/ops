@@ -323,10 +323,6 @@ func (engine *Engine) CreatePreview(
 	}); err != nil {
 		return model.Preview{}, err
 	}
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actorHash, Event: "preview.created", Resource: service.Name + "/" + action.Name,
-		Outcome: "accepted", Detail: map[string]any{"target": request.Target, "risk": action.Risk},
-	})
 	return preview, nil
 }
 
@@ -354,27 +350,29 @@ func (engine *Engine) StartTask(
 	if err != nil {
 		return model.Task{}, false, err
 	}
-	task, created, err := engine.store.StartTask(ctx, actorHash, request, taskID)
+	started, err := engine.store.StartTaskWithEvent(ctx, actorHash, request, taskID)
 	if err != nil {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
+		_, auditErr := engine.store.AppendAudit(ctx, model.AuditEntry{
 			ActorHash: actorHash, Event: "task.rejected", Resource: request.PreviewID,
 			Outcome: "rejected", Detail: map[string]any{"reason": redactText(err.Error())},
 		})
+		if auditErr != nil {
+			return model.Task{}, false, errors.Join(err,
+				fmt.Errorf("任务拒绝审计写入失败: %w", auditErr))
+		}
 		return model.Task{}, false, err
 	}
-	if !created {
-		return task, false, nil
+	if !started.Created {
+		return started.Task, false, nil
 	}
-	engine.enqueue(task)
-	return task, true, nil
+	engine.enqueue(started.Task, started.QueuedEvent.Sequence)
+	return started.Task, true, nil
 }
 
-func (engine *Engine) enqueue(task model.Task) {
-	engine.event(context.Background(), model.Event{TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列"})
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
-		Outcome: "accepted", Detail: map[string]any{"service": task.Service, "action": task.Action, "target": task.Target},
-	})
+func (engine *Engine) enqueue(task model.Task, queuedEventSequence int64) {
+	if queuedEventSequence > 0 {
+		engine.broker.Publish(queuedEventSequence)
+	}
 	if engine.remoteDispatch {
 		if err := engine.dispatchRemote(context.Background(), task); err != nil {
 			engine.completeTask(task, model.TaskFailedRecoverable, "远程任务分派失败", redactText(err.Error()),

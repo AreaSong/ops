@@ -202,6 +202,24 @@ func (store *Store) setDesiredState(
 	if err != nil {
 		return model.ServiceState{}, false, err
 	}
+	if !replayed {
+		actor := input.ActorHash
+		if actor == "" {
+			actor = "bootstrap"
+		}
+		detail := map[string]any{
+			"tenantId": input.TenantID, "desiredState": input.Desired, "reason": input.Reason,
+		}
+		if input.MaintenanceUntil != nil {
+			detail["maintenanceUntil"] = input.MaintenanceUntil.UTC()
+		}
+		if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+			ActorHash: actor, Event: "desired_state.changed", Resource: input.ObjectID,
+			Outcome: "accepted", Detail: detail,
+		}, now); err != nil {
+			return model.ServiceState{}, false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return model.ServiceState{}, false, err
 	}

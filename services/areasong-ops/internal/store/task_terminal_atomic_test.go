@@ -65,7 +65,7 @@ func TestCompleteTaskWithDesiredCommitsLifecycleAndDesiredStateTogether(t *testi
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_entries WHERE resource=?`, task.ID).Scan(&audits); err != nil {
 		t.Fatal(err)
 	}
-	if desiredEvents != 2 || taskEvents != 1 || audits != 1 {
+	if desiredEvents != 2 || taskEvents != 2 || audits != 2 {
 		t.Fatalf("desiredEvents=%d taskEvents=%d audits=%d", desiredEvents, taskEvents, audits)
 	}
 }
@@ -143,7 +143,7 @@ func TestCompleteTaskWithDesiredRollsBackOnDesiredStateError(t *testing.T) {
 	if err := database.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_entries WHERE resource=?`, task.ID).Scan(&audits); err != nil {
 		t.Fatal(err)
 	}
-	if taskEvents != 0 || audits != 0 {
+	if taskEvents != 1 || audits != 1 {
 		t.Fatalf("rollback left taskEvents=%d audits=%d", taskEvents, audits)
 	}
 }

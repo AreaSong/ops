@@ -355,10 +355,3 @@ func (engine *Engine) completeTask(
 		slog.Error("任务终态事务提交失败", "task", task.ID, "state", state, "error", err)
 	}
 }
-
-func (engine *Engine) auditTerminal(task model.Task, state model.TaskState, message string) {
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: task.ActorHash, Event: "task.terminal", Resource: task.ID,
-		Outcome: string(state), Detail: map[string]any{"service": task.Service, "action": task.Action, "error": message},
-	})
-}

@@ -64,27 +64,26 @@ func (engine *Engine) UploadExtension(
 				if data, readErr := os.ReadFile(storagePath); readErr == nil && digestText(string(data)) == request.Manifest.Digest {
 					if markErr := engine.store.MarkExtensionStored(ctx, request.Manifest.ID, request.Manifest.Version); markErr == nil {
 						reserved.Stored, reserved.State = true, "stored"
-						engine.auditExtension(actor, reserved)
 						return reserved, false, nil
 					}
 				}
-				engine.failExtension(ctx, actor, request.Manifest, storagePath, "暂存状态无法恢复")
-				return reserved, false, errors.New("扩展包暂存状态不完整，已进入人工关注")
+				failure := errors.New("扩展包暂存状态不完整，已进入人工关注")
+				return reserved, false, errors.Join(failure,
+					engine.failExtension(ctx, request.Manifest, storagePath, "暂存状态无法恢复"))
 			}
 		}
 		return reserved, created, err
 	}
 	if err := writeExtensionPackage(storagePath, content); err != nil {
-		engine.failExtension(ctx, actor, request.Manifest, storagePath, err.Error())
-		return result, true, fmt.Errorf("扩展包暂存失败: %w", err)
+		return result, true, errors.Join(fmt.Errorf("扩展包暂存失败: %w", err),
+			engine.failExtension(ctx, request.Manifest, storagePath, err.Error()))
 	}
 	if err := engine.store.MarkExtensionStored(ctx, request.Manifest.ID, request.Manifest.Version); err != nil {
-		engine.failExtension(ctx, actor, request.Manifest, storagePath, err.Error())
-		return result, true, err
+		return result, true, errors.Join(err,
+			engine.failExtension(ctx, request.Manifest, storagePath, err.Error()))
 	}
 	result.Stored = true
 	result.State = "stored"
-	engine.auditExtension(actor, result)
 	return result, true, nil
 }
 
@@ -236,28 +235,19 @@ func writeExtensionPackage(path string, content []byte) error {
 	return closeErr
 }
 
-func (engine *Engine) auditExtension(actor string, result model.ExtensionUploadResult) {
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actor, Event: "extension.uploaded",
-		Resource: "extension:" + result.Manifest.ID, Outcome: "accepted",
-		Detail: map[string]any{"version": result.Manifest.Version, "digest": result.Manifest.Digest, "state": result.State},
-	})
-}
-
 func (engine *Engine) failExtension(
 	ctx context.Context,
-	actor string,
 	manifest model.ExtensionManifest,
 	storagePath, reason string,
-) {
-	if err := engine.store.MarkExtensionFailed(ctx, manifest.ID, manifest.Version); err != nil {
-		reason = reason + "; 状态收口失败: " + err.Error()
+) error {
+	var result error
+	if err := engine.store.MarkExtensionFailed(ctx, manifest.ID, manifest.Version, reason); err != nil {
+		result = fmt.Errorf("扩展失败状态收口失败: %w", err)
 	}
 	if info, err := os.Lstat(storagePath); err == nil && info.Mode().IsRegular() {
-		_ = os.Remove(storagePath)
+		if removeErr := os.Remove(storagePath); removeErr != nil {
+			result = errors.Join(result, fmt.Errorf("删除不完整扩展包失败: %w", removeErr))
+		}
 	}
-	engine.auditExtension(actor, model.ExtensionUploadResult{
-		Manifest: manifest, State: "failed", StorageDigest: manifest.Digest,
-		Reason: reason, CreatedAt: time.Now().UTC(),
-	})
+	return result
 }

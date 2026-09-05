@@ -448,7 +448,8 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	}
 	approved := approveReleasePlanForTest(t, engine, plan, approver)
 	executionKey := mustUUID(t)
-	task, created, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
+	executor := releasePlanExecutor(approved)
+	task, created, err := engine.ExecuteReleasePlan(ctx, executor, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: executionKey,
 	})
 	if err != nil || !created || task.PlanID != plan.ID {
@@ -459,7 +460,7 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	if err != nil || finished.State != model.TaskSucceeded || len(finished.Stages) != 5 {
 		t.Fatalf("task=%+v err=%v", finished, err)
 	}
-	replayed, created, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
+	replayed, created, err := engine.ExecuteReleasePlan(ctx, executor, plan.ID, model.ExecutePlanRequest{
 		IdempotencyKey: executionKey,
 	})
 	if err != nil || created || replayed.ID != task.ID {
@@ -484,7 +485,7 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	approved := approveReleasePlanForTest(t, engine, plan, approver)
-	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
+	task, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
 	if err != nil {
@@ -929,7 +930,7 @@ func TestControlledRollbackPlanRevalidatesCurrentSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	approved := approveReleasePlanForTest(t, engine, plan, approver)
-	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
+	task, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
 	if err != nil {
@@ -1083,4 +1084,16 @@ func mustUUID(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return id
+}
+
+func releasePlanExecutor(plan model.ReleasePlan) string {
+	if plan.Risk != model.RiskHigh || plan.AllowsC2LifecycleSingleActorApproval() {
+		return plan.ActorHash
+	}
+	for _, candidate := range []string{strings.Repeat("d", 64), strings.Repeat("e", 64), strings.Repeat("f", 64)} {
+		if model.IndependentExecutor(candidate, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
+			return candidate
+		}
+	}
+	return ""
 }

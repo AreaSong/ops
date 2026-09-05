@@ -99,3 +99,32 @@ func TestLegacySetDesiredStateDoesNotRequireReceiptTableColumns(t *testing.T) {
 		t.Fatalf("generation=%d want 1", state.Generation)
 	}
 }
+
+func TestSetDesiredStateAndAuditAreAtomic(t *testing.T) {
+	database := openTestStore(t)
+	ctx := context.Background()
+	if _, err := database.db.Exec(`CREATE TRIGGER fail_desired_state_audit BEFORE INSERT ON audit_entries
+		WHEN NEW.event='desired_state.changed' BEGIN SELECT RAISE(ABORT, 'forced desired-state audit failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	input := DesiredStateInput{
+		Service: "demo", ObjectID: "service:demo", TenantID: "tenant-a",
+		Desired: model.DesiredMaintenance, Reason: "planned", ActorHash: "actor-a",
+	}
+	if _, _, err := database.SetDesiredStateIdempotent(ctx, input, "request-a", "digest-a"); err == nil {
+		t.Fatal("desired-state write survived audit failure")
+	}
+	for table, query := range map[string]string{
+		"desired state": `SELECT COUNT(*) FROM desired_states`,
+		"control event": `SELECT COUNT(*) FROM control_plane_events`,
+		"receipt":       `SELECT COUNT(*) FROM desired_state_requests`,
+	} {
+		var count int
+		if err := database.db.QueryRowContext(ctx, query).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("%s count=%d after audit failure", table, count)
+		}
+	}
+}

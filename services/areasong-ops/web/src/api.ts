@@ -871,11 +871,11 @@ export class OpsAPI {
     })
   }
 
-  async createKubernetesRollbackPlan(plan: KubernetesPlan, manifest: string): Promise<KubernetesPlan> {
-	return this.mutate<KubernetesPlan>(`/api/kubernetes/plans/${encodeURIComponent(plan.id)}/rollback`, {
-	  manifest,
-	  idempotencyKey: crypto.randomUUID(),
-	})
+  async createKubernetesRollbackPlan(plan: KubernetesPlan, rollbackToPlanId: string): Promise<KubernetesPlan> {
+		return this.mutate<KubernetesPlan>(`/api/kubernetes/plans/${encodeURIComponent(plan.id)}/rollback`, {
+		  rollbackToPlanId,
+		  idempotencyKey: crypto.randomUUID(),
+		})
   }
 
   async kubernetesPlans(): Promise<KubernetesPlan[]> {

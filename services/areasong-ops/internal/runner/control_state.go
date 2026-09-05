@@ -300,8 +300,6 @@ func (engine *Engine) setDesiredState(
 		}
 		requestCreated = true
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: "desired_state.changed", Resource: service.ObjectID,
-		Outcome: "accepted", Detail: map[string]any{"desiredState": desired, "reason": reason, "ttlSeconds": ttlSeconds}})
 	state, err := engine.ServiceState(ctx, serviceName)
 	if err != nil {
 		return model.ServiceState{}, err

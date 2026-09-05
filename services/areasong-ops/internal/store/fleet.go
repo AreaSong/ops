@@ -12,7 +12,40 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
+type fleetExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 func (store *Store) UpsertServerNode(ctx context.Context, node model.ServerNode) error {
+	return store.upsertServerNode(ctx, store.db, node, store.now())
+}
+
+func (store *Store) RegisterServerNode(
+	ctx context.Context,
+	node model.ServerNode,
+	audit model.AuditEntry,
+) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := store.now()
+	if err := store.upsertServerNode(ctx, tx, node, now); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) upsertServerNode(
+	ctx context.Context,
+	execer fleetExecer,
+	node model.ServerNode,
+	now time.Time,
+) error {
 	if err := node.Validate(); err != nil {
 		return err
 	}
@@ -24,12 +57,11 @@ func (store *Store) UpsertServerNode(ctx context.Context, node model.ServerNode)
 	if err != nil {
 		return err
 	}
-	now := store.now()
 	var heartbeat any
 	if node.LastHeartbeat != nil {
 		heartbeat = timeText(*node.LastHeartbeat)
 	}
-	_, err = store.db.ExecContext(ctx, `
+	_, err = execer.ExecContext(ctx, `
 		INSERT INTO server_nodes(id,hostname,environment,region,address,labels_json,capabilities_json,runner_id,status,max_concurrency,last_heartbeat_at,disabled_reason,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET hostname=excluded.hostname,environment=excluded.environment,region=excluded.region,
@@ -42,6 +74,37 @@ func (store *Store) UpsertServerNode(ctx context.Context, node model.ServerNode)
 }
 
 func (store *Store) UpsertRunnerNode(ctx context.Context, node model.RunnerNode, tenantID string) error {
+	return store.upsertRunnerNode(ctx, store.db, node, tenantID, store.now())
+}
+
+func (store *Store) RegisterRunnerNode(
+	ctx context.Context,
+	node model.RunnerNode,
+	tenantID string,
+	audit model.AuditEntry,
+) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := store.now()
+	if err := store.upsertRunnerNode(ctx, tx, node, tenantID, now); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) upsertRunnerNode(
+	ctx context.Context,
+	execer fleetExecer,
+	node model.RunnerNode,
+	tenantID string,
+	now time.Time,
+) error {
 	if err := node.Validate(); err != nil {
 		return err
 	}
@@ -60,7 +123,6 @@ func (store *Store) UpsertRunnerNode(ctx context.Context, node model.RunnerNode,
 	if err != nil {
 		return err
 	}
-	now := store.now()
 	var heartbeat, lease any
 	if node.LastHeartbeat != nil {
 		heartbeat = timeText(*node.LastHeartbeat)
@@ -68,7 +130,7 @@ func (store *Store) UpsertRunnerNode(ctx context.Context, node model.RunnerNode,
 	if node.LeaseExpiresAt != nil {
 		lease = timeText(*node.LeaseExpiresAt)
 	}
-	_, err = store.db.ExecContext(ctx, `
+	_, err = execer.ExecContext(ctx, `
 		INSERT INTO runner_nodes(id,server_id,hostname,tenant_id,labels_json,capabilities_json,version,revision,binary_digest,identity_payload_version,status,max_concurrency,last_heartbeat_at,lease_expires_at,lease_generation,lease_token,certificate_fingerprint,heartbeat_public_key,disabled_reason,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET server_id=excluded.server_id,hostname=excluded.hostname,tenant_id=excluded.tenant_id,

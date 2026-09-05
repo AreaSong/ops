@@ -2,6 +2,8 @@ package model
 
 import "time"
 
+const CurrentBatchApprovalPolicyVersion = 1
+
 type BatchOperationState string
 
 const (
@@ -58,6 +60,7 @@ type BatchOperation struct {
 	ApprovedByHash             string              `json:"approvedByHash,omitempty"`
 	ApprovedAt                 *time.Time          `json:"approvedAt,omitempty"`
 	RequiresDualApproval       bool                `json:"requiresDualApproval,omitempty"`
+	ApprovalPolicyVersion      int                 `json:"approvalPolicyVersion"`
 	SecondApprovedByHash       string              `json:"secondApprovedByHash,omitempty"`
 	SecondApprovedAt           *time.Time          `json:"secondApprovedAt,omitempty"`
 	ExecutedByHash             string              `json:"executedByHash,omitempty"`

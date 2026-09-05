@@ -141,24 +141,8 @@ func (engine *Engine) RotateCredential(
 		return model.CredentialRotation{}, true, err
 	}
 	rotation, err = engine.store.GetCredentialRotation(operationContext, rotation.ID)
-	auditOutcome := "succeeded"
-	if rotateErr != nil {
-		auditOutcome = string(result.State)
-	}
-	_, auditErr := engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actorHash, Event: "credential.rotation.finished",
-		Resource: request.CredentialType, Outcome: auditOutcome,
-		Detail: map[string]any{
-			"target": credentialTarget, "fingerprint": rotation.Fingerprint,
-			"expiresAt": rotation.ExpiresAt, "validation": result.ValidationResult,
-			"rollback": result.RollbackResult,
-		},
-	})
 	if err != nil {
 		return model.CredentialRotation{}, true, err
-	}
-	if auditErr != nil {
-		return model.CredentialRotation{}, true, auditErr
 	}
 	return rotation, true, rotateErr
 }
@@ -193,13 +177,16 @@ func (engine *Engine) CloseCredentialRotation(
 	operationContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 40*time.Second)
 	defer cancel()
 	if rotation.State == model.CredentialRotationSwitchedPendingRevocation {
-		if err := engine.credentials.VerifyRevoked(operationContext, rotation); err != nil {
-			_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
+		if verifyErr := engine.credentials.VerifyRevoked(operationContext, rotation); verifyErr != nil {
+			_, auditErr := engine.store.AppendAudit(context.Background(), model.AuditEntry{
 				ActorHash: actorHash, Event: "credential.rotation.close_rejected",
 				Resource: rotation.CredentialType, Outcome: "rejected",
-				Detail: map[string]any{"rotationId": rotation.ID, "reason": redactText(err.Error())},
+				Detail: map[string]any{"rotationId": rotation.ID, "reason": redactText(verifyErr.Error())},
 			})
-			return model.CredentialRotation{}, false, err
+			if auditErr != nil {
+				return model.CredentialRotation{}, false, errors.Join(verifyErr, auditErr)
+			}
+			return model.CredentialRotation{}, false, verifyErr
 		}
 		rotation, err = engine.store.MarkCredentialRevocationVerified(
 			operationContext, rotationID, actorHash, request.IdempotencyKey)
@@ -216,16 +203,6 @@ func (engine *Engine) CloseCredentialRotation(
 		operationContext, rotationID, actorHash, rotation.ClosureIdempotencyKey, "旧凭据已验证撤销，轮换闭环完成")
 	if err != nil {
 		return model.CredentialRotation{}, false, err
-	}
-	if closed {
-		_, err = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-			ActorHash: actorHash, Event: "credential.rotation.closed",
-			Resource: rotation.CredentialType, Outcome: "succeeded",
-			Detail: map[string]any{
-				"rotationId": rotation.ID, "fingerprint": rotation.Fingerprint,
-				"expiresAt": rotation.ExpiresAt, "oldCredential": "revoked",
-			},
-		})
 	}
 	return rotation, closed, err
 }

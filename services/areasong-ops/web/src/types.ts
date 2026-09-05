@@ -859,12 +859,14 @@ export interface KubernetesPlan {
   action: 'apply' | 'rollback'
   state: string
 	rollbackOfPlanId?: string
+	rollbackTargetPlanId?: string
 	sourceManifestDigest?: string
   confirmationPhrase?: string
   approvedByHash?: string
   secondApprovedByHash?: string
   requiresDualApproval: boolean
-  operationId?: string
+	operationId?: string
+	executedByHash?: string
   error?: string
   createdAt: string
   approvedAt?: string

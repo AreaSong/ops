@@ -18,6 +18,12 @@ type BatchOperationInput struct {
 	ConfirmationHash string
 }
 
+type batchQueryer interface {
+	queryer
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 // BatchCoordinatorFence is the durable owner/token pair required for writes
 // made by a batch coordinator.  The token is intentionally opaque; the
 // database checks both fields and the unexpired lease before accepting a
@@ -56,10 +62,10 @@ func (store *Store) CreateBatchOperation(ctx context.Context, input BatchOperati
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO batch_jobs(id,idempotency_key,actor_hash,tenant_id,action,target,strategy,policy_json,task_json,digest,
-		 confirmation_hash,confirmation_phrase,state,failure_policy,requires_dual_approval,second_approved_by_hash,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
+		 confirmation_hash,confirmation_phrase,state,failure_policy,requires_dual_approval,approval_policy_version,second_approved_by_hash,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
 		op.Task.BatchPolicy.Strategy, policyJSON, taskJSON, op.Digest, input.ConfirmationHash, op.ConfirmationPhrase, op.State,
-		op.Task.FailurePolicy, op.RequiresDualApproval, op.SecondApprovedByHash, timeText(op.CreatedAt), timeText(op.UpdatedAt))
+		op.Task.FailurePolicy, op.RequiresDualApproval, op.ApprovalPolicyVersion, op.SecondApprovedByHash, timeText(op.CreatedAt), timeText(op.UpdatedAt))
 	if err != nil {
 		return model.BatchOperation{}, false, err
 	}
@@ -75,6 +81,15 @@ func (store *Store) CreateBatchOperation(ctx context.Context, input BatchOperati
 		if err != nil {
 			return model.BatchOperation{}, false, err
 		}
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: op.ActorHash, Event: "batch.created", Resource: op.ID, Outcome: "accepted",
+		Detail: map[string]any{
+			"tenantId": op.TenantID, "action": op.Action,
+			"targetCount": len(op.Items), "digest": op.Digest,
+		},
+	}, op.CreatedAt); err != nil {
+		return model.BatchOperation{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return model.BatchOperation{}, false, err
@@ -94,7 +109,7 @@ func batchByIdempotency(ctx context.Context, db queryer, key string) (model.Batc
 }
 
 const batchSelect = `SELECT id,idempotency_key,run_idempotency_key,actor_hash,tenant_id,action,target,task_json,digest,confirmation_hash,confirmation_phrase,state,
-	approved_by_hash,approved_at,requires_dual_approval,second_approved_by_hash,second_approved_at,
+		approved_by_hash,approved_at,requires_dual_approval,approval_policy_version,second_approved_by_hash,second_approved_at,
 	executed_by_hash,executed_at,started_at,finished_at,summary,error,created_at,updated_at,
 	canary_observation_started_at,canary_observed_at FROM batch_jobs`
 
@@ -104,7 +119,7 @@ func scanBatchOperation(row scanner) (model.BatchOperation, error) {
 	var approved, secondApproved, executed, started, finished, canaryStarted, canaryObserved sql.NullString
 	var dual int
 	if err := row.Scan(&op.ID, &op.IdempotencyKey, &op.RunIdempotencyKey, &op.ActorHash, &op.TenantID, &op.Action, &op.Target, &taskJSON,
-		&op.Digest, &confirmationHash, &op.ConfirmationPhrase, &state, &op.ApprovedByHash, &approved, &dual, &op.SecondApprovedByHash, &secondApproved,
+		&op.Digest, &confirmationHash, &op.ConfirmationPhrase, &state, &op.ApprovedByHash, &approved, &dual, &op.ApprovalPolicyVersion, &op.SecondApprovedByHash, &secondApproved,
 		&op.ExecutedByHash, &executed, &started, &finished, &op.Summary, &op.Error,
 		&created, &updated, &canaryStarted, &canaryObserved); err != nil {
 		return op, err
@@ -167,17 +182,27 @@ func (store *Store) GetBatchOperation(ctx context.Context, id string) (model.Bat
 // with the normalized batch envelope. The outer batch columns remain the
 // source of truth; this projection is refreshed after every state mutation so
 // clients reading the nested task cannot observe a stale pending state.
+func syncBatchTaskSnapshot(ctx context.Context, db batchQueryer, op *model.BatchOperation) error {
+	items, err := listBatchItems(ctx, db, op.ID)
+	if err != nil {
+		return err
+	}
+	op.Items = items
+	op.SyncTask()
+	raw, err := encodeJSON(op.Task)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `UPDATE batch_jobs SET task_json=? WHERE id=?`, raw, op.ID)
+	return err
+}
+
 func (store *Store) syncBatchTaskSnapshot(ctx context.Context, id string) error {
 	op, err := store.GetBatchOperation(ctx, id)
 	if err != nil {
 		return err
 	}
-	raw, err := encodeJSON(op.Task)
-	if err != nil {
-		return err
-	}
-	_, err = store.db.ExecContext(ctx, `UPDATE batch_jobs SET task_json=?,updated_at=? WHERE id=?`, raw, timeText(store.now()), id)
-	return err
+	return syncBatchTaskSnapshot(ctx, store.db, &op)
 }
 
 func (store *Store) ListBatchOperations(ctx context.Context, limit, offset int) ([]model.BatchOperation, error) {
@@ -211,7 +236,11 @@ func (store *Store) ListBatchOperations(ctx context.Context, limit, offset int) 
 }
 
 func (store *Store) listBatchItems(ctx context.Context, id string) ([]model.BatchItem, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT item_id,object_id,service,server_id,runner_id,batch_index,dependencies_json,state,plan_id,task_id,error,updated_at FROM batch_items WHERE job_id=? ORDER BY batch_index,item_id`, id)
+	return listBatchItems(ctx, store.db, id)
+}
+
+func listBatchItems(ctx context.Context, db batchQueryer, id string) ([]model.BatchItem, error) {
+	rows, err := db.QueryContext(ctx, `SELECT item_id,object_id,service,server_id,runner_id,batch_index,dependencies_json,state,plan_id,task_id,error,updated_at FROM batch_items WHERE job_id=? ORDER BY batch_index,item_id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +281,9 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 	if op.Digest != digest {
 		return op, errors.New("批量计划已变化或不能批准")
 	}
+	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
+		return op, errors.New("批量计划审批策略版本过旧，请重新创建")
+	}
 	if op.RequiresDualApproval && op.State == model.BatchApproved {
 		if op.SecondApprovedByHash == actor {
 			// A retry of the second approval is idempotent and must not create a
@@ -284,14 +316,16 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 			if err = requireOne(result, err, "批量计划第一批准无法写入"); err != nil {
 				return model.BatchOperation{}, err
 			}
-			if err := tx.Commit(); err != nil {
+			op.ApprovedByHash, op.ApprovedAt, op.UpdatedAt = actor, &now, now
+			if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
 				return model.BatchOperation{}, err
 			}
-			op.ApprovedByHash, op.ApprovedAt, op.UpdatedAt = actor, &now, now
-			op.Items, _ = store.listBatchItems(ctx, id)
-			op.SyncTask()
-			if err := store.syncBatchTaskSnapshot(ctx, id); err != nil {
-				return op, err
+			if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "batch.approved", Resource: id,
+				Outcome: "first_approval", Detail: map[string]any{"digest": digest, "createdBy": op.ActorHash}}, now); err != nil {
+				return model.BatchOperation{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return model.BatchOperation{}, err
 			}
 			return op, nil
 		}
@@ -308,14 +342,16 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 		if err = requireOne(result, err, "批量计划第二批准无法写入"); err != nil {
 			return model.BatchOperation{}, err
 		}
-		if err := tx.Commit(); err != nil {
+		op.State, op.SecondApprovedByHash, op.SecondApprovedAt, op.UpdatedAt = model.BatchApproved, actor, &now, now
+		if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
 			return model.BatchOperation{}, err
 		}
-		op.State, op.SecondApprovedByHash, op.SecondApprovedAt, op.UpdatedAt = model.BatchApproved, actor, &now, now
-		op.Items, _ = store.listBatchItems(ctx, id)
-		op.SyncTask()
-		if err := store.syncBatchTaskSnapshot(ctx, id); err != nil {
-			return op, err
+		if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "batch.approved", Resource: id,
+			Outcome: "approved", Detail: map[string]any{"digest": digest, "createdBy": op.ActorHash, "firstApprovedBy": op.ApprovedByHash}}, now); err != nil {
+			return model.BatchOperation{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.BatchOperation{}, err
 		}
 		return op, nil
 	}
@@ -323,13 +359,15 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 	if err = requireOne(result, err, "批量计划无法批准"); err != nil {
 		return op, err
 	}
-	if err := tx.Commit(); err != nil {
-		return op, err
-	}
 	op.State, op.ApprovedByHash, op.ApprovedAt, op.UpdatedAt = model.BatchApproved, actor, &now, now
-	op.Items, _ = store.listBatchItems(ctx, id)
-	op.SyncTask()
-	if err := store.syncBatchTaskSnapshot(ctx, id); err != nil {
+	if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
+		return model.BatchOperation{}, err
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "batch.approved", Resource: id,
+		Outcome: "approved", Detail: map[string]any{"digest": digest, "createdBy": op.ActorHash}}, now); err != nil {
+		return model.BatchOperation{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return op, err
 	}
 	return op, nil
@@ -342,30 +380,55 @@ func (store *Store) StartBatchOperation(
 	if runKey == "" {
 		return model.BatchOperation{}, false, ErrIdempotency
 	}
-	var existingKey string
-	if err := store.db.QueryRowContext(ctx, `SELECT run_idempotency_key FROM batch_jobs WHERE id=?`, id).Scan(&existingKey); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.BatchOperation{}, false, ErrNotFound
-		}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
 		return model.BatchOperation{}, false, err
 	}
-	if existingKey != "" {
-		if existingKey != runKey {
+	defer tx.Rollback()
+	op, err := scanBatchOperation(tx.QueryRowContext(ctx, batchSelect+` WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.BatchOperation{}, false, ErrNotFound
+	}
+	if err != nil {
+		return model.BatchOperation{}, false, err
+	}
+	if op.RunIdempotencyKey != "" {
+		if op.RunIdempotencyKey != runKey {
 			return model.BatchOperation{}, false, ErrIdempotency
 		}
-		op, err := store.GetBatchOperation(ctx, id)
+		if op.ExecutedByHash == "" || op.ExecutedByHash != actor {
+			return model.BatchOperation{}, false, ErrActorMismatch
+		}
+		if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
+			return model.BatchOperation{}, false, err
+		}
+		err = tx.Commit()
 		return op, false, err
 	}
+	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
+		return model.BatchOperation{}, false, errors.New("批量计划审批策略版本过旧，请重新创建")
+	}
+	if op.RequiresDualApproval && (op.SecondApprovedByHash == "" || actor == op.ActorHash || actor == op.ApprovedByHash || actor == op.SecondApprovedByHash) {
+		return model.BatchOperation{}, false, ErrActorMismatch
+	}
 	now := store.now()
-	result, err := store.db.ExecContext(ctx, `UPDATE batch_jobs SET state=?,run_idempotency_key=?,executed_by_hash=?,executed_at=?,started_at=?,updated_at=? WHERE id=? AND state=? AND run_idempotency_key=''`, model.BatchRunning, runKey, actor, timeText(now), timeText(now), timeText(now), id, model.BatchApproved)
+	result, err := tx.ExecContext(ctx, `UPDATE batch_jobs SET state=?,run_idempotency_key=?,executed_by_hash=?,executed_at=?,started_at=?,updated_at=? WHERE id=? AND state=? AND run_idempotency_key=''`, model.BatchRunning, runKey, actor, timeText(now), timeText(now), timeText(now), id, model.BatchApproved)
 	if err = requireOne(result, err, "批量计划无法开始"); err != nil {
 		return model.BatchOperation{}, false, err
 	}
-	op, err := store.GetBatchOperation(ctx, id)
-	if err == nil {
-		err = store.syncBatchTaskSnapshot(ctx, id)
+	op.State, op.RunIdempotencyKey, op.ExecutedByHash = model.BatchRunning, runKey, actor
+	op.ExecutedAt, op.StartedAt, op.UpdatedAt = &now, &now, now
+	if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
+		return model.BatchOperation{}, false, err
 	}
-	return op, true, err
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "batch.started", Resource: id,
+		Outcome: "accepted", Detail: map[string]any{"approvedBy": op.ApprovedByHash, "secondApprovedBy": op.SecondApprovedByHash, "executedBy": actor}}, now); err != nil {
+		return model.BatchOperation{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.BatchOperation{}, false, err
+	}
+	return op, true, nil
 }
 
 func (store *Store) UpdateBatchItem(ctx context.Context, jobID, itemID string, state model.BatchNodeState, planID, taskID, errorMessage string) error {
@@ -373,7 +436,11 @@ func (store *Store) UpdateBatchItem(ctx context.Context, jobID, itemID string, s
 	if err := requireOne(result, err, "批量项目状态更新失败"); err != nil {
 		return err
 	}
-	return store.syncBatchTaskSnapshot(ctx, jobID)
+	op, err := store.GetBatchOperation(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	return syncBatchTaskSnapshot(ctx, store.db, &op)
 }
 
 func (store *Store) UpdateBatchItemCAS(
@@ -436,22 +503,99 @@ func (store *Store) BindBatchItemExecution(
 	jobID, itemID, planRequestKey, taskRequestKey string,
 	fence ...BatchCoordinatorFence,
 ) (string, string, error) {
-	var planID, taskID string
-	err := store.db.QueryRowContext(ctx, `SELECT p.id,t.id FROM release_plans p
-		JOIN tasks t ON t.plan_id=p.id
-		WHERE p.request_idempotency_key=? AND t.idempotency_key=?`, planRequestKey, taskRequestKey).
-		Scan(&planID, &taskID)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", "", err
+	}
+	defer tx.Rollback()
+	op, err := scanBatchOperation(tx.QueryRowContext(ctx, batchSelect+` WHERE id=?`, jobID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", ErrNotFound
 	}
 	if err != nil {
 		return "", "", err
 	}
-	if err := store.UpdateBatchItemCAS(ctx, jobID, itemID, model.BatchNodeReady, model.BatchNodeRunning,
-		planID, taskID, "", fence...); err != nil {
+	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion || op.ExecutedByHash == "" {
+		return "", "", errors.New("批量计划审批或执行身份不可用于子任务绑定")
+	}
+	var itemService string
+	if err := tx.QueryRowContext(ctx, `SELECT service FROM batch_items WHERE job_id=? AND item_id=? AND state=?`,
+		jobID, itemID, model.BatchNodeReady).Scan(&itemService); errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	} else if err != nil {
 		return "", "", err
 	}
-	return planID, taskID, nil
+	plan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE request_idempotency_key=?`, planRequestKey))
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+	task, found, err := taskByIdempotency(ctx, tx, taskRequestKey)
+	if err != nil {
+		return "", "", err
+	}
+	if !found {
+		return "", "", ErrNotFound
+	}
+	if err := validateBatchChildBinding(op, itemService, plan, task); err != nil {
+		return "", "", err
+	}
+	now := store.now()
+	query := `UPDATE batch_items SET state=?,plan_id=?,task_id=?,error='',updated_at=?
+		WHERE job_id=? AND item_id=? AND state=?`
+	args := []any{model.BatchNodeRunning, plan.ID, task.ID, timeText(now), jobID, itemID, model.BatchNodeReady}
+	if len(fence) > 0 {
+		if !validBatchCoordinatorFence(fence) {
+			return "", "", ErrNotFound
+		}
+		query += ` AND EXISTS (SELECT 1 FROM batch_coordinator_leases
+			WHERE job_id=? AND owner_id=? AND fencing_token=? AND lease_expires_at>?)`
+		args = append(args, jobID, fence[0].Owner, fence[0].Token, timeText(now))
+	}
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err = requireOne(result, err, "批量项目执行绑定失败"); err != nil {
+		return "", "", err
+	}
+	if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
+		return "", "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", "", err
+	}
+	return plan.ID, task.ID, nil
+}
+
+func validateBatchChildBinding(
+	op model.BatchOperation,
+	itemService string,
+	plan model.ReleasePlan,
+	task model.Task,
+) error {
+	if plan.Service != itemService || plan.Action != op.Action || plan.Target != op.Target ||
+		task.Service != itemService || task.Action != op.Action || task.Target != op.Target ||
+		task.PlanID != plan.ID || task.PlanDigest != plan.Digest ||
+		task.RequestHash != HashConfirmation(plan.ID+"\x00"+plan.Digest) {
+		return errors.New("批量子任务绑定内容与父批量计划不一致")
+	}
+	if plan.ExecutedByHash != op.ExecutedByHash || task.ActorHash != op.ExecutedByHash {
+		return errors.New("批量子任务执行身份与父批量计划不一致")
+	}
+	if plan.Risk == model.RiskHigh {
+		if !op.RequiresDualApproval || !plan.RequiresDualApproval ||
+			!model.IndependentExecutor(op.ExecutedByHash, op.ActorHash, op.ApprovedByHash, op.SecondApprovedByHash) ||
+			plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash ||
+			plan.SecondApprovedByHash != op.SecondApprovedByHash {
+			return errors.New("高风险批量子任务四方身份与父批量计划不一致")
+		}
+		return nil
+	}
+	if plan.RequiresDualApproval || plan.ActorHash != op.ExecutedByHash ||
+		plan.ApprovedByHash != op.ExecutedByHash || plan.SecondApprovedByHash != "" {
+		return errors.New("普通批量子任务身份与父批量执行人不一致")
+	}
+	return nil
 }
 
 func (store *Store) ListActiveBatchOperations(ctx context.Context) ([]string, error) {

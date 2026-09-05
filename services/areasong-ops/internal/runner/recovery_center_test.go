@@ -139,7 +139,7 @@ func TestProductionRestoreRequiresFreshDrillAndIndependentDualApproval(t *testin
 	if err != nil || plan.State != model.PlanApproved || plan.ApprovedByHash == plan.SecondApprovedByHash {
 		t.Fatalf("second approval plan=%+v err=%v", plan, err)
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+	if _, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(plan), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
 	}
 	engine.Wait()

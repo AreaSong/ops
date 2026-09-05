@@ -7,7 +7,6 @@ action="${1:-}"
 phase="${2:-}"
 operation_dir="${3:-}"
 target="${4:-}"
-source_dir="${5:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"

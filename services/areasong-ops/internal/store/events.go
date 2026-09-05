@@ -8,15 +8,28 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
+type eventAuditExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 func (store *Store) AppendEvent(ctx context.Context, event model.Event) (model.Event, error) {
+	return appendEventRecord(ctx, store.db, event, store.now())
+}
+
+func appendEventRecord(
+	ctx context.Context,
+	db eventAuditExecer,
+	event model.Event,
+	now time.Time,
+) (model.Event, error) {
 	if event.OccurredAt.IsZero() {
-		event.OccurredAt = store.now()
+		event.OccurredAt = now
 	}
 	data, err := encodeJSON(event.Data)
 	if err != nil {
 		return model.Event{}, err
 	}
-	result, err := store.db.ExecContext(ctx, `
+	result, err := db.ExecContext(ctx, `
         INSERT INTO events (task_id, occurred_at, level, phase, message, data_json)
         VALUES (?, ?, ?, ?, ?, ?)
     `, event.TaskID, timeText(event.OccurredAt), event.Level, event.Phase, event.Message, data)
@@ -126,14 +139,23 @@ func (store *Store) LatestSuccessfulDiscovery(ctx context.Context, service strin
 }
 
 func (store *Store) AppendAudit(ctx context.Context, entry model.AuditEntry) (model.AuditEntry, error) {
+	return appendAuditRecord(ctx, store.db, entry, store.now())
+}
+
+func appendAuditRecord(
+	ctx context.Context,
+	db eventAuditExecer,
+	entry model.AuditEntry,
+	now time.Time,
+) (model.AuditEntry, error) {
 	if entry.OccurredAt.IsZero() {
-		entry.OccurredAt = store.now()
+		entry.OccurredAt = now
 	}
 	detail, err := encodeJSON(entry.Detail)
 	if err != nil {
 		return model.AuditEntry{}, err
 	}
-	result, err := store.db.ExecContext(ctx, `
+	result, err := db.ExecContext(ctx, `
         INSERT INTO audit_entries (occurred_at, actor_hash, event, resource, outcome, detail_json)
         VALUES (?, ?, ?, ?, ?, ?)
     `, timeText(entry.OccurredAt), entry.ActorHash, entry.Event, entry.Resource,

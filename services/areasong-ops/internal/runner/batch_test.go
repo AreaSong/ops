@@ -185,15 +185,16 @@ func TestProductionBatchRequiresExplicitCanaryAndFailStop(t *testing.T) {
 	}
 }
 
-func TestBatchChildPlanUsesParentExecutorAndIndependentApprover(t *testing.T) {
+func TestBatchChildPlanPreservesParentFourActorChain(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	service := engine.catalog.Services["demo"]
 	action := service.Actions["restart"]
 	action.Risk = model.RiskHigh
+	action.ObservationSeconds = 0
 	service.Actions["restart"] = action
 	engine.catalog.Services["demo"] = service
-	op := model.BatchOperation{ID: "batch-child-identity", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("4", 64), ExecutedByHash: strings.Repeat("3", 64), Action: "restart", Target: ""}
+	op := model.BatchOperation{ID: "batch-child-identity", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("4", 64), ExecutedByHash: strings.Repeat("3", 64), Action: "restart", Target: "", RequiresDualApproval: true, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
 	item := model.BatchItem{ID: "item-child-identity", Service: "demo", State: model.BatchNodeReady}
 	engine.startBatchItem(ctx, op, item)
 
@@ -201,12 +202,47 @@ func TestBatchChildPlanUsesParentExecutorAndIndependentApprover(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("child plan lookup: plan=%+v found=%v err=%v", plan, found, err)
 	}
-	if plan.ActorHash != op.ExecutedByHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != op.SecondApprovedByHash {
-		t.Fatalf("child plan identities: actor=%q approver=%q second=%q, want actor=%q approver=%q second=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, op.ExecutedByHash, op.ApprovedByHash, op.SecondApprovedByHash)
+	if plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != op.SecondApprovedByHash {
+		t.Fatalf("child plan identities: actor=%q approver=%q second=%q, want actor=%q approver=%q second=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, op.ActorHash, op.ApprovedByHash, op.SecondApprovedByHash)
 	}
 	// startBatchItem enqueues the child task asynchronously.  Wait before the
 	// fixture closes SQLite so terminal-state writes cannot race database.Close.
 	engine.Wait()
+	plan, err = database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || plan.State != model.PlanCompleted || plan.ExecutedByHash != op.ExecutedByHash {
+		t.Fatalf("child plan execution: plan=%+v err=%v", plan, err)
+	}
+}
+
+func TestBatchChildPlanResumesAfterFirstApproval(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	service := engine.catalog.Services["demo"]
+	action := service.Actions["restart"]
+	action.Risk = model.RiskHigh
+	action.ObservationSeconds = 0
+	service.Actions["restart"] = action
+	engine.catalog.Services["demo"] = service
+	op := model.BatchOperation{ID: "batch-child-resume", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("3", 64), ExecutedByHash: strings.Repeat("4", 64), Action: "restart", RequiresDualApproval: true, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
+	item := model.BatchItem{ID: "item-child-resume", Service: "demo", State: model.BatchNodeReady}
+	plan, err := engine.CreateReleasePlan(ctx, op.ActorHash, model.PreviewRequest{
+		Service: item.Service, Action: op.Action,
+		IdempotencyKey: batchItemIdempotencyKey(op.ID, item.ID, "plan"), RequiresDualApproval: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.ApproveReleasePlan(ctx, op.ApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine.startBatchItem(ctx, op, item)
+	engine.Wait()
+	stored, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || stored.State != model.PlanCompleted || stored.ApprovedByHash != op.ApprovedByHash ||
+		stored.SecondApprovedByHash != op.SecondApprovedByHash || stored.ExecutedByHash != op.ExecutedByHash {
+		t.Fatalf("resumed child plan=%+v err=%v", stored, err)
+	}
 }
 
 func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
@@ -272,7 +308,7 @@ func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
 	}
 	for _, item := range finished.Items {
 		plan, err := database.GetReleasePlan(ctx, item.PlanID)
-		if err != nil || plan.ActorHash != executor || plan.ApprovedByHash != first || plan.SecondApprovedByHash != second {
+		if err != nil || plan.ActorHash != creator || plan.ApprovedByHash != first || plan.SecondApprovedByHash != second || plan.ExecutedByHash != executor {
 			t.Fatalf("child plan=%+v err=%v", plan, err)
 		}
 	}
@@ -493,7 +529,8 @@ func durableBatchForRecovery(state model.BatchOperationState) model.BatchOperati
 		FailurePolicy: model.FailureStop, State: model.BatchTaskRunning, CreatedAt: now}
 	return model.BatchOperation{ID: "batch-recovery-" + string(state), IdempotencyKey: "recovery-" + string(state),
 		ActorHash: actorHash(), TenantID: "default", Action: "restart", Task: task, Digest: "recovery-digest",
-		ConfirmationPhrase: "恢复批次", State: state, Items: []model.BatchItem{item}, CreatedAt: now, UpdatedAt: now}
+		ConfirmationPhrase: "恢复批次", State: state, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion,
+		Items: []model.BatchItem{item}, CreatedAt: now, UpdatedAt: now}
 }
 
 func createApprovedBatch(

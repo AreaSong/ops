@@ -18,6 +18,12 @@ type PreviewInput struct {
 	ConfirmationHash string
 }
 
+type TaskStartResult struct {
+	Task        model.Task
+	QueuedEvent model.Event
+	Created     bool
+}
+
 func (store *Store) GetPreview(ctx context.Context, id string) (model.Preview, error) {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -39,6 +45,28 @@ func hashTaskRequest(previewID, confirmation string) string {
 }
 
 func (store *Store) CreatePreview(ctx context.Context, input PreviewInput) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := store.insertPreview(ctx, tx, input); err != nil {
+		return err
+	}
+	preview := input.Preview
+	if _, err := appendAuditRecord(ctx, tx, model.AuditEntry{
+		ActorHash: preview.ActorHash,
+		Event:     "preview.created",
+		Resource:  preview.Service + "/" + preview.Action,
+		Outcome:   "accepted",
+		Detail:    map[string]any{"target": preview.Target, "risk": preview.Risk},
+	}, store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) insertPreview(ctx context.Context, db eventAuditExecer, input PreviewInput) error {
 	steps, err := encodeJSON(input.Preview.Steps)
 	if err != nil {
 		return err
@@ -47,7 +75,7 @@ func (store *Store) CreatePreview(ctx context.Context, input PreviewInput) error
 	if err != nil {
 		return err
 	}
-	_, err = store.db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
         INSERT INTO previews (
             id, actor_hash, service, action, target, risk, impact, rollback,
             scope, steps_json, snapshot_json, confirmation_hash, created_at, expires_at
@@ -69,39 +97,58 @@ func (store *Store) StartTask(
 	request model.StartTaskRequest,
 	taskID string,
 ) (model.Task, bool, error) {
+	result, err := store.startTask(ctx, actorHash, request, taskID)
+	return result.Task, result.Created, err
+}
+
+func (store *Store) StartTaskWithEvent(
+	ctx context.Context,
+	actorHash string,
+	request model.StartTaskRequest,
+	taskID string,
+) (TaskStartResult, error) {
+	return store.startTask(ctx, actorHash, request, taskID)
+}
+
+func (store *Store) startTask(
+	ctx context.Context,
+	actorHash string,
+	request model.StartTaskRequest,
+	taskID string,
+) (TaskStartResult, error) {
 	requestHash := hashTaskRequest(request.PreviewID, request.Confirmation)
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	defer tx.Rollback()
 	if task, found, err := taskByIdempotency(ctx, tx, request.IdempotencyKey); err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	} else if found {
 		if task.ActorHash != actorHash {
-			return model.Task{}, false, ErrActorMismatch
+			return TaskStartResult{}, ErrActorMismatch
 		}
 		if subtle.ConstantTimeCompare([]byte(task.RequestHash), []byte(requestHash)) != 1 {
-			return model.Task{}, false, ErrIdempotency
+			return TaskStartResult{}, ErrIdempotency
 		}
-		return task, false, nil
+		return TaskStartResult{Task: task}, nil
 	}
 	preview, confirmationHash, consumed, err := previewForUpdate(ctx, tx, request.PreviewID)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	if preview.ActorHash != actorHash {
-		return model.Task{}, false, ErrActorMismatch
+		return TaskStartResult{}, ErrActorMismatch
 	}
 	if consumed.Valid {
-		return model.Task{}, false, ErrPreviewConsumed
+		return TaskStartResult{}, ErrPreviewConsumed
 	}
 	if store.now().After(preview.ExpiresAt) {
-		return model.Task{}, false, ErrPreviewExpired
+		return TaskStartResult{}, ErrPreviewExpired
 	}
 	actualHash := HashConfirmation(request.Confirmation)
 	if subtle.ConstantTimeCompare([]byte(actualHash), []byte(confirmationHash)) != 1 {
-		return model.Task{}, false, ErrConfirmation
+		return TaskStartResult{}, ErrConfirmation
 	}
 	var activeID string
 	err = tx.QueryRowContext(ctx, `
@@ -109,15 +156,15 @@ func (store *Store) StartTask(
 	`, preview.Service, model.TaskWaitingConfirmation, model.TaskQueued, model.TaskRunning,
 		model.TaskRollingBack).Scan(&activeID)
 	if err == nil {
-		return model.Task{}, false, fmt.Errorf("服务已有活动任务: %s", activeID)
+		return TaskStartResult{}, fmt.Errorf("服务已有活动任务: %s", activeID)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	now := store.now()
 	snapshot, err := encodeJSON(preview.Snapshot)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	stages := make([]model.TaskStage, 0, len(preview.Steps))
 	for _, step := range preview.Steps {
@@ -125,7 +172,7 @@ func (store *Store) StartTask(
 	}
 	stagesJSON, err := encodeJSON(stages)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	_, err = tx.ExecContext(ctx, `
 	        INSERT INTO tasks (
@@ -135,20 +182,17 @@ func (store *Store) StartTask(
 	    `, taskID, request.IdempotencyKey, requestHash, actorHash, preview.Service, preview.Action,
 		preview.Target, preview.Risk, model.TaskQueued, preview.ID, snapshot, stagesJSON, timeText(now))
 	if err != nil {
-		return model.Task{}, false, fmt.Errorf("创建任务失败: %w", err)
+		return TaskStartResult{}, fmt.Errorf("创建任务失败: %w", err)
 	}
 	result, err := tx.ExecContext(ctx,
 		`UPDATE previews SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL`,
 		timeText(now), preview.ID)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	rows, err := result.RowsAffected()
 	if err != nil || rows != 1 {
-		return model.Task{}, false, ErrPreviewConsumed
-	}
-	if err := tx.Commit(); err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, ErrPreviewConsumed
 	}
 	task := model.Task{
 		ID: taskID, IdempotencyKey: request.IdempotencyKey, RequestHash: requestHash, ActorHash: actorHash,
@@ -159,7 +203,24 @@ func (store *Store) StartTask(
 	if preview.Snapshot != nil {
 		task.TrafficPolicyDigest, _ = preview.Snapshot["trafficPolicyDigest"].(string)
 	}
-	return task, true, nil
+	queued, err := appendEventRecord(ctx, tx, model.Event{
+		TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列",
+	}, now)
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	if _, err := appendAuditRecord(ctx, tx, model.AuditEntry{
+		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
+		Outcome: "accepted", Detail: map[string]any{
+			"service": task.Service, "action": task.Action, "target": task.Target,
+		},
+	}, now); err != nil {
+		return TaskStartResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskStartResult{}, err
+	}
+	return TaskStartResult{Task: task, QueuedEvent: queued, Created: true}, nil
 }
 
 func previewForUpdate(

@@ -422,6 +422,7 @@ type KubernetesPlan struct {
 	Action                string           `json:"action"`
 	State                 string           `json:"state"`
 	RollbackOfPlanID      string           `json:"rollbackOfPlanId,omitempty"`
+	RollbackTargetPlanID  string           `json:"rollbackTargetPlanId,omitempty"`
 	SourceManifestDigest  string           `json:"sourceManifestDigest,omitempty"`
 	ConfirmationPhrase    string           `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash        string           `json:"approvedByHash,omitempty"`
@@ -429,6 +430,7 @@ type KubernetesPlan struct {
 	RequiresDualApproval  bool             `json:"requiresDualApproval"`
 	OperationID           string           `json:"operationId,omitempty"`
 	ExecuteIdempotencyKey string           `json:"executeIdempotencyKey,omitempty"`
+	ExecutedByHash        string           `json:"executedByHash,omitempty"`
 	Error                 string           `json:"error,omitempty"`
 	CreatedAt             time.Time        `json:"createdAt"`
 	ApprovedAt            *time.Time       `json:"approvedAt,omitempty"`
@@ -443,12 +445,11 @@ type KubernetesPlanRequest struct {
 	IdempotencyKey string           `json:"idempotencyKey"`
 }
 
-// KubernetesRollbackPlanRequest supplies the previously verified manifest to
-// restore. The source plan identity and digest are resolved server-side; the
-// caller cannot redirect a rollback to another namespace or tenant.
+// KubernetesRollbackPlanRequest names an immutable, previously successful
+// plan. The manifest itself is always loaded from the root-owned Runner store.
 type KubernetesRollbackPlanRequest struct {
-	Manifest       string `json:"manifest"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	RollbackToPlanID string `json:"rollbackToPlanId"`
+	IdempotencyKey   string `json:"idempotencyKey"`
 }
 
 type KubernetesPlanApprovalRequest struct {

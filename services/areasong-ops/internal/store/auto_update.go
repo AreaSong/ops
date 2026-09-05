@@ -169,7 +169,41 @@ func (store *Store) GetAutoUpdatePolicy(ctx context.Context, service string) (mo
 func (store *Store) MarkAutoUpdateEvaluation(
 	ctx context.Context, service string, evaluatedAt, nextAt *time.Time, planID, lastError string,
 ) error {
-	result, err := store.db.ExecContext(ctx, `UPDATE auto_update_policies SET last_evaluation_at=?,next_evaluation_at=?,last_plan_id=?,last_error=?,updated_at=? WHERE service=?`,
+	return store.markAutoUpdateEvaluation(ctx, store.db, service, evaluatedAt, nextAt, planID, lastError)
+}
+
+func (store *Store) MarkAutoUpdateEvaluationWithAudit(
+	ctx context.Context,
+	service string,
+	evaluatedAt, nextAt *time.Time,
+	planID, lastError string,
+	audit model.AuditEntry,
+) error {
+	if audit.Event == "" || audit.Resource == "" || audit.ActorHash == "" {
+		return errors.New("自动更新评估审计信息不完整")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := store.markAutoUpdateEvaluation(ctx, tx, service, evaluatedAt, nextAt, planID, lastError); err != nil {
+		return err
+	}
+	if _, err := appendAuditRecord(ctx, tx, audit, store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (store *Store) markAutoUpdateEvaluation(
+	ctx context.Context,
+	db eventAuditExecer,
+	service string,
+	evaluatedAt, nextAt *time.Time,
+	planID, lastError string,
+) error {
+	result, err := db.ExecContext(ctx, `UPDATE auto_update_policies SET last_evaluation_at=?,next_evaluation_at=?,last_plan_id=?,last_error=?,updated_at=? WHERE service=?`,
 		autoNullableTimeText(evaluatedAt), autoNullableTimeText(nextAt), planID, lastError, timeText(store.now()), service)
 	if err != nil {
 		return err

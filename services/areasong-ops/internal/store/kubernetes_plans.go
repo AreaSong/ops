@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -54,15 +55,22 @@ func (store *Store) CreateKubernetesPlan(
 		id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,manifest_digest,manifest,
 		action,state,confirmation_hash,confirmation_phrase,approved_by_hash,approved_at,
 		second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,created_at,started_at,finished_at
-		,execute_idempotency_key,rollback_of_plan_id,source_manifest_digest
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.ActorHash, plan.TenantID,
 		targetJSON, plan.ManifestDigest, manifest, plan.Action, plan.State, confirmationHash,
 		plan.ConfirmationPhrase, plan.ApprovedByHash, nullableTimeText(plan.ApprovedAt),
 		plan.SecondApprovedByHash, nullableTimeText(plan.SecondApprovedAt), plan.RequiresDualApproval,
 		plan.OperationID, plan.Error, timeText(plan.CreatedAt), nullableTimeText(plan.StartedAt), nullableTimeText(plan.FinishedAt), plan.ExecuteIdempotencyKey,
-		plan.RollbackOfPlanID, plan.SourceManifestDigest)
+		plan.RollbackOfPlanID, plan.RollbackTargetPlanID, plan.SourceManifestDigest, plan.ExecutedByHash)
 	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	createdEvent := "kubernetes.plan.created"
+	if plan.Action == "rollback" {
+		createdEvent = "kubernetes.rollback_plan.created"
+	}
+	if err := appendKubernetesPlanAudit(ctx, tx, plan.ActorHash, createdEvent, "accepted", plan, plan.CreatedAt); err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -160,6 +168,9 @@ func (store *Store) ApproveKubernetesPlan(
 		}
 		plan.State, plan.ApprovedByHash, plan.ApprovedAt = "approved", actorHash, &now
 	}
+	if err := appendKubernetesPlanAudit(ctx, tx, actorHash, "kubernetes.plan.approved", "accepted", plan, now); err != nil {
+		return model.KubernetesPlan{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.KubernetesPlan{}, err
 	}
@@ -168,7 +179,8 @@ func (store *Store) ApproveKubernetesPlan(
 
 func (store *Store) StartKubernetesPlan(
 	ctx context.Context,
-	id, operationID, actorHash, idempotencyKey string,
+	id, actorHash, idempotencyKey string,
+	operation model.KubernetesOperation,
 ) (model.KubernetesPlan, bool, error) {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -186,7 +198,10 @@ func (store *Store) StartKubernetesPlan(
 		if plan.ExecuteIdempotencyKey != "" && plan.ExecuteIdempotencyKey != idempotencyKey {
 			return model.KubernetesPlan{}, false, ErrIdempotency
 		}
-		if plan.OperationID == operationID || plan.OperationID == idempotencyKey {
+		if plan.ExecutedByHash != actorHash {
+			return model.KubernetesPlan{}, false, ErrActorMismatch
+		}
+		if plan.OperationID == operation.ID {
 			return plan, false, tx.Commit()
 		}
 		return model.KubernetesPlan{}, false, ErrIdempotency
@@ -194,15 +209,25 @@ func (store *Store) StartKubernetesPlan(
 	if plan.State != "approved" {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 计划尚未完成批准")
 	}
-	if plan.RequiresDualApproval && (plan.ApprovedByHash == "" || plan.SecondApprovedByHash == "" || actorHash == plan.ApprovedByHash || actorHash == plan.SecondApprovedByHash) {
-		return model.KubernetesPlan{}, false, errors.New("Kubernetes 执行人必须独立于两名批准人")
+	if plan.RequiresDualApproval && !model.IndependentExecutor(actorHash, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 执行人必须独立于创建人和两名批准人")
+	}
+	if err := validateKubernetesPlanOperation(plan, operation); err != nil {
+		return model.KubernetesPlan{}, false, err
 	}
 	now := store.now()
-	result, execErr := tx.ExecContext(ctx, `UPDATE kubernetes_plans SET state='running',operation_id=?,execute_idempotency_key=?,started_at=? WHERE id=? AND state='approved'`, operationID, idempotencyKey, timeText(now), id)
+	operation.CreatedAt = now
+	result, execErr := tx.ExecContext(ctx, `UPDATE kubernetes_plans SET state='running',operation_id=?,execute_idempotency_key=?,executed_by_hash=?,started_at=? WHERE id=? AND state='approved'`, operation.ID, idempotencyKey, actorHash, timeText(now), id)
 	if err := requireOne(result, execErr, "Kubernetes 计划启动失败"); err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
-	plan.State, plan.OperationID, plan.ExecuteIdempotencyKey, plan.StartedAt = "running", operationID, idempotencyKey, &now
+	if err := insertKubernetesOperation(ctx, tx, operation, actorHash, operation.RequestDigest); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	plan.State, plan.OperationID, plan.ExecuteIdempotencyKey, plan.ExecutedByHash, plan.StartedAt = "running", operation.ID, idempotencyKey, actorHash, &now
+	if err := appendKubernetesPlanAudit(ctx, tx, actorHash, "kubernetes.plan.started", "running", plan, now); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
@@ -213,23 +238,104 @@ func (store *Store) FinishKubernetesPlan(ctx context.Context, id, state, errorTe
 	if state != "succeeded" && state != "failed" && state != "needs_attention" {
 		return errors.New("Kubernetes 计划终态无效")
 	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	plan, _, err := scanKubernetesPlan(tx.QueryRowContext(ctx, kubernetesPlanSelect+` WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if state == "succeeded" {
+		if err := requireKubernetesSuccessEvidence(ctx, tx, plan); err != nil {
+			return err
+		}
+	}
 	finished := store.now()
-	_, err := store.db.ExecContext(ctx, `UPDATE kubernetes_plans SET state=?,error=?,finished_at=? WHERE id=? AND state='running'`, state, errorText, timeText(finished), id)
-	return err
+	result, updateErr := tx.ExecContext(ctx, `UPDATE kubernetes_plans SET state=?,error=?,finished_at=? WHERE id=? AND state='running'`, state, errorText, timeText(finished), id)
+	if err := requireOne(result, updateErr, "Kubernetes 计划终态无法写入"); err != nil {
+		return err
+	}
+	plan.State, plan.Error, plan.FinishedAt = state, errorText, &finished
+	event := "kubernetes.plan.failed"
+	if state == "succeeded" {
+		event = "kubernetes.plan.executed"
+	}
+	if err := appendKubernetesPlanAudit(ctx, tx, plan.ExecutedByHash, event, state, plan, finished); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func (store *Store) SetKubernetesPlanOperationID(ctx context.Context, id, operationID string) error {
-	if id == "" || operationID == "" {
-		return errors.New("Kubernetes 计划操作标识不能为空")
+func requireKubernetesSuccessEvidence(ctx context.Context, tx *sql.Tx, plan model.KubernetesPlan) error {
+	var operation model.KubernetesOperation
+	var actor, output string
+	err := scanKubernetesOperation(
+		tx.QueryRowContext(ctx, kubernetesOperationSelect+` WHERE id=?`, plan.OperationID),
+		&operation, &actor, &output,
+	)
+	if err != nil {
+		return fmt.Errorf("Kubernetes 成功操作证据不可用: %w", err)
 	}
-	_, err := store.db.ExecContext(ctx, `UPDATE kubernetes_plans SET operation_id=? WHERE id=? AND state IN ('running','succeeded','failed','needs_attention')`, operationID, id)
-	return err
+	if actor != plan.ExecutedByHash || operation.State != "succeeded" ||
+		operation.ManifestDigest != plan.ManifestDigest || operation.Action != plan.Action ||
+		operation.RollbackOfPlanID != plan.RollbackOfPlanID || operation.TenantID != plan.TenantID ||
+		operation.Target.Cluster != plan.Target.Cluster || operation.Target.Context != plan.Target.Context ||
+		operation.Target.Namespace != plan.Target.Namespace ||
+		(operation.RolloutState != "succeeded" && operation.RolloutState != "not_required") {
+		return errors.New("Kubernetes 成功操作证据与计划身份不一致")
+	}
+	return nil
+}
+
+func validateKubernetesPlanOperation(plan model.KubernetesPlan, operation model.KubernetesOperation) error {
+	if operation.ID != "plan-"+plan.ID || operation.IdempotencyKey != operation.ID || operation.RequestDigest == "" ||
+		operation.ManifestDigest != plan.ManifestDigest || operation.Action != plan.Action ||
+		operation.RollbackOfPlanID != plan.RollbackOfPlanID || operation.State != "pending" ||
+		operation.TenantID != plan.TenantID || operation.Target.Cluster != plan.Target.Cluster ||
+		operation.Target.Context != plan.Target.Context || operation.Target.Namespace != plan.Target.Namespace ||
+		!slices.Equal(operation.Target.Allowlist, plan.Target.Allowlist) ||
+		!slices.Equal(operation.Target.ResourceKinds, plan.Target.ResourceKinds) {
+		return errors.New("Kubernetes 操作与批准计划身份不一致")
+	}
+	return nil
+}
+
+func appendKubernetesPlanAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	actor, event, outcome string,
+	plan model.KubernetesPlan,
+	now time.Time,
+) error {
+	detail := map[string]any{
+		"action": plan.Action, "tenantId": plan.TenantID, "cluster": plan.Target.Cluster,
+		"namespace": plan.Target.Namespace, "manifestDigest": plan.ManifestDigest,
+	}
+	if plan.OperationID != "" {
+		detail["operationId"] = plan.OperationID
+	}
+	if plan.RollbackOfPlanID != "" {
+		detail["sourcePlanId"] = plan.RollbackOfPlanID
+		detail["sourceManifestDigest"] = plan.SourceManifestDigest
+		detail["rollbackTargetPlanId"] = plan.RollbackTargetPlanID
+	}
+	if plan.Error != "" {
+		detail["error"] = plan.Error
+	}
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: event, Resource: plan.ID, Outcome: outcome, Detail: detail,
+	}, now)
 }
 
 const kubernetesPlanSelect = `SELECT id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,
 		manifest_digest,manifest,action,state,confirmation_phrase,approved_by_hash,approved_at,
 	second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,
-	created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,source_manifest_digest FROM kubernetes_plans`
+		created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash FROM kubernetes_plans`
 
 func (store *Store) getKubernetesPlan(ctx context.Context, id string) (model.KubernetesPlan, string, error) {
 	plan, manifest, err := scanKubernetesPlan(store.db.QueryRowContext(ctx, kubernetesPlanSelect+` WHERE id=?`, id))
@@ -245,13 +351,13 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 	var plan model.KubernetesPlan
 	var targetJSON, manifest string
 	var approvedAt, secondApprovedAt, createdAt, startedAt, finishedAt sql.NullString
-	var rollbackOfPlanID, sourceManifestDigest string
+	var rollbackOfPlanID, rollbackTargetPlanID, sourceManifestDigest, executedByHash string
 	var dual int
 	err := row.Scan(&plan.ID, &plan.IdempotencyKey, &plan.RequestDigest, &plan.ActorHash, &plan.TenantID,
 		&targetJSON, &plan.ManifestDigest, &manifest, &plan.Action, &plan.State, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.SecondApprovedByHash, &secondApprovedAt, &dual,
 		&plan.OperationID, &plan.Error, &createdAt, &startedAt, &finishedAt, &plan.ExecuteIdempotencyKey,
-		&rollbackOfPlanID, &sourceManifestDigest)
+		&rollbackOfPlanID, &rollbackTargetPlanID, &sourceManifestDigest, &executedByHash)
 	if err != nil {
 		return model.KubernetesPlan{}, "", err
 	}
@@ -260,7 +366,9 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 	}
 	plan.RequiresDualApproval = dual != 0
 	plan.RollbackOfPlanID = rollbackOfPlanID
+	plan.RollbackTargetPlanID = rollbackTargetPlanID
 	plan.SourceManifestDigest = sourceManifestDigest
+	plan.ExecutedByHash = executedByHash
 	var parseErr error
 	if plan.ApprovedAt, parseErr = nullableTime(approvedAt); parseErr != nil {
 		return model.KubernetesPlan{}, "", parseErr

@@ -98,7 +98,7 @@ func TestLifecycleFailureRestoresMaintenanceBarrier(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			task, created, err := engine.ExecuteReleasePlan(context.Background(), creator, approved.ID, model.ExecutePlanRequest{
+			task, created, err := engine.ExecuteReleasePlan(context.Background(), releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
 				IdempotencyKey: mustUUID(t),
 			})
 			if err != nil || !created {

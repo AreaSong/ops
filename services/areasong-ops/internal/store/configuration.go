@@ -86,15 +86,6 @@ func (store *Store) BeginKubernetesOperation(
 	if operation.State == "" {
 		operation.State = "pending"
 	}
-	allowlistJSON, resourceKindsJSON, err := kubernetesTargetJSON(operation.Target)
-	if err != nil {
-		return model.KubernetesOperation{}, "", false, err
-	}
-	resourcesJSON, err := kubernetesResourcesJSON(operation.RolloutResources)
-	if err != nil {
-		return model.KubernetesOperation{}, "", false, err
-	}
-
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.KubernetesOperation{}, "", false, err
@@ -120,18 +111,41 @@ func (store *Store) BeginKubernetesOperation(
 		return model.KubernetesOperation{}, "", false, err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json,phase,rollout_state,rollout_resources_json,rollback_of_plan_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		operation.ID, actor, operation.TenantID, operation.Target.Cluster, operation.Target.Context, operation.Target.Namespace,
-		operation.Action, operation.ManifestDigest, operation.DryRun, operation.State, "", operation.Error,
-		timeText(operation.CreatedAt), nullableTimeText(operation.FinishedAt), operation.IdempotencyKey, requestDigest,
-		allowlistJSON, resourceKindsJSON, operation.Phase, operation.RolloutState, resourcesJSON, operation.RollbackOfPlanID)
-	if err != nil {
+	if err := insertKubernetesOperation(ctx, tx, operation, actor, requestDigest); err != nil {
 		return model.KubernetesOperation{}, "", false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return model.KubernetesOperation{}, "", false, err
 	}
 	return operation, "", true, nil
+}
+
+type kubernetesOperationExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertKubernetesOperation(
+	ctx context.Context,
+	executor kubernetesOperationExecutor,
+	operation model.KubernetesOperation,
+	actor, requestDigest string,
+) error {
+	allowlistJSON, resourceKindsJSON, err := kubernetesTargetJSON(operation.Target)
+	if err != nil {
+		return err
+	}
+	resourcesJSON, err := kubernetesResourcesJSON(operation.RolloutResources)
+	if err != nil {
+		return err
+	}
+	_, err = executor.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json,phase,rollout_state,rollout_resources_json,rollback_of_plan_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		operation.ID, actor, operation.TenantID, operation.Target.Cluster, operation.Target.Context,
+		operation.Target.Namespace, operation.Action, operation.ManifestDigest, operation.DryRun,
+		operation.State, "", operation.Error, timeText(operation.CreatedAt),
+		nullableTimeText(operation.FinishedAt), operation.IdempotencyKey, requestDigest,
+		allowlistJSON, resourceKindsJSON, operation.Phase, operation.RolloutState,
+		resourcesJSON, operation.RollbackOfPlanID)
+	return err
 }
 
 // UpdateKubernetesOperation closes or advances a previously persisted

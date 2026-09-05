@@ -465,18 +465,19 @@ func (engine *Engine) Kubernetes(ctx context.Context, actor string, request mode
 	if request.Action != "validate" {
 		return model.KubernetesOperation{}, "", errors.New("Kubernetes 普通操作接口只允许 validate；apply 必须通过双人批准计划执行")
 	}
-	return engine.runKubernetesOperation(ctx, actor, request, false)
+	return engine.runKubernetesOperation(ctx, actor, request, false, "")
 }
 
 func (engine *Engine) applyKubernetesPlan(
 	ctx context.Context,
 	actor string,
 	request model.KubernetesRequest,
+	operationID string,
 ) (model.KubernetesOperation, string, error) {
 	if request.Action != "apply" && request.Action != "rollback" {
 		return model.KubernetesOperation{}, "", errors.New("Kubernetes 计划内部执行只允许 apply 或 rollback")
 	}
-	return engine.runKubernetesOperation(ctx, actor, request, true)
+	return engine.runKubernetesOperation(ctx, actor, request, true, operationID)
 }
 
 func (engine *Engine) runKubernetesOperation(
@@ -484,6 +485,7 @@ func (engine *Engine) runKubernetesOperation(
 	actor string,
 	request model.KubernetesRequest,
 	allowApply bool,
+	operationID string,
 ) (model.KubernetesOperation, string, error) {
 	if err := engine.authorizePlatform(ctx, actor, model.PermissionDeploy, "kubernetes:"+request.Target.Cluster); err != nil {
 		return model.KubernetesOperation{}, "", err
@@ -531,13 +533,17 @@ func (engine *Engine) runKubernetesOperation(
 	rolloutResources := kubernetesRolloutResources(objects)
 	requestDigest := kubernetesRequestDigest(request, target)
 	digest := digestText(request.Manifest)
-	id, err := newUUID()
-	if err != nil {
-		return model.KubernetesOperation{}, "", err
+	if operationID == "" {
+		operationID, err = newUUID()
+		if err != nil {
+			return model.KubernetesOperation{}, "", err
+		}
+	} else if !allowApply || operationID != request.IdempotencyKey {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes 预留操作标识无效")
 	}
 	now := time.Now().UTC()
 	op := model.KubernetesOperation{
-		ID: id, IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
+		ID: operationID, IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		Target: target, TenantID: target.TenantID, Action: request.Action, ManifestDigest: digest,
 		DryRun: request.Action == "validate", State: "pending", Phase: "preflight",
 		RolloutState: "pending", RolloutResources: rolloutResources,
@@ -556,7 +562,9 @@ func (engine *Engine) runKubernetesOperation(
 			op = stored
 		case "running":
 			failure := errors.New("Runner 在 Kubernetes apply 执行中断，结果未知，禁止自动重试")
-			engine.markKubernetesNeedsAttention(context.Background(), stored.ID, previousOutput, failure.Error())
+			if markErr := engine.markKubernetesNeedsAttention(context.Background(), stored.ID, previousOutput, failure.Error()); markErr != nil {
+				failure = fmt.Errorf("%w；needs_attention 状态持久化失败: %v", failure, markErr)
+			}
 			stored.State, stored.Error = "needs_attention", failure.Error()
 			return stored, previousOutput, failure
 		case "succeeded":
@@ -573,7 +581,9 @@ func (engine *Engine) runKubernetesOperation(
 		ctx, op.ID, "running", request.Action, "pending", rolloutResources, "", "",
 	); err != nil {
 		failure := fmt.Errorf("Kubernetes 操作状态持久化失败: %w", err)
-		engine.markKubernetesNeedsAttention(ctx, op.ID, "", failure.Error())
+		if markErr := engine.markKubernetesNeedsAttention(ctx, op.ID, "", failure.Error()); markErr != nil {
+			failure = fmt.Errorf("%w；needs_attention 状态持久化失败: %v", failure, markErr)
+		}
 		op.State = "needs_attention"
 		op.Error = failure.Error()
 		return op, "", failure
@@ -598,7 +608,9 @@ func (engine *Engine) runKubernetesOperation(
 			ctx, op.ID, state, request.Action+"_failed", "not_started", rolloutResources, cleanOutput, errorText,
 		); persistErr != nil {
 			failure := fmt.Errorf("kubectl 操作失败: %s；结果持久化失败: %w", errorText, persistErr)
-			engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error())
+			if markErr := engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error()); markErr != nil {
+				failure = fmt.Errorf("%w；needs_attention 状态持久化失败: %v", failure, markErr)
+			}
 			op.State, op.Error = "needs_attention", failure.Error()
 			return op, cleanOutput, failure
 		}
@@ -618,7 +630,9 @@ func (engine *Engine) runKubernetesOperation(
 		ctx, op.ID, "running", "rollout", "running", rolloutResources, cleanOutput, "",
 	); persistErr != nil {
 		failure := fmt.Errorf("Kubernetes apply 已完成但 rollout 状态持久化失败: %w", persistErr)
-		engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error())
+		if markErr := engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error()); markErr != nil {
+			failure = fmt.Errorf("%w；needs_attention 状态持久化失败: %v", failure, markErr)
+		}
 		op.State, op.Phase, op.RolloutState, op.Error = "needs_attention", "rollout", "unknown", failure.Error()
 		return op, cleanOutput, failure
 	}
@@ -631,7 +645,9 @@ func (engine *Engine) runKubernetesOperation(
 			ctx, op.ID, "needs_attention", "rollout_failed", "failed", rolloutResources, combinedOutput, errorText,
 		); persistErr != nil {
 			errorText = redactText(fmt.Sprintf("%s；rollout 结果持久化失败: %v", errorText, persistErr))
-			engine.markKubernetesNeedsAttention(ctx, op.ID, combinedOutput, errorText)
+			if markErr := engine.markKubernetesNeedsAttention(ctx, op.ID, combinedOutput, errorText); markErr != nil {
+				errorText = redactText(fmt.Sprintf("%s；needs_attention 状态持久化失败: %v", errorText, markErr))
+			}
 		}
 		finished := time.Now().UTC()
 		op.State, op.Phase, op.RolloutState, op.Error, op.FinishedAt = "needs_attention", "rollout_failed", "failed", errorText, &finished
@@ -651,7 +667,9 @@ func (engine *Engine) finishKubernetesOperation(
 		ctx, op.ID, "succeeded", phase, rolloutState, rolloutResources, output, "",
 	); persistErr != nil {
 		failure := fmt.Errorf("Kubernetes 操作已执行但结果持久化失败: %w", persistErr)
-		engine.markKubernetesNeedsAttention(ctx, op.ID, output, failure.Error())
+		if markErr := engine.markKubernetesNeedsAttention(ctx, op.ID, output, failure.Error()); markErr != nil {
+			failure = fmt.Errorf("%w；needs_attention 状态持久化失败: %v", failure, markErr)
+		}
 		op.State, op.Error = "needs_attention", failure.Error()
 		return op, output, failure
 	}
@@ -896,7 +914,8 @@ func kubernetesRequestDigest(request model.KubernetesRequest, target model.Kuber
 	sort.Strings(kinds)
 	parts := []string{
 		request.Action, fmt.Sprintf("%t", request.DryRun), target.Cluster, target.Context,
-		target.Namespace, strings.Join(kinds, ","), strings.Join(allowlist, ","), request.Manifest,
+		target.Namespace, target.TenantID, strings.Join(kinds, ","), strings.Join(allowlist, ","),
+		request.RollbackOfPlanID, request.Manifest,
 	}
 	return digestText(strings.Join(parts, "\x00"))
 }
@@ -958,9 +977,9 @@ func isDangerousKubernetesKind(kind string) bool {
 	}
 }
 
-func (engine *Engine) markKubernetesNeedsAttention(ctx context.Context, id, output, reason string) {
+func (engine *Engine) markKubernetesNeedsAttention(ctx context.Context, id, output, reason string) error {
 	if id == "" {
-		return
+		return errors.New("Kubernetes 操作标识不能为空")
 	}
-	_ = engine.store.UpdateKubernetesOperation(ctx, id, "needs_attention", output, redactText(reason))
+	return engine.store.UpdateKubernetesOperation(ctx, id, "needs_attention", output, redactText(reason))
 }

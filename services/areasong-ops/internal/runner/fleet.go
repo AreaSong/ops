@@ -212,11 +212,10 @@ func (engine *Engine) RegisterServer(ctx context.Context, actor string, node mod
 	if engine.catalog.Fleet == nil || !engine.catalog.Fleet.Enabled {
 		return errors.New("多服务器管理尚未启用")
 	}
-	if err := engine.store.UpsertServerNode(ctx, node); err != nil {
-		return err
-	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "fleet.server_registered", Resource: node.ID, Outcome: "accepted", Detail: map[string]any{"hostname": node.Hostname, "state": node.State}})
-	return nil
+	return engine.store.RegisterServerNode(ctx, node, model.AuditEntry{
+		ActorHash: actor, Event: "fleet.server_registered", Resource: node.ID, Outcome: "accepted",
+		Detail: map[string]any{"hostname": node.Hostname, "state": node.State},
+	})
 }
 
 func (engine *Engine) RegisterRunner(ctx context.Context, actor string, node model.RunnerNode) error {
@@ -234,11 +233,10 @@ func (engine *Engine) RegisterRunner(ctx context.Context, actor string, node mod
 		return errors.New("Runner 租户与操作者租户不一致")
 	}
 	node.TenantID = tenantID
-	if err := engine.store.UpsertRunnerNode(ctx, node, tenantID); err != nil {
-		return err
-	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "fleet.runner_registered", Resource: node.ID, Outcome: "accepted", Detail: map[string]any{"serverId": node.ServerID, "version": node.Version}})
-	return nil
+	return engine.store.RegisterRunnerNode(ctx, node, tenantID, model.AuditEntry{
+		ActorHash: actor, Event: "fleet.runner_registered", Resource: node.ID, Outcome: "accepted",
+		Detail: map[string]any{"tenantId": tenantID, "serverId": node.ServerID, "version": node.Version},
+	})
 }
 
 func (engine *Engine) HeartbeatRunner(ctx context.Context, actor, id string, input RunnerHeartbeatRequest) (model.RunnerNode, error) {

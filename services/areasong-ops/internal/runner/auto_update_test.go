@@ -30,6 +30,7 @@ func TestAutoUpdateWindowUsesExplicitTimezone(t *testing.T) {
 func TestEvaluateAutoUpdatesPropagatesEvaluationWriteFailure(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
+	discoverRelease(t, engine)
 	if err := database.UpsertAutoUpdatePolicy(ctx, model.AutoUpdatePolicyView{
 		Service: "demo", ObjectID: "service:demo", TenantID: "default",
 		Enabled: true, Channel: "stable", MaintenanceTimezone: "UTC",
@@ -51,6 +52,26 @@ func TestEvaluateAutoUpdatesPropagatesEvaluationWriteFailure(t *testing.T) {
 	}
 	if _, err := engine.EvaluateAutoUpdates(ctx, actorHash()); err == nil || !strings.Contains(err.Error(), "injected evaluation failure") {
 		t.Fatalf("err=%v, want evaluation persistence failure", err)
+	}
+	if _, err := raw.ExecContext(ctx, `DROP TRIGGER reject_auto_update_evaluation`); err != nil {
+		t.Fatal(err)
+	}
+	evaluations, err := engine.EvaluateAutoUpdates(ctx, actorHash())
+	if err != nil || len(evaluations) != 1 || !evaluations[0].UpdateCreated {
+		t.Fatalf("retry evaluations=%+v err=%v", evaluations, err)
+	}
+	var plans, createdAudits, linkedAudits int
+	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM release_plans`).Scan(&plans); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_entries WHERE event='plan.created'`).Scan(&createdAudits); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_entries WHERE event='auto_update.plan.created'`).Scan(&linkedAudits); err != nil {
+		t.Fatal(err)
+	}
+	if plans != 1 || createdAudits != 1 || linkedAudits != 1 {
+		t.Fatalf("plans=%d createdAudits=%d linkedAudits=%d", plans, createdAudits, linkedAudits)
 	}
 }
 

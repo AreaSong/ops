@@ -139,16 +139,6 @@ func (engine *Engine) PrepareRunnerUpdate(
 	if err != nil || !created {
 		_ = os.Remove(stagedPath)
 	}
-	if err == nil && created {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-			ActorHash: actor, Event: "runner.update.prepared", Resource: "runner:" + policy.RunnerID,
-			Outcome: "accepted", Detail: map[string]any{
-				"updateId": result.ID, "targetVersion": result.TargetVersion,
-				"artifactDigest":   result.ArtifactDigest,
-				"artifactRevision": result.ArtifactRevision,
-			},
-		})
-	}
 	return result, created, err
 }
 
@@ -189,11 +179,6 @@ func (engine *Engine) ActivateRunnerUpdate(
 		}
 		return update, true, err
 	}
-	_, _ = engine.store.AppendAudit(context.WithoutCancel(ctx), model.AuditEntry{
-		ActorHash: actor, Event: "runner.update.activation_requested",
-		Resource: "runner:" + policy.RunnerID, Outcome: "accepted",
-		Detail: map[string]any{"updateId": id, "artifactDigest": update.ArtifactDigest},
-	})
 	return update, true, nil
 }
 
@@ -232,13 +217,6 @@ func (engine *Engine) ResolveRunnerUpdate(
 		update, created, err = engine.store.ResolveRunnerUpdate(ctx, id, actor, request.IdempotencyKey)
 	} else {
 		update, created, err = engine.store.ResolveRunnerUpdate(ctx, id, actor, request.IdempotencyKey, request.Evidence)
-	}
-	if err == nil && created {
-		_, _ = engine.store.AppendAudit(context.WithoutCancel(ctx), model.AuditEntry{
-			ActorHash: actor, Event: "runner.update.manually_resolved",
-			Resource: "runner:" + policy.RunnerID, Outcome: "accepted",
-			Detail: map[string]any{"updateId": id},
-		})
 	}
 	return update, created, err
 }
@@ -281,13 +259,6 @@ func (engine *Engine) CancelRunnerUpdate(
 	}
 	if removeErr := os.Remove(expectedStagedPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		return update, created, fmt.Errorf("删除已取消 Runner 暂存制品失败: %w", removeErr)
-	}
-	if created {
-		_, _ = engine.store.AppendAudit(context.WithoutCancel(ctx), model.AuditEntry{
-			ActorHash: actor, Event: "runner.update.cancelled",
-			Resource: "runner:" + policy.RunnerID, Outcome: "accepted",
-			Detail: map[string]any{"updateId": id, "artifactDigest": update.ArtifactDigest},
-		})
 	}
 	return update, created, nil
 }

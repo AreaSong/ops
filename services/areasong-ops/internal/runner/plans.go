@@ -232,34 +232,15 @@ func (engine *Engine) CreateReleasePlan(
 	_ = restorePoint // retained to make the binding lookup explicit above
 	input := store.ReleasePlanInput{Plan: plan, ConfirmationHash: store.HashConfirmation(phrase)}
 	if request.IdempotencyKey != "" {
-		stored, created, err := engine.store.CreateReleasePlanIdempotent(ctx, input, actorHash, request.IdempotencyKey, requestDigest)
+		stored, _, err := engine.store.CreateReleasePlanIdempotent(ctx, input, actorHash, request.IdempotencyKey, requestDigest)
 		if err != nil {
 			return model.ReleasePlan{}, err
 		}
-		event := "plan.created.replayed"
-		outcome := "replayed"
-		if created {
-			event, outcome = "plan.created", "accepted"
-		}
-		detail := map[string]any{"service": stored.Service, "action": stored.Action, "target": stored.Target, "digest": stored.Digest, "idempotencyKey": request.IdempotencyKey}
-		if stored.AllowsC2LifecycleSingleActorApproval() {
-			detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
-		}
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: event, Resource: stored.ID, Outcome: outcome,
-			Detail: detail})
 		return stored, nil
 	}
 	if err := engine.store.CreateReleasePlan(ctx, input); err != nil {
 		return model.ReleasePlan{}, err
 	}
-	detail := map[string]any{"service": plan.Service, "action": plan.Action, "target": plan.Target, "digest": plan.Digest}
-	if plan.AllowsC2LifecycleSingleActorApproval() {
-		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
-	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actorHash, Event: "plan.created", Resource: plan.ID, Outcome: "accepted",
-		Detail: detail,
-	})
 	return plan, nil
 }
 
@@ -282,6 +263,17 @@ func (engine *Engine) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	service, exists := engine.catalog.Object(plan.Service)
+	if !exists {
+		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
+	}
+	// Authorization must precede every policy/identity decision. In
+	// particular, execution may invalidate a legacy plan; a caller from
+	// another tenant must never be able to trigger that write by guessing its
+	// ID.
+	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), service.ObjectID); err != nil {
+		return model.ReleasePlan{}, err
+	}
 	if !plan.HasRequiredApprovalPolicy() {
 		return model.ReleasePlan{}, errors.New("高风险计划缺少双人审批门禁")
 	}
@@ -289,26 +281,10 @@ func (engine *Engine) ApproveReleasePlan(
 		!plan.AllowsC2LifecycleSingleActorApproval() {
 		return model.ReleasePlan{}, store.ErrActorMismatch
 	}
-	service, exists := engine.catalog.Object(plan.Service)
-	if !exists {
-		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
-	}
-	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), service.ObjectID); err != nil {
-		return model.ReleasePlan{}, err
-	}
 	plan, err = engine.store.ApproveReleasePlan(ctx, id, actorHash, request.Digest, request.Confirmation)
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	detail := map[string]any{"digest": plan.Digest, "scheduleAt": plan.ScheduleAt}
-	if plan.AllowsC2LifecycleSingleActorApproval() {
-		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
-		detail["selfApproval"] = true
-	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actorHash, Event: "plan.approved", Outcome: string(plan.State), Resource: plan.ID,
-		Detail: detail,
-	})
 	return plan, nil
 }
 
@@ -325,13 +301,6 @@ func (engine *Engine) ExecuteReleasePlan(
 	if err != nil {
 		return model.Task{}, false, err
 	}
-	if !plan.HasRequiredApprovalPolicy() {
-		_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, "高风险计划缺少双人审批门禁")
-		return model.Task{}, false, errors.New("高风险计划缺少双人审批门禁，请重新创建计划")
-	}
-	if plan.ActorHash != actorHash {
-		return model.Task{}, false, store.ErrActorMismatch
-	}
 	serviceForAuth, exists := engine.catalog.Object(plan.Service)
 	if !exists {
 		return model.Task{}, false, errors.New("受管对象声明不存在")
@@ -339,21 +308,25 @@ func (engine *Engine) ExecuteReleasePlan(
 	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), serviceForAuth.ObjectID); err != nil {
 		return model.Task{}, false, err
 	}
+	if !plan.HasRequiredApprovalPolicy() {
+		reason := "高风险计划缺少双人审批门禁"
+		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID, reason,
+			errors.New(reason+"，请重新创建计划"))
+	}
+	if !plan.AllowsExecutor(actorHash) {
+		return model.Task{}, false, store.ErrActorMismatch
+	}
 	if plan.State == model.PlanScheduled {
 		if plan.ScheduleAt == nil || time.Now().UTC().Before(*plan.ScheduleAt) {
 			return model.Task{}, false, errors.New("发布计划尚未到达调度时间")
 		}
-		activated, activateErr := engine.store.ActivateScheduledPlan(ctx, plan.ID, time.Now().UTC())
+		_, activateErr := engine.store.ActivateScheduledPlan(ctx, plan.ID, actorHash, time.Now().UTC())
 		if activateErr != nil {
 			return model.Task{}, false, activateErr
 		}
 		plan, err = engine.store.GetReleasePlan(ctx, id)
 		if err != nil {
 			return model.Task{}, false, err
-		}
-		if activated {
-			_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actorHash, Event: "plan.schedule.released", Resource: plan.ID, Outcome: "approved",
-				Detail: map[string]any{"scheduleAt": plan.ScheduleAt}})
 		}
 	}
 	if plan.State == model.PlanExecuting || plan.State == model.PlanObserving ||
@@ -373,8 +346,8 @@ func (engine *Engine) ExecuteReleasePlan(
 	}
 	service, action, err := engine.resolveAction(plan.Service, plan.Action, plan.Target)
 	if err != nil {
-		_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, "服务能力或目标策略已变化")
-		return model.Task{}, false, err
+		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID,
+			"服务能力或目标策略已变化", err)
 	}
 	observed, err := engine.inspectForAction(ctx, service, action.Name)
 	if err != nil {
@@ -383,15 +356,15 @@ func (engine *Engine) ExecuteReleasePlan(
 	observed = approvalSnapshot(service, observed)
 	if plan.Action == "rollback" {
 		if err := engine.validateRollbackSource(plan.Service, plan.Target, observed); err != nil {
-			_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, err.Error())
-			return model.Task{}, false, err
+			return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID,
+				redactText(err.Error()), err)
 		}
 		observed["rollbackSourceTaskId"] = plan.Target
 	}
 	targetEvidence, err := engine.targetEvidence(ctx, service.Name, action.TargetMode, plan.Target)
 	if err != nil {
-		_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, err.Error())
-		return model.Task{}, false, err
+		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID,
+			redactText(err.Error()), err)
 	}
 	currentSummary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: plan.Target,
@@ -417,19 +390,15 @@ func (engine *Engine) ExecuteReleasePlan(
 	actual, _ := json.Marshal(observed)
 	if currentDigest != plan.Digest || !bytes.Equal(expected, actual) {
 		reason := "运行身份或计划内容与批准摘要不一致"
-		if invalidateErr := engine.store.InvalidateReleasePlan(ctx, plan.ID, reason); invalidateErr != nil {
-			return model.Task{}, false, fmt.Errorf("%s，且计划失效写入失败: %w", reason, invalidateErr)
-		}
-		return model.Task{}, false, errors.New(reason + "，请重新创建计划")
+		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID, reason,
+			errors.New(reason+"，请重新创建计划"))
 	}
 	if plan.RestoreMode != "" {
 		point, verifyErr := engine.verifyRestorePlanBinding(ctx, plan, service)
 		if verifyErr != nil {
 			reason := "恢复点执行前复验失败: " + redactText(verifyErr.Error())
-			if invalidateErr := engine.store.InvalidateReleasePlan(ctx, plan.ID, reason); invalidateErr != nil {
-				return model.Task{}, false, fmt.Errorf("%s，且计划失效写入失败: %w", reason, invalidateErr)
-			}
-			return model.Task{}, false, errors.New(reason + "，请重新创建并批准恢复计划")
+			return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID, reason,
+				errors.New(reason+"，请重新创建并批准恢复计划"))
 		}
 		revalidatedAt := time.Now().UTC()
 		if err := engine.store.MarkRestorePlanRevalidated(
@@ -459,8 +428,8 @@ func (engine *Engine) ExecuteReleasePlan(
 		}
 		return model.Task{}, false, err
 	}
-	task, created, err := engine.store.StartPlanTask(ctx, plan, actorHash, request.IdempotencyKey, taskID, silence)
-	if err != nil || !created {
+	started, err := engine.store.StartPlanTaskWithEvent(ctx, plan, actorHash, request.IdempotencyKey, taskID, silence)
+	if err != nil || !started.Created {
 		if silence != nil {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			cleanupErr := engine.alertmanager.ExpireSilence(cleanupCtx, silence.ID)
@@ -469,11 +438,22 @@ func (engine *Engine) ExecuteReleasePlan(
 				return model.Task{}, false, fmt.Errorf("%w，且临时维护静默解除失败: %v", err, cleanupErr)
 			}
 		}
-		return task, created, err
+		return started.Task, started.Created, err
 	}
-	task.TrafficPolicyDigest = plan.ApprovalSummary.TrafficPolicyDigest
-	engine.enqueue(task)
-	return task, true, nil
+	started.Task.TrafficPolicyDigest = plan.ApprovalSummary.TrafficPolicyDigest
+	engine.enqueue(started.Task, started.QueuedEvent.Sequence)
+	return started.Task, true, nil
+}
+
+func (engine *Engine) invalidateReleasePlan(
+	ctx context.Context,
+	actorHash, planID, reason string,
+	cause error,
+) error {
+	if err := engine.store.InvalidateReleasePlan(ctx, planID, actorHash, reason); err != nil {
+		return errors.Join(cause, fmt.Errorf("计划失效写入失败: %w", err))
+	}
+	return cause
 }
 
 func approvalSnapshot(object model.ServiceDefinition, observed map[string]any) map[string]any {
@@ -564,15 +544,15 @@ func (engine *Engine) CloseReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if plan.ActorHash != actorHash {
-		return model.ReleasePlan{}, store.ErrActorMismatch
-	}
 	serviceForAuth, exists := engine.catalog.Object(plan.Service)
 	if !exists {
 		return model.ReleasePlan{}, errors.New("受管对象声明不存在")
 	}
 	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), serviceForAuth.ObjectID); err != nil {
 		return model.ReleasePlan{}, err
+	}
+	if plan.ActorHash != actorHash {
+		return model.ReleasePlan{}, store.ErrActorMismatch
 	}
 	if plan.State == model.PlanCompleted {
 		return engine.store.CloseReleasePlan(ctx, id, actorHash, request.IdempotencyKey, model.AuditEntry{})
@@ -769,6 +749,9 @@ func (engine *Engine) CreateRecoveryPlan(
 ) (model.ReleasePlan, error) {
 	task, err := engine.store.GetTask(ctx, taskID)
 	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := engine.authorizeTask(ctx, actorHash, task, model.PermissionRead); err != nil {
 		return model.ReleasePlan{}, err
 	}
 	if task.ActorHash != actorHash {

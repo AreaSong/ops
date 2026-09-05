@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -52,7 +51,6 @@ func (engine *Engine) ApproveManagedFileProposal(
 	if err != nil {
 		return model.ManagedFileProposal{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "file.proposal.approved", Resource: id, Outcome: approved.State, Detail: map[string]any{"rootId": approved.RootID, "path": approved.Path, "digest": approved.ProposedDigest}})
 	approved.Content = ""
 	return approved, nil
 }
@@ -92,7 +90,6 @@ func (engine *Engine) ApplyManagedFileProposal(
 	finished := time.Now().UTC()
 	proposal.State, proposal.BackupPath, proposal.Error, proposal.FinishedAt = state, backupPath, errorText, &finished
 	proposal.Content = ""
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{ActorHash: actor, Event: "file.proposal.applied", Resource: id, Outcome: state, Detail: map[string]any{"rootId": proposal.RootID, "path": proposal.Path, "digest": proposal.ProposedDigest, "changed": changed}})
 	if applyErr != nil {
 		return proposal, applyErr
 	}
@@ -142,7 +139,6 @@ func (engine *Engine) RollbackManagedFileProposal(
 	finished := time.Now().UTC()
 	proposal.State, proposal.Error, proposal.RolledBackAt, proposal.FinishedAt = state, errorText, &finished, &finished
 	proposal.Content = ""
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{ActorHash: actor, Event: "file.proposal.rolled_back", Resource: id, Outcome: state, Detail: map[string]any{"rootId": proposal.RootID, "path": proposal.Path, "changed": changed}})
 	if rollbackErr != nil {
 		return proposal, rollbackErr
 	}
@@ -150,89 +146,63 @@ func (engine *Engine) RollbackManagedFileProposal(
 }
 
 func (engine *Engine) applyManagedFile(proposal model.ManagedFileProposal) (string, bool, error) {
-	_, target, _, err := engine.resolveManagedPath(proposal.RootID, proposal.Path)
+	root, _, cleanPath, err := engine.resolveManagedPath(proposal.RootID, proposal.Path)
 	if err != nil {
 		return "", false, err
 	}
-	currentContent, err := readManagedText(target, engine.catalog.Files.MaxFileBytes)
+	current, before, err := openManagedNode(root, cleanPath)
+	if err != nil {
+		return "", false, err
+	}
+	defer current.Close()
+	if !before.Mode().IsRegular() {
+		return "", false, errors.New("文件目标身份无效")
+	}
+	currentContent, err := readManagedTextFile(current, engine.catalog.Files.MaxFileBytes)
 	if err != nil {
 		return "", false, err
 	}
 	if digestText(currentContent) != proposal.ExpectedDigest {
 		return "", false, errors.New("文件基线摘要在执行前已变化")
 	}
-	before, err := os.Lstat(target)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
-		return "", false, errors.New("文件目标身份无效")
-	}
-	backupPath, err := engine.writeManagedFileBackup(proposal, target, before)
+	backupPath, err := engine.writeManagedFileBackup(proposal, currentContent)
 	if err != nil {
 		return "", false, err
 	}
-	temporary, err := writeManagedReplacement(target, proposal.Content, before)
-	if err != nil {
-		return backupPath, false, err
-	}
-	defer os.Remove(temporary)
-	if err := verifyManagedTargetUnchanged(target, before, proposal.ExpectedDigest); err != nil {
-		return backupPath, false, err
-	}
-	if err := os.Rename(temporary, target); err != nil {
-		return backupPath, false, err
-	}
-	if err := managedSyncDirectory(filepath.Dir(target)); err != nil {
-		return backupPath, true, err
-	}
-	content, err := os.ReadFile(target)
-	if err != nil || digestText(string(content)) != proposal.ProposedDigest {
-		return backupPath, true, errors.New("文件原子替换后的摘要核验失败")
-	}
-	return backupPath, true, nil
+	changed, err := replaceManagedFile(
+		root, cleanPath, proposal.Content, proposal.ExpectedDigest, proposal.ProposedDigest, before,
+	)
+	return backupPath, changed, err
 }
 
 func (engine *Engine) rollbackManagedFile(proposal model.ManagedFileProposal) (bool, error) {
-	_, target, _, err := engine.resolveManagedPath(proposal.RootID, proposal.Path)
+	root, _, cleanPath, err := engine.resolveManagedPath(proposal.RootID, proposal.Path)
 	if err != nil {
 		return false, err
 	}
-	current, err := os.Lstat(target)
-	if err != nil || !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 {
+	currentFile, current, err := openManagedNode(root, cleanPath)
+	if err != nil || !current.Mode().IsRegular() {
 		return false, errors.New("文件回滚目标身份无效")
 	}
-	content, err := os.ReadFile(target)
-	if err != nil || digestText(string(content)) != proposal.ProposedDigest {
+	defer currentFile.Close()
+	content, err := readManagedTextFile(currentFile, engine.catalog.Files.MaxFileBytes)
+	if err != nil || digestText(content) != proposal.ProposedDigest {
 		return false, errors.New("当前文件不再对应已应用提案")
 	}
-	backupInfo, err := os.Lstat(proposal.BackupPath)
-	if err != nil || !backupInfo.Mode().IsRegular() || backupInfo.Mode()&os.ModeSymlink != 0 {
+	expectedBackupPath := filepath.Join(engine.stateRoot, "file-backups", proposal.ID, "before")
+	if filepath.Clean(proposal.BackupPath) != filepath.Clean(expectedBackupPath) {
 		return false, errors.New("文件回滚副本不可用")
 	}
-	backup, err := os.ReadFile(proposal.BackupPath)
-	if err != nil || digestText(string(backup)) != proposal.ExpectedDigest {
+	backup, err := readManagedBackup(proposal.BackupPath, engine.catalog.Files.MaxFileBytes)
+	if err != nil || digestText(backup) != proposal.ExpectedDigest {
 		return false, errors.New("文件回滚副本摘要不匹配")
 	}
-	temporary, err := writeManagedReplacement(target, string(backup), current)
-	if err != nil {
-		return false, err
-	}
-	defer os.Remove(temporary)
-	if err := verifyManagedTargetUnchanged(target, current, proposal.ProposedDigest); err != nil {
-		return false, err
-	}
-	if err := os.Rename(temporary, target); err != nil {
-		return false, err
-	}
-	if err := managedSyncDirectory(filepath.Dir(target)); err != nil {
-		return true, err
-	}
-	final, err := os.ReadFile(target)
-	if err != nil || digestText(string(final)) != proposal.ExpectedDigest {
-		return true, errors.New("文件回滚后的摘要核验失败")
-	}
-	return true, nil
+	return replaceManagedFile(
+		root, cleanPath, backup, proposal.ProposedDigest, proposal.ExpectedDigest, current,
+	)
 }
 
-func (engine *Engine) writeManagedFileBackup(proposal model.ManagedFileProposal, target string, info os.FileInfo) (string, error) {
+func (engine *Engine) writeManagedFileBackup(proposal model.ManagedFileProposal, content string) (string, error) {
 	directory := filepath.Join(engine.stateRoot, "file-backups", proposal.ID)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", err
@@ -241,16 +211,11 @@ func (engine *Engine) writeManagedFileBackup(proposal model.ManagedFileProposal,
 		return "", err
 	}
 	path := filepath.Join(directory, "before")
-	source, err := os.Open(target)
-	if err != nil {
-		return "", err
-	}
-	defer source.Close()
 	destination, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", err
 	}
-	_, copyErr := io.Copy(destination, source)
+	_, copyErr := io.WriteString(destination, content)
 	syncErr := destination.Sync()
 	closeErr := destination.Close()
 	if copyErr != nil {
@@ -266,58 +231,7 @@ func (engine *Engine) writeManagedFileBackup(proposal model.ManagedFileProposal,
 	if err != nil || digestText(string(backup)) != proposal.ExpectedDigest {
 		return "", errors.New("文件备份摘要核验失败")
 	}
-	_ = info
 	return path, managedSyncDirectory(directory)
-}
-
-func writeManagedReplacement(target, content string, original os.FileInfo) (string, error) {
-	directory := filepath.Dir(target)
-	file, err := os.CreateTemp(directory, ".areasong-ops-file-*")
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	clean := func(result error) (string, error) {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return "", result
-	}
-	if err := file.Chmod(original.Mode().Perm()); err != nil {
-		return clean(err)
-	}
-	if stat, ok := original.Sys().(*syscall.Stat_t); ok {
-		if err := file.Chown(int(stat.Uid), int(stat.Gid)); err != nil {
-			return clean(err)
-		}
-	}
-	if _, err := file.WriteString(content); err != nil {
-		return clean(err)
-	}
-	if err := file.Sync(); err != nil {
-		return clean(err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	return path, nil
-}
-
-func verifyManagedTargetUnchanged(target string, expected os.FileInfo, digest string) error {
-	current, err := os.Lstat(target)
-	if err != nil || !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 {
-		return errors.New("文件目标在替换前身份失效")
-	}
-	expectedStat, expectedOK := expected.Sys().(*syscall.Stat_t)
-	currentStat, currentOK := current.Sys().(*syscall.Stat_t)
-	if expectedOK && currentOK && (expectedStat.Dev != currentStat.Dev || expectedStat.Ino != currentStat.Ino) {
-		return errors.New("文件目标在替换前 inode 已变化")
-	}
-	content, err := os.ReadFile(target)
-	if err != nil || digestText(string(content)) != digest {
-		return errors.New("文件目标在替换前摘要已变化")
-	}
-	return nil
 }
 
 func managedSyncDirectory(path string) error {

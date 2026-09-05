@@ -337,6 +337,7 @@ func testBatchOperation(now time.Time, id string) model.BatchOperation {
 	return model.BatchOperation{
 		ID: id, IdempotencyKey: id + "-idempotency", ActorHash: strings.Repeat("a", 64), TenantID: "default",
 		Action: "restart", Digest: "digest", ConfirmationPhrase: "批量重启 1 项", State: model.BatchRunning,
+		ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion,
 		Task: model.BatchTask{ID: id, Action: "restart", TargetIDs: []string{"demo"}, Nodes: []model.DAGNode{{ID: item.ID, State: model.BatchNodePending}},
 			BatchPolicy: model.BatchPolicy{Strategy: model.BatchFixed, BatchSize: 1}, Concurrency: model.ConcurrencyPolicy{Scope: model.ConcurrencyGlobal, MaxConcurrent: 1},
 			FailurePolicy: model.FailureStop, State: model.BatchTaskRunning, CreatedAt: now},
@@ -442,7 +443,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	}
 	silenceEndsAt := now.Add(20 * time.Minute)
 	silence := &model.MaintenanceSilence{ID: "silence-1", EndsAt: silenceEndsAt}
-	task, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "plan-task", silence)
+	task, created, err := database.StartPlanTask(ctx, approved, "d", "plan-idem", "plan-task", silence)
 	if err != nil || !created || task.PlanID != plan.ID || len(task.Stages) != 2 {
 		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
 	}
@@ -450,7 +451,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if err != nil || executing.MaintenanceSilenceID != silence.ID || executing.MaintenanceSilenceEndsAt == nil {
 		t.Fatalf("executing=%+v err=%v", executing, err)
 	}
-	again, created, err := database.StartPlanTask(ctx, approved, "a", "plan-idem", "other-task", nil)
+	again, created, err := database.StartPlanTask(ctx, approved, "d", "plan-idem", "other-task", nil)
 	if err != nil || created || again.ID != task.ID {
 		t.Fatalf("again=%+v created=%v err=%v", again, created, err)
 	}
@@ -460,7 +461,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	event, err := database.CompleteTask(ctx, task.ID, model.TaskSucceeded, "完成", "", "", false, false, "",
 		model.Event{TaskID: task.ID, Level: "info", Phase: "terminal", Message: "succeeded",
 			Data: map[string]any{"state": model.TaskSucceeded}},
-		model.AuditEntry{ActorHash: "a", Event: "task.terminal", Resource: task.ID, Outcome: "succeeded"})
+		model.AuditEntry{ActorHash: "d", Event: "task.terminal", Resource: task.ID, Outcome: "succeeded"})
 	if err != nil || event.Sequence == 0 {
 		t.Fatalf("event=%+v err=%v", event, err)
 	}
@@ -491,8 +492,38 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 		t.Fatalf("expected closure idempotency error, got %v", err)
 	}
 	auditEntries, err := database.ListAudit(ctx, 10, 0)
-	if err != nil || len(auditEntries) != 4 || auditEntries[0].Event != "plan.closed" {
+	if err != nil || len(auditEntries) != 8 || auditEntries[0].Event != "plan.closed" {
 		t.Fatalf("audit=%+v err=%v", auditEntries, err)
+	}
+}
+
+func TestReleasePlanApprovalAndAuditAreAtomic(t *testing.T) {
+	database := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	plan := model.ReleasePlan{
+		ID: "plan-audit-atomic", ActorHash: strings.Repeat("a", 64), Service: "demo", Action: "update", Target: "v1.2.3",
+		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:audit-atomic",
+		ConfirmationPhrase: "更新 demo", RequiresConfirmation: true, RequiresDualApproval: true,
+		ApprovalSummary: model.ApprovalSummary{SchemaVersion: 1, Service: "demo", Action: "update", Target: "v1.2.3", Risk: model.RiskHigh},
+		CreatedAt:       now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.db.Exec(`CREATE TRIGGER reject_plan_approval_audit BEFORE INSERT ON audit_entries WHEN NEW.event='plan.approved' BEGIN SELECT RAISE(ABORT, 'plan approval audit failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, strings.Repeat("b", 64), plan.Digest, plan.ConfirmationPhrase); err == nil {
+		t.Fatal("approval succeeded when audit insert failed")
+	}
+	stored, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || stored.ApprovedByHash != "" || stored.State != model.PlanPendingApproval {
+		t.Fatalf("approval survived audit rollback: %+v err=%v", stored, err)
+	}
+	var audits int
+	if err := database.db.QueryRow(`SELECT COUNT(*) FROM audit_entries WHERE event='plan.approved'`).Scan(&audits); err != nil || audits != 0 {
+		t.Fatalf("approval audits=%d err=%v", audits, err)
 	}
 }
 
@@ -567,11 +598,11 @@ func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
 	if err != nil || approved.State != model.PlanScheduled || approved.SecondApprovedByHash != "c" {
 		t.Fatalf("second approval=%+v err=%v", approved, err)
 	}
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, now); err != nil || activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", now); err != nil || activated {
 		t.Fatalf("early activation=%v err=%v", activated, err)
 	}
 	due := scheduleAt.Add(time.Second)
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, due); err != nil || !activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", due); err != nil || !activated {
 		t.Fatalf("due activation=%v err=%v", activated, err)
 	}
 	stored, err := database.GetReleasePlan(ctx, plan.ID)
@@ -824,17 +855,28 @@ func TestDiscoveryRollbackSourceAndPagination(t *testing.T) {
 		}
 	}
 	audit, err := database.ListAudit(ctx, 2, 2)
-	if err != nil || len(audit) != 1 || audit[0].Sequence != 1 {
+	if err != nil || len(audit) != 2 || audit[0].Sequence != 7 || audit[0].Event != "test" ||
+		audit[1].Sequence != 6 || audit[1].Event != "task.accepted" {
 		t.Fatalf("audit=%+v err=%v", audit, err)
+	}
+	olderAudit, err := database.ListAudit(ctx, 2, 4)
+	if err != nil || len(olderAudit) != 2 || olderAudit[0].Sequence != 5 ||
+		olderAudit[0].Event != "preview.created" || olderAudit[1].Sequence != 4 ||
+		olderAudit[1].Event != "task.accepted" {
+		t.Fatalf("older audit=%+v err=%v", olderAudit, err)
 	}
 
 	events, err := database.ListTaskEvents(ctx, check.ID, 0, 1)
-	if err != nil || len(events) != 1 {
+	if err != nil || len(events) != 1 || events[0].Phase != "queued" {
 		t.Fatalf("events=%+v err=%v", events, err)
 	}
 	after, err := database.ListTaskEvents(ctx, check.ID, events[0].Sequence, 1)
-	if err != nil || len(after) != 0 {
+	if err != nil || len(after) != 1 || after[0].Phase != "discover" {
 		t.Fatalf("after=%+v err=%v", after, err)
+	}
+	exhausted, err := database.ListTaskEvents(ctx, check.ID, after[0].Sequence, 1)
+	if err != nil || len(exhausted) != 0 {
+		t.Fatalf("exhausted=%+v err=%v", exhausted, err)
 	}
 	if err := database.MarkRunning(ctx, "task-queued", "inspect"); err != nil {
 		t.Fatal(err)

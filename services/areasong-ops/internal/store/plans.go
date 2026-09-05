@@ -31,7 +31,18 @@ const planSelect = `
 		FROM release_plans`
 
 func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInput) error {
-	return store.createReleasePlan(ctx, store.db, input)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := store.createReleasePlan(ctx, tx, input); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, releasePlanCreatedAudit(input.Plan), store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type planExecer interface {
@@ -66,6 +77,22 @@ func (store *Store) createReleasePlan(ctx context.Context, db planExecer, input 
 		nullableTimeValue(input.Plan.RestoreRevalidatedAt), input.Plan.ExecutedByHash,
 		input.Plan.RestoreOutcome, input.Plan.RestoreEvidenceDigest)
 	return err
+}
+
+func releasePlanCreatedAudit(plan model.ReleasePlan) model.AuditEntry {
+	detail := map[string]any{
+		"service": plan.Service, "action": plan.Action, "target": plan.Target, "digest": plan.Digest,
+	}
+	if plan.RequestIdempotencyKey != "" {
+		detail["idempotencyKey"] = plan.RequestIdempotencyKey
+	}
+	if plan.AllowsC2LifecycleSingleActorApproval() {
+		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
+	}
+	return model.AuditEntry{
+		ActorHash: plan.ActorHash, Event: "plan.created", Resource: plan.ID,
+		Outcome: "accepted", Detail: detail,
+	}
 }
 
 // CreateReleasePlanIdempotent atomically consumes a request key. Replaying the
@@ -107,6 +134,9 @@ func (store *Store) CreateReleasePlanIdempotent(
 	input.Plan.RequestIdempotencyKey = idempotencyKey
 	input.Plan.RequestDigest = requestDigest
 	if err := store.createReleasePlan(ctx, tx, input); err != nil {
+		return model.ReleasePlan{}, false, err
+	}
+	if err := appendPlanAudit(ctx, tx, releasePlanCreatedAudit(input.Plan), store.now()); err != nil {
 		return model.ReleasePlan{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -187,9 +217,18 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	return plan, parseErr
 }
 
-// ActivateScheduledPlan 在到达调度时间后释放计划；条件更新保证 cron/systemd 重试不会重复释放。
-func (store *Store) ActivateScheduledPlan(ctx context.Context, id string, now time.Time) (bool, error) {
-	result, err := store.db.ExecContext(ctx, `
+// ActivateScheduledPlan 在到达调度时间后释放计划；状态和审计在同一事务提交。
+func (store *Store) ActivateScheduledPlan(
+	ctx context.Context,
+	id, actorHash string,
+	now time.Time,
+) (bool, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 		UPDATE release_plans SET state = ?, updated_at = ?
 		WHERE id = ? AND state = ? AND schedule_at IS NOT NULL AND schedule_at <= ?
 	`, model.PlanApproved, timeText(now), id, model.PlanScheduled, timeText(now))
@@ -197,7 +236,23 @@ func (store *Store) ActivateScheduledPlan(ctx context.Context, id string, now ti
 		return false, err
 	}
 	count, err := result.RowsAffected()
-	return count == 1, err
+	if err != nil || count == 0 {
+		return false, err
+	}
+	var scheduleAt string
+	if err := tx.QueryRowContext(ctx, `SELECT schedule_at FROM release_plans WHERE id=?`, id).Scan(&scheduleAt); err != nil {
+		return false, err
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.schedule.released", Resource: id,
+		Outcome: "approved", Detail: map[string]any{"scheduleAt": scheduleAt},
+	}, now); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (store *Store) GetReleasePlan(ctx context.Context, id string) (model.ReleasePlan, error) {
@@ -220,9 +275,9 @@ func (store *Store) MarkRestorePlanRevalidated(
 	result, err := store.db.ExecContext(ctx, `
 		UPDATE release_plans
 		SET restore_revalidation_digest = ?, restore_revalidated_at = ?, executed_by_hash = ?, updated_at = ?
-		WHERE id = ? AND actor_hash = ? AND state = ? AND restore_mode != ''
+		WHERE id = ? AND state = ? AND restore_mode != ''
 		  AND restore_contract_digest = ?
-	`, bindingDigest, timeText(at), actorHash, timeText(at), id, actorHash, model.PlanApproved, bindingDigest)
+	`, bindingDigest, timeText(at), actorHash, timeText(at), id, model.PlanApproved, bindingDigest)
 	return requireOne(result, err, "恢复计划复验结果无法写入")
 }
 
@@ -330,10 +385,13 @@ func (store *Store) ApproveReleasePlan(
 			if err = requireOne(result, err, "生产恢复第一批准无法写入"); err != nil {
 				return model.ReleasePlan{}, err
 			}
+			plan.ApprovedByHash, plan.ApprovedAt, plan.UpdatedAt = actorHash, &now, now
+			if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
+				return model.ReleasePlan{}, err
+			}
 			if err := tx.Commit(); err != nil {
 				return model.ReleasePlan{}, err
 			}
-			plan.ApprovedByHash, plan.ApprovedAt, plan.UpdatedAt = actorHash, &now, now
 			return plan, nil
 		}
 		if plan.ApprovedByHash == actorHash {
@@ -346,10 +404,13 @@ func (store *Store) ApproveReleasePlan(
 		if err = requireOne(result, err, "生产恢复第二批准无法写入"); err != nil {
 			return model.ReleasePlan{}, err
 		}
+		plan.State, plan.SecondApprovedByHash, plan.UpdatedAt = targetState, actorHash, now
+		if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
+			return model.ReleasePlan{}, err
+		}
 		if err := tx.Commit(); err != nil {
 			return model.ReleasePlan{}, err
 		}
-		plan.State, plan.SecondApprovedByHash, plan.UpdatedAt = targetState, actorHash, now
 		return plan, nil
 	}
 	result, err := tx.ExecContext(ctx, `
@@ -360,23 +421,60 @@ func (store *Store) ApproveReleasePlan(
 	if err = requireOne(result, err, "发布计划批准失败"); err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return model.ReleasePlan{}, err
-	}
 	plan.State = targetState
 	plan.ApprovedByHash = actorHash
 	plan.ApprovedAt = &now
 	plan.UpdatedAt = now
+	if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.ReleasePlan{}, err
+	}
 	return plan, nil
 }
 
-func (store *Store) InvalidateReleasePlan(ctx context.Context, id, reason string) error {
-	result, err := store.db.ExecContext(ctx, `
+func appendPlanApprovalAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	plan model.ReleasePlan,
+	actorHash string,
+	now time.Time,
+) error {
+	detail := map[string]any{"digest": plan.Digest, "scheduleAt": plan.ScheduleAt}
+	if plan.AllowsC2LifecycleSingleActorApproval() {
+		detail["approvalException"] = model.ApprovalExceptionC2LifecycleSingleActor
+		detail["selfApproval"] = true
+	}
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.approved", Outcome: string(plan.State), Resource: plan.ID,
+		Detail: detail,
+	}, now)
+}
+
+func (store *Store) InvalidateReleasePlan(ctx context.Context, id, actorHash, reason string) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := store.now()
+	result, err := tx.ExecContext(ctx, `
 		UPDATE release_plans SET state = ?, invalidated_reason = ?, approved_by_hash = '',
-			approved_at = NULL, updated_at = ? WHERE id = ? AND state IN (?, ?)
-	`, model.PlanInvalidated, reason, timeText(store.now()), id,
-		model.PlanPendingApproval, model.PlanApproved)
-	return requireOne(result, err, "发布计划无法失效")
+			second_approved_by_hash = '', approved_at = NULL, updated_at = ?
+		WHERE id = ? AND state IN (?, ?, ?)
+	`, model.PlanInvalidated, reason, timeText(now), id,
+		model.PlanPendingApproval, model.PlanApproved, model.PlanScheduled)
+	if err := requireOne(result, err, "发布计划无法失效"); err != nil {
+		return err
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actorHash, Event: "plan.invalidated", Resource: id,
+		Outcome: string(model.PlanInvalidated), Detail: map[string]any{"reason": reason},
+	}, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (store *Store) RecordPlanClosureBlocker(
@@ -556,41 +654,60 @@ func (store *Store) StartPlanTask(
 	actorHash, idempotencyKey, taskID string,
 	silence *model.MaintenanceSilence,
 ) (model.Task, bool, error) {
+	result, err := store.startPlanTask(ctx, plan, actorHash, idempotencyKey, taskID, silence)
+	return result.Task, result.Created, err
+}
+
+func (store *Store) StartPlanTaskWithEvent(
+	ctx context.Context,
+	plan model.ReleasePlan,
+	actorHash, idempotencyKey, taskID string,
+	silence *model.MaintenanceSilence,
+) (TaskStartResult, error) {
+	return store.startPlanTask(ctx, plan, actorHash, idempotencyKey, taskID, silence)
+}
+
+func (store *Store) startPlanTask(
+	ctx context.Context,
+	plan model.ReleasePlan,
+	actorHash, idempotencyKey, taskID string,
+	silence *model.MaintenanceSilence,
+) (TaskStartResult, error) {
 	requestHash := HashConfirmation(plan.ID + "\x00" + plan.Digest)
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	defer tx.Rollback()
 	if task, found, err := taskByIdempotency(ctx, tx, idempotencyKey); err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	} else if found {
 		if task.ActorHash != actorHash || task.RequestHash != requestHash {
-			return model.Task{}, false, ErrIdempotency
+			return TaskStartResult{}, ErrIdempotency
 		}
-		return task, false, nil
+		return TaskStartResult{Task: task}, nil
 	}
-	var state, digest, owner string
-	if err := tx.QueryRowContext(ctx, `SELECT state, digest, actor_hash FROM release_plans WHERE id = ?`, plan.ID).
-		Scan(&state, &digest, &owner); err != nil {
-		return model.Task{}, false, err
+	storedPlan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE id=?`, plan.ID))
+	if err != nil {
+		return TaskStartResult{}, err
 	}
-	if owner != actorHash {
-		return model.Task{}, false, ErrActorMismatch
+	if !storedPlan.AllowsExecutor(actorHash) {
+		return TaskStartResult{}, ErrActorMismatch
 	}
-	if model.PlanState(state) != model.PlanApproved || digest != plan.Digest {
-		return model.Task{}, false, errors.New("发布计划未批准或已变化")
+	if storedPlan.State != model.PlanApproved || storedPlan.Digest != plan.Digest {
+		return TaskStartResult{}, errors.New("发布计划未批准或已变化")
 	}
+	plan = storedPlan
 	var activeID string
 	err = tx.QueryRowContext(ctx, `
 		SELECT id FROM tasks WHERE service = ? AND state IN (?, ?, ?, ?) LIMIT 1
 	`, plan.Service, model.TaskWaitingConfirmation, model.TaskQueued, model.TaskRunning,
 		model.TaskRollingBack).Scan(&activeID)
 	if err == nil {
-		return model.Task{}, false, fmt.Errorf("服务已有活动任务: %s", activeID)
+		return TaskStartResult{}, fmt.Errorf("服务已有活动任务: %s", activeID)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	stages := make([]model.TaskStage, 0, len(plan.ApprovalSummary.Steps))
 	for _, step := range plan.ApprovalSummary.Steps {
@@ -598,11 +715,11 @@ func (store *Store) StartPlanTask(
 	}
 	stagesJSON, err := encodeJSON(stages)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	snapshotJSON, err := encodeJSON(plan.ApprovalSummary.ExpectedBefore)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	now := store.now()
 	_, err = tx.ExecContext(ctx, `
@@ -619,7 +736,7 @@ func (store *Store) StartPlanTask(
 		plan.RestoreExpectedBeforeDigest, plan.RestoreContractDigest,
 		nullableTimeValue(plan.RestoreRevalidatedAt), plan.RestoreOutcome, plan.RestoreEvidenceDigest)
 	if err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	var silenceID string
 	var silenceEndsAt any
@@ -628,14 +745,14 @@ func (store *Store) StartPlanTask(
 		silenceEndsAt = timeText(silence.EndsAt)
 	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET state = ?, task_id = ?, maintenance_silence_id = ?,
+		UPDATE release_plans SET state = ?, task_id = ?, executed_by_hash = ?, maintenance_silence_id = ?,
 			maintenance_silence_ends_at = ?, maintenance_silence_released_at = NULL, updated_at = ?
 		WHERE id = ? AND state = ? AND digest = ?
 		  AND (restore_mode = '' OR (restore_revalidation_digest = restore_contract_digest AND restore_revalidated_at IS NOT NULL))
-	`, model.PlanExecuting, taskID, silenceID, silenceEndsAt, timeText(now),
+	`, model.PlanExecuting, taskID, actorHash, silenceID, silenceEndsAt, timeText(now),
 		plan.ID, model.PlanApproved, plan.Digest)
 	if err = requireOne(result, err, "发布计划无法进入执行状态"); err != nil {
-		return model.Task{}, false, err
+		return TaskStartResult{}, err
 	}
 	if silence != nil {
 		if err := appendPlanAudit(ctx, tx, model.AuditEntry{
@@ -643,13 +760,10 @@ func (store *Store) StartPlanTask(
 			Resource: plan.ID, Outcome: "created",
 			Detail: map[string]any{"silenceId": silence.ID, "endsAt": silence.EndsAt},
 		}, now); err != nil {
-			return model.Task{}, false, err
+			return TaskStartResult{}, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return model.Task{}, false, err
-	}
-	return model.Task{
+	task := model.Task{
 		ID: taskID, IdempotencyKey: idempotencyKey, RequestHash: requestHash,
 		ActorHash: actorHash, Service: plan.Service, Action: plan.Action, Target: plan.Target,
 		Risk: plan.Risk, State: model.TaskQueued, PlanID: plan.ID, PlanDigest: plan.Digest,
@@ -662,5 +776,23 @@ func (store *Store) StartPlanTask(
 		RestoreContractDigest:       plan.RestoreContractDigest,
 		RestoreRevalidatedAt:        plan.RestoreRevalidatedAt,
 		RestoreOutcome:              plan.RestoreOutcome, RestoreEvidenceDigest: plan.RestoreEvidenceDigest,
-	}, true, nil
+	}
+	queued, err := appendEventRecord(ctx, tx, model.Event{
+		TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列",
+	}, now)
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
+		Outcome: "accepted", Detail: map[string]any{
+			"service": task.Service, "action": task.Action, "target": task.Target, "planId": plan.ID,
+		},
+	}, now); err != nil {
+		return TaskStartResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TaskStartResult{}, err
+	}
+	return TaskStartResult{Task: task, QueuedEvent: queued, Created: true}, nil
 }

@@ -44,6 +44,9 @@ func (store *Store) CreateTerminalShellPlan(
 	if err != nil {
 		return model.TerminalShellPlan{}, false, err
 	}
+	if err := appendTerminalShellAudit(ctx, tx, plan.ActorHash, "terminal.shell.requested", plan.State, plan, plan.CreatedAt); err != nil {
+		return model.TerminalShellPlan{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.TerminalShellPlan{}, false, err
 	}
@@ -120,6 +123,9 @@ func (store *Store) ExpireTerminalShellPlans(ctx context.Context, now time.Time)
 			return nil, err
 		}
 		stored.plan.State, stored.plan.FinishedAt = "expired", &now
+		if err := appendTerminalShellAudit(ctx, tx, "system", "terminal.shell.expired", "expired", stored.plan, now); err != nil {
+			return nil, err
+		}
 		result = append(result, stored.plan)
 	}
 	if err := tx.Commit(); err != nil {
@@ -165,10 +171,13 @@ func (store *Store) ApproveTerminalShellPlan(
 		if affected, _ := result.RowsAffected(); affected != 1 {
 			return model.TerminalShellPlan{}, errors.New("紧急终端计划状态已变化")
 		}
+		stored.plan.State, stored.plan.ApprovedByHash, stored.plan.ApprovedAt = "pending_second_approval", actor, &now
+		if err := appendTerminalShellAudit(ctx, tx, actor, "terminal.shell.approved", stored.plan.State, stored.plan, now); err != nil {
+			return model.TerminalShellPlan{}, err
+		}
 		if err := tx.Commit(); err != nil {
 			return model.TerminalShellPlan{}, err
 		}
-		stored.plan.State, stored.plan.ApprovedByHash, stored.plan.ApprovedAt = "pending_second_approval", actor, &now
 		return stored.plan, nil
 	}
 	if stored.plan.ApprovedByHash == actor {
@@ -181,10 +190,13 @@ func (store *Store) ApproveTerminalShellPlan(
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return model.TerminalShellPlan{}, errors.New("紧急终端计划状态已变化")
 	}
+	stored.plan.State, stored.plan.SecondApprovedByHash, stored.plan.SecondApprovedAt = "approved", actor, &now
+	if err := appendTerminalShellAudit(ctx, tx, actor, "terminal.shell.approved", stored.plan.State, stored.plan, now); err != nil {
+		return model.TerminalShellPlan{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.TerminalShellPlan{}, err
 	}
-	stored.plan.State, stored.plan.SecondApprovedByHash, stored.plan.SecondApprovedAt = "approved", actor, &now
 	return stored.plan, nil
 }
 
@@ -215,11 +227,18 @@ func (store *Store) StartTerminalShellPlan(
 			return model.TerminalShellPlan{}, false, ErrIdempotency
 		}
 		if plan.State == "running" {
-			_, _ = tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='needs_attention',error='终端执行中断，结果未知',finished_at=? WHERE id=? AND state='running'`, timeText(store.now()), id)
+			now := store.now()
+			result, updateErr := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='needs_attention',error='终端执行中断，结果未知',finished_at=? WHERE id=? AND state='running'`, timeText(now), id)
+			if err := requireOne(result, updateErr, "终端执行中断状态无法写入"); err != nil {
+				return model.TerminalShellPlan{}, false, err
+			}
+			plan.State, plan.Error, plan.FinishedAt = "needs_attention", "终端执行中断，结果未知", &now
+			if err := appendTerminalShellAudit(ctx, tx, actor, "terminal.shell.recovered", plan.State, plan, now); err != nil {
+				return model.TerminalShellPlan{}, false, err
+			}
 			if err := tx.Commit(); err != nil {
 				return model.TerminalShellPlan{}, false, err
 			}
-			plan.State, plan.Error = "needs_attention", "终端执行中断，结果未知"
 			return plan, false, errors.New(plan.Error)
 		}
 		return plan, false, nil
@@ -239,10 +258,13 @@ func (store *Store) StartTerminalShellPlan(
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划状态已变化")
 	}
+	plan.State, plan.ExecutionIdempotencyKey, plan.StartedAt = "running", executionKey, &now
+	if err := appendTerminalShellAudit(ctx, tx, actor, "terminal.shell.started", plan.State, plan, now); err != nil {
+		return model.TerminalShellPlan{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.TerminalShellPlan{}, false, err
 	}
-	plan.State, plan.ExecutionIdempotencyKey, plan.StartedAt = "running", executionKey, &now
 	return plan, true, nil
 }
 
@@ -252,15 +274,57 @@ func (store *Store) FinishTerminalShellPlan(
 	if state != "succeeded" && state != "failed" && state != "timed_out" && state != "needs_attention" {
 		return errors.New("紧急终端终态无效")
 	}
-	result, err := store.db.ExecContext(ctx, `UPDATE terminal_shell_plans SET state=?,exit_code=?,output=?,error=?,finished_at=? WHERE id=? AND state='running'`,
-		state, exitCode, output, errorText, timeText(store.now()), id)
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return errors.New("紧急终端执行状态无法收口")
+	defer tx.Rollback()
+	stored, found, err := terminalShellPlanByID(ctx, tx, id)
+	if err != nil || !found {
+		if err == nil {
+			err = ErrNotFound
+		}
+		return err
 	}
-	return nil
+	now := store.now()
+	result, updateErr := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state=?,exit_code=?,output=?,error=?,finished_at=? WHERE id=? AND state='running'`,
+		state, exitCode, output, errorText, timeText(now), id)
+	if err := requireOne(result, updateErr, "紧急终端执行状态无法收口"); err != nil {
+		return err
+	}
+	plan := stored.plan
+	plan.State, plan.ExitCode, plan.Output, plan.Error, plan.FinishedAt = state, exitCode, output, errorText, &now
+	if err := appendTerminalShellAudit(ctx, tx, plan.ActorHash, "terminal.shell.executed", state, plan, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func appendTerminalShellAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	actor, event, outcome string,
+	plan model.TerminalShellPlan,
+	now time.Time,
+) error {
+	detail := map[string]any{
+		"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "expiresAt": plan.ExpiresAt,
+	}
+	if event == "terminal.shell.approved" {
+		detail["approvalStep"] = "first"
+		if plan.SecondApprovedByHash != "" {
+			detail["approvalStep"] = "second"
+		}
+	}
+	if plan.FinishedAt != nil {
+		detail["exitCode"] = plan.ExitCode
+	}
+	if plan.Error != "" {
+		detail["error"] = plan.Error
+	}
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: event, Resource: plan.ID, Outcome: outcome, Detail: detail,
+	}, now)
 }
 
 func terminalShellPlanByID(ctx context.Context, db queryer, id string) (storedTerminalShellPlan, bool, error) {

@@ -72,13 +72,15 @@ func (store *Store) ApproveManagedFileProposal(
 	now := store.now()
 	switch proposal.State {
 	case "proposed":
-		_, err = tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='pending_second_approval',approved_by_hash=?,approved_at=? WHERE id=? AND state='proposed'`, actor, timeText(now), id)
+		result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='pending_second_approval',approved_by_hash=?,approved_at=? WHERE id=? AND state='proposed'`, actor, timeText(now), id)
+		err = requireOne(result, updateErr, "文件第一批准无法写入")
 		proposal.State, proposal.ApprovedByHash, proposal.ApprovedAt = "pending_second_approval", actor, &now
 	case "pending_second_approval":
 		if proposal.ApprovedByHash == actor {
 			return proposal, nil
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='approved',second_approved_by_hash=?,second_approved_at=? WHERE id=? AND state='pending_second_approval' AND approved_by_hash<>?`, actor, timeText(now), id, actor)
+		result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='approved',second_approved_by_hash=?,second_approved_at=? WHERE id=? AND state='pending_second_approval' AND approved_by_hash<>?`, actor, timeText(now), id, actor)
+		err = requireOne(result, updateErr, "文件第二批准无法写入")
 		proposal.State, proposal.SecondApprovedByHash, proposal.SecondApprovedAt = "approved", actor, &now
 	case "approved", "applying", "applied", "rolling_back", "rolled_back", "needs_attention":
 		if proposal.ApprovedByHash == actor || proposal.SecondApprovedByHash == actor {
@@ -89,6 +91,9 @@ func (store *Store) ApproveManagedFileProposal(
 		return model.ManagedFileProposal{}, errors.New("文件提案状态无效")
 	}
 	if err != nil {
+		return model.ManagedFileProposal{}, err
+	}
+	if err := appendManagedFileAudit(ctx, tx, actor, "file.proposal.approved", proposal.State, proposal, now); err != nil {
 		return model.ManagedFileProposal{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -117,13 +122,22 @@ func (store *Store) StartManagedFileApply(
 		if proposal.ApplyIdempotencyKey != idempotencyKey {
 			return model.ManagedFileProposal{}, false, ErrIdempotency
 		}
+		if proposal.AppliedByHash != actor {
+			return model.ManagedFileProposal{}, false, ErrActorMismatch
+		}
 		if proposal.State == "applying" {
 			now := store.now()
-			_, _ = tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='needs_attention',error='文件应用中断，结果未知',finished_at=? WHERE id=? AND state='applying'`, timeText(now), id)
-			if err := tx.Commit(); err != nil {
+			result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='needs_attention',error='文件应用中断，结果未知',finished_at=? WHERE id=? AND state='applying'`, timeText(now), id)
+			if err := requireOne(result, updateErr, "文件应用中断状态无法写入"); err != nil {
 				return model.ManagedFileProposal{}, false, err
 			}
 			proposal.State, proposal.Error, proposal.FinishedAt = "needs_attention", "文件应用中断，结果未知", &now
+			if err := appendManagedFileAudit(ctx, tx, actor, "file.proposal.recovered", proposal.State, proposal, now); err != nil {
+				return model.ManagedFileProposal{}, false, err
+			}
+			if err := tx.Commit(); err != nil {
+				return model.ManagedFileProposal{}, false, err
+			}
 			return proposal, false, errors.New(proposal.Error)
 		}
 		return proposal, false, nil
@@ -142,10 +156,13 @@ func (store *Store) StartManagedFileApply(
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return model.ManagedFileProposal{}, false, errors.New("文件提案状态已变化")
 	}
+	proposal.State, proposal.AppliedByHash, proposal.ApplyIdempotencyKey, proposal.AppliedAt = "applying", actor, idempotencyKey, &now
+	if err := appendManagedFileAudit(ctx, tx, actor, "file.proposal.apply_started", proposal.State, proposal, now); err != nil {
+		return model.ManagedFileProposal{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.ManagedFileProposal{}, false, err
 	}
-	proposal.State, proposal.AppliedByHash, proposal.ApplyIdempotencyKey, proposal.AppliedAt = "applying", actor, idempotencyKey, &now
 	return proposal, true, nil
 }
 
@@ -155,14 +172,29 @@ func (store *Store) FinishManagedFileApply(
 	if state != "applied" && state != "failed" && state != "needs_attention" {
 		return errors.New("文件应用终态无效")
 	}
-	result, err := store.db.ExecContext(ctx, `UPDATE managed_file_proposals SET state=?,backup_path=?,error=?,finished_at=? WHERE id=? AND state='applying'`, state, backupPath, errorText, timeText(store.now()), id)
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return errors.New("文件应用状态无法收口")
+	defer tx.Rollback()
+	row, found, err := queryManagedFileProposal(ctx, tx, "id", id)
+	if err != nil || !found {
+		if err == nil {
+			err = ErrNotFound
+		}
+		return err
 	}
-	return nil
+	now := store.now()
+	result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state=?,backup_path=?,error=?,finished_at=? WHERE id=? AND state='applying'`, state, backupPath, errorText, timeText(now), id)
+	if err := requireOne(result, updateErr, "文件应用状态无法收口"); err != nil {
+		return err
+	}
+	proposal := row.proposal
+	proposal.State, proposal.BackupPath, proposal.Error, proposal.FinishedAt = state, backupPath, errorText, &now
+	if err := appendManagedFileAudit(ctx, tx, proposal.AppliedByHash, "file.proposal.applied", state, proposal, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (store *Store) StartManagedFileRollback(
@@ -185,6 +217,9 @@ func (store *Store) StartManagedFileRollback(
 		if proposal.RollbackIdempotencyKey != idempotencyKey {
 			return model.ManagedFileProposal{}, false, ErrIdempotency
 		}
+		if proposal.RolledBackByHash != actor {
+			return model.ManagedFileProposal{}, false, ErrActorMismatch
+		}
 		return proposal, false, nil
 	}
 	if proposal.State != "applied" || proposal.BackupPath == "" {
@@ -197,10 +232,13 @@ func (store *Store) StartManagedFileRollback(
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return model.ManagedFileProposal{}, false, errors.New("文件提案状态已变化")
 	}
+	proposal.State, proposal.RolledBackByHash, proposal.RollbackIdempotencyKey = "rolling_back", actor, idempotencyKey
+	if err := appendManagedFileAudit(ctx, tx, actor, "file.proposal.rollback_started", proposal.State, proposal, store.now()); err != nil {
+		return model.ManagedFileProposal{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.ManagedFileProposal{}, false, err
 	}
-	proposal.State, proposal.RolledBackByHash, proposal.RollbackIdempotencyKey = "rolling_back", actor, idempotencyKey
 	return proposal, true, nil
 }
 
@@ -208,14 +246,51 @@ func (store *Store) FinishManagedFileRollback(ctx context.Context, id, state, er
 	if state != "rolled_back" && state != "needs_attention" {
 		return errors.New("文件回滚终态无效")
 	}
-	result, err := store.db.ExecContext(ctx, `UPDATE managed_file_proposals SET state=?,error=?,rolled_back_at=?,finished_at=? WHERE id=? AND state='rolling_back'`, state, errorText, timeText(store.now()), timeText(store.now()), id)
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
-		return errors.New("文件回滚状态无法收口")
+	defer tx.Rollback()
+	row, found, err := queryManagedFileProposal(ctx, tx, "id", id)
+	if err != nil || !found {
+		if err == nil {
+			err = ErrNotFound
+		}
+		return err
 	}
-	return nil
+	now := store.now()
+	result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state=?,error=?,rolled_back_at=?,finished_at=? WHERE id=? AND state='rolling_back'`, state, errorText, timeText(now), timeText(now), id)
+	if err := requireOne(result, updateErr, "文件回滚状态无法收口"); err != nil {
+		return err
+	}
+	proposal := row.proposal
+	proposal.State, proposal.Error, proposal.RolledBackAt, proposal.FinishedAt = state, errorText, &now, &now
+	if err := appendManagedFileAudit(ctx, tx, proposal.RolledBackByHash, "file.proposal.rolled_back", state, proposal, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func appendManagedFileAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	actor, event, outcome string,
+	proposal model.ManagedFileProposal,
+	now time.Time,
+) error {
+	detail := map[string]any{
+		"rootId": proposal.RootID, "path": proposal.Path,
+		"expectedDigest": proposal.ExpectedDigest, "proposedDigest": proposal.ProposedDigest,
+	}
+	if proposal.BackupPath != "" {
+		detail["backupPath"] = proposal.BackupPath
+	}
+	if proposal.Error != "" {
+		detail["error"] = proposal.Error
+	}
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: event, Resource: proposal.ID, Outcome: outcome, Detail: detail,
+	}, now)
 }
 
 const managedFileProposalSelect = `SELECT id,idempotency_key,request_digest,actor_hash,root_id,relative_path,

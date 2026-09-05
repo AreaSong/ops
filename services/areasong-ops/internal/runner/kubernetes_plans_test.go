@@ -51,6 +51,9 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	postKubernetesJSON[map[string]any](t, handler, actors[2], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: executeKey,
 	}, http.StatusConflict)
+	postKubernetesJSON[map[string]any](t, handler, actors[0], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
+		IdempotencyKey: executeKey,
+	}, http.StatusConflict)
 
 	firstExecution := postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
@@ -58,6 +61,7 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 		IdempotencyKey: executeKey,
 	}, http.StatusAccepted)
 	if firstExecution.Operation.State != "succeeded" || firstExecution.Operation.Action != "apply" || firstExecution.Operation.DryRun ||
+		firstExecution.Operation.ID != "plan-"+created.ID ||
 		firstExecution.Operation.Phase != "health" || firstExecution.Operation.RolloutState != "succeeded" ||
 		len(firstExecution.Operation.RolloutResources) != 1 || firstExecution.Operation.RolloutResources[0] != "deployment/app-a" {
 		t.Fatalf("first execution=%+v", firstExecution.Operation)
@@ -85,8 +89,32 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 		t.Fatalf("kubectl invocations=%q", string(invocations))
 	}
 	stored, err := database.GetKubernetesPlan(context.Background(), created.ID)
-	if err != nil || stored.State != "succeeded" || stored.OperationID != firstExecution.Operation.ID || stored.ExecuteIdempotencyKey != executeKey {
+	if err != nil || stored.State != "succeeded" || stored.OperationID != firstExecution.Operation.ID ||
+		stored.ExecuteIdempotencyKey != executeKey || stored.ExecutedByHash != actors[3] {
 		t.Fatalf("stored plan=%+v err=%v", stored, err)
+	}
+	assertKubernetesPlanAudit(t, database, created.ID)
+}
+
+func assertKubernetesPlanAudit(t *testing.T, database *store.Store, planID string) {
+	t.Helper()
+	entries, err := database.ListAudit(context.Background(), 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{
+		"kubernetes.plan.created": 1, "kubernetes.plan.approved": 2,
+		"kubernetes.plan.started": 1, "kubernetes.plan.executed": 1,
+	}
+	for _, entry := range entries {
+		if entry.Resource == planID {
+			want[entry.Event]--
+		}
+	}
+	for event, remaining := range want {
+		if remaining != 0 {
+			t.Fatalf("audit event %s remaining=%d entries=%+v", event, remaining, entries)
+		}
 	}
 }
 
@@ -94,18 +122,23 @@ func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
 	engine, database, actors, invocationFile := kubernetesPlanTestEngine(t)
 	handler := NewServer(engine, database)
 	target := engine.catalog.Kubernetes["cluster-a"]
+	rollbackManifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 1\n"
+	baseline := createAndExecuteKubernetesPlan(t, handler, actors, target, rollbackManifest)
 	currentManifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 2\n"
 	source := createAndExecuteKubernetesPlan(t, handler, actors, target, currentManifest)
 
-	rollbackManifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 1\n"
 	postKubernetesJSON[map[string]any](t, handler, actors[4], "/v1/kubernetes/plans/"+source.ID+"/rollback", model.KubernetesRollbackPlanRequest{
-		Manifest: rollbackManifest, IdempotencyKey: mustUUID(t),
+		RollbackToPlanID: baseline.ID, IdempotencyKey: mustUUID(t),
 	}, http.StatusForbidden)
+	postKubernetesJSON[map[string]any](t, handler, actors[0], "/v1/kubernetes/plans/"+source.ID+"/rollback", map[string]any{
+		"manifest": rollbackManifest, "idempotencyKey": mustUUID(t),
+	}, http.StatusBadRequest)
 	rollback := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[0], "/v1/kubernetes/plans/"+source.ID+"/rollback", model.KubernetesRollbackPlanRequest{
-		Manifest: rollbackManifest, IdempotencyKey: mustUUID(t),
+		RollbackToPlanID: baseline.ID, IdempotencyKey: mustUUID(t),
 	}, http.StatusCreated)
 	if rollback.Action != "rollback" || rollback.RollbackOfPlanID != source.ID ||
-		rollback.SourceManifestDigest != source.ManifestDigest || rollback.ManifestDigest == source.ManifestDigest {
+		rollback.RollbackTargetPlanID != baseline.ID || rollback.SourceManifestDigest != source.ManifestDigest ||
+		rollback.ManifestDigest != baseline.ManifestDigest || rollback.ManifestDigest == source.ManifestDigest {
 		t.Fatalf("rollback plan=%+v", rollback)
 	}
 	for _, actor := range actors[1:3] {
@@ -127,8 +160,8 @@ func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(invocations)), "\n")
-	if len(lines) != 4 || !strings.Contains(lines[2], " apply ") ||
-		!strings.Contains(lines[3], "rollout status deployment/app-a") {
+	if len(lines) != 6 || !strings.Contains(lines[4], " apply ") ||
+		!strings.Contains(lines[5], "rollout status deployment/app-a") {
 		t.Fatalf("rollback kubectl invocations=%q", string(invocations))
 	}
 }

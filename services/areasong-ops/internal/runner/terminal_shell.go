@@ -34,17 +34,8 @@ func (engine *Engine) TerminalShellPlans(ctx context.Context, actor string) ([]m
 }
 
 func (engine *Engine) expireTerminalShellPlans(ctx context.Context) error {
-	expired, err := engine.store.ExpireTerminalShellPlans(ctx, time.Now().UTC())
-	if err != nil {
-		return err
-	}
-	for _, plan := range expired {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-			ActorHash: "system", Event: "terminal.shell.expired", Resource: plan.ID, Outcome: "expired",
-			Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "expiresAt": plan.ExpiresAt},
-		})
-	}
-	return nil
+	_, err := engine.store.ExpireTerminalShellPlans(ctx, time.Now().UTC())
+	return err
 }
 
 func (engine *Engine) CreateTerminalShellPlan(
@@ -83,9 +74,6 @@ func (engine *Engine) CreateTerminalShellPlan(
 	if err != nil {
 		return model.TerminalShellPlan{}, false, err
 	}
-	if created {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "terminal.shell.requested", Resource: id, Outcome: "pending_approval", Detail: map[string]any{"objectId": request.ObjectID, "inputDigest": digest}})
-	}
 	return stored, created, nil
 }
 
@@ -112,11 +100,6 @@ func (engine *Engine) ApproveTerminalShellPlan(
 	if err != nil {
 		return model.TerminalShellPlan{}, err
 	}
-	approvalStep := "first"
-	if approved.SecondApprovedByHash != "" {
-		approvalStep = "second"
-	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "terminal.shell.approved", Resource: id, Outcome: approved.State, Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "approvalStep": approvalStep}})
 	return approved, nil
 }
 
@@ -172,12 +155,16 @@ func (engine *Engine) ExecuteTerminalShellPlan(
 		errorText = redactText(runErr.Error())
 	}
 	if finishErr := engine.store.FinishTerminalShellPlan(context.WithoutCancel(ctx), id, state, exitCode, output, errorText); finishErr != nil {
-		_ = engine.store.FinishTerminalShellPlan(context.Background(), id, "needs_attention", exitCode, output, "终端命令已执行但状态收口失败")
+		recoveryErr := engine.store.FinishTerminalShellPlan(
+			context.Background(), id, "needs_attention", exitCode, output, "终端命令已执行但状态收口失败",
+		)
+		if recoveryErr != nil {
+			return plan, fmt.Errorf("紧急终端命令已执行但状态收口失败: %v；恢复收口也失败: %w", finishErr, recoveryErr)
+		}
 		return plan, fmt.Errorf("紧急终端命令已执行但状态收口失败: %w", finishErr)
 	}
 	finished := time.Now().UTC()
 	plan.State, plan.ExitCode, plan.Output, plan.Error, plan.FinishedAt = state, exitCode, output, errorText, &finished
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{ActorHash: actor, Event: "terminal.shell.executed", Resource: id, Outcome: state, Detail: map[string]any{"objectId": plan.ObjectID, "inputDigest": plan.InputDigest, "exitCode": exitCode}})
 	if runErr != nil {
 		return plan, errors.New(errorText)
 	}

@@ -33,7 +33,7 @@ interface ConfigurationProps {
   onKubernetesPlan: (body: { target: KubernetesOperation['target']; manifest: string }) => Promise<void>
   onKubernetesApprove: (plan: KubernetesPlan, confirmation: string) => Promise<void>
   onKubernetesExecute: (plan: KubernetesPlan) => Promise<void>
-	onKubernetesRollbackPlan: (plan: KubernetesPlan, manifest: string) => Promise<void>
+	onKubernetesRollbackPlan: (plan: KubernetesPlan, rollbackToPlanId: string) => Promise<void>
   onExtensionsRefresh: () => void
   onExtensionUpload: (manifest: ExtensionManifest, content: string) => Promise<void>
   onExtensionPlan: (body: { extensionId: string; extensionVersion: string; objectId: string; input: Record<string, unknown>; timeoutSeconds?: number }) => Promise<void>
@@ -96,6 +96,7 @@ export function Configuration({
   const [composeConfirmations, setComposeConfirmations] = useState<Record<string, string>>({})
   const [manifest, setManifest] = useState('')
   const [kubeConfirmations, setKubeConfirmations] = useState<Record<string, string>>({})
+	const [kubeRollbackTargets, setKubeRollbackTargets] = useState<Record<string, string>>({})
   const [targetKey, setTargetKey] = useState('')
   const [extensionKey, setExtensionKey] = useState('')
   const [extensionTarget, setExtensionTarget] = useState('')
@@ -303,15 +304,22 @@ export function Configuration({
             {(kubernetes.plans?.length ?? 0) === 0
               ? <div className="empty-state compact">暂无 Kubernetes 正式变更计划</div>
               : <div className="operation-list">{kubernetes.plans?.map((plan) => {
-                const confirmation = kubeConfirmations[plan.id] ?? ''
-                const approvable = plan.state === 'pending_approval'
+				const confirmation = kubeConfirmations[plan.id] ?? ''
+				const approvable = plan.state === 'pending_approval'
+				const rollbackTargets = (kubernetes.plans ?? []).filter((candidate) =>
+					candidate.id !== plan.id && candidate.action === 'apply' && candidate.state === 'succeeded' &&
+					candidate.createdAt < plan.createdAt && candidate.tenantId === plan.tenantId &&
+					candidate.target.cluster === plan.target.cluster && candidate.target.context === plan.target.context &&
+					candidate.target.namespace === plan.target.namespace)
+				const rollbackTarget = kubeRollbackTargets[plan.id] ?? ''
                 return <div className="operation-row kube-plan-row" key={plan.id}>
                   <span><strong>{plan.target.cluster} · {plan.target.namespace}</strong><small>{plan.action === 'rollback' ? '回滚' : 'Apply'} · {plan.state} · {plan.approvedByHash ? '第一批准已完成' : '等待第一批准'} · {plan.secondApprovedByHash ? '第二批准已完成' : '等待第二批准'}</small></span>
                   <code>{shortHash(plan.manifestDigest)}</code>
                   {approvable && <label className="inline-confirm kube-confirm"><span>精确确认</span><code>{plan.confirmationPhrase}</code><input value={confirmation} onChange={(event) => updateKubernetesConfirmation(plan.id, event.target.value)} placeholder="输入计划确认短语" /></label>}
                   {approvable && <button className="button secondary" type="button" disabled={confirmation !== plan.confirmationPhrase || busy === `kubernetes-approve:${plan.id}`} onClick={() => runAction(onKubernetesApprove(plan, confirmation))}>{busy === `kubernetes-approve:${plan.id}` ? '批准中' : plan.approvedByHash ? '第二人批准' : '第一人批准'}</button>}
                   {plan.state === 'approved' && <button className="button danger" type="button" disabled={busy === `kubernetes-execute:${plan.id}`} onClick={() => runAction(onKubernetesExecute(plan))}>{busy === `kubernetes-execute:${plan.id}` ? '执行中' : '由独立执行人执行'}</button>}
-				  {plan.state === 'succeeded' && plan.action === 'apply' && <button className="button secondary" type="button" disabled={!manifest || busy === `kubernetes-rollback:${plan.id}`} onClick={() => runAction(onKubernetesRollbackPlan(plan, manifest))}>{busy === `kubernetes-rollback:${plan.id}` ? '创建中' : '以编辑器清单创建回滚计划'}</button>}
+				  {plan.state === 'succeeded' && plan.action === 'apply' && rollbackTargets.length > 0 && <label className="inline-confirm kube-confirm"><span>历史成功版本</span><select value={rollbackTarget} onChange={(event) => setKubeRollbackTargets((current) => ({ ...current, [plan.id]: event.target.value }))}><option value="">选择不可变历史计划</option>{rollbackTargets.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.id} · {candidate.manifestDigest}</option>)}</select></label>}
+				  {plan.state === 'succeeded' && plan.action === 'apply' && rollbackTargets.length > 0 && <button className="button secondary" type="button" disabled={!rollbackTarget || busy === `kubernetes-rollback:${plan.id}`} onClick={() => runAction(onKubernetesRollbackPlan(plan, rollbackTarget))}>{busy === `kubernetes-rollback:${plan.id}` ? '创建中' : '创建历史版本回滚计划'}</button>}
                   {plan.error && <small className="inline-error">{plan.error}</small>}
                 </div>
               })}</div>}

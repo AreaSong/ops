@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -215,11 +217,11 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 			result = append(result, evaluation)
 			continue
 		}
-		requestKey, keyErr := newUUID()
-		if keyErr != nil {
-			return nil, keyErr
-		}
-		plan, planErr := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{Service: policy.Service, Action: "update", Target: target, IdempotencyKey: requestKey, RequestDigest: digestText(strings.Join([]string{"auto-update", policy.Service, target, policy.Channel}, "\x00"))})
+		requestKey, requestDigest := autoUpdatePlanRequestIdentity(policy, target)
+		plan, planErr := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{
+			Service: policy.Service, Action: "update", Target: target,
+			IdempotencyKey: requestKey, RequestDigest: requestDigest,
+		})
 		if planErr != nil {
 			evaluation.Reason = redactText(planErr.Error())
 			if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason); err != nil {
@@ -229,10 +231,13 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 			continue
 		}
 		evaluation.Eligible, evaluation.UpdateCreated, evaluation.PlanID, evaluation.Target = true, true, plan.ID, target
-		if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), plan.ID, ""); err != nil {
-			return nil, err
-		}
-		if _, err := engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "auto_update.plan.created", Resource: plan.ID, Outcome: "accepted", Detail: map[string]any{"service": policy.Service, "target": target, "channel": policy.Channel}}); err != nil {
+		if err := engine.store.MarkAutoUpdateEvaluationWithAudit(
+			ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), plan.ID, "",
+			model.AuditEntry{
+				ActorHash: actor, Event: "auto_update.plan.created", Resource: plan.ID, Outcome: "accepted",
+				Detail: map[string]any{"service": policy.Service, "target": target, "channel": policy.Channel},
+			},
+		); err != nil {
 			return nil, err
 		}
 		result = append(result, evaluation)
@@ -241,6 +246,20 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 }
 
 func autoTimePtr(value time.Time) *time.Time { return &value }
+
+func autoUpdatePlanRequestIdentity(policy model.AutoUpdatePolicyView, target string) (string, string) {
+	material := strings.Join([]string{
+		"auto-update", policy.Service, target, policy.Channel, policy.LastPlanID,
+	}, "\x00")
+	sum := sha256.Sum256([]byte(material))
+	value := append([]byte(nil), sum[:16]...)
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	encoded := hex.EncodeToString(value)
+	key := encoded[:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" +
+		encoded[16:20] + "-" + encoded[20:]
+	return key, digestText(material)
+}
 
 func autoUpdateWindowOpen(window, timezone string, now time.Time) bool {
 	if window == "" {

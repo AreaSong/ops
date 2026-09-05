@@ -843,11 +843,11 @@ export default function App() {
     }
   }
 
-	async function createKubernetesRollbackPlan(plan: KubernetesPlan, manifest: string) {
+	async function createKubernetesRollbackPlan(plan: KubernetesPlan, rollbackToPlanId: string) {
 		setBusyAction(`kubernetes-rollback:${plan.id}`)
 		setError('')
 		try {
-			await api.createKubernetesRollbackPlan(plan, manifest)
+			await api.createKubernetesRollbackPlan(plan, rollbackToPlanId)
 			await refreshKubernetes()
 		} catch (reasonValue) {
 			setError(errorMessage(reasonValue, 'Kubernetes 回滚计划创建失败'))

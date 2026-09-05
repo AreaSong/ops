@@ -41,6 +41,9 @@ func (store *Store) ReserveTerminalSession(
 	if err != nil {
 		return model.TerminalSession{}, false, err
 	}
+	if err := appendTerminalSessionAudit(ctx, tx, session, "terminal.command.started", "accepted", session.CreatedAt); err != nil {
+		return model.TerminalSession{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.TerminalSession{}, false, err
 	}
@@ -53,19 +56,27 @@ func (store *Store) CompleteTerminalSession(
 	exitCode int,
 	output string,
 ) error {
-	result, err := store.db.ExecContext(ctx, `UPDATE terminal_sessions
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE terminal_sessions
 		SET state=?,exit_code=?,output=? WHERE id=? AND state='running'`, state, exitCode, output, id)
+	if err := requireOne(result, err, "终端会话无法写入终态"); err != nil {
+		return err
+	}
+	session, found, err := terminalSessionByID(ctx, tx, id)
 	if err != nil {
 		return err
 	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count != 1 {
+	if !found {
 		return ErrNotFound
 	}
-	return nil
+	if err := appendTerminalSessionAudit(ctx, tx, session, "terminal.command", state, store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func terminalSessionByKey(
@@ -92,6 +103,47 @@ func terminalSessionByKey(
 		session.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
 	}
 	return session, err == nil, err
+}
+
+func terminalSessionByID(
+	ctx context.Context,
+	db queryer,
+	id string,
+) (model.TerminalSession, bool, error) {
+	row := db.QueryRowContext(ctx, `SELECT id,idempotency_key,request_digest,object_id,
+		command_name,state,actor_hash,exit_code,output,expires_at,created_at
+		FROM terminal_sessions WHERE id=?`, id)
+	var session model.TerminalSession
+	var expiresAt, createdAt string
+	err := row.Scan(&session.ID, &session.IdempotencyKey, &session.RequestDigest,
+		&session.ObjectID, &session.Command, &session.State, &session.ActorHash,
+		&session.ExitCode, &session.Output, &expiresAt, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.TerminalSession{}, false, nil
+	}
+	if err != nil {
+		return model.TerminalSession{}, false, err
+	}
+	session.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAt)
+	if err == nil {
+		session.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	}
+	return session, err == nil, err
+}
+
+func appendTerminalSessionAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	session model.TerminalSession,
+	event, outcome string,
+	now time.Time,
+) error {
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: session.ActorHash, Event: event, Resource: session.ObjectID, Outcome: outcome,
+		Detail: map[string]any{
+			"command": session.Command, "sessionId": session.ID, "exitCode": session.ExitCode,
+		},
+	}, now)
 }
 
 func (store *Store) SaveManagedFileProposal(
@@ -122,6 +174,9 @@ func (store *Store) SaveManagedFileProposal(
 		proposal.ProposedDigest, proposal.Content, proposal.State,
 		HashConfirmation(proposal.ConfirmationPhrase), proposal.ConfirmationPhrase, timeText(proposal.CreatedAt))
 	if err != nil {
+		return model.ManagedFileProposal{}, false, err
+	}
+	if err := appendManagedFileAudit(ctx, tx, proposal.ActorHash, "file.proposal.created", proposal.State, proposal, proposal.CreatedAt); err != nil {
 		return model.ManagedFileProposal{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -189,6 +244,10 @@ func (store *Store) ReserveExtensionPackage(
 	if err != nil {
 		return model.ExtensionUploadResult{}, false, err
 	}
+	if err := appendExtensionUploadAudit(ctx, tx, actor,
+		"extension.upload.reserved", "accepted", result, result.CreatedAt); err != nil {
+		return model.ExtensionUploadResult{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.ExtensionUploadResult{}, false, err
 	}
@@ -227,7 +286,19 @@ func extensionPackageByKey(
 }
 
 func (store *Store) MarkExtensionStored(ctx context.Context, packageID, version string) error {
-	result, err := store.db.ExecContext(ctx, `UPDATE extension_packages SET state='stored'
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stored, found, err := extensionPackageByIdentity(ctx, tx, packageID, version)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrNotFound
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE extension_packages SET state='stored'
 		WHERE package_id=? AND version=? AND state='staging'`, packageID, version)
 	if err != nil {
 		return err
@@ -239,14 +310,31 @@ func (store *Store) MarkExtensionStored(ctx context.Context, packageID, version 
 	if count != 1 {
 		return ErrNotFound
 	}
-	return nil
+	stored.result.State, stored.result.Stored = "stored", true
+	if err := appendExtensionUploadAudit(ctx, tx, stored.actor,
+		"extension.uploaded", "accepted", stored.result, store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // MarkExtensionFailed closes a staging reservation after an I/O or integrity
 // failure. The row is retained for audit/idempotency, while callers remove the
 // controlled staging file separately.
-func (store *Store) MarkExtensionFailed(ctx context.Context, packageID, version string) error {
-	result, err := store.db.ExecContext(ctx, `UPDATE extension_packages SET state='failed'
+func (store *Store) MarkExtensionFailed(ctx context.Context, packageID, version string, reason ...string) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stored, found, err := extensionPackageByIdentity(ctx, tx, packageID, version)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrNotFound
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE extension_packages SET state='failed'
 		WHERE package_id=? AND version=? AND state='staging'`, packageID, version)
 	if err != nil {
 		return err
@@ -258,7 +346,57 @@ func (store *Store) MarkExtensionFailed(ctx context.Context, packageID, version 
 	if count != 1 {
 		return ErrNotFound
 	}
-	return nil
+	stored.result.State, stored.result.Stored = "failed", false
+	if len(reason) > 0 {
+		stored.result.Reason = reason[0]
+	}
+	if err := appendExtensionUploadAudit(ctx, tx, stored.actor,
+		"extension.upload.failed", "failed", stored.result, store.now()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func extensionPackageByIdentity(
+	ctx context.Context,
+	db queryer,
+	packageID, version string,
+) (storedExtensionPackage, bool, error) {
+	row := db.QueryRowContext(ctx, `SELECT manifest_json,idempotency_key,request_digest,
+		actor_hash,storage_digest,state,created_at FROM extension_packages
+		WHERE package_id=? AND version=?`, packageID, version)
+	var result storedExtensionPackage
+	var manifestJSON, createdAt string
+	err := row.Scan(&manifestJSON, &result.result.IdempotencyKey, &result.requestDigest,
+		&result.actor, &result.result.StorageDigest, &result.result.State, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storedExtensionPackage{}, false, nil
+	}
+	if err != nil {
+		return storedExtensionPackage{}, false, err
+	}
+	if err = json.Unmarshal([]byte(manifestJSON), &result.result.Manifest); err != nil {
+		return storedExtensionPackage{}, false, err
+	}
+	result.result.Stored = result.result.State == "stored"
+	result.result.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	return result, err == nil, err
+}
+
+func appendExtensionUploadAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	actor, event, outcome string,
+	result model.ExtensionUploadResult,
+	now time.Time,
+) error {
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: event, Resource: "extension:" + result.Manifest.ID, Outcome: outcome,
+		Detail: map[string]any{
+			"version": result.Manifest.Version, "digest": result.Manifest.Digest,
+			"state": result.State, "reason": result.Reason,
+		},
+	}, now)
 }
 
 func (store *Store) ListExtensionPackages(
@@ -340,6 +478,9 @@ func (store *Store) ReserveRunnerUpdate(
 		update.RollbackPath, update.Error, update.FencingToken, nullableTimeText(update.LeaseExpiresAt),
 		update.ResolutionDecision, "{}", timeText(update.CreatedAt), nullableTimeText(update.ActivatedAt), nullableTimeText(update.FinishedAt))
 	if err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.prepared", "accepted", update, store.now()); err != nil {
 		return model.RunnerUpdate{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -455,12 +596,15 @@ func (store *Store) BeginRunnerUpdateActivation(
 	if err = requireOne(result, err, "Runner 更新激活状态写入失败"); err != nil {
 		return model.RunnerUpdate{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return model.RunnerUpdate{}, false, err
-	}
 	update.State, update.Phase, update.ApprovedByHash = "activating", "queued", actor
 	update.ActivationIdempotencyKey, update.ActivatedAt, update.ExecutorHeartbeatAt = idempotencyKey, &now, &now
 	update.FencingToken, update.LeaseExpiresAt = fencingToken, &leaseExpires
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.activation_requested", "accepted", update, now); err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
 	return update, true, nil
 }
 
@@ -499,6 +643,11 @@ func (store *Store) UpdateRunnerUpdatePhaseCAS(
 	if id == "" || fencingToken == "" || phase == "" {
 		return errors.New("Runner 更新 fencing/阶段无效")
 	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	now := store.now()
 	query := `UPDATE runner_updates SET phase=?,rollback_path=CASE WHEN ?='' THEN rollback_path ELSE ? END,
 		 executor_heartbeat_at=?,lease_expires_at=? WHERE id=? AND state='activating' AND fencing_token=?
@@ -508,8 +657,22 @@ func (store *Store) UpdateRunnerUpdatePhaseCAS(
 		query += ` AND phase=?`
 		args = append(args, expectedPhase)
 	}
-	result, err := store.db.ExecContext(ctx, query, args...)
-	return requireOne(result, err, "Runner 更新阶段 fencing 校验失败")
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err := requireOne(result, err, "Runner 更新阶段 fencing 校验失败"); err != nil {
+		return err
+	}
+	update, preparedBy, err := scanRunnerUpdateWithActor(tx.QueryRowContext(ctx, runnerUpdateSelect+` WHERE id=?`, id))
+	if err != nil {
+		return err
+	}
+	actor := update.ApprovedByHash
+	if actor == "" {
+		actor = preparedBy
+	}
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.phase_changed", "accepted", update, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (store *Store) HeartbeatRunnerUpdate(ctx context.Context, id string, fencingToken ...string) error {
@@ -539,25 +702,87 @@ func (store *Store) FinishRunnerUpdateCAS(
 	if state != "succeeded" && state != "rolled_back" && state != "needs_attention" && state != "failed" {
 		return errors.New("Runner 更新终态无效")
 	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	finished := store.now()
-	result, err := store.db.ExecContext(ctx, `UPDATE runner_updates SET state=?,phase=?,rollback_path=?,error=?,finished_at=?,executor_heartbeat_at=NULL,lease_expires_at=NULL
+	result, err := tx.ExecContext(ctx, `UPDATE runner_updates SET state=?,phase=?,rollback_path=?,error=?,finished_at=?,executor_heartbeat_at=NULL,lease_expires_at=NULL
 		WHERE id=? AND state='activating' AND fencing_token=? AND lease_expires_at>?`,
 		state, phase, rollbackPath, errorText, timeText(finished), id, fencingToken, timeText(finished))
-	return requireOne(result, err, "Runner 更新终态 fencing 校验失败")
+	if err := requireOne(result, err, "Runner 更新终态 fencing 校验失败"); err != nil {
+		return err
+	}
+	update, preparedBy, err := scanRunnerUpdateWithActor(tx.QueryRowContext(ctx, runnerUpdateSelect+` WHERE id=?`, id))
+	if err != nil {
+		return err
+	}
+	actor := update.ApprovedByHash
+	if actor == "" {
+		actor = preparedBy
+	}
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update."+state, state, update, finished); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (store *Store) RecoverInterruptedRunnerUpdates(ctx context.Context) (int64, error) {
-	now := store.now()
-	cutoff := timeText(now.Add(-2 * time.Minute))
-	result, err := store.db.ExecContext(ctx, `UPDATE runner_updates
-		SET state='needs_attention',phase='interrupted',error='Runner 更新执行器租约超时，当前二进制身份需要人工核对',finished_at=?,executor_heartbeat_at=NULL,lease_expires_at=NULL
-		WHERE state='activating' AND ((lease_expires_at IS NOT NULL AND lease_expires_at <= ?) OR
-			(lease_expires_at IS NULL AND (executor_heartbeat_at IS NULL OR executor_heartbeat_at < ?)))`,
-		timeText(now), timeText(now), cutoff)
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	defer tx.Rollback()
+	now := store.now()
+	cutoff := timeText(now.Add(-2 * time.Minute))
+	rows, err := tx.QueryContext(ctx, runnerUpdateSelect+` WHERE state='activating' AND
+		((lease_expires_at IS NOT NULL AND lease_expires_at <= ?) OR
+		 (lease_expires_at IS NULL AND (executor_heartbeat_at IS NULL OR executor_heartbeat_at < ?)))`,
+		timeText(now), cutoff)
+	if err != nil {
+		return 0, err
+	}
+	updates := make([]model.RunnerUpdate, 0)
+	preparedBy := make(map[string]string)
+	for rows.Next() {
+		update, actor, scanErr := scanRunnerUpdateWithActor(rows)
+		if scanErr != nil {
+			rows.Close()
+			return 0, scanErr
+		}
+		updates = append(updates, update)
+		preparedBy[update.ID] = actor
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	const interruptionError = "Runner 更新执行器租约超时，当前二进制身份需要人工核对"
+	for index := range updates {
+		update := &updates[index]
+		result, err := tx.ExecContext(ctx, `UPDATE runner_updates
+			SET state='needs_attention',phase='interrupted',error=?,finished_at=?,executor_heartbeat_at=NULL,lease_expires_at=NULL
+			WHERE id=? AND state='activating'`, interruptionError, timeText(now), update.ID)
+		if err := requireOne(result, err, "Runner 更新中断恢复失败"); err != nil {
+			return 0, err
+		}
+		update.State, update.Phase, update.Error = "needs_attention", "interrupted", interruptionError
+		update.FinishedAt, update.ExecutorHeartbeatAt, update.LeaseExpiresAt = &now, nil, nil
+		actor := update.ApprovedByHash
+		if actor == "" {
+			actor = preparedBy[update.ID]
+		}
+		if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.needs_attention", "needs_attention", *update, now); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int64(len(updates)), nil
 }
 
 func (store *Store) ResolveRunnerUpdate(
@@ -622,12 +847,15 @@ func (store *Store) ResolveRunnerUpdate(
 	if err := requireOne(result, execErr, "Runner 更新人工收口失败"); err != nil {
 		return model.RunnerUpdate{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return model.RunnerUpdate{}, false, err
-	}
 	update.State, update.Phase, update.ResolvedByHash = "failed", "manually_resolved", actor
 	update.ResolutionIdempotencyKey, update.FinishedAt = idempotencyKey, &finished
 	update.ResolutionDecision, update.ResolutionEvidence = submitted.Decision, submitted
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.manually_resolved", "accepted", update, finished); err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
 	return update, true, nil
 }
 
@@ -679,12 +907,32 @@ func (store *Store) CancelRunnerUpdate(
 	if err := requireOne(result, execErr, "Runner 更新取消失败"); err != nil {
 		return model.RunnerUpdate{}, false, err
 	}
+	update.State, update.Phase, update.CancelledByHash = "cancelled", "cancelled", actor
+	update.CancellationIdempotencyKey, update.FinishedAt = idempotencyKey, &finished
+	if err := appendRunnerUpdateAudit(ctx, tx, actor, "runner.update.cancelled", "accepted", update, finished); err != nil {
+		return model.RunnerUpdate{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.RunnerUpdate{}, false, err
 	}
-	update.State, update.Phase, update.CancelledByHash = "cancelled", "cancelled", actor
-	update.CancellationIdempotencyKey, update.FinishedAt = idempotencyKey, &finished
 	return update, true, nil
+}
+
+func appendRunnerUpdateAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	actor, event, outcome string,
+	update model.RunnerUpdate,
+	now time.Time,
+) error {
+	return appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: event, Resource: "runner:" + update.RunnerID, Outcome: outcome,
+		Detail: map[string]any{
+			"updateId": update.ID, "targetVersion": update.TargetVersion,
+			"artifactDigest": update.ArtifactDigest, "artifactRevision": update.ArtifactRevision,
+			"phase": update.Phase, "error": update.Error,
+		},
+	}, now)
 }
 
 func runnerUpdateByKey(

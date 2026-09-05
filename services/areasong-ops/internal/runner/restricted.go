@@ -57,7 +57,6 @@ func (engine *Engine) RunTerminal(
 	); err != nil {
 		return output, err
 	}
-	engine.auditTerminalCommand(actor, request, command, output)
 	return output, nil
 }
 
@@ -162,19 +161,4 @@ func terminalOutput(session model.TerminalSession) model.TerminalOutput {
 		SessionID: session.ID, ExitCode: session.ExitCode,
 		Output: session.Output, State: session.State,
 	}
-}
-
-func (engine *Engine) auditTerminalCommand(
-	actor string,
-	request model.TerminalStartRequest,
-	command model.TerminalCommand,
-	output model.TerminalOutput,
-) {
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actor, Event: "terminal.command", Resource: request.ObjectID,
-		Outcome: output.State, Detail: map[string]any{
-			"command": request.Command, "readOnly": command.ReadOnly,
-			"sessionId": output.SessionID, "exitCode": output.ExitCode,
-		},
-	})
 }

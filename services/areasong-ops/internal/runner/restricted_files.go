@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,26 +24,27 @@ func (engine *Engine) ManagedFile(
 	if err := engine.authorizeManagedFileRead(ctx, actor, rootID); err != nil {
 		return model.ManagedFileView{}, err
 	}
-	root, target, cleanPath, err := engine.resolveManagedPath(rootID, relativePath)
+	root, _, cleanPath, err := engine.resolveManagedPath(rootID, relativePath)
 	if err != nil {
 		return model.ManagedFileView{}, err
 	}
-	info, err := os.Lstat(target)
+	node, info, err := openManagedNode(root, cleanPath)
 	if err != nil {
 		return model.ManagedFileView{}, err
 	}
+	defer node.Close()
 	view := model.ManagedFileView{
 		RootID: rootID, Path: cleanPath, Size: info.Size(),
 		ReadOnly: engine.catalog.Files.ReadOnly, IsDirectory: info.IsDir(),
 	}
 	if info.IsDir() {
-		view.Entries, err = listManagedDirectory(root, target)
+		view.Entries, err = listManagedDirectory(cleanPath, node)
 		return view, err
 	}
 	if !info.Mode().IsRegular() {
 		return model.ManagedFileView{}, errors.New("受管路径不是普通文件或目录")
 	}
-	view.Content, err = readManagedText(target, engine.catalog.Files.MaxFileBytes)
+	view.Content, err = readManagedTextFile(node, engine.catalog.Files.MaxFileBytes)
 	if err != nil {
 		return model.ManagedFileView{}, err
 	}
@@ -92,9 +94,6 @@ func (engine *Engine) ProposeManagedFile(
 		actor, proposal.RootID, proposal.Path, proposal.ExpectedDigest, proposal.ProposedDigest,
 	}, "\x00"))
 	saved, created, err := engine.store.SaveManagedFileProposal(ctx, proposal, requestDigest)
-	if err == nil && created {
-		engine.auditManagedFileProposal(actor, saved)
-	}
 	return saved, created, err
 }
 
@@ -195,41 +194,49 @@ func rejectManagedSymlinks(root, target string) error {
 func rejectManagedInsecurePath(root, target string) error {
 	// Development runners may use user-owned temporary roots. Production
 	// runners run as root, so enforce ownership at the point of use while
-	// applying the mode restriction in every environment.
-	rootInfo, err := os.Lstat(root)
-	if err != nil {
-		return err
+	// applying the mode restriction to every path component in every environment.
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("受管文件路径越过白名单根目录")
 	}
-	if rootInfo.Mode().Perm()&0o022 != 0 {
-		return errors.New("文件白名单根目录不能由 group/other 写入")
-	}
-	if os.Geteuid() == 0 {
-		stat, ok := rootInfo.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 {
-			return errors.New("文件白名单根目录必须由 root 拥有")
+	paths := []string{root}
+	current := root
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
 		}
+		current = filepath.Join(current, part)
+		paths = append(paths, current)
 	}
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if info.Mode().Perm()&0o022 != 0 {
-		return errors.New("受管文件不能由 group/other 写入")
-	}
-	if os.Geteuid() == 0 {
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 {
-			return errors.New("受管文件必须由 root 拥有")
+	for index, path := range paths {
+		info, statErr := os.Lstat(path)
+		if errors.Is(statErr, os.ErrNotExist) && index == len(paths)-1 {
+			return nil
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("受管文件路径包含符号链接")
+		}
+		if index < len(paths)-1 && !info.IsDir() {
+			return errors.New("受管文件中间路径必须是目录")
+		}
+		if info.Mode().Perm()&0o022 != 0 {
+			return errors.New("受管文件路径组件不能由 group/other 写入")
+		}
+		if os.Geteuid() == 0 {
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok || stat.Uid != 0 {
+				return errors.New("受管文件路径组件必须由 root 拥有")
+			}
 		}
 	}
 	return nil
 }
 
-func listManagedDirectory(root, directory string) ([]model.ManagedFileEntry, error) {
-	entries, err := os.ReadDir(directory)
+func listManagedDirectory(relativeDirectory string, directory *os.File) ([]model.ManagedFileEntry, error) {
+	entries, err := directory.ReadDir(-1)
 	if err != nil {
 		return nil, err
 	}
@@ -242,12 +249,8 @@ func listManagedDirectory(root, directory string) ([]model.ManagedFileEntry, err
 		if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
 			continue
 		}
-		relative, err := filepath.Rel(root, filepath.Join(directory, entry.Name()))
-		if err != nil {
-			return nil, err
-		}
 		result = append(result, model.ManagedFileEntry{
-			Name: entry.Name(), Path: filepath.ToSlash(relative), Size: info.Size(),
+			Name: entry.Name(), Path: path.Join(relativeDirectory, entry.Name()), Size: info.Size(),
 			IsDirectory: info.IsDir(), ModifiedAt: info.ModTime().UTC(),
 		})
 	}
@@ -260,12 +263,10 @@ func listManagedDirectory(root, directory string) ([]model.ManagedFileEntry, err
 	return result, nil
 }
 
-func readManagedText(path string, limit int64) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
+func readManagedTextFile(file *os.File, limit int64) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
 		return "", err
@@ -277,15 +278,4 @@ func readManagedText(path string, limit int64) (string, error) {
 		return "", errors.New("受管文件不是可显示的 UTF-8 文本")
 	}
 	return string(data), nil
-}
-
-func (engine *Engine) auditManagedFileProposal(actor string, proposal model.ManagedFileProposal) {
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actor, Event: "file.proposal.created",
-		Resource: "file:" + proposal.RootID + "/" + proposal.Path,
-		Outcome:  "accepted", Detail: map[string]any{
-			"proposalId": proposal.ID, "expectedDigest": proposal.ExpectedDigest,
-			"proposedDigest": proposal.ProposedDigest,
-		},
-	})
 }

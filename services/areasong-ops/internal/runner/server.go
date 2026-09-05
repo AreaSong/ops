@@ -1881,7 +1881,7 @@ func (server *Server) closePlan(response http.ResponseWriter, request *http.Requ
 	}
 	plan, err := server.engine.CloseReleasePlan(request.Context(), actor, request.PathValue("id"), input)
 	if err != nil {
-		writeError(response, http.StatusConflict, err.Error())
+		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
 	}
 	writeJSON(response, http.StatusOK, plan)
@@ -1899,7 +1899,7 @@ func (server *Server) recoverTask(response http.ResponseWriter, request *http.Re
 	}
 	plan, err := server.engine.CreateRecoveryPlan(request.Context(), actor, request.PathValue("id"), input)
 	if err != nil {
-		writeError(response, http.StatusConflict, err.Error())
+		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
 	}
 	writeJSON(response, http.StatusCreated, plan)
@@ -2075,7 +2075,7 @@ func (server *Server) approvePlan(response http.ResponseWriter, request *http.Re
 	}
 	plan, err := server.engine.ApproveReleasePlan(request.Context(), actor, request.PathValue("id"), input)
 	if err != nil {
-		writeError(response, http.StatusConflict, err.Error())
+		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
 	}
 	writeJSON(response, http.StatusOK, plan)
@@ -2093,7 +2093,7 @@ func (server *Server) executePlan(response http.ResponseWriter, request *http.Re
 	}
 	task, created, err := server.engine.ExecuteReleasePlan(request.Context(), actor, request.PathValue("id"), input)
 	if err != nil {
-		writeError(response, http.StatusConflict, err.Error())
+		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
 	}
 	status := http.StatusOK

@@ -99,17 +99,28 @@ func TestKubernetesPlanDualApprovalAndIdempotentReplay(t *testing.T) {
 	if err != nil || second.State != "approved" || second.SecondApprovedByHash != "actor-c" {
 		t.Fatalf("second approval=%+v err=%v", second, err)
 	}
-	started, ok, err := database.StartKubernetesPlan(ctx, plan.ID, "plan-kube-plan-1", "actor-d", "exec-key")
+	operation := model.KubernetesOperation{
+		ID: "plan-kube-plan-1", IdempotencyKey: "plan-kube-plan-1", RequestDigest: "sha256:operation",
+		Target: target, TenantID: plan.TenantID, Action: plan.Action, ManifestDigest: plan.ManifestDigest,
+		State: "pending", Phase: "preflight", RolloutState: "pending",
+		RolloutResources: []string{"deployment/demo"},
+	}
+	started, ok, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", operation)
 	if err != nil || !ok || started.State != "running" {
 		t.Fatalf("start=%+v ok=%v err=%v", started, ok, err)
 	}
 	if started.ExecuteIdempotencyKey != "exec-key" {
 		t.Fatalf("execute idempotency key=%q", started.ExecuteIdempotencyKey)
 	}
-	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "plan-kube-plan-1", "actor-d", "other-exec-key"); err != ErrIdempotency {
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "other-exec-key", operation); err != ErrIdempotency {
 		t.Fatalf("execute replay conflict error=%v", err)
 	}
-	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "other", "actor-d", "exec-key"); err != ErrIdempotency {
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-e", "exec-key", operation); err != ErrActorMismatch {
+		t.Fatalf("execute actor replay error=%v", err)
+	}
+	conflictingOperation := operation
+	conflictingOperation.ID, conflictingOperation.IdempotencyKey = "other", "other"
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", conflictingOperation); err != ErrIdempotency {
 		t.Fatalf("replay conflict error=%v", err)
 	}
 	if err := database.FinishKubernetesPlan(ctx, plan.ID, "needs_attention", "apply failed"); err != nil {

@@ -237,6 +237,21 @@ func (plan ReleasePlan) HasRequiredApprovalPolicy() bool {
 		plan.AllowsC2LifecycleSingleActorApproval()
 }
 
+// IndependentExecutor enforces the four-identity boundary shared by high-risk
+// plans: creator, two approvers, and executor must all be distinct.
+func IndependentExecutor(actor, creator, firstApprover, secondApprover string) bool {
+	return actor != "" && creator != "" && firstApprover != "" && secondApprover != "" &&
+		creator != firstApprover && creator != secondApprover && firstApprover != secondApprover &&
+		actor != creator && actor != firstApprover && actor != secondApprover
+}
+
+func (plan ReleasePlan) AllowsExecutor(actor string) bool {
+	if plan.Risk == RiskHigh && !plan.AllowsC2LifecycleSingleActorApproval() {
+		return IndependentExecutor(actor, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash)
+	}
+	return actor != "" && actor == plan.ActorHash
+}
+
 type ReleasePlan struct {
 	ID                           string          `json:"id"`
 	ActorHash                    string          `json:"actorHash"`

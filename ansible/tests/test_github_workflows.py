@@ -77,6 +77,47 @@ class GitHubWorkflowTests(unittest.TestCase):
         self.assertIn("monthly-simulation", content)
         self.assertIn("github.event.schedule == '17 3 1 * *'", content)
 
+    def test_areasong_ops_release_uses_trusted_main_controls(self) -> None:
+        content = (WORKFLOW_ROOT / "areasong-ops-release.yml").read_text(
+            encoding="utf-8"
+        )
+        checkout = re.search(
+            r"- name: Check out trusted release controls(?P<body>.*?)"
+            r"\n\s+- name: Validate approved revision",
+            content,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(checkout)
+        self.assertIn("ref: refs/heads/main", checkout.group("body"))
+        self.assertNotIn("inputs.revision", checkout.group("body"))
+
+        validation = re.search(
+            r"- name: Validate approved revision and preserve trusted verifier"
+            r"(?P<body>.*?)\n\s+- name: Reject an existing immutable release",
+            content,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(validation)
+        body = validation.group("body")
+        gates = (
+            '[[ "$REQUESTED_REVISION" =~ ^[a-f0-9]{40}$ ]]',
+            "git cat-file -e \"$REQUESTED_REVISION^{commit}\"",
+            'git merge-base --is-ancestor "$REQUESTED_REVISION" origin/main',
+            "git show origin/main:services/areasong-ops/deploy/verify-release-assets.sh",
+            'git checkout --detach "$REQUESTED_REVISION"',
+        )
+        positions = [body.index(gate) for gate in gates]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn('"$RUNNER_TEMP/verify-release-assets.sh"', content)
+
+    def test_areasong_ops_release_never_overwrites_existing_release(self) -> None:
+        content = (WORKFLOW_ROOT / "areasong-ops-release.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('gh release view "$tag" --json tagName', content)
+        self.assertIn("already exists and is immutable", content)
+        self.assertNotIn("--clobber", content)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -911,5 +911,19 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 ALTER TABLE compose_revisions ADD COLUMN rollback_started_at TEXT;
 	 ALTER TABLE compose_revisions ADD COLUMN rollback_finished_at TEXT;
 	 CREATE INDEX idx_compose_revision_expiry ON compose_revisions(state,expires_at);
-	 CREATE INDEX idx_compose_revision_binding ON compose_revisions(service,tenant_id,server_id,recovery_point_id);`,
+		 CREATE INDEX idx_compose_revision_binding ON compose_revisions(service,tenant_id,server_id,recovery_point_id);`,
+	`ALTER TABLE batch_jobs ADD COLUMN approval_policy_version INTEGER NOT NULL DEFAULT 0;
+	 UPDATE batch_jobs
+	 SET state='needs_attention',
+	     summary='遗留批量计划缺少可证明的审批策略',
+	     error='请按当前审批策略重新创建批量计划',
+	     updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+	 WHERE approval_policy_version=0
+	   AND state IN ('pending_approval','approved');
+	 CREATE INDEX idx_batch_jobs_approval_policy
+	 ON batch_jobs(approval_policy_version,state);`,
+	`ALTER TABLE kubernetes_plans ADD COLUMN rollback_target_plan_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_plans ADD COLUMN executed_by_hash TEXT NOT NULL DEFAULT '';
+	 CREATE INDEX idx_kubernetes_plans_rollback_target
+	 ON kubernetes_plans(rollback_target_plan_id) WHERE rollback_target_plan_id != '';`,
 }

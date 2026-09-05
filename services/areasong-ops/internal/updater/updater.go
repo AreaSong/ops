@@ -336,11 +336,6 @@ func (executor *Executor) finish(
 	); err != nil {
 		return err
 	}
-	_, _ = executor.Store.AppendAudit(finishContext, model.AuditEntry{
-		ActorHash: update.ApprovedByHash, Event: "runner.update." + state,
-		Resource: "runner:" + update.RunnerID, Outcome: state,
-		Detail: map[string]any{"updateId": update.ID, "phase": phase, "error": message},
-	})
 	return nil
 }
 

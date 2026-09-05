@@ -180,7 +180,7 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 	if firstTenant == "" {
 		firstTenant = "default"
 	}
-	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, RequiresDualApproval: requiresDualApproval, Items: items, CreatedAt: now, UpdatedAt: now}
+	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, RequiresDualApproval: requiresDualApproval, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion, Items: items, CreatedAt: now, UpdatedAt: now}
 	created, wasCreated, err := engine.store.CreateBatchOperation(ctx, store.BatchOperationInput{Operation: op, ConfirmationHash: store.HashConfirmation(op.ConfirmationPhrase)})
 	if err != nil {
 		return model.BatchOperation{}, false, err
@@ -199,9 +199,6 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 		// deterministic rendering of this request, so it can be reconstructed
 		// without persisting sensitive or redundant plaintext.
 		created.ConfirmationPhrase = op.ConfirmationPhrase
-	}
-	if wasCreated {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "batch.created", Resource: op.ID, Outcome: "accepted", Detail: map[string]any{"action": request.Action, "targetCount": len(targets), "digest": digest}})
 	}
 	return created, wasCreated, nil
 }
@@ -708,10 +705,6 @@ func (engine *Engine) ApproveBatch(ctx context.Context, actor, id string, input 
 	if err != nil {
 		return model.BatchOperation{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actor, Event: "batch.approved", Resource: id, Outcome: "approved",
-		Detail: map[string]any{"digest": input.Digest, "createdBy": op.ActorHash},
-	})
 	return approved, nil
 }
 
@@ -753,10 +746,6 @@ func (engine *Engine) ExecuteBatch(ctx context.Context, actor, id string, input 
 	if !started || op.State != model.BatchRunning {
 		return op, nil
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actor, Event: "batch.started", Resource: id, Outcome: "accepted",
-		Detail: map[string]any{"approvedBy": op.ApprovedByHash, "executedBy": actor},
-	})
 	engine.wait.Add(1)
 	go func() { defer engine.wait.Done(); engine.runBatch(op) }()
 	return op, nil
@@ -795,6 +784,17 @@ func (engine *Engine) runBatch(op model.BatchOperation) {
 		}
 		current, err := engine.store.GetBatchOperation(ctx, op.ID)
 		if err != nil {
+			return
+		}
+		if current.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
+			_ = engine.store.FinishBatchOperation(ctx, current.ID, model.BatchNeedsAttention,
+				"批量计划审批策略版本过旧", "请按当前审批策略重新创建批量计划", fence)
+			return
+		}
+		if current.RequiresDualApproval && !model.IndependentExecutor(current.ExecutedByHash,
+			current.ActorHash, current.ApprovedByHash, current.SecondApprovedByHash) {
+			_ = engine.store.FinishBatchOperation(ctx, current.ID, model.BatchNeedsAttention,
+				"批量计划四方身份不完整", "请重新创建并完成独立双人批准与独立执行", fence)
 			return
 		}
 		pending, running, terminalFailure := batchWave(current)
@@ -1122,47 +1122,39 @@ func (engine *Engine) startBatchItem(ctx context.Context, op model.BatchOperatio
 	if _, _, bindErr := engine.store.BindBatchItemExecution(ctx, op.ID, item.ID, planKey, taskKey, fence...); bindErr == nil {
 		return
 	}
-	// The parent batch records three roles independently: creator, approver and
-	// executor.  Child plans must use the actual executor as their operator and
-	// the parent approver as their independent approver; reusing the creator for
-	// both would silently turn a production batch into self-approved plans.
-	planActor := op.ExecutedByHash
-	if planActor == "" {
-		planActor = op.ActorHash
+	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
+		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", errors.New("父批量计划审批策略版本过旧"), fence...)
+		return
 	}
-	planApprover := op.ApprovedByHash
-	if planApprover == "" {
-		planApprover = op.ActorHash
+	_, action, err := engine.resolveAction(item.Service, op.Action, op.Target)
+	if err != nil {
+		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", err, fence...)
+		return
 	}
-	plan, err := engine.CreateReleasePlan(ctx, planActor, model.PreviewRequest{
+	childRequiresDual := action.Risk == model.RiskHigh
+	if childRequiresDual && !op.RequiresDualApproval {
+		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", errors.New("高风险批量子计划缺少父级双人批准策略"), fence...)
+		return
+	}
+	planCreator, planExecutor, err := batchChildActors(op, childRequiresDual)
+	if err != nil {
+		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", err, fence...)
+		return
+	}
+	plan, err := engine.CreateReleasePlan(ctx, planCreator, model.PreviewRequest{
 		Service: item.Service, Action: op.Action, Target: op.Target,
-		IdempotencyKey: planKey,
+		IdempotencyKey: planKey, RequiresDualApproval: childRequiresDual,
 	})
 	if err != nil {
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", err, fence...)
 		return
 	}
-	approved := plan
-	if plan.RequiresDualApproval {
-		if op.ApprovedByHash == "" || op.SecondApprovedByHash == "" {
-			_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, errors.New("父批量计划缺少完整双人批准证据"), fence...)
-			return
-		}
-		approved, err = engine.ApproveReleasePlan(ctx, op.ApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
-		if err == nil {
-			approved, err = engine.ApproveReleasePlan(ctx, op.SecondApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
-		}
-	} else {
-		// Medium/low child plans intentionally retain the release-plan rule that
-		// their operator is also their approver. The parent batch approval still
-		// gates admission, while no stronger approval is silently fabricated.
-		approved, err = engine.ApproveReleasePlan(ctx, planActor, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
-	}
+	approved, err := engine.approveBatchChildPlan(ctx, op, plan, planCreator, childRequiresDual)
 	if err != nil {
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, err, fence...)
 		return
 	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, planActor, approved.ID, model.ExecutePlanRequest{IdempotencyKey: taskKey})
+	task, _, err := engine.ExecuteReleasePlan(ctx, planExecutor, approved.ID, model.ExecutePlanRequest{IdempotencyKey: taskKey})
 	if err != nil {
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, err, fence...)
 		return
@@ -1171,6 +1163,69 @@ func (engine *Engine) startBatchItem(ctx context.Context, op model.BatchOperatio
 		_ = engine.store.FinishBatchOperation(ctx, op.ID, model.BatchNeedsAttention,
 			"批量任务已启动但项目关联失败", redactText(err.Error()), fence...)
 	}
+}
+
+// batchChildActors preserves the parent's four-party chain for high-risk
+// children. Low/medium child plans retain their existing single-operator
+// contract because ReleasePlan requires their creator to execute them.
+func batchChildActors(op model.BatchOperation, requiresDual bool) (creator, executor string, err error) {
+	executor = op.ExecutedByHash
+	if executor == "" {
+		executor = op.ActorHash
+	}
+	creator = executor
+	if !requiresDual {
+		return creator, executor, nil
+	}
+	if !model.IndependentExecutor(executor, op.ActorHash, op.ApprovedByHash, op.SecondApprovedByHash) {
+		return "", "", errors.New("父批量计划缺少完整四方独立身份")
+	}
+	return op.ActorHash, executor, nil
+}
+
+func (engine *Engine) approveBatchChildPlan(
+	ctx context.Context,
+	op model.BatchOperation,
+	plan model.ReleasePlan,
+	planCreator string,
+	requiresDual bool,
+) (model.ReleasePlan, error) {
+	approve := func(actor string, current model.ReleasePlan) (model.ReleasePlan, error) {
+		return engine.ApproveReleasePlan(ctx, actor, current.ID, model.ApprovePlanRequest{
+			Digest: current.Digest, Confirmation: current.ConfirmationPhrase,
+		})
+	}
+	if !requiresDual {
+		if plan.RequiresDualApproval {
+			return model.ReleasePlan{}, errors.New("批量子计划需要父批量计划未提供的双人批准")
+		}
+		if plan.ApprovedByHash == "" {
+			return approve(planCreator, plan)
+		}
+		if plan.ApprovedByHash != planCreator {
+			return model.ReleasePlan{}, errors.New("批量子计划批准身份与父批量计划不一致")
+		}
+		return plan, nil
+	}
+	if !op.RequiresDualApproval || !plan.RequiresDualApproval || plan.ActorHash != op.ActorHash {
+		return model.ReleasePlan{}, errors.New("批量子计划审批策略与父批量计划不一致")
+	}
+	var err error
+	if plan.ApprovedByHash == "" {
+		plan, err = approve(op.ApprovedByHash, plan)
+		if err != nil {
+			return model.ReleasePlan{}, err
+		}
+	} else if plan.ApprovedByHash != op.ApprovedByHash {
+		return model.ReleasePlan{}, errors.New("批量子计划第一批准人与父批量计划不一致")
+	}
+	if plan.SecondApprovedByHash == "" {
+		return approve(op.SecondApprovedByHash, plan)
+	}
+	if plan.SecondApprovedByHash != op.SecondApprovedByHash {
+		return model.ReleasePlan{}, errors.New("批量子计划第二批准人与父批量计划不一致")
+	}
+	return plan, nil
 }
 
 func batchItemIdempotencyKey(batchID, itemID, operation string) string {

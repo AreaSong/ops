@@ -467,6 +467,24 @@ func TestManagedFileRejectsWritableAllowlistRootAndTarget(t *testing.T) {
 	}
 }
 
+func TestManagedFileRejectsWritableIntermediateDirectory(t *testing.T) {
+	fixture := newSecurityEngine(t)
+	root := fixture.engine.catalog.Files.Roots["managed"]
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "inside.txt"), []byte("inside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(nested, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := fixture.engine.resolveManagedPath("managed", "nested/inside.txt"); err == nil {
+		t.Fatal("group-writable intermediate directory was accepted")
+	}
+}
+
 func TestExtensionStagingFailureDoesNotReportStored(t *testing.T) {
 	fixture := newSecurityEngine(t)
 	content := []byte("#!/bin/sh\necho extension\n")

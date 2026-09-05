@@ -132,8 +132,10 @@ func (worker *RemoteWorker) processFleetRunnerUpdateReceipt(
 				launcher = systemdRunnerUpdateLauncher{}
 			}
 			if err := launcher.Launch(context.WithoutCancel(ctx), *worker.Catalog.RunnerUpdate, update); err != nil {
-				_ = worker.Store.FinishRunnerUpdate(context.WithoutCancel(ctx), update.ID,
-					"needs_attention", "fleet_launch_failed", update.RollbackPath, err.Error(), update.FencingToken)
+				if finishErr := worker.Store.FinishRunnerUpdate(context.WithoutCancel(ctx), update.ID,
+					"needs_attention", "fleet_launch_failed", update.RollbackPath, err.Error(), update.FencingToken); finishErr != nil {
+					err = errors.Join(err, fmt.Errorf("Runner Fleet 本地更新状态收口失败: %w", finishErr))
+				}
 				return worker.persistAndReportFleetRunnerFailure(ctx, receipt, err)
 			}
 			persistCtx, cancel := fleetRunnerDetachedContext(ctx)

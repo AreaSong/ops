@@ -29,13 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out approved revision
+      - name: Check out trusted release controls
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: ${{ inputs.revision }}
+          ref: refs/heads/main
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate revision and build metadata
+      - name: Validate approved revision and preserve trusted verifier
         id: metadata
         shell: bash
         env:
@@ -43,12 +44,34 @@ jobs:
           BUILD_VERSION: ${{ inputs.version }}
         run: |
           set -Eeuo pipefail
+          [[ "$REQUESTED_REVISION" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$BUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          git fetch --no-tags --prune origin \
+            '+refs/heads/main:refs/remotes/origin/main'
+          git cat-file -e "$REQUESTED_REVISION^{commit}"
+          git merge-base --is-ancestor "$REQUESTED_REVISION" origin/main
+          trusted_verifier="$RUNNER_TEMP/verify-release-assets.sh"
+          git show origin/main:services/areasong-ops/deploy/verify-release-assets.sh \
+            > "$trusted_verifier"
+          chmod 0755 "$trusted_verifier"
+          git checkout --detach "$REQUESTED_REVISION"
           actual_revision="$(git rev-parse HEAD)"
           [[ "$actual_revision" == "$REQUESTED_REVISION" ]]
-          [[ "$actual_revision" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$BUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
-          echo "revision=$actual_revision" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/areasong/areasong-ops-web:$actual_revision" >> "$GITHUB_OUTPUT"
+          echo "revision=$REQUESTED_REVISION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/areasong/areasong-ops-web:$REQUESTED_REVISION" >> "$GITHUB_OUTPUT"
+
+      - name: Reject an existing immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ steps.metadata.outputs.revision }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag="areasong-ops-$REVISION"
+          if gh release view "$tag" --json tagName >/dev/null 2>&1; then
+            echo "release $tag already exists and is immutable" >&2
+            exit 1
+          fi
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c
@@ -154,7 +177,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           archive="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
-          services/areasong-ops/deploy/verify-release-assets.sh \
+          "$RUNNER_TEMP/verify-release-assets.sh" \
             "areasong-ops-release-$REVISION.json" \
             "$archive" \
             "$archive.sha256" \
@@ -176,12 +199,8 @@ jobs:
             "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore"
             "areasong-ops-runner-$REVISION-linux-amd64.tar.gz.sigstore.json"
           )
-          if gh release view "$tag" --json tagName >/dev/null 2>&1; then
-            gh release upload "$tag" --clobber "${assets[@]}"
-          else
-            gh release create "$tag" \
-              --target "$REVISION" \
-              --title "AreaSong Ops $VERSION ($REVISION)" \
-              --notes "Signed linux/amd64 control-plane artifacts for $REVISION. Production deployment remains separately approved." \
-              "${assets[@]}"
-          fi
+          gh release create "$tag" \
+            --target "$REVISION" \
+            --title "AreaSong Ops $VERSION ($REVISION)" \
+            --notes "Signed linux/amd64 control-plane artifacts for $REVISION. Production deployment remains separately approved." \
+            "${assets[@]}"
