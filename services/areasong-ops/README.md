@@ -109,12 +109,15 @@ OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 Web 镜像和 Runner 必须来自同一个 40 字符 Git commit：
 
 ```bash
-docker build --target runner-export --output type=local,dest=build/runner \
+docker build --platform=linux/amd64 --target runner-export --output type=local,dest=build/runner \
   --build-arg BUILD_VERSION=1.0.0 --build-arg BUILD_REVISION=<commit> .
 
-docker build --target web -t areasong-ops-web:<commit> \
+docker build --platform=linux/amd64 --target web -t areasong-ops-web:<commit> \
   --build-arg BUILD_VERSION=1.0.0 --build-arg BUILD_REVISION=<commit> .
 ```
+
+发布合同固定为 `linux/amd64`；在 Apple Silicon 本机上省略 `--platform` 会生成
+`aarch64` 制品，不能上传到生产发布流程。
 
 生产 Compose 位于 `/opt/services/areasong-ops/compose.yml`，来源为 [deploy/compose.yml](deploy/compose.yml)。真实配置位于：
 

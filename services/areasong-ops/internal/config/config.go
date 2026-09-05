@@ -1082,29 +1082,27 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 	if filepath.Clean(runtime.ControlledCompose) == filepath.Clean(runtime.RuntimeCompose) {
 		return fmt.Errorf("服务 %s 的 controlled 与 runtime Compose 不得是同一路径", service)
 	}
-	if runtime.ProjectName == "" || runtime.ApplicationService == "" || runtime.ApplicationContainer == "" ||
+	if runtime.ApplicationService == "" || runtime.ApplicationContainer == "" ||
 		!repositoryPattern.MatchString(runtime.ReleaseRepository) {
 		return fmt.Errorf("服务 %s 的 Compose 项目、服务、容器或发布仓库无效", service)
+	}
+	// schema 4 was already deployed before projectName became mandatory. Keep
+	// those catalogs readable by deriving the fixed project boundary from the
+	// application service; newly authored catalogs still carry the explicit
+	// field and therefore remain fully reviewable in the source diff.
+	if runtime.ProjectName == "" {
+		runtime.ProjectName = runtime.ApplicationService
 	}
 	if !composeServicePattern.MatchString(runtime.ProjectName) ||
 		!composeServicePattern.MatchString(runtime.ApplicationService) ||
 		!composeServicePattern.MatchString(runtime.ApplicationContainer) {
 		return fmt.Errorf("服务 %s 的 Compose 项目、应用服务或容器名称无效", service)
 	}
-	if len(runtime.DependencyServices) != len(runtime.DependencyContainers) {
-		return fmt.Errorf("服务 %s 的 Compose 依赖服务与容器映射数量不一致", service)
-	}
-	seenDependencies := make(map[string]struct{}, len(runtime.DependencyServices))
+	// Older schema 4 catalogs only declared dependency containers. Validate
+	// those identities without inventing a service-to-container mapping. Once
+	// dependencyServices is present, the pair must be complete and positional.
 	seenContainers := make(map[string]struct{}, len(runtime.DependencyContainers))
-	for index, dependency := range runtime.DependencyServices {
-		if !composeServicePattern.MatchString(dependency) || dependency == runtime.ApplicationService {
-			return fmt.Errorf("服务 %s 的 Compose 依赖服务名称无效", service)
-		}
-		if _, exists := seenDependencies[dependency]; exists {
-			return fmt.Errorf("服务 %s 的 Compose 依赖服务重复", service)
-		}
-		seenDependencies[dependency] = struct{}{}
-		container := runtime.DependencyContainers[index]
+	for _, container := range runtime.DependencyContainers {
 		if !composeServicePattern.MatchString(container) || container == runtime.ApplicationContainer {
 			return fmt.Errorf("服务 %s 的 Compose 依赖容器名称无效", service)
 		}
@@ -1112,6 +1110,21 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 			return fmt.Errorf("服务 %s 的 Compose 依赖容器重复", service)
 		}
 		seenContainers[container] = struct{}{}
+	}
+	if len(runtime.DependencyServices) > 0 {
+		if len(runtime.DependencyServices) != len(runtime.DependencyContainers) {
+			return fmt.Errorf("服务 %s 的 Compose 依赖服务与容器映射数量不一致", service)
+		}
+		seenDependencies := make(map[string]struct{}, len(runtime.DependencyServices))
+		for _, dependency := range runtime.DependencyServices {
+			if !composeServicePattern.MatchString(dependency) || dependency == runtime.ApplicationService {
+				return fmt.Errorf("服务 %s 的 Compose 依赖服务名称无效", service)
+			}
+			if _, exists := seenDependencies[dependency]; exists {
+				return fmt.Errorf("服务 %s 的 Compose 依赖服务重复", service)
+			}
+			seenDependencies[dependency] = struct{}{}
+		}
 	}
 	if runtime.ProposalTTLSeconds == 0 {
 		runtime.ProposalTTLSeconds = 900

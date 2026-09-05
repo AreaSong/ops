@@ -383,6 +383,32 @@ func TestProductionExampleCatalogIsValid(t *testing.T) {
 	}
 }
 
+func TestLegacyComposeRuntimeDefaultsProjectAndAcceptsContainerOnlyDependencies(t *testing.T) {
+	catalog := validComposeCatalog()
+	runtime := catalog.Services["demo"].Runtime
+	runtime.ProjectName = ""
+	runtime.DependencyServices = nil
+	runtime.DependencyContainers = []string{"demo-db"}
+
+	if err := catalog.Validate(false); err != nil {
+		t.Fatalf("legacy Compose catalog rejected: %v", err)
+	}
+	if runtime.ProjectName != runtime.ApplicationService {
+		t.Fatalf("projectName=%q, want application service %q", runtime.ProjectName, runtime.ApplicationService)
+	}
+}
+
+func TestComposeRuntimeRejectsPartialExplicitDependencyMapping(t *testing.T) {
+	catalog := validComposeCatalog()
+	runtime := catalog.Services["demo"].Runtime
+	runtime.DependencyServices = []string{"database", "cache"}
+	runtime.DependencyContainers = []string{"demo-db"}
+
+	if err := catalog.Validate(false); err == nil || !strings.Contains(err.Error(), "依赖服务与容器映射数量不一致") {
+		t.Fatalf("partial dependency mapping error=%v", err)
+	}
+}
+
 func TestRecoveryPointPolicyRequiresCompleteOrderedContract(t *testing.T) {
 	action := model.ActionDefinition{
 		Name: "update", Steps: []string{"backup", "apply"},
