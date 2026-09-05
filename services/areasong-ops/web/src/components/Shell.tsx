@@ -30,6 +30,7 @@ interface ShellProps {
   view: ViewName
   onView: (view: ViewName) => void
   email: string
+  environment: 'production' | 'development'
   connected: boolean
   links: NavigationLinks
   children: ReactNode
@@ -54,7 +55,7 @@ const navigation = [
   { id: 'audit' as const, label: '变更审计', icon: History },
 ]
 
-export function Shell({ view, onView, email, connected, links, children }: ShellProps) {
+export function Shell({ view, onView, email, environment, connected, links, children }: ShellProps) {
   const activeNavigation = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
@@ -95,8 +96,8 @@ export function Shell({ view, onView, email, connected, links, children }: Shell
       <div className="workspace">
         <header className="topbar">
           <div>
-            <span className="environment-dot" aria-hidden="true" />
-            <span className="environment-name">生产环境</span>
+            <span className={`environment-dot ${environment}`} aria-hidden="true" />
+            <span className="environment-name">{environment === 'production' ? '生产环境' : '本地验收'}</span>
           </div>
           <div className="topbar-right">
             <nav className="external-navigation" aria-label="观测入口">

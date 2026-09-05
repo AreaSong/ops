@@ -104,6 +104,18 @@ func (engine *Engine) run(task model.Task) {
 		result, err := engine.executePhase(ctx, service, action.Name, phase,
 			operationDir, task.Target, engine.sourceDir(task))
 		if err != nil {
+			barrier, attempted, barrierErr := engine.protectLifecycleFailure(task, service, phase, operationDir)
+			if attempted {
+				if barrierErr != nil {
+					err = fmt.Errorf("%w; 失败后维护屏障恢复失败: %v", err, barrierErr)
+				} else {
+					lastSummary = barrier.Summary
+					engine.event(context.Background(), model.Event{
+						TaskID: task.ID, Level: "warning", Phase: "failure-barrier",
+						Message: barrier.Summary, Data: barrier.Data,
+					})
+				}
+			}
 			engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, mutationSemantics(semantics), lastSummary, err)
 			return
 		}

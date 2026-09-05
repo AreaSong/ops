@@ -21,7 +21,7 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	engine, database, actors, invocationFile := kubernetesPlanTestEngine(t)
 	handler := NewServer(engine, database)
 	target := engine.catalog.Kubernetes["cluster-a"]
-	manifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\n"
+	manifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 2\n"
 
 	created := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[0], "/v1/kubernetes/plans", model.KubernetesPlanRequest{
 		Target: target, Manifest: manifest, IdempotencyKey: mustUUID(t),
@@ -57,7 +57,9 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	}](t, handler, actors[3], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: executeKey,
 	}, http.StatusAccepted)
-	if firstExecution.Operation.State != "succeeded" || firstExecution.Operation.Action != "apply" || firstExecution.Operation.DryRun {
+	if firstExecution.Operation.State != "succeeded" || firstExecution.Operation.Action != "apply" || firstExecution.Operation.DryRun ||
+		firstExecution.Operation.Phase != "health" || firstExecution.Operation.RolloutState != "succeeded" ||
+		len(firstExecution.Operation.RolloutResources) != 1 || firstExecution.Operation.RolloutResources[0] != "deployment/app-a" {
 		t.Fatalf("first execution=%+v", firstExecution.Operation)
 	}
 
@@ -78,13 +80,115 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(invocations)), "\n")
-	if len(lines) != 1 || !strings.Contains(lines[0], "--context ctx-a -n ns-a apply --field-manager areasong-ops -f -") {
+	if len(lines) != 2 || !strings.Contains(lines[0], "--context ctx-a -n ns-a apply --field-manager areasong-ops -f -") ||
+		!strings.Contains(lines[1], "--context ctx-a -n ns-a rollout status deployment/app-a --timeout=5m") {
 		t.Fatalf("kubectl invocations=%q", string(invocations))
 	}
 	stored, err := database.GetKubernetesPlan(context.Background(), created.ID)
 	if err != nil || stored.State != "succeeded" || stored.OperationID != firstExecution.Operation.ID || stored.ExecuteIdempotencyKey != executeKey {
 		t.Fatalf("stored plan=%+v err=%v", stored, err)
 	}
+}
+
+func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
+	engine, database, actors, invocationFile := kubernetesPlanTestEngine(t)
+	handler := NewServer(engine, database)
+	target := engine.catalog.Kubernetes["cluster-a"]
+	currentManifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 2\n"
+	source := createAndExecuteKubernetesPlan(t, handler, actors, target, currentManifest)
+
+	rollbackManifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\nspec:\n  replicas: 1\n"
+	postKubernetesJSON[map[string]any](t, handler, actors[4], "/v1/kubernetes/plans/"+source.ID+"/rollback", model.KubernetesRollbackPlanRequest{
+		Manifest: rollbackManifest, IdempotencyKey: mustUUID(t),
+	}, http.StatusForbidden)
+	rollback := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[0], "/v1/kubernetes/plans/"+source.ID+"/rollback", model.KubernetesRollbackPlanRequest{
+		Manifest: rollbackManifest, IdempotencyKey: mustUUID(t),
+	}, http.StatusCreated)
+	if rollback.Action != "rollback" || rollback.RollbackOfPlanID != source.ID ||
+		rollback.SourceManifestDigest != source.ManifestDigest || rollback.ManifestDigest == source.ManifestDigest {
+		t.Fatalf("rollback plan=%+v", rollback)
+	}
+	for _, actor := range actors[1:3] {
+		rollback = postKubernetesJSON[model.KubernetesPlan](t, handler, actor, "/v1/kubernetes/plans/"+rollback.ID+"/approve", model.KubernetesPlanApprovalRequest{
+			Digest: rollback.ManifestDigest, Confirmation: rollback.ConfirmationPhrase,
+		}, http.StatusOK)
+	}
+	result := postKubernetesJSON[struct {
+		Operation model.KubernetesOperation `json:"operation"`
+	}](t, handler, actors[3], "/v1/kubernetes/plans/"+rollback.ID+"/execute", model.KubernetesPlanExecuteRequest{
+		IdempotencyKey: mustUUID(t),
+	}, http.StatusAccepted)
+	if result.Operation.State != "succeeded" || result.Operation.Action != "rollback" ||
+		result.Operation.RollbackOfPlanID != source.ID || result.Operation.RolloutState != "succeeded" {
+		t.Fatalf("rollback operation=%+v", result.Operation)
+	}
+	invocations, err := os.ReadFile(invocationFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(invocations)), "\n")
+	if len(lines) != 4 || !strings.Contains(lines[2], " apply ") ||
+		!strings.Contains(lines[3], "rollout status deployment/app-a") {
+		t.Fatalf("rollback kubectl invocations=%q", string(invocations))
+	}
+}
+
+func TestKubernetesRolloutFailureNeedsAttention(t *testing.T) {
+	engine, database, actors, _ := kubernetesPlanTestEngine(t)
+	t.Setenv("KUBECTL_FAIL_ROLLOUT", "1")
+	handler := NewServer(engine, database)
+	manifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\n"
+	plan := createApprovedKubernetesPlan(t, handler, actors, engine.catalog.Kubernetes["cluster-a"], manifest)
+	response := postKubernetesJSON[map[string]any](t, handler, actors[3], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
+		IdempotencyKey: mustUUID(t),
+	}, http.StatusConflict)
+	if response["error"] == nil {
+		t.Fatalf("missing rollout failure: %+v", response)
+	}
+	stored, err := database.GetKubernetesPlan(context.Background(), plan.ID)
+	if err != nil || stored.State != "needs_attention" {
+		t.Fatalf("stored plan=%+v err=%v", stored, err)
+	}
+	operation, _, err := database.GetKubernetesOperation(context.Background(), stored.OperationID)
+	if err != nil || operation.State != "needs_attention" || operation.Phase != "rollout_failed" || operation.RolloutState != "failed" {
+		t.Fatalf("stored operation=%+v err=%v", operation, err)
+	}
+}
+
+func createAndExecuteKubernetesPlan(
+	t *testing.T,
+	handler http.Handler,
+	actors []string,
+	target model.KubernetesTarget,
+	manifest string,
+) model.KubernetesPlan {
+	t.Helper()
+	plan := createApprovedKubernetesPlan(t, handler, actors, target, manifest)
+	postKubernetesJSON[struct {
+		Operation model.KubernetesOperation `json:"operation"`
+	}](t, handler, actors[3], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
+		IdempotencyKey: mustUUID(t),
+	}, http.StatusAccepted)
+	return plan
+}
+
+func createApprovedKubernetesPlan(
+	t *testing.T,
+	handler http.Handler,
+	actors []string,
+	target model.KubernetesTarget,
+	manifest string,
+) model.KubernetesPlan {
+	t.Helper()
+	plan := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[0], "/v1/kubernetes/plans", model.KubernetesPlanRequest{
+		Target: target, Manifest: manifest, IdempotencyKey: mustUUID(t),
+	}, http.StatusCreated)
+	for _, actor := range actors[1:3] {
+		plan = postKubernetesJSON[model.KubernetesPlan](t, handler, actor, "/v1/kubernetes/plans/"+plan.ID+"/approve", model.KubernetesPlanApprovalRequest{
+			Digest: plan.ManifestDigest, Confirmation: plan.ConfirmationPhrase,
+		}, http.StatusOK)
+	}
+	return plan
 }
 
 func kubernetesPlanTestEngine(t *testing.T) (*Engine, *store.Store, []string, string) {
@@ -102,7 +206,7 @@ func kubernetesPlanTestEngine(t *testing.T) (*Engine, *store.Store, []string, st
 	}
 	invocationFile := filepath.Join(root, "kubectl-invocations")
 	kubectl := filepath.Join(binDir, "kubectl")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$KUBECTL_INVOCATIONS\"\ncat >/dev/null\nprintf 'applied\\n'\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$KUBECTL_INVOCATIONS\"\ncat >/dev/null\nif [ \"$5\" = rollout ] && [ \"${KUBECTL_FAIL_ROLLOUT:-0}\" = 1 ]; then printf 'rollout failed\\n' >&2; exit 1; fi\nprintf 'ok\\n'\n"
 	if err := os.WriteFile(kubectl, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -114,15 +218,20 @@ func kubernetesPlanTestEngine(t *testing.T) (*Engine, *store.Store, []string, st
 		config.AccessHashForEmail("approver-one@example.test"),
 		config.AccessHashForEmail("approver-two@example.test"),
 		config.AccessHashForEmail("executor@example.test"),
+		config.AccessHashForEmail("other-tenant@example.test"),
 	}
 	now := time.Now().UTC()
 	principals := make(map[string]config.AccessPrincipal, len(actors))
 	bindings := make([]model.RoleBinding, 0, len(actors))
 	for index, actor := range actors {
-		principals[actor] = config.AccessPrincipal{Subject: actor, TenantID: "tenant-a"}
+		tenantID := "tenant-a"
+		if index == 4 {
+			tenantID = "tenant-b"
+		}
+		principals[actor] = config.AccessPrincipal{Subject: actor, TenantID: tenantID}
 		bindings = append(bindings, model.RoleBinding{
 			ID: "kube-operator-" + string(rune('a'+index)), Subject: actor,
-			TenantID: "tenant-a", RoleID: "kube-operator", ObjectIDs: []string{"*"},
+			TenantID: tenantID, RoleID: "kube-operator", ObjectIDs: []string{"*"},
 		})
 	}
 	catalog := &config.Catalog{
@@ -132,6 +241,7 @@ func kubernetesPlanTestEngine(t *testing.T) (*Engine, *store.Store, []string, st
 			Enforced: true, DefaultTenant: "tenant-a",
 			Tenants: map[string]model.Tenant{
 				"tenant-a": {ID: "tenant-a", DisplayName: "Tenant A", Status: "active", CreatedAt: now},
+				"tenant-b": {ID: "tenant-b", DisplayName: "Tenant B", Status: "active", CreatedAt: now},
 			},
 			Roles: map[string]model.Role{
 				"kube-operator": {ID: "kube-operator", DisplayName: "Kubernetes Operator", Permissions: []model.Permission{model.PermissionDeploy}},

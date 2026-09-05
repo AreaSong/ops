@@ -186,9 +186,12 @@ func (engine *Engine) CreateReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	requiresDualApproval := requiredDualApproval(
+		service, tenantID, action, request.RequiresDualApproval,
+	)
 	summary := model.ApprovalSummary{
 		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: request.Target,
-		ApprovalException:   approvalExceptionFor(service, tenantID, action.Name, request.RequiresDualApproval),
+		ApprovalException:   approvalExceptionFor(service, tenantID, action.Name, requiresDualApproval),
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
@@ -220,7 +223,7 @@ func (engine *Engine) CreateReleasePlan(
 		ObservationSeconds:   action.ObservationSeconds, CreatedAt: now, UpdatedAt: now,
 		RequestIdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
-		RequiresDualApproval: request.RequiresDualApproval,
+		RequiresDualApproval: requiresDualApproval,
 		RestoreTenantID:      request.RestoreTenantID, RestoreServerID: request.RestoreServerID,
 		RestoreExpectedBeforeDigest: request.RestoreExpectedBeforeDigest,
 		RestoreContractDigest:       request.RestoreContractDigest,
@@ -279,6 +282,9 @@ func (engine *Engine) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	if !plan.HasRequiredApprovalPolicy() {
+		return model.ReleasePlan{}, errors.New("高风险计划缺少双人审批门禁")
+	}
 	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash &&
 		!plan.AllowsC2LifecycleSingleActorApproval() {
 		return model.ReleasePlan{}, store.ErrActorMismatch
@@ -319,6 +325,10 @@ func (engine *Engine) ExecuteReleasePlan(
 	if err != nil {
 		return model.Task{}, false, err
 	}
+	if !plan.HasRequiredApprovalPolicy() {
+		_ = engine.store.InvalidateReleasePlan(ctx, plan.ID, "高风险计划缺少双人审批门禁")
+		return model.Task{}, false, errors.New("高风险计划缺少双人审批门禁，请重新创建计划")
+	}
 	if plan.ActorHash != actorHash {
 		return model.Task{}, false, store.ErrActorMismatch
 	}
@@ -356,7 +366,7 @@ func (engine *Engine) ExecuteReleasePlan(
 		return model.Task{}, false, store.ErrIdempotency
 	}
 	if plan.RequiresDualApproval && (plan.SecondApprovedByHash == "" || plan.SecondApprovedByHash == plan.ApprovedByHash) {
-		return model.Task{}, false, errors.New("生产恢复计划尚未完成独立第二批准")
+		return model.Task{}, false, errors.New("高风险计划尚未完成独立第二批准")
 	}
 	if plan.State != model.PlanApproved {
 		return model.Task{}, false, errors.New("发布计划尚未批准或已经执行")
@@ -510,6 +520,21 @@ func approvalExceptionFor(
 	return ""
 }
 
+func requiredDualApproval(
+	service model.ServiceDefinition,
+	tenantID string,
+	action model.ActionDefinition,
+	requested bool,
+) bool {
+	if requested {
+		return true
+	}
+	if action.Risk != model.RiskHigh {
+		return false
+	}
+	return approvalExceptionFor(service, tenantID, action.Name, false) == ""
+}
+
 func cloneStringMap(input map[string]string) map[string]string {
 	result := make(map[string]string, len(input))
 	for key, value := range input {
@@ -556,7 +581,15 @@ func (engine *Engine) CloseReleasePlan(
 		return model.ReleasePlan{}, errors.New("计划当前不能收口")
 	}
 	if time.Now().UTC().Before(*plan.ObservationEndsAt) {
-		return model.ReleasePlan{}, engine.blockPlanClosure(ctx, actorHash, plan.ID, "观察窗口尚未结束", nil)
+		reason := "观察窗口尚未结束"
+		audit := model.AuditEntry{
+			ActorHash: actorHash, Event: "plan.close_rejected", Resource: plan.ID, Outcome: "rejected",
+			Detail: map[string]any{"reason": reason, "retryable": true},
+		}
+		if err := engine.store.RecordPlanClosureAudit(ctx, plan.ID, audit); err != nil {
+			return model.ReleasePlan{}, fmt.Errorf("%s，且审计写入失败: %w", reason, err)
+		}
+		return model.ReleasePlan{}, errors.New(reason)
 	}
 	task, err := engine.store.GetTask(ctx, plan.TaskID)
 	if err != nil || task.State != model.TaskSucceeded {

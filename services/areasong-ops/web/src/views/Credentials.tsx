@@ -1,5 +1,6 @@
 import { CheckCircle2, KeyRound, LoaderCircle, RotateCcw, ShieldAlert } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { runAction } from '../action'
 import { formatTime, shortHash } from '../labels'
 import type { CredentialProfile, CredentialRotation } from '../types'
 
@@ -112,7 +113,7 @@ export function Credentials({ profile, loading, onRefresh, onRotate, onClose }: 
                     <input value={closeConfirmation} onChange={(event) => setCloseConfirmation(event.target.value)}
                       autoComplete="off" spellCheck={false} />
                   </label>
-                  <button className="button danger" type="button" onClick={() => void closeRotation()}
+                  <button className="button danger" type="button" onClick={() => runAction(closeRotation())}
                     disabled={closing || closeConfirmation !== '我已撤销旧 GitHub Token'}>
                     {closing ? '验证中' : '验证撤销并收口'}
                   </button>
@@ -123,7 +124,7 @@ export function Credentials({ profile, loading, onRefresh, onRotate, onClose }: 
 
           {profile.canManage && <section className="page-section">
             <div className="section-heading"><h2>轮换新凭据</h2><span>固定目标 · 固定仓库 · Issues 读写</span></div>
-            <form className="credential-form" onSubmit={(event) => void submit(event)} autoComplete="off">
+            <form className="credential-form" onSubmit={(event) => runAction(submit(event))} autoComplete="off">
               <input className="credential-username" type="text" name="username"
                 value="github-alertmanager-token" autoComplete="username" readOnly tabIndex={-1} />
               <label className="credential-field">

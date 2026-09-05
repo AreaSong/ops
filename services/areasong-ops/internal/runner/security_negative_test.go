@@ -42,8 +42,8 @@ func newSecurityEngine(t *testing.T) securityEngineFixture {
 	catalog := &config.Catalog{
 		SchemaVersion: 4,
 		Services: map[string]model.ServiceDefinition{
-			"svc-a": {Name: "svc-a", ObjectID: "service:svc-a", DisplayName: "Tenant A", TenantID: "tenant-a"},
-			"svc-b": {Name: "svc-b", ObjectID: "service:svc-b", DisplayName: "Tenant B", TenantID: "tenant-b"},
+			"svc-a": {Name: "svc-a", ObjectID: "service:svc-a", DisplayName: "Tenant A", TenantID: "tenant-a", Runtime: &model.ComposeServiceRuntime{}},
+			"svc-b": {Name: "svc-b", ObjectID: "service:svc-b", DisplayName: "Tenant B", TenantID: "tenant-b", Runtime: &model.ComposeServiceRuntime{}},
 		},
 		Access: &config.AccessPolicy{
 			Enforced: true, DefaultTenant: "tenant-a",
@@ -69,6 +69,7 @@ func newSecurityEngine(t *testing.T) securityEngineFixture {
 				// tenant boundary. A tenant actor must still not cross it.
 				{ID: "tenant-a-kube-deploy", Subject: actorA, TenantID: "tenant-a", RoleID: "platform-deployer", ObjectIDs: []string{"*"}},
 				{ID: "tenant-a-extension-manage", Subject: actorA, TenantID: "tenant-a", RoleID: "platform-config", ObjectIDs: []string{"extensions"}},
+				{ID: "tenant-a-compose-manage", Subject: actorA, TenantID: "tenant-a", RoleID: "platform-config", ObjectIDs: []string{"service:svc-a"}},
 			},
 		},
 		Fleet: &config.FleetPolicy{Enabled: true, AllowRemoteRunners: true, RequiremTLS: true, HeartbeatTimeoutSeconds: 30},
@@ -99,6 +100,44 @@ func newSecurityEngine(t *testing.T) securityEngineFixture {
 		t.Fatal(err)
 	}
 	return securityEngineFixture{engine: engine, db: database, root: root, actorA: actorA, actorB: actorB}
+}
+
+func TestComposeHTTPRoutesRejectCrossTenantRevisionIDOR(t *testing.T) {
+	fixture := newSecurityEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	revision := model.ComposeRevision{
+		ID: mustUUID(t), IdempotencyKey: mustUUID(t), Service: "svc-b",
+		Digest: "sha256:candidate", ExpectedDigest: "sha256:baseline", Source: "test",
+		Content: "services: {}", Validated: true, State: "approved", ActorHash: strings.Repeat("c", 64),
+		ConfirmationPhrase: "confirm", TenantID: "tenant-b", ServerID: "server-b",
+		ProjectName: "svc-b", PolicyDigest: "sha256:policy", CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	}
+	if _, _, err := fixture.db.SaveComposeRevisionIdempotent(ctx, revision, "sha256:request"); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewServer(fixture.engine, fixture.db)
+	requests := []struct{ method, path, body string }{
+		{http.MethodGet, "/v1/compose/svc-b", ""},
+		{http.MethodPost, "/v1/compose/svc-b/revisions", `{"content":"services: {}","expectedDigest":"sha256:baseline","mode":"propose","idempotencyKey":"11111111-1111-4111-8111-111111111111"}`},
+		{http.MethodPost, "/v1/compose/svc-b/revisions/" + revision.ID + "/approve", `{"digest":"sha256:candidate","confirmation":"confirm"}`},
+		{http.MethodPost, "/v1/compose/svc-b/revisions/" + revision.ID + "/apply", `{"idempotencyKey":"22222222-2222-4222-8222-222222222222"}`},
+		{http.MethodPost, "/v1/compose/svc-b/revisions/" + revision.ID + "/rollback", `{"confirmation":"回滚 Compose 变更 ` + revision.ID + `","idempotencyKey":"33333333-3333-4333-8333-333333333333"}`},
+	}
+	for _, item := range requests {
+		t.Run(item.method+" "+item.path, func(t *testing.T) {
+			request := httptest.NewRequest(item.method, item.path, strings.NewReader(item.body))
+			request.Header.Set("X-AreaSong-Ops-Actor-Hash", fixture.actorA)
+			if item.body != "" {
+				request.Header.Set("Content-Type", "application/json")
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
 }
 
 func TestPlatformPermissionDoesNotGrantGlobalResourceIDOR(t *testing.T) {
@@ -401,6 +440,30 @@ func TestManagedFileRejectsTraversalAndSymlink(t *testing.T) {
 	}
 	if _, _, _, err := fixture.engine.resolveManagedPath("managed", "link.txt"); err == nil {
 		t.Fatal("managed file followed a symlink")
+	}
+}
+
+func TestManagedFileRejectsWritableAllowlistRootAndTarget(t *testing.T) {
+	fixture := newSecurityEngine(t)
+	root := fixture.engine.catalog.Files.Roots["managed"]
+	target := filepath.Join(root, "inside.txt")
+	if err := os.WriteFile(target, []byte("inside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := fixture.engine.resolveManagedPath("managed", "inside.txt"); err == nil {
+		t.Fatal("group-writable managed root was accepted")
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := fixture.engine.resolveManagedPath("managed", "inside.txt"); err == nil {
+		t.Fatal("group-writable managed file was accepted")
 	}
 }
 

@@ -150,3 +150,29 @@ func executeAdapterPhase(
 		AdapterKind: adapterKindService,
 	})
 }
+
+// protectLifecycleFailure restores the public maintenance barrier after a
+// lifecycle phase may have exposed or left traffic in an uncertain state. It
+// is a bounded compensating action, not an automatic retry of the application
+// mutation that failed.
+func (engine *Engine) protectLifecycleFailure(
+	task model.Task,
+	service model.ServiceDefinition,
+	failedPhase, operationDir string,
+) (model.AdapterResult, bool, error) {
+	if service.TrafficPolicy == nil {
+		return model.AdapterResult{}, false, nil
+	}
+	needsBarrier := task.Action == "stop" &&
+		(failedPhase == "drain" || failedPhase == "enter-maintenance" ||
+			failedPhase == "stop" || failedPhase == "health")
+	needsBarrier = needsBarrier || task.Action == "start" &&
+		(failedPhase == "resume-traffic" || failedPhase == "verify")
+	if !needsBarrier {
+		return model.AdapterResult{}, false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := engine.executePhase(ctx, service, "enter-maintenance", "enter-maintenance", operationDir, "", "")
+	return result, true, err
+}

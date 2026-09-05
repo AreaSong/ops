@@ -69,6 +69,7 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("POST /v1/compose/{service}/revisions/{id}/rollback", server.rollbackCompose)
 	mux.HandleFunc("POST /v1/kubernetes/operations", server.kubernetes)
 	mux.HandleFunc("POST /v1/kubernetes/plans", server.createKubernetesPlan)
+	mux.HandleFunc("POST /v1/kubernetes/plans/{id}/rollback", server.createKubernetesRollbackPlan)
 	mux.HandleFunc("GET /v1/kubernetes/plans", server.kubernetesPlans)
 	mux.HandleFunc("GET /v1/kubernetes/plans/{id}", server.kubernetesPlan)
 	mux.HandleFunc("POST /v1/kubernetes/plans/{id}/approve", server.approveKubernetesPlan)
@@ -128,14 +129,12 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/credentials/github-alertmanager", server.credentialProfile)
 	mux.HandleFunc("POST /v1/credentials/github-alertmanager/rotate", server.rotateCredential)
 	mux.HandleFunc("POST /v1/credential-rotations/{id}/close", server.closeCredentialRotation)
-	mux.HandleFunc("POST /v1/previews", server.createPreview)
 	mux.HandleFunc("POST /v1/plans", server.createPlan)
 	mux.HandleFunc("GET /v1/plans", server.plans)
 	mux.HandleFunc("GET /v1/plans/{id}", server.plan)
 	mux.HandleFunc("POST /v1/plans/{id}/approve", server.approvePlan)
 	mux.HandleFunc("POST /v1/plans/{id}/execute", server.executePlan)
 	mux.HandleFunc("POST /v1/plans/{id}/close", server.closePlan)
-	mux.HandleFunc("POST /v1/tasks", server.startTask)
 	mux.HandleFunc("GET /v1/tasks", server.tasks)
 	mux.HandleFunc("GET /v1/tasks/{id}", server.task)
 	mux.HandleFunc("GET /v1/tasks/{id}/events", server.taskEvents)
@@ -896,6 +895,10 @@ func (server *Server) applyCompose(response http.ResponseWriter, request *http.R
 		request.Context(), actor, request.PathValue("service"), request.PathValue("id"), input,
 	)
 	if err != nil {
+		if isAuthorizationError(err) {
+			writeError(response, http.StatusForbidden, err.Error())
+			return
+		}
 		writeJSON(response, http.StatusConflict, map[string]any{
 			"error": redactText(err.Error()), "revision": revision,
 		})
@@ -918,6 +921,10 @@ func (server *Server) rollbackCompose(response http.ResponseWriter, request *htt
 		request.Context(), actor, request.PathValue("service"), request.PathValue("id"), input,
 	)
 	if err != nil {
+		if isAuthorizationError(err) {
+			writeError(response, http.StatusForbidden, err.Error())
+			return
+		}
 		writeJSON(response, http.StatusConflict, map[string]any{
 			"error": redactText(err.Error()), "revision": revision,
 		})
@@ -955,6 +962,30 @@ func (server *Server) createKubernetesPlan(response http.ResponseWriter, request
 		return
 	}
 	plan, created, err := server.engine.CreateKubernetesPlan(request.Context(), actor, input)
+	if err != nil {
+		writeAuthorizationOrError(response, err, http.StatusConflict)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(response, status, plan)
+}
+
+func (server *Server) createKubernetesRollbackPlan(response http.ResponseWriter, request *http.Request) {
+	actor, ok := requireActor(response, request)
+	if !ok {
+		return
+	}
+	var input model.KubernetesRollbackPlanRequest
+	if err := decodeBody(request, &input); err != nil {
+		writeError(response, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan, created, err := server.engine.CreateKubernetesRollbackPlan(
+		request.Context(), actor, request.PathValue("id"), input,
+	)
 	if err != nil {
 		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
@@ -2158,64 +2189,6 @@ func (server *Server) reconcileService(response http.ResponseWriter, request *ht
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"state": state, "actionRequired": state.Drift != nil && state.Drift.Detected})
-}
-
-func (server *Server) createPreview(response http.ResponseWriter, request *http.Request) {
-	actor, ok := requireActor(response, request)
-	if !ok {
-		return
-	}
-	var input model.PreviewRequest
-	if err := decodeBody(request, &input); err != nil {
-		writeError(response, http.StatusBadRequest, err.Error())
-		return
-	}
-	if service, exists := server.engine.catalog.Object(input.Service); exists {
-		if err := server.engine.authorize(request.Context(), actor, permissionForAction(input.Action), service.ObjectID); err != nil {
-			writeError(response, http.StatusForbidden, err.Error())
-			return
-		}
-	}
-	preview, err := server.engine.CreatePreview(request.Context(), actor, input)
-	if err != nil {
-		writeError(response, http.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(response, http.StatusCreated, preview)
-}
-
-func (server *Server) startTask(response http.ResponseWriter, request *http.Request) {
-	actor, ok := requireActor(response, request)
-	if !ok {
-		return
-	}
-	var input model.StartTaskRequest
-	if err := decodeBody(request, &input); err != nil {
-		writeError(response, http.StatusBadRequest, err.Error())
-		return
-	}
-	if preview, err := server.store.GetPreview(request.Context(), input.PreviewID); err == nil {
-		if service, exists := server.engine.catalog.Object(preview.Service); exists {
-			if err := server.engine.authorize(request.Context(), actor, permissionForAction(preview.Action), service.ObjectID); err != nil {
-				writeError(response, http.StatusForbidden, err.Error())
-				return
-			}
-		}
-	}
-	task, created, err := server.engine.StartTask(request.Context(), actor, input)
-	if err != nil {
-		status := http.StatusConflict
-		if errors.Is(err, store.ErrNotFound) {
-			status = http.StatusNotFound
-		}
-		writeError(response, status, err.Error())
-		return
-	}
-	status := http.StatusOK
-	if created {
-		status = http.StatusAccepted
-	}
-	writeJSON(response, status, task)
 }
 
 func (server *Server) tasks(response http.ResponseWriter, request *http.Request) {

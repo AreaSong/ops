@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -142,6 +143,9 @@ func (engine *Engine) resolveManagedPath(
 	if err := rejectManagedSymlinks(root, target); err != nil {
 		return "", "", "", err
 	}
+	if err := rejectManagedInsecurePath(root, target); err != nil {
+		return "", "", "", err
+	}
 	return root, target, cleanPath, nil
 }
 
@@ -183,6 +187,42 @@ func rejectManagedSymlinks(root, target string) error {
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return errors.New("受管文件路径包含符号链接")
+		}
+	}
+	return nil
+}
+
+func rejectManagedInsecurePath(root, target string) error {
+	// Development runners may use user-owned temporary roots. Production
+	// runners run as root, so enforce ownership at the point of use while
+	// applying the mode restriction in every environment.
+	rootInfo, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if rootInfo.Mode().Perm()&0o022 != 0 {
+		return errors.New("文件白名单根目录不能由 group/other 写入")
+	}
+	if os.Geteuid() == 0 {
+		stat, ok := rootInfo.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != 0 {
+			return errors.New("文件白名单根目录必须由 root 拥有")
+		}
+	}
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return errors.New("受管文件不能由 group/other 写入")
+	}
+	if os.Geteuid() == 0 {
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != 0 {
+			return errors.New("受管文件必须由 root 拥有")
 		}
 	}
 	return nil

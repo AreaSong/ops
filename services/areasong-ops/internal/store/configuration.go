@@ -49,11 +49,15 @@ func (store *Store) SaveKubernetesOperation(ctx context.Context, operation model
 	if err != nil {
 		return err
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	resourcesJSON, err := kubernetesResourcesJSON(operation.RolloutResources)
+	if err != nil {
+		return err
+	}
+	_, err = store.db.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json,phase,rollout_state,rollout_resources_json,rollback_of_plan_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		operation.ID, actor, operation.TenantID, operation.Target.Cluster, operation.Target.Context, operation.Target.Namespace,
 		operation.Action, operation.ManifestDigest, operation.DryRun, operation.State, output, operation.Error,
 		timeText(operation.CreatedAt), nullableTimeText(operation.FinishedAt), operation.IdempotencyKey, operation.RequestDigest,
-		allowlistJSON, resourceKindsJSON)
+		allowlistJSON, resourceKindsJSON, operation.Phase, operation.RolloutState, resourcesJSON, operation.RollbackOfPlanID)
 	return err
 }
 
@@ -86,6 +90,10 @@ func (store *Store) BeginKubernetesOperation(
 	if err != nil {
 		return model.KubernetesOperation{}, "", false, err
 	}
+	resourcesJSON, err := kubernetesResourcesJSON(operation.RolloutResources)
+	if err != nil {
+		return model.KubernetesOperation{}, "", false, err
+	}
 
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -112,11 +120,11 @@ func (store *Store) BeginKubernetesOperation(
 		return model.KubernetesOperation{}, "", false, err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO kubernetes_operations(id,actor_hash,tenant_id,cluster,context_name,namespace,action,manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,allowlist_json,resource_kinds_json,phase,rollout_state,rollout_resources_json,rollback_of_plan_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		operation.ID, actor, operation.TenantID, operation.Target.Cluster, operation.Target.Context, operation.Target.Namespace,
 		operation.Action, operation.ManifestDigest, operation.DryRun, operation.State, "", operation.Error,
 		timeText(operation.CreatedAt), nullableTimeText(operation.FinishedAt), operation.IdempotencyKey, requestDigest,
-		allowlistJSON, resourceKindsJSON)
+		allowlistJSON, resourceKindsJSON, operation.Phase, operation.RolloutState, resourcesJSON, operation.RollbackOfPlanID)
 	if err != nil {
 		return model.KubernetesOperation{}, "", false, err
 	}
@@ -141,6 +149,38 @@ func (store *Store) UpdateKubernetesOperation(
 	}
 	result, err := store.db.ExecContext(ctx, `UPDATE kubernetes_operations SET state=?,output=?,error=?,finished_at=? WHERE id=?`,
 		state, output, operationError, finished, id)
+	if err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return err
+	} else if affected != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateKubernetesOperationRollout records the explicit rollout phase while
+// keeping the operation in the same durable state machine as apply/rollback.
+func (store *Store) UpdateKubernetesOperationRollout(
+	ctx context.Context,
+	id, state, phase, rolloutState string,
+	resources []string,
+	output, operationError string,
+) error {
+	if id == "" || state == "" || phase == "" || rolloutState == "" {
+		return errors.New("Kubernetes rollout 状态信息不完整")
+	}
+	resourcesJSON, err := kubernetesResourcesJSON(resources)
+	if err != nil {
+		return err
+	}
+	var finished any
+	if state == "succeeded" || state == "failed" || state == "needs_attention" {
+		finished = timeText(store.now())
+	}
+	result, err := store.db.ExecContext(ctx, `UPDATE kubernetes_operations SET state=?,phase=?,rollout_state=?,rollout_resources_json=?,output=?,error=?,finished_at=? WHERE id=?`,
+		state, phase, rolloutState, resourcesJSON, output, operationError, finished, id)
 	if err != nil {
 		return err
 	}
@@ -231,7 +271,7 @@ func (store *Store) ListKubernetesOperationsForTenant(
 
 const kubernetesOperationSelect = `SELECT id,actor_hash,tenant_id,cluster,context_name,namespace,action,
 		manifest_digest,dry_run,state,output,error,created_at,finished_at,idempotency_key,request_digest,
-	allowlist_json,resource_kinds_json
+	allowlist_json,resource_kinds_json,phase,rollout_state,rollout_resources_json,rollback_of_plan_id
 	FROM kubernetes_operations`
 
 type kubernetesRowScanner interface {
@@ -244,13 +284,14 @@ func scanKubernetesOperation(
 	actor, output *string,
 ) error {
 	var tenantID, cluster, contextName, namespace, action, createdAt, allowlistJSON, resourceKindsJSON string
+	var phase, rolloutState, rolloutResourcesJSON, rollbackOfPlanID string
 	var dryRun int
 	var finishedAt sql.NullString
 	if err := scanner.Scan(
 		&operation.ID, actor, &tenantID, &cluster, &contextName, &namespace, &action,
 		&operation.ManifestDigest, &dryRun, &operation.State, output, &operation.Error,
 		&createdAt, &finishedAt, &operation.IdempotencyKey, &operation.RequestDigest,
-		&allowlistJSON, &resourceKindsJSON,
+		&allowlistJSON, &resourceKindsJSON, &phase, &rolloutState, &rolloutResourcesJSON, &rollbackOfPlanID,
 	); err != nil {
 		return err
 	}
@@ -266,7 +307,15 @@ func scanKubernetesOperation(
 			return err
 		}
 	}
+	if rolloutResourcesJSON != "" {
+		if err := json.Unmarshal([]byte(rolloutResourcesJSON), &operation.RolloutResources); err != nil {
+			return err
+		}
+	}
 	operation.Action = action
+	operation.Phase = phase
+	operation.RolloutState = rolloutState
+	operation.RollbackOfPlanID = rollbackOfPlanID
 	operation.DryRun = dryRun != 0
 	var err error
 	operation.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
@@ -275,6 +324,13 @@ func scanKubernetesOperation(
 	}
 	operation.FinishedAt, err = nullableTime(finishedAt)
 	return err
+}
+
+func kubernetesResourcesJSON(resources []string) (string, error) {
+	if resources == nil {
+		resources = []string{}
+	}
+	return encodeJSON(resources)
 }
 
 func kubernetesTargetJSON(target model.KubernetesTarget) (string, string, error) {

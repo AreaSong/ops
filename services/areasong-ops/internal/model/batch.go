@@ -57,6 +57,9 @@ type BatchOperation struct {
 	Items                      []BatchItem         `json:"items"`
 	ApprovedByHash             string              `json:"approvedByHash,omitempty"`
 	ApprovedAt                 *time.Time          `json:"approvedAt,omitempty"`
+	RequiresDualApproval       bool                `json:"requiresDualApproval,omitempty"`
+	SecondApprovedByHash       string              `json:"secondApprovedByHash,omitempty"`
+	SecondApprovedAt           *time.Time          `json:"secondApprovedAt,omitempty"`
 	ExecutedByHash             string              `json:"executedByHash,omitempty"`
 	ExecutedAt                 *time.Time          `json:"executedAt,omitempty"`
 	StartedAt                  *time.Time          `json:"startedAt,omitempty"`

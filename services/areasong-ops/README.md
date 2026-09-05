@@ -29,7 +29,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 中高风险生产变更执行前必须通过告警门禁。Runner 只按声明创建最长 4 小时的精确维护静默，操作者不能输入 matcher、告警名或时长。
 - 任务失败时提前解除维护静默；任务成功时保留到观察期结束。收口先解除静默，再复核包括被其他静默覆盖的活动阻断告警和运行身份。
 - `ops.areasong.top` 是控制面自身域名，永远不能出现在任何 `trafficPolicy.hostname`，避免控制面被自己的流量开关切断。
-- 自动更新启用时强制 `requireApproval`、`requireBackup` 和 `rollbackOnAlert` 同时为真；扩展、终端、文件、Runner 更新等能力继续默认关闭。
+- 自动更新维护窗口使用显式 IANA `maintenanceTimezone`（缺省为 `UTC`），启用时强制 `requireApproval`、`requireBackup` 和 `rollbackOnAlert` 同时为真；扩展、终端、文件、Runner 更新等能力继续默认关闭。
 - 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
 - AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点。Runner 校验声明的全部必需产物角色、路径、大小、时间和 SHA-256，并把恢复点绑定到批准时的变更前身份；每个变更阶段执行前都会重新核验。
 - 有效恢复点和仍可回滚任务的操作目录不会被定期清理；恢复点按服务声明的 1 小时至 7 天窗口过期，过期后才重新进入普通产物留存清理范围。
@@ -56,7 +56,6 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 ### 生命周期动作
 
-当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
 当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。生产 C2 仅对 `service:areaforge` 的 `start`/`stop` 允许同一操作者审批自己的计划，且必须在签名摘要和审计中标记 `c2_lifecycle_single_actor`；其他高风险操作仍保持独立双人审批。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
 
 ### 高风险边界
@@ -94,13 +93,16 @@ OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 本地要逐页验收默认关闭的终端、受管文件、扩展、Runner 单机/Fleet 更新，可在开发 Runner
 启动时显式设置 `OPS_DEV_ENABLE_FEATURES=all`。该开关只存在于 `cmd/dev-runner`
 的开发入口，会把文件根目录和 Runner 制品目录重映射到临时目录，并保留只读终端
-和人工批准门禁；Fleet 页面使用开发态 v2 Runner 身份，不会建立生产 mTLS 通道或执行
+和人工批准门禁；扩展上传仍强制签名，并额外信任 RFC 8032 的公开测试向量发布者
+`AreaSong Development`；Fleet 页面使用开发态 v2 Runner 身份，不会建立生产 mTLS 通道或执行
 真实 Runner 更新。生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
 如需在本地演练 Break-glass Shell，再额外设置 `OPS_DEV_ENABLE_BREAK_GLASS=1`；该
 开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
 需要验收平台级写能力时，必须再显式设置 `OPS_DEV_ADMIN_EMAIL=<开发邮箱>`；该变量
 只由 `cmd/dev-runner` 读取，并只给对应开发身份临时加入 `platform-admin`，生产 Runner
-和生产访问策略均不识别此开关。
+和生产访问策略均不识别此开关。需要验收三方或四方独立批准链路时，使用
+`OPS_DEV_ADMIN_EMAILS=<邮箱1>,<邮箱2>,<邮箱3>,<邮箱4>` 显式登记多个开发身份；各身份仍需
+通过独立 Web 会话发起请求，不能由页面切换或请求参数伪造。
 
 ## 构建
 
@@ -152,3 +154,5 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 - 生产恢复回滚不是普通版本回滚：停止变更、保留证据并重新走双确认和恢复点核对，不能用旧二进制或批量任务代替。
 
 详细分阶段检查见 [deploy/deploy-checklist.md](deploy/deploy-checklist.md)，schema/生命周期/fleet/Compose/Kubernetes 见 [docs/control-plane-schema.md](docs/control-plane-schema.md)，Access 见 [deploy/cloudflare-access.md](deploy/cloudflare-access.md)。
+
+签名发布的 manifest 使用 schema 2：Web 必须绑定 revision 与不可变镜像 digest，Runner 归档名必须绑定同一 revision，`sha256` 必须是规范的 `sha256:<64>`；配套 checksum 只能引用归档 basename。发布端和下载端都必须运行 `deploy/verify-release-assets.sh`，拒绝 CI 绝对路径、身份漂移、文件名漂移、摘要不一致以及不属于本仓库发布工作流的 Runner/Web 签名。

@@ -188,6 +188,38 @@ func (engine *Engine) verifyRecoveryPoint(
 	return engine.validateRecoveryArtifacts(point.Evidence, point.RequiredArtifactRoles)
 }
 
+// verifyComposeRecoveryPoint reuses the signed recovery evidence while keeping
+// the Compose file digest and the service runtime identity as separate gates.
+// A Compose proposal may only bind a recently verified point for the exact
+// tenant/server and the currently observed application identity.
+func (engine *Engine) verifyComposeRecoveryPoint(
+	ctx context.Context,
+	service model.ServiceDefinition,
+	pointID string,
+	currentIdentity map[string]any,
+) (model.RecoveryPoint, error) {
+	point, err := engine.store.GetRecoveryPoint(ctx, pointID)
+	if err != nil {
+		return model.RecoveryPoint{}, fmt.Errorf("读取 Compose 恢复点: %w", err)
+	}
+	if point.ExpectedBefore == nil {
+		return model.RecoveryPoint{}, errors.New("Compose 恢复点缺少变更前身份快照")
+	}
+	synthetic := model.Task{ID: point.TaskID, Service: service.Name, Snapshot: cloneMap(point.ExpectedBefore)}
+	if err := engine.verifyRecoveryPoint(ctx, synthetic, service, point.ID); err != nil {
+		return model.RecoveryPoint{}, err
+	}
+	now := time.Now().UTC()
+	if point.VerifiedAt == nil || point.VerifiedAt.Before(now.Add(-30*time.Minute)) ||
+		point.VerifiedAt.After(now.Add(time.Minute)) {
+		return model.RecoveryPoint{}, errors.New("Compose 恢复点不是最近 30 分钟内验证的新鲜恢复点")
+	}
+	if !sameRuntimeIdentity(point.ExpectedBefore, currentIdentity) {
+		return model.RecoveryPoint{}, errors.New("Compose 恢复点未绑定当前运行身份")
+	}
+	return point, nil
+}
+
 // verifyRestoreTaskBinding validates a production/isolated restore task against
 // the point selected during approval. Restore points are created by an earlier
 // backup task, so the generic update gate (which requires point.TaskID to equal

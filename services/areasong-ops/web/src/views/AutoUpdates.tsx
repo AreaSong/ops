@@ -1,5 +1,6 @@
 import { CalendarClock, LoaderCircle, PlayCircle, RefreshCw, Save, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { runAction } from '../action'
 import { formatTime, shortHash } from '../labels'
 import type { AutoUpdateChannel, AutoUpdateEvaluation, AutoUpdatePolicyInput, AutoUpdatePolicyView } from '../types'
 
@@ -29,6 +30,7 @@ function draftFromPolicy(policy: AutoUpdatePolicyView): AutoUpdatePolicyInput {
     enabled: policy.enabled,
     channel,
     maintenanceWindow: policy.maintenanceWindow ?? '',
+    maintenanceTimezone: policy.maintenanceTimezone || 'UTC',
     canaryPercent: policy.canaryPercent ?? 0,
     maxUnavailable: policy.maxUnavailable ?? 0,
     requireBackup: policy.requireBackup,
@@ -87,7 +89,7 @@ export function AutoUpdates({
       <header className="page-header">
         <div><span className="eyebrow">自动发现只生成计划</span><h1>自动更新</h1></div>
         <div className="page-header-actions">
-          <button className="button secondary" type="button" onClick={() => void evaluate()} disabled={busy === 'auto-updates-evaluate'}>
+          <button className="button secondary" type="button" onClick={() => runAction(evaluate())} disabled={busy === 'auto-updates-evaluate'}>
             {busy === 'auto-updates-evaluate' ? <LoaderCircle className="spin" size={15} /> : <PlayCircle size={15} />}评估现在的策略
           </button>
           <button className="icon-button bordered" type="button" onClick={onRefresh} title="刷新自动更新策略" disabled={loading}>
@@ -106,7 +108,7 @@ export function AutoUpdates({
           {policies.map((policy) => {
             const draft = drafts[policy.service] ?? draftFromPolicy(policy)
             const saveBusy = busy === `auto-updates:${policy.service}`
-            return <article className="automatic-task-row" key={policy.service}>
+            return <article className="automatic-task-row auto-update-policy-row" key={policy.service}>
               <div className="automatic-task-main">
                 <span className="automatic-task-icon"><CalendarClock size={18} aria-hidden="true" /></span>
                 <span><strong>{policy.service}</strong><small>{policy.objectId} · {policy.tenantId}</small></span>
@@ -114,6 +116,7 @@ export function AutoUpdates({
               <div className="extension-policy-grid">
                 <label><span>通道</span><select value={draft.channel} onChange={(event) => updateDraft(policy.service, { channel: event.target.value as AutoUpdateChannel })}>{channels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}</select></label>
                 <label><span>维护窗口</span><input value={draft.maintenanceWindow ?? ''} placeholder="02:00-04:00" onChange={(event) => updateDraft(policy.service, { maintenanceWindow: event.target.value })} /></label>
+                <label><span>窗口时区</span><input list="auto-update-timezones" value={draft.maintenanceTimezone} placeholder="UTC" onChange={(event) => updateDraft(policy.service, { maintenanceTimezone: event.target.value })} /></label>
                 <label><span>观察秒数</span><input type="number" min={60} max={86400} value={draft.observationSeconds} onChange={(event) => updateDraft(policy.service, { observationSeconds: Number(event.target.value) || 0 })} /></label>
                 <label><span>Canary %</span><input type="number" min={0} max={100} value={draft.canaryPercent} onChange={(event) => updateDraft(policy.service, { canaryPercent: Number(event.target.value) || 0 })} /></label>
                 <label><span>最大不可用 %</span><input type="number" min={0} max={100} value={draft.maxUnavailable} onChange={(event) => updateDraft(policy.service, { maxUnavailable: Number(event.target.value) || 0 })} /></label>
@@ -127,7 +130,7 @@ export function AutoUpdates({
                 <div><dt>最近计划</dt><dd><code>{shortHash(policy.lastPlanId)}</code></dd></div>
                 <div><dt>最近错误</dt><dd>{policy.lastError || '—'}</dd></div>
               </div>
-              <button className="button secondary automatic-task-action" type="button" disabled={saveBusy} onClick={() => void save(policy.service)}>
+              <button className="button secondary automatic-task-action" type="button" disabled={saveBusy} onClick={() => runAction(save(policy.service))}>
                 {saveBusy ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}保存策略
               </button>
             </article>
@@ -146,7 +149,7 @@ export function AutoUpdates({
       </section>}
 
       {available && <div className="recovery-warning"><ShieldCheck size={15} />自动更新只创建普通发布计划，不会绕过批准、备份或观察门禁。</div>}
+      <datalist id="auto-update-timezones"><option value="UTC" /><option value="Asia/Shanghai" /><option value="America/Los_Angeles" /></datalist>
     </div>
   )
 }
-

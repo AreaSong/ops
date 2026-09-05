@@ -33,6 +33,14 @@ type Controller interface {
 	WaitIdentity(context.Context, string, string, string, string, time.Duration) error
 }
 
+// identitySetter is an optional hook used only by isolated development
+// controllers. Production systemd controllers prove the identity by reading
+// the restarted process; a local controller can persist the simulated runtime
+// identity before the same health check without changing the production path.
+type identitySetter interface {
+	SetIdentity(string, string) error
+}
+
 type Executor struct {
 	Store      *store.Store
 	StateRoot  string
@@ -213,6 +221,11 @@ func (executor *Executor) restartAndVerify(
 	if err := executor.Store.UpdateRunnerUpdatePhase(ctx, update.ID, "restarting", rollbackPath, update.FencingToken); err != nil {
 		return executor.rollback(ctx, update, rollbackPath, err)
 	}
+	if setter, ok := executor.Controller.(identitySetter); ok {
+		if err := setter.SetIdentity(update.TargetVersion, update.ArtifactRevision); err != nil {
+			return executor.rollback(ctx, update, rollbackPath, err)
+		}
+	}
 	if err := executor.Controller.Restart(ctx, update.UnitName); err != nil {
 		return executor.rollback(ctx, update, rollbackPath, err)
 	}
@@ -271,6 +284,11 @@ func (executor *Executor) resumeRollback(
 }
 
 func (executor *Executor) verifyPrevious(ctx context.Context, update model.RunnerUpdate) error {
+	if setter, ok := executor.Controller.(identitySetter); ok {
+		if err := setter.SetIdentity(update.PreviousVersion, update.PreviousRevision); err != nil {
+			return err
+		}
+	}
 	timeout := time.Duration(update.HealthTimeoutSeconds) * time.Second
 	if err := executor.Controller.WaitIdentity(ctx, update.UnitName, update.BinaryPath, update.PreviousVersion, update.PreviousRevision, timeout); err != nil {
 		return err

@@ -20,6 +20,7 @@ import type {
   CredentialProfile,
   CredentialRotation,
   ExtensionPlan,
+  ExtensionManifest,
   ExtensionPolicyView,
   Fleet,
   FleetRunnerUpdatePlan,
@@ -105,6 +106,7 @@ async function loadFeature<T>(
 export default function App() {
   const api = useRef(new OpsAPI()).current
   const [email, setEmail] = useState('')
+  const [environment, setEnvironment] = useState<'production' | 'development'>('production')
   const [links, setLinks] = useState<NavigationLinks>({})
   const [view, setView] = useState<ViewName>('overview')
   const [services, setServices] = useState<ServiceView[]>([])
@@ -124,6 +126,7 @@ export default function App() {
   const [discoveries, setDiscoveries] = useState<Record<string, ReleaseDiscovery>>({})
   const [plans, setPlans] = useState<ReleasePlan[]>([])
   const [selectedService, setSelectedService] = useState('areaforge')
+  const [selectedComposeService, setSelectedComposeService] = useState('')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [taskEvents, setTaskEvents] = useState<OpsEvent[]>([])
   const [taskEventsLoading, setTaskEventsLoading] = useState(false)
@@ -218,6 +221,9 @@ export default function App() {
     const nextTasks = mergeTasks(taskData.items, previousTasks)
     const nextAudit = mergeAudit(auditData.items, previousAudit)
     setServices(serviceData)
+    setSelectedComposeService((current) => serviceData.some((service) => service.name === current && service.managedCompose)
+      ? current
+      : serviceData.find((service) => service.managedCompose)?.name ?? '')
     setAutomaticTasks(automaticTaskData)
     setAlerts(alertData.items)
     setAlertsError(alertData.error)
@@ -263,13 +269,13 @@ export default function App() {
   ), [api])
 
   const refreshCompose = useCallback(() => {
-    if (!selectedService) return Promise.resolve()
+    if (!selectedComposeService) return Promise.resolve()
     return loadFeature(
-      () => api.compose(selectedService),
-      (value) => setComposeByService((current) => ({ ...current, [selectedService]: value })),
+      () => api.compose(selectedComposeService),
+      (value) => setComposeByService((current) => ({ ...current, [selectedComposeService]: value })),
       setComposeLoading, setComposeAvailable, setComposeError, 'Compose 配置读取失败',
     )
-  }, [api, selectedService])
+  }, [api, selectedComposeService])
 
   const refreshKubernetes = useCallback(() => loadFeature(
     () => api.kubernetes(),
@@ -342,6 +348,7 @@ export default function App() {
         const session = await api.session()
         if (!active) return
         setEmail(session.email)
+        setEnvironment(session.environment)
         setLinks(session.links ?? {})
         await refresh()
       } catch (reason) {
@@ -728,8 +735,8 @@ export default function App() {
     setBusyAction('compose')
     setError('')
     try {
-      const updated = await api.editCompose(selectedService, body)
-      setComposeByService((current) => ({ ...current, [selectedService]: updated }))
+      const updated = await api.editCompose(selectedComposeService, body)
+      setComposeByService((current) => ({ ...current, [selectedComposeService]: updated }))
     } catch (reasonValue) {
       setError(errorMessage(reasonValue, 'Compose 配置提交失败'))
     } finally {
@@ -836,6 +843,20 @@ export default function App() {
     }
   }
 
+	async function createKubernetesRollbackPlan(plan: KubernetesPlan, manifest: string) {
+		setBusyAction(`kubernetes-rollback:${plan.id}`)
+		setError('')
+		try {
+			await api.createKubernetesRollbackPlan(plan, manifest)
+			await refreshKubernetes()
+		} catch (reasonValue) {
+			setError(errorMessage(reasonValue, 'Kubernetes 回滚计划创建失败'))
+			throw reasonValue
+		} finally {
+			setBusyAction('')
+		}
+	}
+
   async function createExtensionPlan(body: Parameters<OpsAPI['createExtensionPlan']>[0]) {
     setBusyAction('extension-plan')
     setError('')
@@ -844,6 +865,20 @@ export default function App() {
       await refreshExtensions()
     } catch (reasonValue) {
       setError(errorMessage(reasonValue, '扩展计划创建失败'))
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function uploadExtension(manifest: ExtensionManifest, content: string) {
+    setBusyAction('extension-upload')
+    setError('')
+    try {
+      await api.uploadExtension(manifest, content)
+      await refreshExtensions()
+    } catch (reasonValue) {
+      setError(errorMessage(reasonValue, '扩展包上传失败'))
+      throw reasonValue
     } finally {
       setBusyAction('')
     }
@@ -1033,18 +1068,6 @@ export default function App() {
       setError(errorMessage(reasonValue, '文件提案回滚失败'))
       await refreshFiles().catch(() => undefined)
       throw reasonValue
-    } finally {
-      setBusyAction('')
-    }
-  }
-
-  async function saveAccess(body: AccessControlUpdate) {
-    setBusyAction('access')
-    setError('')
-    try {
-      setAccess(await api.updateAccess(body))
-    } catch (reasonValue) {
-      setError(errorMessage(reasonValue, '访问策略保存失败'))
     } finally {
       setBusyAction('')
     }
@@ -1259,7 +1282,7 @@ export default function App() {
   }
 
   return (
-    <Shell view={view} onView={navigateTo} email={email} connected={connected} links={links}>
+    <Shell view={view} onView={navigateTo} email={email} environment={environment} connected={connected} links={links}>
       {error && (
         <div className="toast error-toast" role="alert">
           <AlertCircle size={17} aria-hidden="true" /><span>{error}</span>
@@ -1292,20 +1315,22 @@ export default function App() {
           onAction={runRecoveryAction} onRestore={restoreRecoveryPoint} />
       )}
       {view === 'configuration' && (
-        <Configuration services={services} selectedService={selectedService}
-          compose={composeByService[selectedService] ?? null} composeLoading={composeLoading}
+        <Configuration services={services} selectedService={selectedComposeService}
+          compose={composeByService[selectedComposeService] ?? null} composeLoading={composeLoading}
           composeAvailable={composeAvailable} composeError={composeError}
           kubernetes={kubernetes} kubernetesLoading={kubernetesLoading}
           kubernetesAvailable={kubernetesAvailable} kubernetesError={kubernetesError}
           extensions={extensions} extensionsLoading={extensionsLoading}
           extensionsAvailable={extensionsAvailable} extensionsError={extensionsError}
-          busy={busyAction} onService={setSelectedService} onComposeRefresh={() => void refreshCompose()}
+          busy={busyAction} onService={setSelectedComposeService} onComposeRefresh={() => void refreshCompose()}
           onSaveCompose={saveCompose} onComposeApprove={approveComposeRevision}
           onComposeApply={applyComposeRevision} onComposeRollback={rollbackComposeRevision}
           onKubernetesRefresh={() => void refreshKubernetes()}
           onKubernetesOperation={createKubernetesOperation} onKubernetesPlan={createKubernetesPlan}
           onKubernetesApprove={approveKubernetesPlan} onKubernetesExecute={executeKubernetesPlan}
+		  onKubernetesRollbackPlan={createKubernetesRollbackPlan}
           onExtensionsRefresh={() => void refreshExtensions()}
+          onExtensionUpload={uploadExtension}
           onExtensionPlan={createExtensionPlan} onExtensionApprove={approveExtensionPlan}
           onExtensionExecute={executeExtensionPlan} />
       )}
@@ -1343,7 +1368,7 @@ export default function App() {
       )}
       {view === 'access' && (
         <AccessControl access={access} loading={accessLoading} available={accessAvailable} error={accessError}
-          busy={busyAction} onRefresh={() => void refreshAccess()} onSave={saveAccess}
+          busy={busyAction} onRefresh={() => void refreshAccess()}
           onCreateChange={createAccessChange} onApproveChange={approveAccessChange}
           onApplyChange={applyAccessChange} onRejectChange={rejectAccessChange} />
       )}

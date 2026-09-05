@@ -865,4 +865,51 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY(item_id,assignment_generation)
 	 );`,
+	`ALTER TABLE kubernetes_plans ADD COLUMN rollback_of_plan_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_plans ADD COLUMN source_manifest_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_operations ADD COLUMN phase TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_operations ADD COLUMN rollout_state TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_operations ADD COLUMN rollout_resources_json TEXT NOT NULL DEFAULT '[]';
+	 ALTER TABLE kubernetes_operations ADD COLUMN rollback_of_plan_id TEXT NOT NULL DEFAULT '';
+	 CREATE INDEX idx_kubernetes_operations_rollout_state ON kubernetes_operations(rollout_state, created_at DESC);`,
+	`ALTER TABLE access_changes ADD COLUMN applied_by_hash TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE access_changes ADD COLUMN applied_policy_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE access_changes ADD COLUMN applied_policy_version INTEGER NOT NULL DEFAULT 0;
+	 CREATE INDEX idx_access_changes_applied_by ON access_changes(applied_by_hash, state);`,
+	`ALTER TABLE batch_jobs ADD COLUMN requires_dual_approval INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE batch_jobs ADD COLUMN second_approved_by_hash TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE batch_jobs ADD COLUMN second_approved_at TEXT;
+	 ALTER TABLE batch_jobs ADD COLUMN confirmation_phrase TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE compose_revisions ADD COLUMN tenant_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN server_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN project_name TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN baseline_semantic_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN candidate_semantic_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN baseline_effective_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN candidate_effective_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN env_file_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN semantic_diff_json TEXT NOT NULL DEFAULT '[]';
+	 ALTER TABLE compose_revisions ADD COLUMN policy_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_expected_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_binding_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_evidence_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_verified_at TEXT;
+	 ALTER TABLE compose_revisions ADD COLUMN recovery_point_recoverable_until TEXT;
+	 ALTER TABLE compose_revisions ADD COLUMN alert_evidence_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN blocking_alert_fingerprints_json TEXT NOT NULL DEFAULT '[]';
+	 ALTER TABLE compose_revisions ADD COLUMN alert_checked_at TEXT;
+	 ALTER TABLE compose_revisions ADD COLUMN expires_at TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN expected_runtime_identity_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN expected_runtime_image TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN expected_runtime_image_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN candidate_image TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN candidate_image_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN candidate_image_id TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN applied_runtime_identity_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN rolled_back_by_hash TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN rollback_started_at TEXT;
+	 ALTER TABLE compose_revisions ADD COLUMN rollback_finished_at TEXT;
+	 CREATE INDEX idx_compose_revision_expiry ON compose_revisions(state,expires_at);
+	 CREATE INDEX idx_compose_revision_binding ON compose_revisions(service,tenant_id,server_id,recovery_point_id);`,
 }

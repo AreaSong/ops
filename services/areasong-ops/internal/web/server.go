@@ -108,13 +108,17 @@ func (server *Server) session(response http.ResponseWriter, request *http.Reques
 		writeJSON(response, http.StatusInternalServerError, map[string]any{"error": "无法创建 CSRF 令牌"})
 		return
 	}
+	environment := "production"
+	if server.development {
+		environment = "development"
+	}
 	http.SetCookie(response, &http.Cookie{
 		Name: csrfCookie, Value: token, Path: "/", Secure: !server.development,
 		HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 1800,
 	})
 	writeJSON(response, http.StatusOK, map[string]any{
 		"email": session.Email, "tenantId": session.TenantID,
-		"csrfToken": token, "links": server.externalLinks,
+		"csrfToken": token, "links": server.externalLinks, "environment": environment,
 	})
 }
 

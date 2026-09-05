@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -30,10 +31,17 @@ func testTrafficPolicy() *model.TrafficPolicy {
 func testTrafficService() model.ServiceDefinition {
 	return model.ServiceDefinition{
 		Name:          "demo",
+		ObjectID:      "service:demo",
+		TenantID:      "default",
 		ServerID:      "server-demo",
 		Metadata:      model.ObjectMetadata{Type: "service", Lifecycle: "active"},
 		Adapter:       "/usr/local/libexec/areasong-ops/adapters/compose-service.sh",
 		TrafficPolicy: testTrafficPolicy(),
+		AlertPolicy: model.AlertPolicyDefinition{
+			Matchers:          map[string]string{"service": "demo"},
+			BlockingAlerts:    []string{"AppHttpProbeFailed"},
+			MaintenanceAlerts: []string{"AppHttpProbeFailed"},
+		},
 		Actions: map[string]model.ActionDefinition{
 			"inspect": {
 				Name: "inspect", DisplayName: "Inspect", Enabled: true,
@@ -41,6 +49,115 @@ func testTrafficService() model.ServiceDefinition {
 			},
 		},
 	}
+}
+
+func TestLifecycleFailureRestoresMaintenanceBarrier(t *testing.T) {
+	cases := []struct {
+		name       string
+		action     string
+		failAction string
+		failPhase  string
+		failKind   string
+		failMatch  int
+	}{
+		{name: "stop drain failure", action: "stop", failAction: "drain", failPhase: "drain", failKind: adapterKindTraffic, failMatch: 1},
+		{name: "start final health failure", action: "start", failAction: "inspect", failPhase: "inspect", failKind: adapterKindService, failMatch: 3},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			executor := &lifecycleFaultExecutor{
+				failAction: test.failAction, failPhase: test.failPhase,
+				failKind: test.failKind, failMatch: test.failMatch,
+			}
+			engine, database := testEngine(t, executor)
+			service := testTrafficService()
+			service.ServerID = ""
+			engine.catalog.Services[service.Name] = service
+			creator := actorHash()
+			plan, err := engine.CreateReleasePlan(context.Background(), creator, model.PreviewRequest{
+				Service: service.Name, Action: test.action, IdempotencyKey: mustUUID(t),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			approver := creator
+			if plan.Risk == model.RiskHigh {
+				approver = strings.Repeat("b", 64)
+			}
+			approved, err := engine.ApproveReleasePlan(context.Background(), approver, plan.ID, model.ApprovePlanRequest{
+				Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.RequiresDualApproval {
+				approved, err = engine.ApproveReleasePlan(context.Background(), strings.Repeat("c", 64), plan.ID, model.ApprovePlanRequest{
+					Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			task, created, err := engine.ExecuteReleasePlan(context.Background(), creator, approved.ID, model.ExecutePlanRequest{
+				IdempotencyKey: mustUUID(t),
+			})
+			if err != nil || !created {
+				t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+			}
+			engine.Wait()
+			finished, err := database.GetTask(context.Background(), task.ID)
+			if err != nil || finished.State != model.TaskNeedsAttention || !finished.ProductionChanged {
+				t.Fatalf("task=%+v err=%v", finished, err)
+			}
+			calls := executor.inputs()
+			last := calls[len(calls)-1]
+			if last.Action != "enter-maintenance" || last.Phase != "enter-maintenance" || last.AdapterKind != adapterKindTraffic {
+				t.Fatalf("last call=%+v, want maintenance traffic barrier; all=%+v", last, calls)
+			}
+			if _, found, err := database.GetServiceState(context.Background(), service.Name); err != nil || found {
+				t.Fatalf("failed lifecycle must not commit desired state: found=%v err=%v", found, err)
+			}
+		})
+	}
+}
+
+type lifecycleFaultExecutor struct {
+	mu         sync.Mutex
+	calls      []ExecuteInput
+	failAction string
+	failPhase  string
+	failKind   string
+	failMatch  int
+	matches    int
+}
+
+func (executor *lifecycleFaultExecutor) Execute(_ context.Context, input ExecuteInput) (model.AdapterResult, error) {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	executor.calls = append(executor.calls, input)
+	if input.Action == executor.failAction && input.Phase == executor.failPhase && input.AdapterKind == executor.failKind {
+		executor.matches++
+		if executor.matches == executor.failMatch {
+			return model.AdapterResult{}, errors.New("controlled lifecycle failure")
+		}
+	}
+	data := map[string]any{
+		"currentVersion": "1.0.0", "currentImage": "demo:v1.0.0@sha256:test",
+		"currentImageId": "sha256:image", "runtimeIdentityHash": "sha256:runtime",
+	}
+	if input.AdapterKind == adapterKindTraffic {
+		data["trafficState"] = "maintenance"
+		data["includeDigest"] = "sha256:include"
+		data["hostname"] = "demo.example.com"
+		data["drainTimeoutSeconds"] = 30
+	}
+	return model.AdapterResult{SchemaVersion: 2, Action: input.Action, Phase: input.Phase, OK: true, Summary: input.Phase + " ok", Data: data}, nil
+}
+
+func (executor *lifecycleFaultExecutor) inputs() []ExecuteInput {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	return append([]ExecuteInput(nil), executor.calls...)
 }
 
 func TestNewTaskDispatchCarriesTrafficPolicyDigest(t *testing.T) {
@@ -188,6 +305,22 @@ func TestCompositeWebsiteLifecycleUsesTrafficBarrierAndApplicationPhases(t *test
 			}
 			assertLifecycleCalls(t, calls, want)
 		}
+	}
+}
+
+func TestLifecycleObservationOverrideIsEngineScoped(t *testing.T) {
+	service := model.ServiceDefinition{
+		Name: "demo", Metadata: model.ObjectMetadata{Type: "service", Lifecycle: "active"},
+	}
+	production := &Engine{lifecycleObservationSeconds: -1}
+	productionAction, ok := production.lifecycleAction(service, "stop")
+	if !ok || productionAction.ObservationSeconds != 300 {
+		t.Fatalf("production lifecycle observation=%d ok=%v, want 300", productionAction.ObservationSeconds, ok)
+	}
+	acceptance := &Engine{lifecycleObservationSeconds: 1}
+	acceptanceAction, ok := acceptance.lifecycleAction(service, "stop")
+	if !ok || acceptanceAction.ObservationSeconds != 1 {
+		t.Fatalf("acceptance lifecycle observation=%d ok=%v, want 1", acceptanceAction.ObservationSeconds, ok)
 	}
 }
 

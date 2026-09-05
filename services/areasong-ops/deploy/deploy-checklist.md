@@ -78,6 +78,7 @@
 - [ ] adapter Python tests、`bash -n`、`shellcheck` 通过。
 - [ ] `npm run lint && npm run typecheck && npm run build` 通过。
 - [ ] Runner export 与 Web Docker image 构建通过。
+- [ ] 发布 manifest 使用 schema 2 和规范 `sha256:<64>` Runner 摘要；下载后的 checksum 仅引用归档 basename，并通过 `verify-release-assets.sh` 独立校验 Runner blob 与 Web 镜像的固定 GitHub Actions/Cosign 身份。
 - [ ] `docker compose config --quiet` 通过。
 - [ ] Nginx 配置在隔离前缀或生产 `nginx -t` 通过。
 - [ ] `deploy/preflight.sh source` 通过；安装文件后 `installed` 模式通过。

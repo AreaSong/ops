@@ -54,13 +54,14 @@ func (store *Store) CreateKubernetesPlan(
 		id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,manifest_digest,manifest,
 		action,state,confirmation_hash,confirmation_phrase,approved_by_hash,approved_at,
 		second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,created_at,started_at,finished_at
-		,execute_idempotency_key
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		,execute_idempotency_key,rollback_of_plan_id,source_manifest_digest
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.ActorHash, plan.TenantID,
 		targetJSON, plan.ManifestDigest, manifest, plan.Action, plan.State, confirmationHash,
 		plan.ConfirmationPhrase, plan.ApprovedByHash, nullableTimeText(plan.ApprovedAt),
 		plan.SecondApprovedByHash, nullableTimeText(plan.SecondApprovedAt), plan.RequiresDualApproval,
-		plan.OperationID, plan.Error, timeText(plan.CreatedAt), nullableTimeText(plan.StartedAt), nullableTimeText(plan.FinishedAt), plan.ExecuteIdempotencyKey)
+		plan.OperationID, plan.Error, timeText(plan.CreatedAt), nullableTimeText(plan.StartedAt), nullableTimeText(plan.FinishedAt), plan.ExecuteIdempotencyKey,
+		plan.RollbackOfPlanID, plan.SourceManifestDigest)
 	if err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
@@ -228,7 +229,7 @@ func (store *Store) SetKubernetesPlanOperationID(ctx context.Context, id, operat
 const kubernetesPlanSelect = `SELECT id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,
 		manifest_digest,manifest,action,state,confirmation_phrase,approved_by_hash,approved_at,
 	second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,
-	created_at,started_at,finished_at,execute_idempotency_key FROM kubernetes_plans`
+	created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,source_manifest_digest FROM kubernetes_plans`
 
 func (store *Store) getKubernetesPlan(ctx context.Context, id string) (model.KubernetesPlan, string, error) {
 	plan, manifest, err := scanKubernetesPlan(store.db.QueryRowContext(ctx, kubernetesPlanSelect+` WHERE id=?`, id))
@@ -244,11 +245,13 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 	var plan model.KubernetesPlan
 	var targetJSON, manifest string
 	var approvedAt, secondApprovedAt, createdAt, startedAt, finishedAt sql.NullString
+	var rollbackOfPlanID, sourceManifestDigest string
 	var dual int
 	err := row.Scan(&plan.ID, &plan.IdempotencyKey, &plan.RequestDigest, &plan.ActorHash, &plan.TenantID,
 		&targetJSON, &plan.ManifestDigest, &manifest, &plan.Action, &plan.State, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.SecondApprovedByHash, &secondApprovedAt, &dual,
-		&plan.OperationID, &plan.Error, &createdAt, &startedAt, &finishedAt, &plan.ExecuteIdempotencyKey)
+		&plan.OperationID, &plan.Error, &createdAt, &startedAt, &finishedAt, &plan.ExecuteIdempotencyKey,
+		&rollbackOfPlanID, &sourceManifestDigest)
 	if err != nil {
 		return model.KubernetesPlan{}, "", err
 	}
@@ -256,6 +259,8 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 		return model.KubernetesPlan{}, "", fmt.Errorf("解析 Kubernetes 目标失败: %w", err)
 	}
 	plan.RequiresDualApproval = dual != 0
+	plan.RollbackOfPlanID = rollbackOfPlanID
+	plan.SourceManifestDigest = sourceManifestDigest
 	var parseErr error
 	if plan.ApprovedAt, parseErr = nullableTime(approvedAt); parseErr != nil {
 		return model.KubernetesPlan{}, "", parseErr

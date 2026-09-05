@@ -209,9 +209,8 @@ maintenance_template() {
 drained_template() {
   printf '%s\n' \
     '# AreaSong Ops managed traffic state: drained' \
-    '# A graceful Nginx reload blocks new requests; requests already handled by old workers complete naturally.' \
-    'default_type text/plain;' \
-    'return 503 "Service is draining; no new requests are accepted.\n";'
+    '# New requests use the managed maintenance response while old workers finish existing connections.' \
+    "include $maintenance_file;"
 }
 
 state_for_content() {

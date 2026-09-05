@@ -286,6 +286,9 @@ func (store *Store) ApproveReleasePlan(
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
+	if !plan.HasRequiredApprovalPolicy() {
+		return model.ReleasePlan{}, errors.New("高风险计划缺少双人审批门禁")
+	}
 	// 高风险计划必须由独立批准人批准；其他计划保留创建者批准规则，
 	// 只有显式双人审批流程的第二步允许非创建者批准。
 	if plan.Risk == model.RiskHigh && plan.ActorHash == actorHash &&
@@ -400,6 +403,35 @@ func (store *Store) RecordPlanClosureBlocker(
 		return err
 	}
 	if err := appendPlanAudit(ctx, tx, audit, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RecordPlanClosureAudit appends a close-attempt audit without changing the
+// durable blocker fields on the release plan.  Temporary observation-window
+// races must remain retryable and must not become a sticky closure reason.
+func (store *Store) RecordPlanClosureAudit(
+	ctx context.Context,
+	id string,
+	audit model.AuditEntry,
+) error {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var state string
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM release_plans WHERE id = ?`, id).Scan(&state); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if state != string(model.PlanObserving) {
+		return errors.New("计划当前不能收口")
+	}
+	if err := appendPlanAudit(ctx, tx, audit, store.now()); err != nil {
 		return err
 	}
 	return tx.Commit()

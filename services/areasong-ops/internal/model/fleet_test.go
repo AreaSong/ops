@@ -188,6 +188,14 @@ func TestBatchPolicyPartitionsAndBoundaries(t *testing.T) {
 	if _, err := PartitionTargets([]string{"server-a", "server-a"}, BatchPolicy{Strategy: BatchSerial}); !errors.Is(err, ErrInvalidBatchPolicy) {
 		t.Fatalf("duplicate partition target accepted: %v", err)
 	}
+	for _, policy := range []BatchPolicy{
+		{Strategy: BatchCanary, CanarySize: len(targets), BatchSize: 1},
+		{Strategy: BatchCanary, CanaryPercentage: 100, BatchSize: 1},
+	} {
+		if _, err := policy.Partition(targets); !errors.Is(err, ErrInvalidBatchPolicy) {
+			t.Errorf("full-target canary accepted: %#v (%v)", policy, err)
+		}
+	}
 }
 
 func TestConcurrencyFailureAndChangeWindowValidation(t *testing.T) {

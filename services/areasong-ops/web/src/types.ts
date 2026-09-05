@@ -52,6 +52,7 @@ export interface SessionResponse {
   email: string
   tenantId?: string
   csrfToken: string
+  environment: 'production' | 'development'
   links?: NavigationLinks
 }
 
@@ -143,6 +144,7 @@ export interface ManagedObjectView {
 }
 
 export interface ServiceView extends ManagedObjectView {
+  managedCompose: boolean
   releaseDiscovery?: ReleaseDiscovery
   rollbackSourceTaskId?: string
 }
@@ -494,6 +496,10 @@ export interface BatchTask {
   digest?: string
   confirmationPhrase?: string
   approvedAt?: string
+  approvedByHash?: string
+  requiresDualApproval?: boolean
+  secondApprovedByHash?: string
+  secondApprovedAt?: string
   operationState?: 'pending_approval' | 'approved' | 'running' | 'paused' | 'observing' | 'succeeded' | 'failed' | 'rolling_back' | 'rolled_back' | 'needs_attention' | 'cancelled'
 }
 
@@ -520,6 +526,10 @@ export interface BatchOperation {
     updatedAt?: string
   }>
   approvedAt?: string
+  approvedByHash?: string
+  requiresDualApproval?: boolean
+  secondApprovedByHash?: string
+  secondApprovedAt?: string
   startedAt?: string
   finishedAt?: string
   summary?: string
@@ -586,6 +596,43 @@ export interface ComposeRevision {
   secondApprovedAt?: string
   appliedAt?: string
   finishedAt?: string
+	tenantId?: string
+	serverId?: string
+	projectName?: string
+	baselineSemanticDigest?: string
+	candidateSemanticDigest?: string
+	baselineEffectiveDigest?: string
+	candidateEffectiveDigest?: string
+	envFileDigest?: string
+	semanticDiff?: ComposeDiffEntry[]
+	policyDigest?: string
+	recoveryPointId?: string
+	recoveryPointExpectedBeforeDigest?: string
+	recoveryPointBindingDigest?: string
+	recoveryPointEvidenceDigest?: string
+	recoveryPointVerifiedAt?: string
+	recoveryPointRecoverableUntil?: string
+	alertEvidenceDigest?: string
+	blockingAlertFingerprints?: string[]
+	alertCheckedAt?: string
+	expiresAt?: string
+	expectedRuntimeIdentityDigest?: string
+	expectedRuntimeImage?: string
+	expectedRuntimeImageId?: string
+	candidateImage?: string
+	candidateImageDigest?: string
+	candidateImageId?: string
+	appliedRuntimeIdentityDigest?: string
+	rolledBackByHash?: string
+	rollbackStartedAt?: string
+	rollbackFinishedAt?: string
+}
+
+export interface ComposeDiffEntry {
+	path: string
+	change: string
+	before?: string
+	after?: string
 }
 
 export type ComposeRevisionState =
@@ -598,6 +645,7 @@ export type ComposeRevisionState =
   | 'rolled_back'
   | 'failed'
   | 'needs_attention'
+	| 'expired'
 
 export type AutoUpdateChannel = 'stable' | 'candidate' | 'security'
 
@@ -609,6 +657,7 @@ export interface AutoUpdatePolicyView {
   enabled: boolean
   channel: AutoUpdateChannel | string
   maintenanceWindow?: string
+  maintenanceTimezone: string
   canaryPercent?: number
   maxUnavailable?: number
   requireBackup: boolean
@@ -625,6 +674,7 @@ export interface AutoUpdatePolicyInput {
   enabled: boolean
   channel: AutoUpdateChannel
   maintenanceWindow?: string
+  maintenanceTimezone: string
   canaryPercent: number
   maxUnavailable: number
   requireBackup: boolean
@@ -761,11 +811,17 @@ export interface ComposeServiceView {
   runtimeCompose?: string
   envFile?: string
   applicationService?: string
+	projectName?: string
+	tenantId?: string
+	serverId?: string
   controlledPath?: string
   runtimePath?: string
   applicationContainer?: string
+	dependencyServices?: string[]
   dependencyContainers?: string[]
   healthUrl?: string
+	proposalTtlSeconds?: number
+	recoveryPoints?: RecoveryPoint[]
   availableActions?: string[]
   [key: string]: unknown
 }
@@ -786,6 +842,11 @@ export interface KubernetesOperation {
   manifestDigest?: string
   dryRun: boolean
   state: string
+	phase?: string
+	rolloutState?: string
+	rolloutResources?: string[]
+	rollbackOfPlanId?: string
+	error?: string
   createdAt?: string
 }
 
@@ -795,8 +856,10 @@ export interface KubernetesPlan {
   tenantId?: string
   target: KubernetesTarget
   manifestDigest: string
-  action: 'apply'
+  action: 'apply' | 'rollback'
   state: string
+	rollbackOfPlanId?: string
+	sourceManifestDigest?: string
   confirmationPhrase?: string
   approvedByHash?: string
   secondApprovedByHash?: string
@@ -849,6 +912,30 @@ export interface ExtensionView {
   state?: string
   stored?: boolean
   createdAt?: string
+}
+
+export interface ExtensionManifest {
+  purpose: 'areasong-ops.extension'
+  schemaVersion: 1
+  id: string
+  version: string
+  type: 'script' | 'wasm' | 'plugin'
+  entrypoint: string
+  digest: string
+  signature: string
+  permissions?: string[]
+  allowedObjects?: string[]
+  publisher: string
+}
+
+export interface ExtensionUploadResult {
+  manifest: ExtensionManifest
+  stored: boolean
+  state: string
+  storageDigest?: string
+  idempotencyKey?: string
+  createdAt?: string
+  reason?: string
 }
 
 export interface ExtensionPlan {

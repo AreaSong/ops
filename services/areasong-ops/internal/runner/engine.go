@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -42,8 +43,12 @@ type Engine struct {
 	terminalMu      sync.Mutex
 	terminals       map[string]model.TerminalSession
 	remoteDispatch  bool
-	fleetUpdateCtx  context.Context
-	fleetUpdateStop context.CancelFunc
+	// lifecycleObservationSeconds is negative in production, preserving the
+	// fixed 300-second lifecycle observation window. It is injectable only for
+	// disposable local acceptance runners.
+	lifecycleObservationSeconds int
+	fleetUpdateCtx              context.Context
+	fleetUpdateStop             context.CancelFunc
 }
 
 type EngineOption func(*Engine)
@@ -60,6 +65,17 @@ func WithCredentialRotator(rotator CredentialRotator) EngineOption {
 	return func(engine *Engine) {
 		if rotator != nil {
 			engine.credentials = rotator
+		}
+	}
+}
+
+// WithBackupRoot is used by isolated runners and tests. Production entrypoints
+// omit it and retain the fixed /var/backups/ops trust boundary.
+func WithBackupRoot(root string) EngineOption {
+	return func(engine *Engine) {
+		clean := filepath.Clean(strings.TrimSpace(root))
+		if filepath.IsAbs(clean) && clean != string(filepath.Separator) {
+			engine.backupRoot = clean
 		}
 	}
 }
@@ -98,6 +114,16 @@ func WithRemoteDispatch(enabled bool) EngineOption {
 	return func(engine *Engine) { engine.remoteDispatch = enabled }
 }
 
+// WithLifecycleObservationSeconds shortens lifecycle observation in isolated
+// acceptance environments. Production entrypoints intentionally never use it.
+func WithLifecycleObservationSeconds(seconds int) EngineOption {
+	return func(engine *Engine) {
+		if seconds >= 0 && seconds <= 60 {
+			engine.lifecycleObservationSeconds = seconds
+		}
+	}
+}
+
 // NewEngine keeps the historical constructor shape for in-process callers.
 // Production entrypoints should use NewEngineChecked so bootstrap failures are
 // returned instead of being silently tolerated.
@@ -131,12 +157,13 @@ func NewEngineChecked(
 		catalog: catalog, store: database, executor: executor, broker: NewBroker(),
 		stateRoot: stateRoot, locks: make(map[string]string), owner: owner,
 		backupRoot: "/var/backups/ops", alertmanager: unavailableAlertmanager{},
-		credentials:     unavailableCredentialRotator{},
-		extensionRunner: wasmExtensionRuntime{},
-		composeRunner:   systemComposeCommandRunner{executable: "/usr/bin/docker"},
-		terminals:       make(map[string]model.TerminalSession),
-		fleetUpdateCtx:  fleetUpdateCtx,
-		fleetUpdateStop: fleetUpdateStop,
+		credentials:                 unavailableCredentialRotator{},
+		extensionRunner:             wasmExtensionRuntime{},
+		composeRunner:               systemComposeCommandRunner{executable: "/usr/bin/docker"},
+		terminals:                   make(map[string]model.TerminalSession),
+		lifecycleObservationSeconds: -1,
+		fleetUpdateCtx:              fleetUpdateCtx,
+		fleetUpdateStop:             fleetUpdateStop,
 	}
 	for _, option := range options {
 		option(engine)
@@ -158,6 +185,12 @@ func NewEngineChecked(
 	}
 	if err := engine.store.RecoverInterruptedExtensionPlans(context.Background()); err != nil {
 		return nil, fmt.Errorf("恢复扩展执行状态失败: %w", err)
+	}
+	if err := engine.store.RecoverInterruptedComposeRevisions(context.Background()); err != nil {
+		return nil, fmt.Errorf("恢复 Compose 执行状态失败: %w", err)
+	}
+	if err := engine.store.ExpireComposeRevisions(context.Background(), time.Now().UTC()); err != nil {
+		return nil, fmt.Errorf("收口过期 Compose 提案失败: %w", err)
 	}
 	return engine, nil
 }
@@ -427,7 +460,7 @@ func (engine *Engine) resolveAction(
 	}
 	action, ok := service.Actions[actionName]
 	if !ok {
-		if generated, generatedOK := lifecycleAction(service, actionName); generatedOK {
+		if generated, generatedOK := engine.lifecycleAction(service, actionName); generatedOK {
 			action, ok = generated, true
 		}
 	}

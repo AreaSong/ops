@@ -9,7 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"reflect"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -46,9 +47,9 @@ func (runner systemComposeCommandRunner) Run(
 	}
 	output, err := command.CombinedOutput()
 	if len(output) > maxComposeCommandOutput {
-		output = output[:maxComposeCommandOutput]
+		return string(output[:maxComposeCommandOutput]), errors.New("Compose 命令输出超过安全上限")
 	}
-	return redactText(string(output)), err
+	return string(output), err
 }
 
 type composeFileState struct {
@@ -59,10 +60,123 @@ type composeFileState struct {
 }
 
 type composeApplyResult struct {
-	State            string
-	ControlledBackup string
-	RuntimeBackup    string
-	Err              error
+	State                 string
+	ControlledBackup      string
+	RuntimeBackup         string
+	RuntimeIdentityDigest string
+	Err                   error
+}
+
+func (engine *Engine) verifyComposeRevisionContract(
+	ctx context.Context,
+	service model.ServiceDefinition,
+	revision model.ComposeRevision,
+) error {
+	runtime := service.Runtime
+	if runtime == nil {
+		return errors.New("Compose 运行策略缺失")
+	}
+	defaultTenant := ""
+	if engine.catalog.Access != nil {
+		defaultTenant = engine.catalog.Access.DefaultTenant
+	}
+	tenantID := composeTenantID(service, defaultTenant)
+	policyDigest, err := composePolicyDigest(service, tenantID)
+	if err != nil {
+		return err
+	}
+	if revision.TenantID != tenantID || revision.ServerID != service.ServerID ||
+		revision.ProjectName != runtime.ProjectName || revision.PolicyDigest != policyDigest {
+		return errors.New("Compose 租户、服务器或执行策略已变化，请重新创建提案")
+	}
+	if revision.ExpiresAt.IsZero() || !time.Now().UTC().Before(revision.ExpiresAt) {
+		return errors.New("Compose 提案已过期")
+	}
+	controlled, runtimeFile, err := readComposePair(runtime)
+	if err != nil {
+		return err
+	}
+	if controlled.Digest != revision.ExpectedDigest || runtimeFile.Digest != revision.ExpectedDigest {
+		return errors.New("Compose 基线摘要已变化")
+	}
+	analysis, err := analyzeComposeChange(runtime, controlled.Content, revision.Content)
+	if err != nil {
+		return err
+	}
+	if analysis.BaselineSemanticDigest != revision.BaselineSemanticDigest ||
+		analysis.CandidateSemanticDigest != revision.CandidateSemanticDigest ||
+		analysis.CandidateImage != revision.CandidateImage ||
+		analysis.CandidateImageDigest != revision.CandidateImageDigest ||
+		!reflect.DeepEqual(analysis.Diff, revision.SemanticDiff) {
+		return errors.New("Compose 语义批准摘要不匹配")
+	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, controlled.Content, revision.Content, revision,
+	); err != nil {
+		return err
+	}
+	candidateImageID, err := engine.inspectComposeImageReference(ctx, runtime, revision.CandidateImage)
+	if err != nil || candidateImageID != revision.CandidateImageID {
+		return errors.New("Compose 候选镜像身份已经漂移，请重新创建提案")
+	}
+	identity, err := engine.inspectForAction(ctx, service, "inspect")
+	if err != nil || !hasRuntimeIdentity(identity) {
+		return errors.New("Compose 无法复验当前运行身份")
+	}
+	identityDigest, err := canonicalDigest(map[string]any{
+		"currentVersion": identity["currentVersion"], "currentImage": identity["currentImage"],
+		"currentImageId": identity["currentImageId"], "runtimeIdentityHash": identity["runtimeIdentityHash"],
+	})
+	if err != nil {
+		return err
+	}
+	composeIdentity, err := engine.inspectComposeApplication(ctx, runtime, runtime.RuntimeCompose)
+	if err != nil {
+		return err
+	}
+	composeIdentityDigest, err := verifyComposeApplicationIdentity(composeIdentity, runtime, analysis.BaselineImage)
+	if err != nil {
+		return err
+	}
+	identityDigest, err = canonicalDigest(map[string]string{"adapter": identityDigest, "compose": composeIdentityDigest})
+	if err != nil || identityDigest != revision.ExpectedRuntimeIdentityDigest ||
+		composeIdentity.DeclaredImage != revision.ExpectedRuntimeImage ||
+		composeIdentity.ImageID != revision.ExpectedRuntimeImageID {
+		return errors.New("Compose 运行身份已经漂移，请重新创建提案")
+	}
+	_, err = engine.verifyComposeRecoveryPoint(ctx, service, revision.RecoveryPointID, identity)
+	return err
+}
+
+func (engine *Engine) composeExecutionGate(
+	ctx context.Context,
+	service model.ServiceDefinition,
+	revision model.ComposeRevision,
+) (model.ComposeExecutionGate, error) {
+	if err := engine.verifyComposeRevisionContract(ctx, service, revision); err != nil {
+		return model.ComposeExecutionGate{}, err
+	}
+	alerts, err := engine.blockingAlerts(ctx, service)
+	if err != nil {
+		return model.ComposeExecutionGate{}, fmt.Errorf("Compose 执行门禁无法读取 Alertmanager: %w", err)
+	}
+	fingerprints := alertFingerprints(alerts)
+	if len(fingerprints) != 0 {
+		return model.ComposeExecutionGate{}, fmt.Errorf("存在阻断告警，禁止应用 Compose: %s", alertNames(alerts))
+	}
+	now := time.Now().UTC()
+	alertDigest, err := composeAlertEvidence(now, fingerprints)
+	if err != nil {
+		return model.ComposeExecutionGate{}, err
+	}
+	return model.ComposeExecutionGate{
+		PolicyDigest: revision.PolicyDigest, RecoveryPointID: revision.RecoveryPointID,
+		RecoveryPointExpectedDigest: revision.RecoveryPointExpectedDigest,
+		RecoveryPointBindingDigest:  revision.RecoveryPointBindingDigest,
+		RecoveryPointEvidenceDigest: revision.RecoveryPointEvidenceDigest,
+		AlertEvidenceDigest:         alertDigest, BlockingAlertFingerprints: fingerprints,
+		CheckedAt: now, ExpectedRuntimeIdentityDigest: revision.ExpectedRuntimeIdentityDigest,
+	}, nil
 }
 
 func (engine *Engine) ApproveComposeRevision(
@@ -87,18 +201,15 @@ func (engine *Engine) ApproveComposeRevision(
 	if err := engine.authorize(ctx, actor, model.PermissionManageConfig, service.ObjectID); err != nil {
 		return model.ComposeRevision{}, err
 	}
+	if err := engine.verifyComposeRevisionContract(ctx, service, revision); err != nil {
+		return model.ComposeRevision{}, err
+	}
 	approved, err := engine.store.ApproveComposeRevision(
 		ctx, revisionID, actor, request.Digest, request.Confirmation,
 	)
 	if err != nil {
 		return model.ComposeRevision{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actor, Event: "compose.revision.approved", Resource: revisionID,
-		Outcome: approved.State, Detail: map[string]any{
-			"service": serviceName, "digest": approved.Digest,
-		},
-	})
 	return approved, nil
 }
 
@@ -130,9 +241,19 @@ func (engine *Engine) ApplyComposeRevision(
 		return model.ComposeRevision{}, errors.New("该服务的 Compose 操作正被其他操作占用")
 	}
 	defer engine.release([]string{"service:" + serviceName, "compose:" + serviceName}, lockID)
+	if revision.ApplyIdempotencyKey != "" {
+		replayed, _, replayErr := engine.store.StartComposeApply(
+			ctx, revisionID, actor, request.IdempotencyKey, model.ComposeExecutionGate{},
+		)
+		return replayed, replayErr
+	}
+	gate, err := engine.composeExecutionGate(ctx, service, revision)
+	if err != nil {
+		return revision, err
+	}
 
 	started, fresh, err := engine.store.StartComposeApply(
-		ctx, revisionID, actor, request.IdempotencyKey,
+		ctx, revisionID, actor, request.IdempotencyKey, gate,
 	)
 	if err != nil {
 		return started, err
@@ -147,6 +268,7 @@ func (engine *Engine) ApplyComposeRevision(
 	finishErr := engine.store.FinishComposeApply(
 		context.WithoutCancel(ctx), revisionID, result.State,
 		result.ControlledBackup, result.RuntimeBackup, redactComposeError(result.Err),
+		result.RuntimeIdentityDigest,
 	)
 	if finishErr != nil {
 		return started, fmt.Errorf("Compose 应用状态收口失败: %w", finishErr)
@@ -155,14 +277,6 @@ func (engine *Engine) ApplyComposeRevision(
 	if getErr != nil {
 		return started, getErr
 	}
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actor, Event: "compose.revision.applied", Resource: revisionID,
-		Outcome: result.State, Detail: map[string]any{
-			"service": serviceName, "digest": started.Digest,
-			"controlledBackup": result.ControlledBackup != "",
-			"runtimeBackup":    result.RuntimeBackup != "",
-		},
-	})
 	if result.Err != nil {
 		return final, result.Err
 	}
@@ -222,10 +336,6 @@ func (engine *Engine) RollbackComposeRevision(
 	if getErr != nil {
 		return started, getErr
 	}
-	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{
-		ActorHash: actor, Event: "compose.revision.rolled_back", Resource: revisionID,
-		Outcome: result.State, Detail: map[string]any{"service": serviceName},
-	})
 	if result.Err != nil {
 		return final, result.Err
 	}
@@ -246,6 +356,9 @@ func (engine *Engine) applyCompose(
 	if controlled.Digest != revision.ExpectedDigest || runtimeFile.Digest != revision.ExpectedDigest ||
 		controlled.Digest != runtimeFile.Digest {
 		return composeApplyResult{State: "failed", Err: errors.New("Compose 执行前基线摘要已变化")}
+	}
+	if err := engine.verifyComposeRevisionContract(ctx, service, revision); err != nil {
+		return composeApplyResult{State: "failed", Err: err}
 	}
 	if err := validateComposeCandidate(ctx, runtime, revision.Content, engine.composeRunner); err != nil {
 		return composeApplyResult{State: "failed", Err: err}
@@ -288,6 +401,12 @@ func (engine *Engine) applyCompose(
 		return composeApplyResult{State: "failed", ControlledBackup: controlledBackup,
 			RuntimeBackup: runtimeBackup, Err: err}
 	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, controlled.Content, revision.Content, revision,
+	); err != nil {
+		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
+			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest, err)
+	}
 
 	if _, err := engine.runCompose(ctx, *runtime, runtime.RuntimeCompose, "config", "--quiet"); err != nil {
 		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
@@ -322,7 +441,29 @@ func (engine *Engine) applyCompose(
 		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
 			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest, err)
 	}
-	return composeApplyResult{State: "applied", ControlledBackup: controlledBackup, RuntimeBackup: runtimeBackup}
+	identity, err := engine.inspectComposeApplication(ctx, runtime, runtime.RuntimeCompose)
+	if err != nil {
+		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
+			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest, err)
+	}
+	identityDigest, err := verifyComposeApplicationIdentity(identity, runtime, revision.CandidateImage)
+	if err != nil {
+		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
+			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest, err)
+	}
+	if identity.ImageID != revision.CandidateImageID {
+		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
+			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest,
+			errors.New("Compose 运行镜像 ID 与批准候选身份不一致"))
+	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, controlled.Content, revision.Content, revision,
+	); err != nil {
+		return engine.recoverComposeAfterFailure(ctx, runtime, controlled, runtimeFile,
+			controlledBackup, runtimeBackup, dependenciesBefore, revision.Digest, err)
+	}
+	return composeApplyResult{State: "applied", ControlledBackup: controlledBackup,
+		RuntimeBackup: runtimeBackup, RuntimeIdentityDigest: identityDigest}
 }
 
 func (engine *Engine) rollbackCompose(
@@ -345,6 +486,15 @@ func (engine *Engine) rollbackCompose(
 	if err := verifyComposeBackup(revision.BackupRuntimePath, revision.ExpectedDigest); err != nil {
 		return composeApplyResult{State: "needs_attention", Err: err}
 	}
+	baselineBackup, err := readComposeFile(revision.BackupControlledPath)
+	if err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, baselineBackup.Content, revision.Content, revision,
+	); err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
 	dependenciesBefore, err := engine.composeDependencySnapshot(ctx, runtime)
 	if err != nil {
 		return composeApplyResult{State: "needs_attention", Err: err}
@@ -361,6 +511,11 @@ func (engine *Engine) rollbackCompose(
 	if _, err := engine.runCompose(ctx, *runtime, runtime.RuntimeCompose, "config", "--quiet"); err != nil {
 		return composeApplyResult{State: "needs_attention", Err: fmt.Errorf("回滚后 Compose 校验失败: %w", err)}
 	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, baselineBackup.Content, revision.Content, revision,
+	); err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
 	if _, err := engine.runCompose(ctx, *runtime, runtime.RuntimeCompose, "up", "-d", "--no-deps", "--force-recreate", runtime.ApplicationService); err != nil {
 		return composeApplyResult{State: "needs_attention", Err: fmt.Errorf("回滚后应用服务重建失败: %w", err)}
 	}
@@ -375,6 +530,23 @@ func (engine *Engine) rollbackCompose(
 		return composeApplyResult{State: "needs_attention", Err: err}
 	}
 	if err := verifyComposeDigest(runtime, revision.ExpectedDigest); err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
+	identity, err := engine.inspectComposeApplication(ctx, runtime, runtime.RuntimeCompose)
+	if err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
+	analysis, err := analyzeComposeChange(runtime, baselineBackup.Content, revision.Content)
+	if err != nil {
+		return composeApplyResult{State: "needs_attention", Err: err}
+	}
+	if _, err := verifyComposeApplicationIdentity(identity, runtime, analysis.BaselineImage); err != nil ||
+		identity.ImageID != revision.ExpectedRuntimeImageID {
+		return composeApplyResult{State: "needs_attention", Err: errors.New("Compose 回滚后的运行镜像身份不匹配")}
+	}
+	if err := engine.verifyComposeEffectiveContract(
+		ctx, runtime, baselineBackup.Content, revision.Content, revision,
+	); err != nil {
 		return composeApplyResult{State: "needs_attention", Err: err}
 	}
 	return composeApplyResult{State: "rolled_back"}
@@ -450,7 +622,11 @@ func (engine *Engine) runCompose(
 	if runner == nil {
 		runner = systemComposeCommandRunner{executable: "/usr/bin/docker"}
 	}
-	base := []string{"compose", "--project-directory", filepath.Dir(runtime.RuntimeCompose),
+	if runtime.ProjectName == "" {
+		return "", errors.New("Compose project name 未固定")
+	}
+	base := []string{"compose", "--project-name", runtime.ProjectName,
+		"--project-directory", filepath.Dir(runtime.RuntimeCompose),
 		"--env-file", runtime.EnvFile, "-f", composePath}
 	base = append(base, args...)
 	output, err := runner.Run(ctx, filepath.Dir(runtime.RuntimeCompose), base...)
@@ -466,7 +642,7 @@ func (engine *Engine) runCompose(
 func validateComposeCandidate(
 	ctx context.Context, runtime *model.ComposeServiceRuntime, content string, runner ComposeCommandRunner,
 ) error {
-	if runtime == nil || runtime.RuntimeCompose == "" || runtime.EnvFile == "" {
+	if runtime == nil || runtime.RuntimeCompose == "" || runtime.EnvFile == "" || runtime.ProjectName == "" {
 		return errors.New("Compose 运行配置不完整")
 	}
 	if runner == nil {
@@ -499,7 +675,8 @@ func validateComposeCandidate(
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	base := []string{"compose", "--project-directory", directory, "--env-file", runtime.EnvFile,
+	base := []string{"compose", "--project-name", runtime.ProjectName,
+		"--project-directory", directory, "--env-file", runtime.EnvFile,
 		"-f", path, "config", "--quiet"}
 	if output, err := runner.Run(ctx, directory, base...); err != nil {
 		return fmt.Errorf("候选 Compose config 校验失败: %w (%s)", err, redactText(output))
@@ -551,22 +728,45 @@ func readComposeFile(path string) (composeFileState, error) {
 }
 
 func rejectComposeSymlinkPath(path string) error {
-	// macOS exposes /var and /tmp through stable system aliases. Reject the
-	// target and its immediate project directory (the attacker-controlled
-	// portion), while allowing those OS-level aliases above the project root.
-	for _, candidate := range []string{filepath.Clean(path), filepath.Dir(filepath.Clean(path))} {
-		info, err := os.Lstat(candidate)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) || cleaned == string(filepath.Separator) {
+		return errors.New("Compose 文件路径必须是规范绝对路径")
+	}
+	current := string(filepath.Separator)
+	for _, part := range strings.Split(strings.TrimPrefix(cleaned, string(filepath.Separator)), string(filepath.Separator)) {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if current != cleaned {
+				return err
 			}
+			continue
+		}
+		if err != nil {
 			return err
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if info.Mode()&os.ModeSymlink != 0 && !trustedOSAlias(current) {
 			return errors.New("Compose 路径包含符号链接")
 		}
 	}
 	return nil
+}
+
+func trustedOSAlias(path string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	for _, alias := range []string{"/var", "/tmp", "/etc"} {
+		if path != alias {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		return err == nil && resolved == filepath.Join("/private", alias)
+	}
+	return false
 }
 
 func sameComposeIdentity(before, after os.FileInfo) bool {
@@ -767,8 +967,11 @@ func verifyComposeDigest(runtime *model.ComposeServiceRuntime, expected string) 
 func (engine *Engine) composeDependencySnapshot(
 	ctx context.Context, runtime *model.ComposeServiceRuntime,
 ) (map[string]string, error) {
-	result := make(map[string]string, len(runtime.DependencyContainers))
-	for _, dependency := range runtime.DependencyContainers {
+	if len(runtime.DependencyServices) != len(runtime.DependencyContainers) {
+		return nil, errors.New("Compose 依赖服务与容器身份映射不完整")
+	}
+	result := make(map[string]string, len(runtime.DependencyServices))
+	for index, dependency := range runtime.DependencyServices {
 		dependency = strings.TrimSpace(dependency)
 		if dependency == "" {
 			return nil, errors.New("Compose 依赖服务名称不能为空")
@@ -778,8 +981,22 @@ func (engine *Engine) composeDependencySnapshot(
 			return nil, fmt.Errorf("读取依赖容器身份失败: %w", err)
 		}
 		ids := strings.Fields(output)
-		sort.Strings(ids)
-		result[dependency] = strings.Join(ids, "\n")
+		if len(ids) != 1 {
+			return nil, fmt.Errorf("Compose 依赖服务 %q 必须且只能有一个运行容器", dependency)
+		}
+		runner := engine.composeRunner
+		if runner == nil {
+			runner = systemComposeCommandRunner{executable: "/usr/bin/docker"}
+		}
+		identity, inspectErr := runner.Run(ctx, filepath.Dir(runtime.RuntimeCompose), "inspect", "--format", `{{.Id}}\t{{.Name}}\t{{.Image}}`, ids[0])
+		if inspectErr != nil {
+			return nil, fmt.Errorf("读取依赖容器身份失败: %w", inspectErr)
+		}
+		parts := strings.Split(strings.TrimSpace(identity), "\t")
+		if len(parts) != 3 || parts[0] != ids[0] || strings.TrimPrefix(parts[1], "/") != runtime.DependencyContainers[index] || parts[2] == "" {
+			return nil, fmt.Errorf("Compose 依赖服务 %q 的容器身份不匹配", dependency)
+		}
+		result[dependency] = strings.Join(parts, "\n")
 	}
 	return result, nil
 }

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,150 @@ func TestBatchFailureContinueRunsLaterWavesAndEndsNeedsAttention(t *testing.T) {
 	}
 	if got := countServicePhaseCalls(executor, "demo-two", "restart"); got != 1 {
 		t.Fatalf("continued wave restart calls=%d, want 1", got)
+	}
+}
+
+func TestProductionBatchRequiresExplicitCanaryAndFailStop(t *testing.T) {
+	ctx := context.Background()
+	engine, _ := testEngine(t, &fakeExecutor{})
+	engine.catalog.SchemaVersion = 4
+	addSecondBatchService(engine)
+
+	base := model.BatchCreateRequest{
+		Action:         "restart",
+		TargetIDs:      []string{"demo", "demo-two"},
+		BatchPolicy:    model.BatchPolicy{Strategy: model.BatchFixed, BatchSize: 1},
+		Concurrency:    model.ConcurrencyPolicy{Scope: model.ConcurrencyGlobal, MaxConcurrent: 1},
+		FailurePolicy:  model.FailureStop,
+		IdempotencyKey: mustUUID(t),
+	}
+	tests := []struct {
+		name    string
+		request model.BatchCreateRequest
+		want    string
+	}{
+		{name: "fixed strategy", request: base, want: "必须先执行 Canary"},
+		{name: "zero observation", request: func() model.BatchCreateRequest {
+			r := base
+			r.BatchPolicy = model.BatchPolicy{Strategy: model.BatchCanary, CanarySize: 1, BatchSize: 1}
+			r.IdempotencyKey = mustUUID(t)
+			return r
+		}(), want: "正数观察窗口"},
+		{name: "continue policy", request: func() model.BatchCreateRequest {
+			r := base
+			r.BatchPolicy = model.BatchPolicy{Strategy: model.BatchCanary, CanarySize: 1, BatchSize: 1, ObservationSeconds: 1}
+			r.FailurePolicy = model.FailureContinue
+			r.IdempotencyKey = mustUUID(t)
+			return r
+		}(), want: "必须停止后续批次"},
+		{name: "selector wildcard", request: func() model.BatchCreateRequest {
+			r := base
+			r.TargetIDs = nil
+			r.TargetSelector = model.NodeSelector{MatchLabels: map[string]string{"environment": "production"}}
+			r.IdempotencyKey = mustUUID(t)
+			return r
+		}(), want: "必须显式列出目标 ID"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := engine.CreateBatch(ctx, actorHash(), test.request)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err=%v, want message containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestBatchChildPlanUsesParentExecutorAndIndependentApprover(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	service := engine.catalog.Services["demo"]
+	action := service.Actions["restart"]
+	action.Risk = model.RiskHigh
+	service.Actions["restart"] = action
+	engine.catalog.Services["demo"] = service
+	op := model.BatchOperation{ID: "batch-child-identity", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("4", 64), ExecutedByHash: strings.Repeat("3", 64), Action: "restart", Target: ""}
+	item := model.BatchItem{ID: "item-child-identity", Service: "demo", State: model.BatchNodeReady}
+	engine.startBatchItem(ctx, op, item)
+
+	plan, found, err := database.GetReleasePlanByRequest(ctx, batchItemIdempotencyKey(op.ID, item.ID, "plan"))
+	if err != nil || !found {
+		t.Fatalf("child plan lookup: plan=%+v found=%v err=%v", plan, found, err)
+	}
+	if plan.ActorHash != op.ExecutedByHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != op.SecondApprovedByHash {
+		t.Fatalf("child plan identities: actor=%q approver=%q second=%q, want actor=%q approver=%q second=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, op.ExecutedByHash, op.ApprovedByHash, op.SecondApprovedByHash)
+	}
+	// startBatchItem enqueues the child task asynchronously.  Wait before the
+	// fixture closes SQLite so terminal-state writes cannot race database.Close.
+	engine.Wait()
+}
+
+func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	engine.catalog.SchemaVersion = 4
+	addSecondBatchService(engine)
+	for _, name := range []string{"demo", "demo-two"} {
+		service := engine.catalog.Services[name]
+		action := service.Actions["restart"]
+		action.Risk = model.RiskHigh
+		// Force child plans through the observing/close path so the test covers
+		// the persisted plan actor and deterministic close idempotency key.
+		action.ObservationSeconds = 1
+		service.Actions["restart"] = action
+		engine.catalog.Services[name] = service
+	}
+	creator, first, second, executor := strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), strings.Repeat("4", 64)
+	admin := model.Role{ID: "admin", Permissions: []model.Permission{model.Permission("*")}}
+	engine.catalog.Access = &config.AccessPolicy{
+		Enforced: true, DefaultTenant: "default",
+		Tenants: map[string]model.Tenant{"default": {ID: "default", Status: "active"}},
+		Roles:   map[string]model.Role{"admin": admin},
+		Principals: map[string]config.AccessPrincipal{
+			creator:  {Subject: creator, TenantID: "default", Roles: []string{"admin"}},
+			first:    {Subject: first, TenantID: "default", Roles: []string{"admin"}},
+			second:   {Subject: second, TenantID: "default", Roles: []string{"admin"}},
+			executor: {Subject: executor, TenantID: "default", Roles: []string{"admin"}},
+		},
+	}
+	op, created, err := engine.CreateBatch(ctx, creator, model.BatchCreateRequest{
+		Action: "restart", TargetIDs: []string{"demo", "demo-two"},
+		BatchPolicy:   model.BatchPolicy{Strategy: model.BatchCanary, CanarySize: 1, BatchSize: 1, ObservationSeconds: 1},
+		Concurrency:   model.ConcurrencyPolicy{Scope: model.ConcurrencyGlobal, MaxConcurrent: 1},
+		FailurePolicy: model.FailureStop, IdempotencyKey: mustUUID(t),
+	})
+	if err != nil || !created || !op.RequiresDualApproval {
+		t.Fatalf("create=%+v created=%v err=%v", op, created, err)
+	}
+	op, err = engine.ApproveBatch(ctx, first, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
+	if err != nil || op.State != model.BatchPendingApproval || op.ApprovedByHash != first {
+		t.Fatalf("first approval=%+v err=%v", op, err)
+	}
+	if _, err := engine.ExecuteBatch(ctx, executor, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err == nil {
+		t.Fatal("batch executed before second approval")
+	}
+	op, err = engine.ApproveBatch(ctx, second, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
+	if err != nil || op.State != model.BatchApproved || op.SecondApprovedByHash != second {
+		t.Fatalf("second approval=%+v err=%v", op, err)
+	}
+	for _, forbidden := range []string{creator, first, second} {
+		if _, err := engine.ExecuteBatch(ctx, forbidden, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); !errors.Is(err, store.ErrActorMismatch) {
+			t.Fatalf("forbidden executor %q err=%v", forbidden[:4], err)
+		}
+	}
+	if _, err := engine.ExecuteBatch(ctx, executor, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+	finished, err := database.GetBatchOperation(ctx, op.ID)
+	if err != nil || finished.State != model.BatchSucceeded {
+		t.Fatalf("finished=%+v err=%v", finished, err)
+	}
+	for _, item := range finished.Items {
+		plan, err := database.GetReleasePlan(ctx, item.PlanID)
+		if err != nil || plan.ActorHash != executor || plan.ApprovedByHash != first || plan.SecondApprovedByHash != second {
+			t.Fatalf("child plan=%+v err=%v", plan, err)
+		}
 	}
 }
 

@@ -538,11 +538,11 @@ func (policy BatchPolicy) Partition(targetIDs []string) ([][]string, error) {
 	remaining := targetIDs
 	if canary {
 		width = policy.batchWidth(len(targetIDs), true)
-		result = append(result, append([]string(nil), remaining[:min(width, len(remaining))]...))
-		remaining = remaining[min(width, len(remaining)):]
-		if len(remaining) == 0 {
-			return result, nil
+		if width < 1 || width >= len(targetIDs) {
+			return nil, fmt.Errorf("%w: canary must cover a non-empty subset of targets", ErrInvalidBatchPolicy)
 		}
+		result = append(result, append([]string(nil), remaining[:width]...))
+		remaining = remaining[width:]
 		width = policy.batchWidth(len(remaining), false)
 	}
 	if width < 1 {

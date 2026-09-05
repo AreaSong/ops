@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 )
 
 const autoUpdateEvaluationInterval = 15 * time.Minute
+
+var autoUpdateWindowPattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]-(?:[01][0-9]|2[0-3]):[0-5][0-9]$`)
 
 // AutoUpdatePolicies returns only policies for objects visible to the actor.
 func (engine *Engine) AutoUpdatePolicies(ctx context.Context, actor string) ([]model.AutoUpdatePolicyView, error) {
@@ -46,7 +49,8 @@ func (engine *Engine) UpdateAutoUpdatePolicy(
 	}
 	policy := &model.AutoUpdatePolicy{
 		Enabled: request.Enabled, Channel: request.Channel,
-		MaintenanceWindow: request.MaintenanceWindow, CanaryPercent: request.CanaryPercent,
+		MaintenanceWindow: request.MaintenanceWindow, MaintenanceTimezone: request.MaintenanceTimezone,
+		CanaryPercent:  request.CanaryPercent,
 		MaxUnavailable: request.MaxUnavailable, RequireBackup: request.RequireBackup,
 		RequireApproval: request.RequireApproval, RollbackOnAlert: request.RollbackOnAlert,
 		ObservationSeconds: request.ObservationSeconds,
@@ -56,23 +60,24 @@ func (engine *Engine) UpdateAutoUpdatePolicy(
 	}
 	view := model.AutoUpdatePolicyView{Service: service.Name, ObjectID: service.ObjectID, TenantID: service.TenantID,
 		Enabled: policy.Enabled, Channel: policy.Channel, MaintenanceWindow: policy.MaintenanceWindow,
-		CanaryPercent: policy.CanaryPercent, MaxUnavailable: policy.MaxUnavailable,
+		MaintenanceTimezone: policy.MaintenanceTimezone,
+		CanaryPercent:       policy.CanaryPercent, MaxUnavailable: policy.MaxUnavailable,
 		RequireBackup: policy.RequireBackup, RequireApproval: policy.RequireApproval,
 		RollbackOnAlert: policy.RollbackOnAlert, ObservationSeconds: policy.ObservationSeconds}
-	digest := digestText(fmt.Sprintf("%s\x00%s\x00%t\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t\x00%t\x00%d",
+	digest := digestText(fmt.Sprintf("%s\x00%s\x00%t\x00%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t\x00%t\x00%d",
 		actor, service.ObjectID, policy.Enabled, policy.Channel, policy.MaintenanceWindow,
-		policy.CanaryPercent,
+		policy.MaintenanceTimezone, policy.CanaryPercent,
 		policy.MaxUnavailable, policy.RequireBackup, policy.RequireApproval,
 		policy.RollbackOnAlert, policy.ObservationSeconds))
-	if _, err := engine.store.ApplyAutoUpdatePolicy(ctx, actor, request.IdempotencyKey, digest, view); err != nil {
+	audit := model.AuditEntry{ActorHash: actor, Event: "auto_update.policy.changed", Resource: service.ObjectID, Outcome: "accepted", Detail: map[string]any{
+		"enabled": policy.Enabled, "channel": policy.Channel, "requireApproval": policy.RequireApproval,
+	}}
+	if _, err := engine.store.ApplyAutoUpdatePolicy(ctx, actor, request.IdempotencyKey, digest, view, audit); err != nil {
 		return model.AutoUpdatePolicyView{}, err
 	}
 	if _, err := engine.store.GetAutoUpdatePolicy(ctx, service.Name); err != nil {
 		return model.AutoUpdatePolicyView{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "auto_update.policy.changed", Resource: service.ObjectID, Outcome: "accepted", Detail: map[string]any{
-		"enabled": policy.Enabled, "channel": policy.Channel, "requireApproval": policy.RequireApproval,
-	}})
 	return view, nil
 }
 
@@ -82,6 +87,17 @@ func validateAutoUpdatePolicyInput(service string, policy *model.AutoUpdatePolic
 	}
 	if policy.Channel != "stable" && policy.Channel != "candidate" && policy.Channel != "security" {
 		return fmt.Errorf("服务 %s 的自动更新 channel 无效", service)
+	}
+	policy.MaintenanceWindow = strings.TrimSpace(strings.TrimSuffix(policy.MaintenanceWindow, "Z"))
+	if policy.MaintenanceWindow != "" && !autoUpdateWindowPattern.MatchString(policy.MaintenanceWindow) {
+		return fmt.Errorf("服务 %s 的自动更新维护窗口必须为 HH:MM-HH:MM", service)
+	}
+	policy.MaintenanceTimezone = strings.TrimSpace(policy.MaintenanceTimezone)
+	if policy.MaintenanceTimezone == "" {
+		policy.MaintenanceTimezone = "UTC"
+	}
+	if _, err := time.LoadLocation(policy.MaintenanceTimezone); err != nil {
+		return fmt.Errorf("服务 %s 的自动更新维护窗口时区无效", service)
 	}
 	if policy.Enabled && (!policy.RequireApproval || !policy.RequireBackup || !policy.RollbackOnAlert) {
 		return errors.New("自动更新必须同时启用人工批准、新鲜备份和告警回滚门禁")
@@ -117,7 +133,8 @@ func (engine *Engine) seedAutoUpdatePolicies() error {
 		if err := engine.store.UpsertAutoUpdatePolicy(context.Background(), model.AutoUpdatePolicyView{
 			Service: service.Name, ObjectID: service.ObjectID, TenantID: service.TenantID,
 			Enabled: policy.Enabled, Channel: policy.Channel, MaintenanceWindow: policy.MaintenanceWindow,
-			CanaryPercent: policy.CanaryPercent, MaxUnavailable: policy.MaxUnavailable,
+			MaintenanceTimezone: policy.MaintenanceTimezone,
+			CanaryPercent:       policy.CanaryPercent, MaxUnavailable: policy.MaxUnavailable,
 			RequireBackup: policy.RequireBackup, RequireApproval: policy.RequireApproval,
 			RollbackOnAlert: policy.RollbackOnAlert, ObservationSeconds: policy.ObservationSeconds,
 		}); err != nil {
@@ -156,14 +173,18 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 			if plan, getErr := engine.store.GetReleasePlan(ctx, policy.LastPlanID); getErr == nil &&
 				plan.State != model.PlanCompleted && plan.State != model.PlanInvalidated {
 				evaluation.Reason = "已有未收口的自动更新计划"
-				_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), policy.LastPlanID, evaluation.Reason)
+				if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), policy.LastPlanID, evaluation.Reason); err != nil {
+					return nil, err
+				}
 				result = append(result, evaluation)
 				continue
 			}
 		}
-		if !autoUpdateWindowOpen(policy.MaintenanceWindow, now) {
+		if !autoUpdateWindowOpen(policy.MaintenanceWindow, policy.MaintenanceTimezone, now) {
 			evaluation.Reason = "当前不在维护窗口"
-			_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(nextWindowEvaluation(now)), "", evaluation.Reason)
+			if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(nextWindowEvaluation(now)), "", evaluation.Reason); err != nil {
+				return nil, err
+			}
 			result = append(result, evaluation)
 			continue
 		}
@@ -173,7 +194,9 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 		}
 		if !found {
 			evaluation.Reason = "缺少成功的发布发现证据"
-			_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason)
+			if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason); err != nil {
+				return nil, err
+			}
 			result = append(result, evaluation)
 			continue
 		}
@@ -186,7 +209,9 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 		current, _ := discovery["currentVersion"].(string)
 		if target == "" || strings.TrimPrefix(target, "v") == strings.TrimPrefix(current, "v") {
 			evaluation.Reason = "没有可用更新"
-			_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason)
+			if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason); err != nil {
+				return nil, err
+			}
 			result = append(result, evaluation)
 			continue
 		}
@@ -197,13 +222,19 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 		plan, planErr := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{Service: policy.Service, Action: "update", Target: target, IdempotencyKey: requestKey, RequestDigest: digestText(strings.Join([]string{"auto-update", policy.Service, target, policy.Channel}, "\x00"))})
 		if planErr != nil {
 			evaluation.Reason = redactText(planErr.Error())
-			_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason)
+			if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), "", evaluation.Reason); err != nil {
+				return nil, err
+			}
 			result = append(result, evaluation)
 			continue
 		}
 		evaluation.Eligible, evaluation.UpdateCreated, evaluation.PlanID, evaluation.Target = true, true, plan.ID, target
-		_ = engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), plan.ID, "")
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "auto_update.plan.created", Resource: plan.ID, Outcome: "accepted", Detail: map[string]any{"service": policy.Service, "target": target, "channel": policy.Channel}})
+		if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), plan.ID, ""); err != nil {
+			return nil, err
+		}
+		if _, err := engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "auto_update.plan.created", Resource: plan.ID, Outcome: "accepted", Detail: map[string]any{"service": policy.Service, "target": target, "channel": policy.Channel}}); err != nil {
+			return nil, err
+		}
 		result = append(result, evaluation)
 	}
 	return result, nil
@@ -211,11 +242,17 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 
 func autoTimePtr(value time.Time) *time.Time { return &value }
 
-func autoUpdateWindowOpen(window string, now time.Time) bool {
+func autoUpdateWindowOpen(window, timezone string, now time.Time) bool {
 	if window == "" {
 		return true
 	}
-	window = strings.TrimSuffix(window, "Z")
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return false
+	}
 	parts := strings.Split(window, "-")
 	if len(parts) != 2 {
 		return false
@@ -225,7 +262,8 @@ func autoUpdateWindowOpen(window string, now time.Time) bool {
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	minute := now.Hour()*60 + now.Minute()
+	localNow := now.In(location)
+	minute := localNow.Hour()*60 + localNow.Minute()
 	from, to := start.Hour()*60+start.Minute(), end.Hour()*60+end.Minute()
 	if from == to {
 		return true

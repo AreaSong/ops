@@ -56,10 +56,10 @@ func (store *Store) CreateBatchOperation(ctx context.Context, input BatchOperati
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO batch_jobs(id,idempotency_key,actor_hash,tenant_id,action,target,strategy,policy_json,task_json,digest,
-		 confirmation_hash,state,failure_policy,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
-		op.Task.BatchPolicy.Strategy, policyJSON, taskJSON, op.Digest, input.ConfirmationHash, op.State,
-		op.Task.FailurePolicy, timeText(op.CreatedAt), timeText(op.UpdatedAt))
+		 confirmation_hash,confirmation_phrase,state,failure_policy,requires_dual_approval,second_approved_by_hash,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
+		op.Task.BatchPolicy.Strategy, policyJSON, taskJSON, op.Digest, input.ConfirmationHash, op.ConfirmationPhrase, op.State,
+		op.Task.FailurePolicy, op.RequiresDualApproval, op.SecondApprovedByHash, timeText(op.CreatedAt), timeText(op.UpdatedAt))
 	if err != nil {
 		return model.BatchOperation{}, false, err
 	}
@@ -93,20 +93,24 @@ func batchByIdempotency(ctx context.Context, db queryer, key string) (model.Batc
 	return op, err == nil, err
 }
 
-const batchSelect = `SELECT id,idempotency_key,run_idempotency_key,actor_hash,tenant_id,action,target,task_json,digest,confirmation_hash,state,
-	approved_by_hash,approved_at,executed_by_hash,executed_at,started_at,finished_at,summary,error,created_at,updated_at,
+const batchSelect = `SELECT id,idempotency_key,run_idempotency_key,actor_hash,tenant_id,action,target,task_json,digest,confirmation_hash,confirmation_phrase,state,
+	approved_by_hash,approved_at,requires_dual_approval,second_approved_by_hash,second_approved_at,
+	executed_by_hash,executed_at,started_at,finished_at,summary,error,created_at,updated_at,
 	canary_observation_started_at,canary_observed_at FROM batch_jobs`
 
 func scanBatchOperation(row scanner) (model.BatchOperation, error) {
 	var op model.BatchOperation
 	var taskJSON, confirmationHash, state, created, updated string
-	var approved, executed, started, finished, canaryStarted, canaryObserved sql.NullString
+	var approved, secondApproved, executed, started, finished, canaryStarted, canaryObserved sql.NullString
+	var dual int
 	if err := row.Scan(&op.ID, &op.IdempotencyKey, &op.RunIdempotencyKey, &op.ActorHash, &op.TenantID, &op.Action, &op.Target, &taskJSON,
-		&op.Digest, &confirmationHash, &state, &op.ApprovedByHash, &approved, &op.ExecutedByHash, &executed, &started, &finished, &op.Summary, &op.Error,
+		&op.Digest, &confirmationHash, &op.ConfirmationPhrase, &state, &op.ApprovedByHash, &approved, &dual, &op.SecondApprovedByHash, &secondApproved,
+		&op.ExecutedByHash, &executed, &started, &finished, &op.Summary, &op.Error,
 		&created, &updated, &canaryStarted, &canaryObserved); err != nil {
 		return op, err
 	}
 	op.State = model.BatchOperationState(state)
+	op.RequiresDualApproval = dual != 0
 	if err := decodeJSON(taskJSON, &op.Task); err != nil {
 		return op, err
 	}
@@ -120,6 +124,9 @@ func scanBatchOperation(row scanner) (model.BatchOperation, error) {
 		return op, err
 	}
 	if op.ApprovedAt, err = nullableTime(approved); err != nil {
+		return op, err
+	}
+	if op.SecondApprovedAt, err = nullableTime(secondApproved); err != nil {
 		return op, err
 	}
 	if op.ExecutedAt, err = nullableTime(executed); err != nil {
@@ -185,14 +192,22 @@ func (store *Store) ListBatchOperations(ctx context.Context, limit, offset int) 
 		if err != nil {
 			return nil, err
 		}
-		op.Items, err = store.listBatchItems(ctx, op.ID)
+		result = append(result, op)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for index := range result {
+		result[index].Items, err = store.listBatchItems(ctx, result[index].ID)
 		if err != nil {
 			return nil, err
 		}
-		op.SyncTask()
-		result = append(result, op)
+		result[index].SyncTask()
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (store *Store) listBatchItems(ctx context.Context, id string) ([]model.BatchItem, error) {
@@ -234,7 +249,21 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 	if err != nil {
 		return op, err
 	}
-	if op.State != model.BatchPendingApproval || op.Digest != digest {
+	if op.Digest != digest {
+		return op, errors.New("批量计划已变化或不能批准")
+	}
+	if op.RequiresDualApproval && op.State == model.BatchApproved {
+		if op.SecondApprovedByHash == actor {
+			// A retry of the second approval is idempotent and must not create a
+			// second durable transition.
+			if err := tx.Commit(); err != nil {
+				return model.BatchOperation{}, err
+			}
+			return op, nil
+		}
+		return op, errors.New("批量计划已完成双人批准")
+	}
+	if op.State != model.BatchPendingApproval {
 		return op, errors.New("批量计划已变化或不能批准")
 	}
 	var expected string
@@ -246,6 +275,50 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 		return op, ErrConfirmation
 	}
 	now := store.now()
+	if op.RequiresDualApproval {
+		if op.ApprovedByHash == "" {
+			if op.ActorHash == actor {
+				return model.BatchOperation{}, ErrActorMismatch
+			}
+			result, err := tx.ExecContext(ctx, `UPDATE batch_jobs SET approved_by_hash=?,approved_at=?,updated_at=? WHERE id=? AND state=? AND approved_by_hash=''`, actor, timeText(now), timeText(now), id, model.BatchPendingApproval)
+			if err = requireOne(result, err, "批量计划第一批准无法写入"); err != nil {
+				return model.BatchOperation{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return model.BatchOperation{}, err
+			}
+			op.ApprovedByHash, op.ApprovedAt, op.UpdatedAt = actor, &now, now
+			op.Items, _ = store.listBatchItems(ctx, id)
+			op.SyncTask()
+			if err := store.syncBatchTaskSnapshot(ctx, id); err != nil {
+				return op, err
+			}
+			return op, nil
+		}
+		if op.ActorHash == actor || op.ApprovedByHash == actor {
+			if op.ApprovedByHash == actor {
+				if err := tx.Commit(); err != nil {
+					return model.BatchOperation{}, err
+				}
+				return op, nil
+			}
+			return model.BatchOperation{}, ErrActorMismatch
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE batch_jobs SET state=?,second_approved_by_hash=?,second_approved_at=?,updated_at=? WHERE id=? AND state=? AND approved_by_hash!='' AND second_approved_by_hash=''`, model.BatchApproved, actor, timeText(now), timeText(now), id, model.BatchPendingApproval)
+		if err = requireOne(result, err, "批量计划第二批准无法写入"); err != nil {
+			return model.BatchOperation{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.BatchOperation{}, err
+		}
+		op.State, op.SecondApprovedByHash, op.SecondApprovedAt, op.UpdatedAt = model.BatchApproved, actor, &now, now
+		op.Items, _ = store.listBatchItems(ctx, id)
+		op.SyncTask()
+		if err := store.syncBatchTaskSnapshot(ctx, id); err != nil {
+			return op, err
+		}
+		return op, nil
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE batch_jobs SET state=?,approved_by_hash=?,approved_at=?,updated_at=? WHERE id=? AND state=?`, model.BatchApproved, actor, timeText(now), timeText(now), id, model.BatchPendingApproval)
 	if err = requireOne(result, err, "批量计划无法批准"); err != nil {
 		return op, err

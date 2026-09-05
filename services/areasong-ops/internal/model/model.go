@@ -230,6 +230,13 @@ func (plan ReleasePlan) AllowsC2LifecycleSingleActorApproval() bool {
 	return plan.ApprovalSummary.ApprovalException == ApprovalExceptionC2LifecycleSingleActor
 }
 
+// HasRequiredApprovalPolicy rejects legacy or malformed high-risk plans that
+// do not carry either the global dual-approval gate or the signed C2 exception.
+func (plan ReleasePlan) HasRequiredApprovalPolicy() bool {
+	return plan.Risk != RiskHigh || plan.RequiresDualApproval ||
+		plan.AllowsC2LifecycleSingleActorApproval()
+}
+
 type ReleasePlan struct {
 	ID                           string          `json:"id"`
 	ActorHash                    string          `json:"actorHash"`
@@ -426,9 +433,12 @@ type ComposeServiceRuntime struct {
 	ControlledCompose        string   `json:"controlledCompose"`
 	RuntimeCompose           string   `json:"runtimeCompose"`
 	EnvFile                  string   `json:"envFile"`
+	ProjectName              string   `json:"projectName"`
 	ApplicationService       string   `json:"applicationService"`
 	ApplicationContainer     string   `json:"applicationContainer"`
+	DependencyServices       []string `json:"dependencyServices,omitempty"`
 	DependencyContainers     []string `json:"dependencyContainers,omitempty"`
+	ProposalTTLSeconds       int      `json:"proposalTtlSeconds,omitempty"`
 	HealthURL                string   `json:"healthUrl"`
 	ReleaseRepository        string   `json:"releaseRepository"`
 	ReleaseCatalog           string   `json:"releaseCatalog"`
@@ -551,6 +561,7 @@ type ServiceView struct {
 	Metadata             ObjectMetadata              `json:"metadata"`
 	DisplayName          string                      `json:"displayName"`
 	Description          string                      `json:"description"`
+	ManagedCompose       bool                        `json:"managedCompose"`
 	Actions              map[string]ActionDefinition `json:"actions"`
 	Status               map[string]any              `json:"status,omitempty"`
 	ReleaseDiscovery     map[string]any              `json:"releaseDiscovery,omitempty"`

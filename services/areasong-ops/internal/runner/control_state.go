@@ -75,6 +75,14 @@ func lifecycleAction(service model.ServiceDefinition, name string) (model.Action
 		PhaseSemantics: phaseSemantics, ObservationSeconds: 300}, true
 }
 
+func (engine *Engine) lifecycleAction(service model.ServiceDefinition, name string) (model.ActionDefinition, bool) {
+	action, ok := lifecycleAction(service, name)
+	if ok && engine.lifecycleObservationSeconds >= 0 {
+		action.ObservationSeconds = engine.lifecycleObservationSeconds
+	}
+	return action, ok
+}
+
 func lifecycleDisplayName(name string) string {
 	switch name {
 	case "enter-maintenance":
@@ -110,12 +118,19 @@ func (engine *Engine) ServiceState(ctx context.Context, serviceName string) (mod
 		if service.StatePolicy != nil && service.StatePolicy.DefaultDesired != "" {
 			desired = service.StatePolicy.DefaultDesired
 		}
-		state, err = engine.store.SetDesiredState(ctx, store.DesiredStateInput{
-			Service: service.Name, ObjectID: service.ObjectID, TenantID: service.TenantID,
-			Desired: desired, Reason: "初始化目标状态",
-		})
-		if err != nil {
-			return model.ServiceState{}, err
+		tenantID := service.TenantID
+		if tenantID == "" && engine.catalog.Access != nil {
+			tenantID = engine.catalog.Access.DefaultTenant
+		}
+		if tenantID == "" {
+			tenantID = "default"
+		}
+		// Catalog defaults are a read-only projection until a successful plan
+		// commits a desired-state transition. A status read must never initialize
+		// durable production intent or emit a desired_state.changed event.
+		state = model.ServiceState{
+			Service: service.Name, ObjectID: service.ObjectID, TenantID: tenantID,
+			Desired: desired, Reason: "服务目录默认目标状态（未提交）",
 		}
 	}
 	// A stopped service may legitimately reject its normal inspect command. In

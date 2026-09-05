@@ -114,9 +114,13 @@ jobs:
             .
           test -x "$output/areasong-ops-runner"
           test -x "$output/areasong-ops-runner-updater"
-          archive="$GITHUB_WORKSPACE/areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          archive_name="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          archive="$GITHUB_WORKSPACE/$archive_name"
           tar -C "$output" -czf "$archive" areasong-ops-runner areasong-ops-runner-updater
-          sha256sum "$archive" > "$archive.sha256"
+          (
+            cd "$GITHUB_WORKSPACE"
+            sha256sum "$archive_name" > "$archive_name.sha256"
+          )
           COSIGN_YES=true cosign sign-blob \
             --bundle "$archive.sigstore.json" \
             "$archive" > "$archive.sigstore"
@@ -131,15 +135,30 @@ jobs:
         run: |
           set -Eeuo pipefail
           archive="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          runner_sha256="$(awk 'NR == 1 && NF == 2 && $1 ~ /^[a-f0-9]{64}$/ { print $1 }' "$archive.sha256")"
+          [[ "$runner_sha256" =~ ^[a-f0-9]{64}$ ]]
           jq -n \
             --arg version "$VERSION" \
             --arg revision "$REVISION" \
             --arg image "$IMAGE" \
             --arg image_digest "$IMAGE_DIGEST" \
             --arg runner_archive "$archive" \
-            --rawfile runner_sha256 "$archive.sha256" \
-            '{schemaVersion:1,service:"areasong-ops",version:$version,revision:$revision,platform:"linux/amd64",web:{image:($image+"@"+$image_digest),cosign:"keyless"},runner:{archive:$runner_archive,sha256:($runner_sha256|rtrimstr("\n")),cosign:"keyless"}}' \
+            --arg runner_sha256 "sha256:$runner_sha256" \
+            '{schemaVersion:2,service:"areasong-ops",version:$version,revision:$revision,platform:"linux/amd64",web:{image:($image+"@"+$image_digest),cosign:"keyless"},runner:{archive:$runner_archive,sha256:$runner_sha256,cosign:"keyless"}}' \
             > "areasong-ops-release-$REVISION.json"
+
+      - name: Verify release assets as a consumer
+        env:
+          REVISION: ${{ steps.metadata.outputs.revision }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          archive="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
+          services/areasong-ops/deploy/verify-release-assets.sh \
+            "areasong-ops-release-$REVISION.json" \
+            "$archive" \
+            "$archive.sha256" \
+            "$archive.sigstore.json"
 
       - name: Create GitHub release
         env:

@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -145,7 +147,7 @@ class NginxTrafficAdapterTests(unittest.TestCase):
     def test_three_actions_write_closed_templates_reload_and_verify(self) -> None:
         cases = [
             ("enter-maintenance", "maintenance", "include /etc/nginx/snippets/areasong-ops/demo-maintenance.conf;"),
-            ("drain", "drained", "old workers complete naturally"),
+            ("drain", "drained", "include /etc/nginx/snippets/areasong-ops/demo-maintenance.conf;"),
             ("resume-traffic", "running", "managed traffic state: running"),
         ]
         for action, expected_state, expected_text in cases:
@@ -297,6 +299,55 @@ class NginxTrafficAdapterTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("drain timed out", result.stderr)
+        self.assertIn(
+            "include /etc/nginx/snippets/areasong-ops/demo-maintenance.conf;",
+            self.include.read_text(encoding="utf-8"),
+        )
+
+    def test_drain_waits_until_workers_and_connections_reach_zero(self) -> None:
+        worker_state = self.nginx_root / "workers.txt"
+        connection_state = self.nginx_root / "connections.txt"
+        worker_state.write_text("101 102\n", encoding="utf-8")
+        connection_state.write_text("2\n", encoding="utf-8")
+
+        def finish_existing_requests() -> None:
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if self.call_log.exists() and "systemctl reload nginx" in self.call_log.read_text(
+                    encoding="utf-8"
+                ):
+                    time.sleep(0.05)
+                    worker_next = worker_state.with_suffix(".next")
+                    connection_next = connection_state.with_suffix(".next")
+                    worker_next.write_text("\n", encoding="utf-8")
+                    connection_next.write_text("0\n", encoding="utf-8")
+                    worker_next.replace(worker_state)
+                    connection_next.replace(connection_state)
+                    return
+                time.sleep(0.01)
+
+        transition = threading.Thread(target=finish_existing_requests)
+        transition.start()
+        try:
+            result = self.run_adapter(
+                "drain",
+                "drain",
+                extra_environment={
+                    "OPS_TRAFFIC_TEST_DRAIN_STATE_FILE": str(worker_state),
+                    "OPS_TRAFFIC_TEST_DRAIN_CONNECTIONS_FILE": str(connection_state),
+                    "OPS_TRAFFIC_TEST_DRAIN_TIMEOUT_SECONDS": "2",
+                    "OPS_TRAFFIC_TEST_DRAIN_POLL_SECONDS": "0.01",
+                },
+            )
+        finally:
+            transition.join(timeout=3)
+
+        payload = self.payload(result)
+        self.assertFalse(transition.is_alive())
+        self.assertTrue(payload["data"]["drainCompleted"])
+        self.assertEqual(payload["data"]["activeConnections"], 0)
+        self.assertEqual(worker_state.read_text(encoding="utf-8").strip(), "")
+        self.assertEqual(connection_state.read_text(encoding="utf-8").strip(), "0")
 
     def test_maintenance_template_references_operator_owned_file(self) -> None:
         payload = self.payload(

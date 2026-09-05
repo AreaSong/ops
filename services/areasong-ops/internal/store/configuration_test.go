@@ -17,7 +17,8 @@ func TestKubernetesOperationIdempotencyAndFailureState(t *testing.T) {
 	}
 	operation := model.KubernetesOperation{
 		ID: "kube-op-1", IdempotencyKey: "kube-key-1", Target: target,
-		Action: "apply", ManifestDigest: "sha256:manifest", State: "pending",
+		Action: "apply", ManifestDigest: "sha256:manifest", State: "pending", Phase: "preflight",
+		RolloutState: "pending", RolloutResources: []string{"deployment/demo"},
 		CreatedAt: time.Now().UTC(),
 	}
 	created, output, fresh, err := database.BeginKubernetesOperation(ctx, operation, "actor-a", "sha256:req")
@@ -51,6 +52,10 @@ func TestKubernetesOperationIdempotencyAndFailureState(t *testing.T) {
 	}
 	if len(stored.Target.Allowlist) != 1 || stored.Target.Allowlist[0] != "deployment/demo" {
 		t.Fatalf("target allowlist was not persisted: %+v", stored.Target)
+	}
+	if stored.Phase != "preflight" || stored.RolloutState != "pending" ||
+		len(stored.RolloutResources) != 1 || stored.RolloutResources[0] != "deployment/demo" {
+		t.Fatalf("rollout state was not persisted: %+v", stored)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -63,6 +64,9 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 	if err := request.TargetSelector.Validate(); err != nil {
 		return model.BatchOperation{}, false, err
 	}
+	if engine.catalog.SchemaVersion >= 4 && len(request.TargetIDs) == 0 {
+		return model.BatchOperation{}, false, errors.New("生产批量作业必须显式列出目标 ID，禁止仅使用通配 selector")
+	}
 	if len(request.TargetIDs) == 0 && selectorOnlyExcludes(request.TargetSelector) {
 		return model.BatchOperation{}, false, errors.New("批量 selector 必须包含明确的目标 ID、标签或能力")
 	}
@@ -79,8 +83,12 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 	if err := engine.ensureBatchTargetsAvailable(ctx, targets); err != nil {
 		return model.BatchOperation{}, false, err
 	}
+	if err := validateProductionBatchContract(engine.catalog.SchemaVersion, targets, request); err != nil {
+		return model.BatchOperation{}, false, err
+	}
 	sort.Strings(targets)
 	firstTenant := ""
+	requiresDualApproval := false
 	for _, target := range targets {
 		service, exists := engine.catalog.Services[target]
 		if !exists {
@@ -95,6 +103,9 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 		}
 		if err := engine.authorize(ctx, actor, permissionForAction(action.Name), service.ObjectID); err != nil {
 			return model.BatchOperation{}, false, err
+		}
+		if engine.catalog.SchemaVersion >= 4 && action.Risk == model.RiskHigh {
+			requiresDualApproval = true
 		}
 		tenantID := service.TenantID
 		if tenantID == "" && engine.catalog.Access != nil {
@@ -169,7 +180,7 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 	if firstTenant == "" {
 		firstTenant = "default"
 	}
-	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, Items: items, CreatedAt: now, UpdatedAt: now}
+	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, RequiresDualApproval: requiresDualApproval, Items: items, CreatedAt: now, UpdatedAt: now}
 	created, wasCreated, err := engine.store.CreateBatchOperation(ctx, store.BatchOperationInput{Operation: op, ConfirmationHash: store.HashConfirmation(op.ConfirmationPhrase)})
 	if err != nil {
 		return model.BatchOperation{}, false, err
@@ -193,6 +204,37 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "batch.created", Resource: op.ID, Outcome: "accepted", Detail: map[string]any{"action": request.Action, "targetCount": len(targets), "digest": digest}})
 	}
 	return created, wasCreated, nil
+}
+
+// validateProductionBatchContract turns the rollout safety rules into a
+// creation-time invariant.  A persisted production batch must never be able to
+// bypass an explicit target list, a canary observation gate, or the
+// fail-stop policy merely because a caller selected a different strategy.
+// Schema 3 remains available for legacy/local fixtures; schema 4 is the
+// production-equivalent contract.
+func validateProductionBatchContract(schemaVersion int, targets []string, request model.BatchCreateRequest) error {
+	if schemaVersion < 4 {
+		return nil
+	}
+	if len(request.TargetIDs) == 0 {
+		return errors.New("生产批量作业必须显式列出目标 ID，禁止仅使用通配 selector")
+	}
+	if len(targets) <= 1 {
+		if request.FailurePolicy == model.FailureContinue {
+			return errors.New("生产批量作业禁止 failurePolicy=continue")
+		}
+		return nil
+	}
+	if request.BatchPolicy.Strategy != model.BatchCanary {
+		return errors.New("生产多目标批量作业必须先执行 Canary")
+	}
+	if request.BatchPolicy.ObservationSeconds <= 0 {
+		return errors.New("生产 Canary 必须配置正数观察窗口")
+	}
+	if request.FailurePolicy != model.FailureStop {
+		return errors.New("生产批量作业失败后必须停止后续批次")
+	}
+	return nil
 }
 
 func selectorOnlyExcludes(selector model.NodeSelector) bool {
@@ -681,7 +723,12 @@ func (engine *Engine) ExecuteBatch(ctx context.Context, actor, id string, input 
 	if err := engine.authorizeBatchOperation(ctx, actor, op); err != nil {
 		return model.BatchOperation{}, err
 	}
-	if engine.catalog.SchemaVersion >= 4 && (op.ActorHash == actor || (op.ApprovedByHash != "" && op.ApprovedByHash == actor)) {
+	if op.RequiresDualApproval && op.SecondApprovedByHash == "" {
+		return model.BatchOperation{}, errors.New("生产批量计划尚未完成独立双人批准")
+	}
+	if engine.catalog.SchemaVersion >= 4 && (op.ActorHash == actor ||
+		(op.ApprovedByHash != "" && op.ApprovedByHash == actor) ||
+		(op.SecondApprovedByHash != "" && op.SecondApprovedByHash == actor)) {
 		return model.BatchOperation{}, store.ErrActorMismatch
 	}
 	if !uuidPattern.MatchString(input.IdempotencyKey) {
@@ -1075,7 +1122,19 @@ func (engine *Engine) startBatchItem(ctx context.Context, op model.BatchOperatio
 	if _, _, bindErr := engine.store.BindBatchItemExecution(ctx, op.ID, item.ID, planKey, taskKey, fence...); bindErr == nil {
 		return
 	}
-	plan, err := engine.CreateReleasePlan(ctx, op.ActorHash, model.PreviewRequest{
+	// The parent batch records three roles independently: creator, approver and
+	// executor.  Child plans must use the actual executor as their operator and
+	// the parent approver as their independent approver; reusing the creator for
+	// both would silently turn a production batch into self-approved plans.
+	planActor := op.ExecutedByHash
+	if planActor == "" {
+		planActor = op.ActorHash
+	}
+	planApprover := op.ApprovedByHash
+	if planApprover == "" {
+		planApprover = op.ActorHash
+	}
+	plan, err := engine.CreateReleasePlan(ctx, planActor, model.PreviewRequest{
 		Service: item.Service, Action: op.Action, Target: op.Target,
 		IdempotencyKey: planKey,
 	})
@@ -1083,12 +1142,27 @@ func (engine *Engine) startBatchItem(ctx context.Context, op model.BatchOperatio
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, "", err, fence...)
 		return
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, op.ActorHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
+	approved := plan
+	if plan.RequiresDualApproval {
+		if op.ApprovedByHash == "" || op.SecondApprovedByHash == "" {
+			_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, errors.New("父批量计划缺少完整双人批准证据"), fence...)
+			return
+		}
+		approved, err = engine.ApproveReleasePlan(ctx, op.ApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
+		if err == nil {
+			approved, err = engine.ApproveReleasePlan(ctx, op.SecondApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
+		}
+	} else {
+		// Medium/low child plans intentionally retain the release-plan rule that
+		// their operator is also their approver. The parent batch approval still
+		// gates admission, while no stronger approval is silently fabricated.
+		approved, err = engine.ApproveReleasePlan(ctx, planActor, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
+	}
 	if err != nil {
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, err, fence...)
 		return
 	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, op.ActorHash, approved.ID, model.ExecutePlanRequest{IdempotencyKey: taskKey})
+	task, _, err := engine.ExecuteReleasePlan(ctx, planActor, approved.ID, model.ExecutePlanRequest{IdempotencyKey: taskKey})
 	if err != nil {
 		_ = engine.failReadyBatchItem(ctx, op.ID, item.ID, plan.ID, err, fence...)
 		return
@@ -1183,14 +1257,31 @@ func (engine *Engine) waitBatchTasks(ctx context.Context, op model.BatchOperatio
 				switch plan.State {
 				case model.PlanObserving:
 					allDone = false
-					if plan.ObservationEndsAt == nil || time.Now().UTC().After(*plan.ObservationEndsAt) {
-						key, keyErr := newUUID()
-						if keyErr != nil {
-							_ = engine.store.UpdateBatchItemCAS(ctx, op.ID, item.ID, model.BatchNodeRunning,
-								model.BatchNodeFailed, item.PlanID, item.TaskID, "无法生成计划收口幂等键", fence...)
-							continue
+					if plan.ObservationEndsAt == nil || !time.Now().UTC().Before(*plan.ObservationEndsAt) {
+						key := batchItemIdempotencyKey(op.ID, item.ID, "close")
+						_, closeErr := engine.CloseReleasePlan(ctx, plan.ActorHash, plan.ID,
+							model.ClosePlanRequest{IdempotencyKey: key})
+						if closeErr != nil {
+							latestPlan, latestErr := engine.store.GetReleasePlan(ctx, plan.ID)
+							reason := plan.ClosureReason
+							if latestErr == nil {
+								reason = latestPlan.ClosureReason
+							}
+							if strings.Contains(closeErr.Error(), "观察窗口尚未结束") && strings.TrimSpace(reason) == "" {
+								// Clock skew between the coordinator and the store is
+								// retryable; do not fail the batch item.
+								continue
+							}
+							if strings.TrimSpace(reason) == "" {
+								reason = redactText(closeErr.Error())
+							}
+							if strings.TrimSpace(reason) == "" {
+								reason = "计划收口失败，需人工核对"
+							}
+							_ = engine.store.UpdateBatchItemCAS(ctx, op.ID, item.ID,
+								model.BatchNodeRunning, model.BatchNodeFailed, item.PlanID, item.TaskID,
+								redactText(reason), fence...)
 						}
-						_, _ = engine.CloseReleasePlan(ctx, op.ActorHash, plan.ID, model.ClosePlanRequest{IdempotencyKey: key})
 					}
 					continue
 				case model.PlanCompleted:

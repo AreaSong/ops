@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleHelp, LoaderCircle, Play, RefreshCw, ShieldCheck, TerminalSquare } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { runAction } from '../action'
 import { formatTime, shortHash } from '../labels'
 import type { TerminalCommand, TerminalOutput, TerminalShellPlan } from '../types'
 
@@ -126,7 +127,7 @@ export function Terminal({
 
         {breakGlassAvailable && <section className="page-section">
           <div className="section-heading"><h2>创建 Shell 计划</h2><span>两名独立批准人确认后才能执行</span></div>
-          <form className="runner-update-form" onSubmit={(event) => void createPlan(event)}>
+          <form className="runner-update-form" onSubmit={(event) => runAction(createPlan(event))}>
             <label><span>对象 ID</span><input required value={objectId} onChange={(event) => setObjectId(event.target.value)} placeholder="受控对象 objectId" /></label>
             <label className="wide"><span>Shell 输入</span><textarea required rows={5} value={shellInput} onChange={(event) => setShellInput(event.target.value)} spellCheck={false} placeholder="仅填写必要的受控命令" /></label>
             <label className="wide runner-prepare-confirm"><span>申请确认</span><code>{requestPhrase || '先填写对象 ID'}</code><input required value={requestConfirmation} onChange={(event) => setRequestConfirmation(event.target.value)} /></label>
@@ -138,7 +139,7 @@ export function Terminal({
 
         {onRun && <section className="page-section">
           <div className="section-heading"><h2>受控命令会话</h2><span>只使用命令目录中的固定能力</span></div>
-          <form className="runner-update-form" onSubmit={(event) => void runCommand(event)}>
+          <form className="runner-update-form" onSubmit={(event) => runAction(runCommand(event))}>
             <label><span>对象 ID</span><input required value={objectId} onChange={(event) => setObjectId(event.target.value)} /></label>
             <label className="wide"><span>命令</span><select required value={command} onChange={(event) => setCommand(event.target.value)}><option value="">选择允许的命令</option>{commands.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
             <label className="wide"><span>直接会话确认（若后端要求）</span><input value={commandConfirmation} onChange={(event) => setCommandConfirmation(event.target.value)} /></label>
@@ -159,8 +160,8 @@ export function Terminal({
             return <article className={`runner-update-card runner-update-${stateTone(plan.state)}`} key={plan.id}>
               <header><div className="runner-update-title"><span className={`service-indicator ${stateTone(plan.state)}`} /><div><strong>{plan.objectId}</strong><small>{stateLabel[plan.state] || plan.state} · {formatTime(plan.createdAt)}</small></div></div><span className={`credential-health ${stateTone(plan.state)}`}>{stateLabel[plan.state] || plan.state}</span></header>
               <dl className="runner-update-detail"><div><dt>输入摘要</dt><dd><code>{shortHash(plan.inputDigest)}</code></dd></div><div><dt>计划 ID</dt><dd><code>{shortHash(plan.id)}</code></dd></div><div><dt>第一批准人</dt><dd><code>{shortHash(plan.approvedByHash)}</code></dd></div><div><dt>第二批准人</dt><dd><code>{shortHash(plan.secondApprovedByHash)}</code></dd></div><div><dt>结束时间</dt><dd>{formatTime(plan.finishedAt)}</dd></div></dl>
-              {approval && <div className="runner-update-actions attention"><label><span>{approvalLabel}确认</span><code>{phrase}</code><input value={confirmation} onChange={(event) => setPlanConfirmation(plan.id, event.target.value)} /></label><button className="button danger" type="button" disabled={!phrase || confirmation !== phrase || busy === `terminal-approve:${plan.id}`} onClick={() => void approve(plan)}><ShieldCheck size={14} />{busy === `terminal-approve:${plan.id}` ? '批准中' : approvalLabel}</button></div>}
-              {executable && <div className="runner-update-actions attention"><label><span>执行时再次提供原始输入</span><textarea rows={3} value={input} onChange={(event) => setExecutionInput(plan.id, event.target.value)} spellCheck={false} /></label><button className="button danger" type="button" disabled={!input || busy === `terminal-execute:${plan.id}`} onClick={() => void execute(plan)}><Play size={14} />{busy === `terminal-execute:${plan.id}` ? '执行中' : '独立执行'}</button></div>}
+              {approval && <div className="runner-update-actions attention"><label><span>{approvalLabel}确认</span><code>{phrase}</code><input value={confirmation} onChange={(event) => setPlanConfirmation(plan.id, event.target.value)} /></label><button className="button danger" type="button" disabled={!phrase || confirmation !== phrase || busy === `terminal-approve:${plan.id}`} onClick={() => runAction(approve(plan))}><ShieldCheck size={14} />{busy === `terminal-approve:${plan.id}` ? '批准中' : approvalLabel}</button></div>}
+              {executable && <div className="runner-update-actions attention"><label><span>执行时再次提供原始输入</span><textarea rows={3} value={input} onChange={(event) => setExecutionInput(plan.id, event.target.value)} spellCheck={false} /></label><button className="button danger" type="button" disabled={!input || busy === `terminal-execute:${plan.id}`} onClick={() => runAction(execute(plan))}><Play size={14} />{busy === `terminal-execute:${plan.id}` ? '执行中' : '独立执行'}</button></div>}
               {plan.state === 'running' && <div className="runner-update-progress"><LoaderCircle className="spin" size={16} />终端命令执行中</div>}
               {plan.output && <pre className="terminal-output"><code>{plan.output}</code></pre>}
               {plan.error && <div className="runner-update-error"><AlertTriangle size={15} />{plan.error}</div>}

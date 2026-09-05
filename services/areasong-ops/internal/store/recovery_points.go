@@ -153,19 +153,29 @@ func (store *Store) ListRecoveryPoints(ctx context.Context, service string, limi
 		return nil, err
 	}
 	defer rows.Close()
-	points := make([]model.RecoveryPoint, 0)
+	ids := make([]string, 0)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	points := make([]model.RecoveryPoint, 0, len(ids))
+	for _, id := range ids {
 		point, err := store.GetRecoveryPoint(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		points = append(points, point)
 	}
-	return points, rows.Err()
+	return points, nil
 }
 
 func (store *Store) ExpireRecoveryPoints(ctx context.Context, now time.Time) (int64, error) {

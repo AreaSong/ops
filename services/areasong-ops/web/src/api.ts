@@ -1,7 +1,7 @@
 import type {
-  ActiveAlert, AuditEntry, AutomaticTaskView, CredentialProfile, CredentialRotation, ManagedObjectView, OpsEvent, Page, Preview,
+  ActiveAlert, AuditEntry, AutomaticTaskView, CredentialProfile, CredentialRotation, ManagedObjectView, OpsEvent, Page,
   AccessChange, AccessControlUpdate, AccessControlView, AutoUpdateEvaluation, AutoUpdatePolicyInput, AutoUpdatePolicyView,
-  BatchOperation, BatchTask, ComposeRevision, ComposeServiceView, ExtensionPlan, ExtensionPolicyView, ExtensionView, Fleet, KubernetesConfigView, KubernetesOperation, KubernetesPlan,
+  BatchOperation, BatchTask, ComposeRevision, ComposeServiceView, ExtensionManifest, ExtensionPlan, ExtensionPolicyView, ExtensionUploadResult, ExtensionView, Fleet, KubernetesConfigView, KubernetesOperation, KubernetesPlan,
   ManagedFileProposal, ManagedFileView, RecoveryCenterView, RecoveryPoint, ReleasePlan, RunnerNode, RunnerUpdate, RunnerUpdatePrepareInput, RunnerUpdateResolutionEvidence, RunnerUpdateStatus, FleetRunnerUpdatePlan, FleetRunnerUpdatePlanInput, FleetRunnerUpdateStatus,
   TerminalCommand, TerminalOutput, TerminalShellPlan,
   ServiceState, ServerNode, ServiceView, SessionResponse, Task,
@@ -47,6 +47,10 @@ function normalizeBatch(value: BatchTask | BatchOperation): BatchTask {
       digest: operation.digest,
       confirmationPhrase: operation.confirmationPhrase,
       approvedAt: operation.approvedAt,
+      approvedByHash: operation.approvedByHash,
+      requiresDualApproval: operation.requiresDualApproval,
+      secondApprovedByHash: operation.secondApprovedByHash,
+      secondApprovedAt: operation.secondApprovedAt,
       operationState: operation.state,
     }
   }
@@ -138,8 +142,10 @@ export class OpsAPI {
   private fileProposalKeys = new Map<string, string>()
   private fileApplyKeys = new Map<string, string>()
   private fileRollbackKeys = new Map<string, string>()
+	private composeProposalKeys = new Map<string, string>()
   private composeApplyKeys = new Map<string, string>()
   private composeRollbackKeys = new Map<string, string>()
+  private extensionUploadKeys = new Map<string, string>()
   private extensionPlanKeys = new Map<string, string>()
   private extensionExecutionKeys = new Map<string, string>()
   private fleetRunnerPlanKeys = new Map<string, string>()
@@ -414,30 +420,49 @@ export class OpsAPI {
     expectedDigest: string
     mode: 'validate' | 'propose'
     confirmation?: string
+		recoveryPointId?: string
   }): Promise<ComposeServiceView> {
+		const requestIdentity = JSON.stringify({ service, ...body })
+		const proposalKey = body.mode === 'propose'
+			? this.composeProposalKeys.get(requestIdentity) ?? crypto.randomUUID()
+			: crypto.randomUUID()
+		if (body.mode === 'propose') this.composeProposalKeys.set(requestIdentity, proposalKey)
     let result: ComposeServiceView | ComposeRevision
+		let mutationSucceeded = false
     try {
-      result = await this.mutate<ComposeServiceView | ComposeRevision>(`/api/compose/${encodeURIComponent(service)}/revisions`, {
-        service, ...body, idempotencyKey: crypto.randomUUID(),
-      })
-    } catch (reason) {
-      if (!isFeatureUnavailable(reason)) throw reason
-      // Compatibility fallback for the pre-unification Web proxy.
-      result = await this.mutate<ComposeServiceView | ComposeRevision>(`/api/compose/services/${encodeURIComponent(service)}`, {
-        service, ...body, idempotencyKey: crypto.randomUUID(),
-      })
-    }
-    if (!isComposeRevision(result)) return result
-    const current = await this.compose(service)
-    return {
-      ...current,
-      content: result.content ?? current.content,
-      source: result.source,
-      validated: result.validated,
-      revisions: result.id
-        ? [result, ...(current.revisions ?? []).filter((revision) => revision.id !== result.id)]
-        : current.revisions,
-    }
+			try {
+				result = await this.mutate<ComposeServiceView | ComposeRevision>(`/api/compose/${encodeURIComponent(service)}/revisions`, {
+					service, ...body, idempotencyKey: proposalKey,
+				})
+			} catch (reason) {
+				if (!isFeatureUnavailable(reason)) throw reason
+				// Compatibility fallback for the pre-unification Web proxy.
+				result = await this.mutate<ComposeServiceView | ComposeRevision>(`/api/compose/services/${encodeURIComponent(service)}`, {
+					service, ...body, idempotencyKey: proposalKey,
+				})
+			}
+			mutationSucceeded = true
+			if (!isComposeRevision(result)) {
+				if (body.mode === 'propose') this.composeProposalKeys.delete(requestIdentity)
+				return result
+			}
+			const current = await this.compose(service)
+			if (body.mode === 'propose') this.composeProposalKeys.delete(requestIdentity)
+			return {
+				...current,
+				content: result.content ?? current.content,
+				source: result.source,
+				validated: result.validated,
+				revisions: result.id
+					? [result, ...(current.revisions ?? []).filter((revision) => revision.id !== result.id)]
+					: current.revisions,
+			}
+		} catch (reason) {
+			if (body.mode === 'propose' && reason instanceof APIError && !mutationSucceeded) {
+				this.composeProposalKeys.delete(requestIdentity)
+			}
+			throw reason
+		}
   }
 
   async approveComposeRevision(revision: ComposeRevision, confirmation: string): Promise<ComposeRevision> {
@@ -637,21 +662,30 @@ export class OpsAPI {
   }
 
   async extensions(): Promise<ExtensionPolicyView> {
-    const [response, plansResponse] = await Promise.all([
-      fetch('/api/extensions', { cache: 'no-store' }),
-      fetch('/api/extensions/plans', { cache: 'no-store' }),
-    ])
+    const response = await fetch('/api/extensions', { cache: 'no-store' })
     const payload = await parseResponse<ExtensionPolicyPayload>(response)
     let plans: ExtensionPlan[] = []
-    if (plansResponse.ok) {
+    if (payload.enabled) {
+      const plansResponse = await fetch('/api/extensions/plans', { cache: 'no-store' })
       plans = (await parseResponse<{ plans?: ExtensionPlan[] }>(plansResponse)).plans ?? []
-    } else {
-      const body = await plansResponse.clone().text()
-      if (!isFeatureUnavailable(new APIError(plansResponse.status, body))) {
-        await parseResponse<{ plans?: ExtensionPlan[] }>(plansResponse)
-      }
     }
     return { ...payload, plans, extensions: (payload.extensions ?? []).map(normalizeExtension).filter((item) => item.id) }
+  }
+
+  async uploadExtension(manifest: ExtensionManifest, content: string): Promise<ExtensionUploadResult> {
+    const requestIdentity = `${manifest.id}:${manifest.version}:${manifest.digest}`
+    const key = this.extensionUploadKeys.get(requestIdentity) ?? crypto.randomUUID()
+    this.extensionUploadKeys.set(requestIdentity, key)
+    try {
+      const result = await this.mutate<ExtensionUploadResult>('/api/extensions', {
+        manifest, content, idempotencyKey: key,
+      })
+      this.extensionUploadKeys.delete(requestIdentity)
+      return result
+    } catch (reason) {
+      if (reason instanceof APIError) this.extensionUploadKeys.delete(requestIdentity)
+      throw reason
+    }
   }
 
   async createExtensionPlan(body: {
@@ -837,6 +871,13 @@ export class OpsAPI {
     })
   }
 
+  async createKubernetesRollbackPlan(plan: KubernetesPlan, manifest: string): Promise<KubernetesPlan> {
+	return this.mutate<KubernetesPlan>(`/api/kubernetes/plans/${encodeURIComponent(plan.id)}/rollback`, {
+	  manifest,
+	  idempotencyKey: crypto.randomUUID(),
+	})
+  }
+
   async kubernetesPlans(): Promise<KubernetesPlan[]> {
     const response = await fetch('/api/kubernetes/plans', { cache: 'no-store' })
     const payload = await parseResponse<{ plans?: KubernetesPlan[] }>(response)
@@ -861,13 +902,6 @@ export class OpsAPI {
   async access(): Promise<AccessControlView> {
     const response = await fetch('/api/access', { cache: 'no-store' })
     return parseResponse<AccessControlView>(response)
-  }
-
-  async updateAccess(body: AccessControlUpdate): Promise<AccessControlView> {
-    return this.mutate<AccessControlView>('/api/access', {
-      ...body,
-      idempotencyKey: crypto.randomUUID(),
-    }, 'PUT')
   }
 
   async createAccessChange(body: AccessControlUpdate): Promise<AccessChange> {
@@ -897,18 +931,6 @@ export class OpsAPI {
     const response = await fetch(`/api/audit?limit=100&offset=${offset}`)
     const payload = await parseResponse<{ entries: AuditEntry[]; hasMore: boolean }>(response)
     return { items: payload.entries ?? [], hasMore: payload.hasMore }
-  }
-
-  async preview(service: string, action: string, target = ''): Promise<Preview> {
-    return this.mutate<Preview>('/api/previews', { service, action, target })
-  }
-
-  async start(previewID: string, confirmation = ''): Promise<Task> {
-    return this.mutate<Task>('/api/tasks', {
-      previewId: previewID,
-      confirmation,
-      idempotencyKey: crypto.randomUUID(),
-    })
   }
 
   events(onEvent: (event: OpsEvent) => void, onState: (connected: boolean) => void): () => void {

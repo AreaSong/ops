@@ -10,3 +10,4 @@ observability/.env
 __pycache__/
 *.py[cod]
 node_modules/
+.playwright-cli/

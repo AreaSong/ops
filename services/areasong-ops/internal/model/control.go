@@ -125,7 +125,6 @@ type AccessControlUpdateRequest struct {
 	RemovePrincipalSubjects []string          `json:"removePrincipalSubjects,omitempty"`
 	RemoveBindingIDs        []string          `json:"removeBindingIds,omitempty"`
 	RequiresDualApproval    bool              `json:"requiresDualApproval,omitempty"`
-	ChangeID                string            `json:"changeId,omitempty"`
 	Confirmation            string            `json:"confirmation,omitempty"`
 	ExpectedVersion         int64             `json:"expectedVersion,omitempty"`
 	IdempotencyKey          string            `json:"idempotencyKey"`
@@ -158,6 +157,9 @@ type AccessChange struct {
 	CreatedAt            time.Time         `json:"createdAt"`
 	ApprovedAt           *time.Time        `json:"approvedAt,omitempty"`
 	SecondApprovedAt     *time.Time        `json:"secondApprovedAt,omitempty"`
+	AppliedByHash        string            `json:"appliedByHash,omitempty"`
+	AppliedPolicyDigest  string            `json:"appliedPolicyDigest,omitempty"`
+	AppliedPolicyVersion int64             `json:"appliedPolicyVersion,omitempty"`
 	AppliedAt            *time.Time        `json:"appliedAt,omitempty"`
 }
 
@@ -192,15 +194,16 @@ func (role Role) Allows(permission Permission) bool {
 }
 
 type AutoUpdatePolicy struct {
-	Enabled            bool   `json:"enabled"`
-	Channel            string `json:"channel"`
-	MaintenanceWindow  string `json:"maintenanceWindow,omitempty"`
-	CanaryPercent      int    `json:"canaryPercent,omitempty"`
-	MaxUnavailable     int    `json:"maxUnavailable,omitempty"`
-	RequireBackup      bool   `json:"requireBackup"`
-	RequireApproval    bool   `json:"requireApproval"`
-	RollbackOnAlert    bool   `json:"rollbackOnAlert"`
-	ObservationSeconds int    `json:"observationSeconds"`
+	Enabled             bool   `json:"enabled"`
+	Channel             string `json:"channel"`
+	MaintenanceWindow   string `json:"maintenanceWindow,omitempty"`
+	MaintenanceTimezone string `json:"maintenanceTimezone,omitempty"`
+	CanaryPercent       int    `json:"canaryPercent,omitempty"`
+	MaxUnavailable      int    `json:"maxUnavailable,omitempty"`
+	RequireBackup       bool   `json:"requireBackup"`
+	RequireApproval     bool   `json:"requireApproval"`
+	RollbackOnAlert     bool   `json:"rollbackOnAlert"`
+	ObservationSeconds  int    `json:"observationSeconds"`
 }
 
 type RecoveryCenterView struct {
@@ -249,39 +252,92 @@ type ReconcileRequest struct {
 }
 
 type ComposeRevision struct {
-	ID                     string     `json:"id"`
-	IdempotencyKey         string     `json:"-"`
-	Service                string     `json:"service"`
-	Digest                 string     `json:"digest"`
-	ExpectedDigest         string     `json:"expectedDigest,omitempty"`
-	Source                 string     `json:"source"`
-	Content                string     `json:"content,omitempty"`
-	Validated              bool       `json:"validated"`
-	State                  string     `json:"state,omitempty"`
-	ActorHash              string     `json:"actorHash,omitempty"`
-	ConfirmationPhrase     string     `json:"confirmationPhrase,omitempty"`
-	ApprovedBy             string     `json:"approvedBy,omitempty"`
-	SecondApprovedByHash   string     `json:"secondApprovedByHash,omitempty"`
-	AppliedByHash          string     `json:"appliedByHash,omitempty"`
-	ApplyIdempotencyKey    string     `json:"-"`
-	RollbackIdempotencyKey string     `json:"-"`
-	BackupControlledPath   string     `json:"backupControlledPath,omitempty"`
-	BackupRuntimePath      string     `json:"backupRuntimePath,omitempty"`
-	Error                  string     `json:"error,omitempty"`
-	CreatedAt              time.Time  `json:"createdAt"`
-	ApprovedAt             *time.Time `json:"approvedAt,omitempty"`
-	SecondApprovedAt       *time.Time `json:"secondApprovedAt,omitempty"`
-	AppliedAt              *time.Time `json:"appliedAt,omitempty"`
-	FinishedAt             *time.Time `json:"finishedAt,omitempty"`
+	ID                            string             `json:"id"`
+	IdempotencyKey                string             `json:"-"`
+	Service                       string             `json:"service"`
+	Digest                        string             `json:"digest"`
+	ExpectedDigest                string             `json:"expectedDigest,omitempty"`
+	Source                        string             `json:"source"`
+	Content                       string             `json:"content,omitempty"`
+	Validated                     bool               `json:"validated"`
+	State                         string             `json:"state,omitempty"`
+	ActorHash                     string             `json:"actorHash,omitempty"`
+	ConfirmationPhrase            string             `json:"confirmationPhrase,omitempty"`
+	ApprovedBy                    string             `json:"approvedBy,omitempty"`
+	SecondApprovedByHash          string             `json:"secondApprovedByHash,omitempty"`
+	AppliedByHash                 string             `json:"appliedByHash,omitempty"`
+	ApplyIdempotencyKey           string             `json:"-"`
+	RollbackIdempotencyKey        string             `json:"-"`
+	BackupControlledPath          string             `json:"backupControlledPath,omitempty"`
+	BackupRuntimePath             string             `json:"backupRuntimePath,omitempty"`
+	Error                         string             `json:"error,omitempty"`
+	CreatedAt                     time.Time          `json:"createdAt"`
+	ApprovedAt                    *time.Time         `json:"approvedAt,omitempty"`
+	SecondApprovedAt              *time.Time         `json:"secondApprovedAt,omitempty"`
+	AppliedAt                     *time.Time         `json:"appliedAt,omitempty"`
+	FinishedAt                    *time.Time         `json:"finishedAt,omitempty"`
+	TenantID                      string             `json:"tenantId,omitempty"`
+	ServerID                      string             `json:"serverId,omitempty"`
+	ProjectName                   string             `json:"projectName,omitempty"`
+	BaselineSemanticDigest        string             `json:"baselineSemanticDigest,omitempty"`
+	CandidateSemanticDigest       string             `json:"candidateSemanticDigest,omitempty"`
+	BaselineEffectiveDigest       string             `json:"baselineEffectiveDigest,omitempty"`
+	CandidateEffectiveDigest      string             `json:"candidateEffectiveDigest,omitempty"`
+	EnvFileDigest                 string             `json:"envFileDigest,omitempty"`
+	SemanticDiff                  []ComposeDiffEntry `json:"semanticDiff,omitempty"`
+	PolicyDigest                  string             `json:"policyDigest,omitempty"`
+	RecoveryPointID               string             `json:"recoveryPointId,omitempty"`
+	RecoveryPointExpectedDigest   string             `json:"recoveryPointExpectedBeforeDigest,omitempty"`
+	RecoveryPointBindingDigest    string             `json:"recoveryPointBindingDigest,omitempty"`
+	RecoveryPointEvidenceDigest   string             `json:"recoveryPointEvidenceDigest,omitempty"`
+	RecoveryPointVerifiedAt       *time.Time         `json:"recoveryPointVerifiedAt,omitempty"`
+	RecoveryPointRecoverableUntil *time.Time         `json:"recoveryPointRecoverableUntil,omitempty"`
+	AlertEvidenceDigest           string             `json:"alertEvidenceDigest,omitempty"`
+	BlockingAlertFingerprints     []string           `json:"blockingAlertFingerprints,omitempty"`
+	AlertCheckedAt                *time.Time         `json:"alertCheckedAt,omitempty"`
+	ExpiresAt                     time.Time          `json:"expiresAt,omitempty"`
+	ExpectedRuntimeIdentityDigest string             `json:"expectedRuntimeIdentityDigest,omitempty"`
+	ExpectedRuntimeImage          string             `json:"expectedRuntimeImage,omitempty"`
+	ExpectedRuntimeImageID        string             `json:"expectedRuntimeImageId,omitempty"`
+	CandidateImage                string             `json:"candidateImage,omitempty"`
+	CandidateImageDigest          string             `json:"candidateImageDigest,omitempty"`
+	CandidateImageID              string             `json:"candidateImageId,omitempty"`
+	AppliedRuntimeIdentityDigest  string             `json:"appliedRuntimeIdentityDigest,omitempty"`
+	RolledBackByHash              string             `json:"rolledBackByHash,omitempty"`
+	RollbackStartedAt             *time.Time         `json:"rollbackStartedAt,omitempty"`
+	RollbackFinishedAt            *time.Time         `json:"rollbackFinishedAt,omitempty"`
+}
+
+// ComposeDiffEntry is deliberately restricted to non-secret approval facts.
+// The semantic projection may hash sensitive values, but they are never copied
+// into the browser-visible diff.
+type ComposeDiffEntry struct {
+	Path   string `json:"path"`
+	Change string `json:"change"`
+	Before string `json:"before,omitempty"`
+	After  string `json:"after,omitempty"`
 }
 
 type ComposeEditRequest struct {
-	Service        string `json:"service"`
-	Content        string `json:"content"`
-	ExpectedDigest string `json:"expectedDigest"`
-	Mode           string `json:"mode"` // validate or propose
-	Confirmation   string `json:"confirmation,omitempty"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	Service         string `json:"service"`
+	Content         string `json:"content"`
+	ExpectedDigest  string `json:"expectedDigest"`
+	Mode            string `json:"mode"` // validate or propose
+	Confirmation    string `json:"confirmation,omitempty"`
+	IdempotencyKey  string `json:"idempotencyKey"`
+	RecoveryPointID string `json:"recoveryPointId,omitempty"`
+}
+
+type ComposeExecutionGate struct {
+	PolicyDigest                  string    `json:"policyDigest"`
+	RecoveryPointID               string    `json:"recoveryPointId"`
+	RecoveryPointExpectedDigest   string    `json:"recoveryPointExpectedBeforeDigest"`
+	RecoveryPointBindingDigest    string    `json:"recoveryPointBindingDigest"`
+	RecoveryPointEvidenceDigest   string    `json:"recoveryPointEvidenceDigest"`
+	AlertEvidenceDigest           string    `json:"alertEvidenceDigest"`
+	BlockingAlertFingerprints     []string  `json:"blockingAlertFingerprints,omitempty"`
+	CheckedAt                     time.Time `json:"checkedAt"`
+	ExpectedRuntimeIdentityDigest string    `json:"expectedRuntimeIdentityDigest"`
 }
 
 type ComposeApprovalRequest struct {
@@ -312,8 +368,14 @@ type ComposeFileView struct {
 	EnvFile              string            `json:"envFile,omitempty"`
 	ApplicationService   string            `json:"applicationService,omitempty"`
 	ApplicationContainer string            `json:"applicationContainer,omitempty"`
+	ProjectName          string            `json:"projectName,omitempty"`
+	TenantID             string            `json:"tenantId,omitempty"`
+	ServerID             string            `json:"serverId,omitempty"`
+	DependencyServices   []string          `json:"dependencyServices,omitempty"`
 	DependencyContainers []string          `json:"dependencyContainers,omitempty"`
 	HealthURL            string            `json:"healthUrl,omitempty"`
+	ProposalTTLSeconds   int               `json:"proposalTtlSeconds,omitempty"`
+	RecoveryPoints       []RecoveryPoint   `json:"recoveryPoints,omitempty"`
 	Revisions            []ComposeRevision `json:"revisions,omitempty"`
 }
 
@@ -327,18 +389,22 @@ type KubernetesTarget struct {
 }
 
 type KubernetesOperation struct {
-	ID             string           `json:"id"`
-	IdempotencyKey string           `json:"idempotencyKey,omitempty"`
-	RequestDigest  string           `json:"requestDigest,omitempty"`
-	Target         KubernetesTarget `json:"target"`
-	TenantID       string           `json:"tenantId,omitempty"`
-	Action         string           `json:"action"`
-	ManifestDigest string           `json:"manifestDigest,omitempty"`
-	DryRun         bool             `json:"dryRun"`
-	State          string           `json:"state"`
-	Error          string           `json:"error,omitempty"`
-	CreatedAt      time.Time        `json:"createdAt"`
-	FinishedAt     *time.Time       `json:"finishedAt,omitempty"`
+	ID               string           `json:"id"`
+	IdempotencyKey   string           `json:"idempotencyKey,omitempty"`
+	RequestDigest    string           `json:"requestDigest,omitempty"`
+	Target           KubernetesTarget `json:"target"`
+	TenantID         string           `json:"tenantId,omitempty"`
+	Action           string           `json:"action"`
+	ManifestDigest   string           `json:"manifestDigest,omitempty"`
+	DryRun           bool             `json:"dryRun"`
+	State            string           `json:"state"`
+	Phase            string           `json:"phase,omitempty"`
+	RolloutState     string           `json:"rolloutState,omitempty"`
+	RolloutResources []string         `json:"rolloutResources,omitempty"`
+	RollbackOfPlanID string           `json:"rollbackOfPlanId,omitempty"`
+	Error            string           `json:"error,omitempty"`
+	CreatedAt        time.Time        `json:"createdAt"`
+	FinishedAt       *time.Time       `json:"finishedAt,omitempty"`
 }
 
 // KubernetesPlan is the durable approval boundary for a production apply.
@@ -355,6 +421,8 @@ type KubernetesPlan struct {
 	ManifestDigest        string           `json:"manifestDigest"`
 	Action                string           `json:"action"`
 	State                 string           `json:"state"`
+	RollbackOfPlanID      string           `json:"rollbackOfPlanId,omitempty"`
+	SourceManifestDigest  string           `json:"sourceManifestDigest,omitempty"`
 	ConfirmationPhrase    string           `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash        string           `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash  string           `json:"secondApprovedByHash,omitempty"`
@@ -375,6 +443,14 @@ type KubernetesPlanRequest struct {
 	IdempotencyKey string           `json:"idempotencyKey"`
 }
 
+// KubernetesRollbackPlanRequest supplies the previously verified manifest to
+// restore. The source plan identity and digest are resolved server-side; the
+// caller cannot redirect a rollback to another namespace or tenant.
+type KubernetesRollbackPlanRequest struct {
+	Manifest       string `json:"manifest"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
 type KubernetesPlanApprovalRequest struct {
 	Digest       string `json:"digest"`
 	Confirmation string `json:"confirmation"`
@@ -385,12 +461,13 @@ type KubernetesPlanExecuteRequest struct {
 }
 
 type KubernetesRequest struct {
-	Target         KubernetesTarget `json:"target"`
-	Action         string           `json:"action"`
-	Manifest       string           `json:"manifest"`
-	DryRun         bool             `json:"dryRun"`
-	Confirmation   string           `json:"confirmation,omitempty"`
-	IdempotencyKey string           `json:"idempotencyKey"`
+	Target           KubernetesTarget `json:"target"`
+	Action           string           `json:"action"`
+	Manifest         string           `json:"manifest"`
+	DryRun           bool             `json:"dryRun"`
+	Confirmation     string           `json:"confirmation,omitempty"`
+	IdempotencyKey   string           `json:"idempotencyKey"`
+	RollbackOfPlanID string           `json:"rollbackOfPlanId,omitempty"`
 }
 
 type TerminalCommand struct {

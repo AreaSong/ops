@@ -88,7 +88,7 @@ metadata:
 func TestValidateComposeContentRejectsDangerousAndAmbiguousYAML(t *testing.T) {
 	valid := `services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
     volumes:
       - app-data:/var/lib/app
 volumes:
@@ -104,7 +104,7 @@ volumes:
     max-file: "5"
 services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
     logging: *json-log-options
 `
 	if err := validateComposeContent(anchored); err != nil {
@@ -113,36 +113,36 @@ services:
 	cases := map[string]string{
 		"duplicate key": `services:
   web:
-    image: example/web:v1
-    image: example/web:v2
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
+    image: example/web@sha256:2222222222222222222222222222222222222222222222222222222222222222
 `,
 		"multi document": `services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
 ---
 services:
   api:
-    image: example/api:v1
+    image: example/api@sha256:1111111111111111111111111111111111111111111111111111111111111111
 `,
 		"privileged": `services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
     privileged: true
 `,
 		"host bind": `services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
     volumes:
       - /etc:/etc
 `,
 		"plaintext secret": `services:
   web:
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
     environment:
       API_TOKEN: plain-secret
 `,
 		"merge key": `defaults: &defaults
-  image: example/web:v1
+  image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
 services:
   web:
     <<: *defaults
@@ -150,13 +150,72 @@ services:
 		"cyclic alias": `services:
   web: &web
     environment: *web
-    image: example/web:v1
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
 `,
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
 			if err := validateComposeContent(content); err == nil {
 				t.Fatalf("%s was accepted", name)
+			}
+		})
+	}
+}
+
+func TestAnalyzeComposeChangeAllowsOnlyApplicationImageDigest(t *testing.T) {
+	runtime := &model.ComposeServiceRuntime{
+		ProjectName: "demo", ApplicationService: "web", ApplicationContainer: "demo-web",
+		DependencyServices: []string{"db"}, DependencyContainers: []string{"demo-db"},
+	}
+	baseline := `name: demo
+services:
+  web:
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [private]
+  db:
+    image: example/db@sha256:3333333333333333333333333333333333333333333333333333333333333333
+networks:
+  private: {}
+`
+	candidate := strings.Replace(baseline,
+		"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"sha256:2222222222222222222222222222222222222222222222222222222222222222", 1)
+	analysis, err := analyzeComposeChange(runtime, baseline, candidate)
+	if err != nil || len(analysis.Diff) != 1 || analysis.Diff[0].Path != "services.web.image" {
+		t.Fatalf("analysis=%+v err=%v", analysis, err)
+	}
+	reformatted := `networks:
+  private: {}
+services:
+  db: {image: example/db@sha256:3333333333333333333333333333333333333333333333333333333333333333}
+  web:
+    networks: [private]
+    ports:
+      - 127.0.0.1:8080:8080
+    image: example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111
+name: demo
+`
+	same, err := analyzeComposeChange(runtime, baseline, reformatted)
+	if err != nil || same.BaselineSemanticDigest != same.CandidateSemanticDigest || len(same.Diff) != 0 {
+		t.Fatalf("format-only diff=%+v err=%v", same, err)
+	}
+
+	cases := map[string]string{
+		"project name":     strings.Replace(candidate, "name: demo", "name: escaped", 1),
+		"published ports":  strings.Replace(candidate, "8080:8080", "9090:8080", 1),
+		"networks":         strings.Replace(candidate, "networks: [private]", "networks: [public]", 1),
+		"env file":         strings.Replace(candidate, "ports: [\"127.0.0.1:8080:8080\"]", "ports: [\"127.0.0.1:8080:8080\"]\n    env_file: ../../etc/passwd", 1),
+		"host path":        strings.Replace(candidate, "networks: [private]", "networks: [private]\n    volumes: [\"${HOST_PATH}:/data\"]", 1),
+		"dependency image": strings.Replace(candidate, "sha256:3333333333333333333333333333333333333333333333333333333333333333", "sha256:4444444444444444444444444444444444444444444444444444444444444444", 1),
+		"service add":      candidate + "  extra:\n    image: example/extra@sha256:5555555555555555555555555555555555555555555555555555555555555555\n",
+		"mutable image":    strings.Replace(candidate, analysis.CandidateImage, "example/web:latest", 1),
+		"image repository": strings.Replace(candidate, "example/web@sha256:", "registry.invalid/escaped@sha256:", 1),
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := analyzeComposeChange(runtime, baseline, content); err == nil {
+				t.Fatalf("%s change was accepted", name)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -185,6 +186,131 @@ func TestSchema4AccessPutCannotBypassApproval(t *testing.T) {
 	NewServer(engine, database).ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), change.ID) {
 		t.Fatalf("schema4 PUT replay status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestAccessHTTPRejectsInternalExecutionFields(t *testing.T) {
+	fixture := newAtomicAccessFixture(t)
+	handler := NewServer(fixture.engine, fixture.database)
+	for _, endpoint := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPut, path: "/v1/access"},
+		{method: http.MethodPost, path: "/v1/access/changes"},
+	} {
+		for _, field := range []string{"changeId", "changeRequestDigest"} {
+			t.Run(endpoint.method+"-"+field, func(t *testing.T) {
+				body := fmt.Sprintf(`{"idempotencyKey":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","%s":"forged"}`, field)
+				request := httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(body))
+				request.Header.Set(actorHeader, fixture.creator)
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+				if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "unknown field") {
+					t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+				}
+			})
+		}
+	}
+	changes, err := fixture.database.ListAccessChanges(context.Background(), 20)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("internal-field injection persisted changes=%+v err=%v", changes, err)
+	}
+}
+
+func TestSchema3ReceiptKeyCannotCreateUnexecutableAccessChange(t *testing.T) {
+	root := t.TempDir()
+	database, err := store.Open(filepath.Join(root, "ops.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	actor := config.AccessHashForEmail("legacy-receipt@example.test")
+	now := time.Now().UTC()
+	catalog := &config.Catalog{SchemaVersion: 3, Access: &config.AccessPolicy{
+		DefaultTenant: "default",
+		Tenants: map[string]model.Tenant{
+			"default": {ID: "default", DisplayName: "Default", Status: "active", CreatedAt: now},
+		},
+		Roles: map[string]model.Role{
+			"platform-admin": {ID: "platform-admin", DisplayName: "Platform admin", BuiltIn: true, Permissions: []model.Permission{model.Permission("*")}},
+		},
+		Principals: map[string]config.AccessPrincipal{
+			actor: {Subject: actor, TenantID: "default", Roles: []string{"platform-admin"}},
+		},
+	}}
+	engine, err := NewEngineChecked(catalog, database, &fakeExecutor{}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	if _, err := engine.UpdateAccess(context.Background(), actor, model.AccessControlUpdateRequest{
+		Tenants:        []model.Tenant{{ID: "legacy-direct", DisplayName: "Legacy direct", Status: "active"}},
+		IdempotencyKey: key,
+	}); err != nil {
+		t.Fatalf("seed schema-3 receipt: %v", err)
+	}
+	if _, created, err := engine.CreateAccessChange(context.Background(), actor, model.AccessControlUpdateRequest{
+		RequiresDualApproval: true,
+		Tenants:              []model.Tenant{{ID: "would-be-stuck", DisplayName: "Would be stuck", Status: "active"}},
+		IdempotencyKey:       key,
+	}); !errors.Is(err, store.ErrIdempotency) || created {
+		t.Fatalf("conflicting change created=%v err=%v", created, err)
+	}
+	changes, err := database.ListAccessChanges(context.Background(), 20)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("receipt conflict persisted changes=%+v err=%v", changes, err)
+	}
+}
+
+func TestSchema3AccessChangeKeyCannotBeUsedForDirectWrite(t *testing.T) {
+	root := t.TempDir()
+	database, err := store.Open(filepath.Join(root, "ops.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	actor := config.AccessHashForEmail("legacy-change@example.test")
+	now := time.Now().UTC()
+	catalog := &config.Catalog{SchemaVersion: 3, Access: &config.AccessPolicy{
+		DefaultTenant: "default",
+		Tenants: map[string]model.Tenant{
+			"default": {ID: "default", DisplayName: "Default", Status: "active", CreatedAt: now},
+		},
+		Roles: map[string]model.Role{
+			"platform-admin": {ID: "platform-admin", DisplayName: "Platform admin", BuiltIn: true, Permissions: []model.Permission{model.Permission("*")}},
+		},
+		Principals: map[string]config.AccessPrincipal{
+			actor: {Subject: actor, TenantID: "default", Roles: []string{"platform-admin"}},
+		},
+	}}
+	engine, err := NewEngineChecked(catalog, database, &fakeExecutor{}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	if _, created, err := engine.CreateAccessChange(context.Background(), actor, model.AccessControlUpdateRequest{
+		RequiresDualApproval: true,
+		Tenants:              []model.Tenant{{ID: "pending-tenant", DisplayName: "Pending tenant", Status: "active"}},
+		IdempotencyKey:       key,
+	}); err != nil || !created {
+		t.Fatalf("create pending change created=%v err=%v", created, err)
+	}
+	if _, err := engine.UpdateAccess(context.Background(), actor, model.AccessControlUpdateRequest{
+		Tenants:        []model.Tenant{{ID: "direct-conflict", DisplayName: "Direct conflict", Status: "active"}},
+		IdempotencyKey: key,
+	}); !errors.Is(err, store.ErrIdempotency) {
+		t.Fatalf("direct write conflict err=%v want ErrIdempotency", err)
+	}
+	view, err := engine.AccessControl(context.Background(), actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tenant := range view.Tenants {
+		if tenant.ID == "direct-conflict" {
+			t.Fatal("direct write mutated policy despite pending change key")
+		}
 	}
 }
 

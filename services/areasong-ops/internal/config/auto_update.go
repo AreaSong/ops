@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
@@ -21,6 +23,13 @@ func validateAutoUpdatePolicy(service string, policy *model.AutoUpdatePolicy) er
 	}
 	if policy.MaintenanceWindow != "" && !autoUpdateWindowPattern.MatchString(policy.MaintenanceWindow) {
 		return fmt.Errorf("服务 %s 的自动更新维护窗口必须为 HH:MM-HH:MM", service)
+	}
+	policy.MaintenanceTimezone = strings.TrimSpace(policy.MaintenanceTimezone)
+	if policy.MaintenanceTimezone == "" {
+		policy.MaintenanceTimezone = "UTC"
+	}
+	if _, err := time.LoadLocation(policy.MaintenanceTimezone); err != nil {
+		return fmt.Errorf("服务 %s 的自动更新维护窗口时区无效", service)
 	}
 	if policy.CanaryPercent < 0 || policy.CanaryPercent > 100 {
 		return fmt.Errorf("服务 %s 的自动更新 canary 百分比无效", service)

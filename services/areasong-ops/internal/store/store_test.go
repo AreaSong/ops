@@ -414,6 +414,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 		ID: "plan-1", ActorHash: "a", Service: "demo", Action: "update", Target: "v1.2.3",
 		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:abc",
 		ConfirmationPhrase: "更新 demo", RequiresConfirmation: true, ObservationSeconds: 300,
+		RequiresDualApproval: true,
 		ApprovalSummary: model.ApprovalSummary{
 			SchemaVersion: 1, Service: "demo", Action: "update", Target: "v1.2.3",
 			Risk: model.RiskHigh, Steps: []string{"preflight", "apply"}, ObservationSeconds: 300,
@@ -425,15 +426,19 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", "sha256:changed", "更新 demo"); err == nil {
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "b", "sha256:changed", "更新 demo"); err == nil {
 		t.Fatal("changed digest was approved")
 	}
 	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "更新 demo"); err != ErrActorMismatch {
 		t.Fatalf("creator self-approval err=%v, want ErrActorMismatch", err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, "更新 demo")
-	if err != nil || approved.State != model.PlanApproved || approved.ApprovedAt == nil || approved.ApprovedByHash != "b" {
-		t.Fatalf("plan=%+v err=%v", approved, err)
+	first, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, "更新 demo")
+	if err != nil || first.State != model.PlanPendingApproval || first.ApprovedAt == nil || first.ApprovedByHash != "b" {
+		t.Fatalf("first approval=%+v err=%v", first, err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "c", plan.Digest, "更新 demo")
+	if err != nil || approved.State != model.PlanApproved || approved.SecondApprovedByHash != "c" {
+		t.Fatalf("second approval=%+v err=%v", approved, err)
 	}
 	silenceEndsAt := now.Add(20 * time.Minute)
 	silence := &model.MaintenanceSilence{ID: "silence-1", EndsAt: silenceEndsAt}
@@ -529,8 +534,9 @@ func TestC2LifecycleSingleActorApprovalIsStrictlyScoped(t *testing.T) {
 		if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: candidate, ConfirmationHash: HashConfirmation(candidate.ConfirmationPhrase)}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := database.ApproveReleasePlan(ctx, candidate.ID, actor, candidate.Digest, candidate.ConfirmationPhrase); err != ErrActorMismatch {
-			t.Fatalf("%s: got err=%v, want ErrActorMismatch", altered.name, err)
+		if _, err := database.ApproveReleasePlan(ctx, candidate.ID, actor, candidate.Digest, candidate.ConfirmationPhrase); err == nil ||
+			(!errors.Is(err, ErrActorMismatch) && !strings.Contains(err.Error(), "双人审批门禁")) {
+			t.Fatalf("%s: malformed exception was not rejected: %v", altered.name, err)
 		}
 	}
 }
@@ -545,6 +551,7 @@ func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
 		ID: "plan-scheduled", ActorHash: "a", Service: "demo", Action: "restart", TenantID: "tenant-a", ServerID: "server-a",
 		Risk: model.RiskHigh, State: model.PlanPendingApproval, Digest: "sha256:scheduled", ScheduleAt: &scheduleAt,
 		ConfirmationPhrase: "重启 demo", RequiresConfirmation: true,
+		RequiresDualApproval: true,
 		ApprovalSummary: model.ApprovalSummary{SchemaVersion: 1, Service: "demo", Action: "restart", TenantID: "tenant-a", ServerID: "server-a",
 			Risk: model.RiskHigh, Steps: []string{"preflight", "restart"}, ExpectedBefore: map[string]any{"currentVersion": "1"}},
 		CreatedAt: now, UpdatedAt: now,
@@ -552,9 +559,13 @@ func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
 	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
 		t.Fatal(err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, plan.ConfirmationPhrase)
-	if err != nil || approved.State != model.PlanScheduled || approved.ApprovedByHash != "b" {
-		t.Fatalf("approved=%+v err=%v", approved, err)
+	first, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, plan.ConfirmationPhrase)
+	if err != nil || first.State != model.PlanPendingApproval || first.ApprovedByHash != "b" {
+		t.Fatalf("first approval=%+v err=%v", first, err)
+	}
+	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "c", plan.Digest, plan.ConfirmationPhrase)
+	if err != nil || approved.State != model.PlanScheduled || approved.SecondApprovedByHash != "c" {
+		t.Fatalf("second approval=%+v err=%v", approved, err)
 	}
 	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, now); err != nil || activated {
 		t.Fatalf("early activation=%v err=%v", activated, err)

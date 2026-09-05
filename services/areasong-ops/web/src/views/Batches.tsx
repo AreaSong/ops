@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight, CircleHelp, LoaderCircle, Play, Plus, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { runAction } from '../action'
 import { formatTime } from '../labels'
-import type { BatchStrategy, BatchTask, FailurePolicy } from '../types'
+import type { BatchPolicy, BatchStrategy, BatchTask, FailurePolicy } from '../types'
 import { StatusBadge } from '../components/StatusBadge'
 
 interface BatchesProps {
@@ -33,12 +34,29 @@ interface BatchDraft {
   targets: string
   strategy: BatchStrategy
   batchSize: number
+  batchPercentage: number
+  canarySize: number
+  observationSeconds: number
   concurrency: number
   failurePolicy: FailurePolicy
 }
 
 const initialDraft: BatchDraft = {
-  action: 'inspect', targets: '', strategy: 'serial', batchSize: 1, concurrency: 1, failurePolicy: 'stop',
+  action: 'inspect', targets: '', strategy: 'serial', batchSize: 1, batchPercentage: 25,
+  canarySize: 1, observationSeconds: 60, concurrency: 1, failurePolicy: 'stop',
+}
+
+function describeBatchPolicy(policy: BatchPolicy): string {
+  switch (policy.strategy) {
+    case 'fixed':
+      return `固定批次 · 每批 ${policy.batchSize ?? 1} 项`
+    case 'percentage':
+      return `按比例 · 每批 ${policy.batchPercentage ?? 1}%`
+    case 'canary':
+      return `Canary ${policy.canarySize ?? 1} 项 · 后续每批 ${policy.batchSize ?? 1} 项 · 观察 ${policy.observationSeconds ?? 1} 秒`
+    default:
+      return '串行 · 每批 1 项'
+  }
 }
 
 function makeTask(draft: BatchDraft): BatchTask {
@@ -53,7 +71,14 @@ function makeTask(draft: BatchDraft): BatchTask {
     id: '', action: draft.action.trim(), targetIds, nodes,
     batchPolicy: draft.strategy === 'fixed'
       ? { strategy: 'fixed', batchSize: Math.max(1, draft.batchSize) }
-      : { strategy: draft.strategy },
+      : draft.strategy === 'percentage'
+        ? { strategy: 'percentage', batchPercentage: Math.min(100, Math.max(1, draft.batchPercentage)) }
+        : draft.strategy === 'canary'
+          ? {
+              strategy: 'canary', canarySize: Math.max(1, draft.canarySize),
+              batchSize: Math.max(1, draft.batchSize), observationSeconds: Math.max(1, draft.observationSeconds),
+            }
+          : { strategy: 'serial' },
     concurrency: { scope: 'global', maxConcurrent: Math.max(1, draft.concurrency) },
     failurePolicy: draft.failurePolicy,
     failureConfig: { policy: draft.failurePolicy },
@@ -74,6 +99,10 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
     const task = makeTask(draft)
     if (!task.action || task.targetIds?.length === 0) {
       setFormError('请填写动作和至少一个目标')
+      return
+    }
+    if (draft.strategy === 'canary' && draft.canarySize >= (task.targetIds?.length ?? 0)) {
+      setFormError('Canary 数量必须小于目标总数')
       return
     }
     try {
@@ -97,7 +126,7 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
 
       {!available && !loading && <div className="empty-state feature-empty"><CircleHelp size={19} aria-hidden="true" />{error || '批量作业能力尚未启用'}</div>}
       {available && error && <div className="inline-error" role="alert"><ShieldAlert size={16} />{error}</div>}
-      {available && formOpen && <form className="batch-form" onSubmit={(event) => void submit(event)}>
+      {available && formOpen && <form className="batch-form" onSubmit={(event) => runAction(submit(event))}>
         <div className="batch-form-heading"><h2>创建批量作业</h2><span>只提交计划，不直接执行目标</span></div>
         <label><span>动作</span><input required value={draft.action} onChange={(event) => setDraft({ ...draft, action: event.target.value })} /></label>
         <label className="batch-target-field"><span>目标 ID（空格或逗号分隔）</span><input required value={draft.targets} onChange={(event) => setDraft({ ...draft, targets: event.target.value })} /></label>
@@ -105,6 +134,12 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
           <option value="serial">串行</option><option value="fixed">固定批次</option><option value="percentage">按比例</option><option value="canary">金丝雀</option>
         </select></label>
         {draft.strategy === 'fixed' && <label><span>批次大小</span><input type="number" min={1} value={draft.batchSize} onChange={(event) => setDraft({ ...draft, batchSize: Number(event.target.value) })} /></label>}
+        {draft.strategy === 'percentage' && <label><span>每批比例（%）</span><input type="number" min={1} max={100} value={draft.batchPercentage} onChange={(event) => setDraft({ ...draft, batchPercentage: Number(event.target.value) })} /></label>}
+        {draft.strategy === 'canary' && <>
+          <label><span>Canary 数量</span><input type="number" min={1} value={draft.canarySize} onChange={(event) => setDraft({ ...draft, canarySize: Number(event.target.value) })} /></label>
+          <label><span>后续批次大小</span><input type="number" min={1} value={draft.batchSize} onChange={(event) => setDraft({ ...draft, batchSize: Number(event.target.value) })} /></label>
+          <label><span>Canary 观察（秒）</span><input type="number" min={1} max={86400} value={draft.observationSeconds} onChange={(event) => setDraft({ ...draft, observationSeconds: Number(event.target.value) })} /></label>
+        </>}
         <label><span>最大并发</span><input type="number" min={1} value={draft.concurrency} onChange={(event) => setDraft({ ...draft, concurrency: Number(event.target.value) })} /></label>
         <label><span>失败策略</span><select value={draft.failurePolicy} onChange={(event) => setDraft({ ...draft, failurePolicy: event.target.value as FailurePolicy })}>
           <option value="stop">停止</option><option value="continue">继续</option><option value="rollback">回滚</option><option value="pause">暂停</option><option value="needs_attention">人工处理</option>
@@ -130,14 +165,14 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
                 <StatusBadge kind="health" value={stateTone(batch.state)} label={stateLabels[batch.state]} />
               </button>
               {isExpanded && <div className="batch-card-detail">
-                <dl className="batch-facts"><div><dt>批次策略</dt><dd>{batch.batchPolicy.strategy}{batch.batchPolicy.batchSize ? ` · ${batch.batchPolicy.batchSize}` : ''}</dd></div><div><dt>并发</dt><dd>{batch.concurrency.scope} · {batch.concurrency.maxConcurrent}</dd></div><div><dt>失败策略</dt><dd>{batch.failurePolicy}</dd></div><div><dt>开始时间</dt><dd>{formatTime(batch.startedAt)}</dd></div></dl>
+                <dl className="batch-facts"><div><dt>批次策略</dt><dd>{describeBatchPolicy(batch.batchPolicy)}</dd></div><div><dt>并发</dt><dd>{batch.concurrency.scope} · {batch.concurrency.maxConcurrent}</dd></div><div><dt>失败策略</dt><dd>{batch.failurePolicy}</dd></div><div><dt>审批</dt><dd>{batch.requiresDualApproval ? `${batch.approvedByHash ? '第一批准完成' : '等待第一批准'} · ${batch.secondApprovedByHash ? '第二批准完成' : '等待第二批准'}` : batch.approvedByHash ? '已批准' : '等待批准'}</dd></div><div><dt>开始时间</dt><dd>{formatTime(batch.startedAt)}</dd></div></dl>
                 <div className="batch-nodes">{batch.nodes.map((node) => <span className={`batch-node batch-node-${node.state}`} key={node.id}><b>{node.targetId || node.id}</b><small>{node.state}{node.error ? ` · ${node.error}` : ''}</small></span>)}</div>
                 <div className="form-actions">
                   {batch.operationState === 'pending_approval' && <>
                     <label className="batch-approval-field"><span>确认短语</span><code>{batch.confirmationPhrase || '后端未返回确认短语'}</code><input value={approval?.id === batch.id ? approval.value : ''} onChange={(event) => setApproval({ id: batch.id, value: event.target.value })} placeholder="输入确认短语" /></label>
-                    <button className="button danger" type="button" disabled={!batch.digest || approval?.id !== batch.id || approval.value !== batch.confirmationPhrase || busy === batch.id} onClick={() => void onApprove(batch.id, batch.digest ?? '', approval?.value ?? '')}><ShieldAlert size={14} />{busy === batch.id ? '批准中' : '批准作业'}</button>
+                    <button className="button danger" type="button" disabled={!batch.digest || approval?.id !== batch.id || approval.value !== batch.confirmationPhrase || busy === batch.id} onClick={() => runAction(onApprove(batch.id, batch.digest ?? '', approval?.value ?? ''))}><ShieldAlert size={14} />{busy === batch.id ? '批准中' : batch.requiresDualApproval && batch.approvedByHash ? '第二人批准' : '批准作业'}</button>
                   </>}
-                  <button className="button secondary" type="button" disabled={!canRun || batch.operationState === 'pending_approval' || busy === batch.id} title={!canRun ? '当前状态不可启动' : '启动下一批'} onClick={() => void onRun(batch.id)}><Play size={14} />{busy === batch.id ? '启动中' : '启动下一批'}</button>
+                  <button className="button secondary" type="button" disabled={!canRun || batch.operationState === 'pending_approval' || busy === batch.id} title={!canRun ? '当前状态不可启动' : '启动下一批'} onClick={() => runAction(onRun(batch.id))}><Play size={14} />{busy === batch.id ? '启动中' : '启动下一批'}</button>
                 </div>
               </div>}
             </article>

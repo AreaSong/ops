@@ -19,17 +19,19 @@ var ErrAccessVersion = errors.New("访问策略版本已变化，请重新读取
 // committed together so a failed snapshot write cannot leave authorization
 // rows ahead of the effective policy (or vice versa).
 type AccessPolicyMutation struct {
-	Actor            string
-	IdempotencyKey   string
-	RequestDigest    string
-	ExpectedVersion  int64
-	Snapshot         model.AccessPolicySnapshot
-	Tenants          []model.Tenant
-	Roles            []model.Role
-	Bindings         []model.RoleBinding
-	RemoveTenantIDs  []string
-	RemoveRoleIDs    []string
-	RemoveBindingIDs []string
+	Actor              string
+	IdempotencyKey     string
+	RequestDigest      string
+	AccessChangeDigest string
+	ExpectedVersion    int64
+	Snapshot           model.AccessPolicySnapshot
+	Tenants            []model.Tenant
+	Roles              []model.Role
+	Bindings           []model.RoleBinding
+	RemoveTenantIDs    []string
+	RemoveRoleIDs      []string
+	RemoveBindingIDs   []string
+	Audit              *model.AuditEntry
 }
 
 // ApplyAccessPolicyMutation applies a complete policy update atomically. An
@@ -37,6 +39,109 @@ type AccessPolicyMutation struct {
 // only by bootstrap); normal control-plane callers pass the version they read.
 func (store *Store) ApplyAccessPolicyMutation(
 	ctx context.Context,
+	mutation AccessPolicyMutation,
+) (model.AccessPolicySnapshot, bool, error) {
+	if mutation.AccessChangeDigest != "" {
+		return model.AccessPolicySnapshot{}, false, errors.New("普通访问策略写入不能携带审批上下文")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.AccessPolicySnapshot{}, false, err
+	}
+	defer tx.Rollback()
+	snapshot, created, err := store.applyAccessPolicyMutationTx(ctx, tx, mutation)
+	if err != nil {
+		return model.AccessPolicySnapshot{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.AccessPolicySnapshot{}, false, err
+	}
+	return snapshot, created, nil
+}
+
+// ApplyAccessChangeMutation commits the policy mutation and its approval
+// envelope together. This is deliberately separate from the normal Access API
+// path so an executor can lose access.manage as a result of the same change
+// without leaving the access_changes row in approved state.
+func (store *Store) ApplyAccessChangeMutation(
+	ctx context.Context,
+	changeID, actor string,
+	mutation AccessPolicyMutation,
+) (model.AccessChange, error) {
+	if changeID == "" || actor == "" || mutation.Actor != actor {
+		return model.AccessChange{}, errors.New("访问策略执行身份不一致")
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.AccessChange{}, err
+	}
+	defer tx.Rollback()
+	change, _, err := scanAccessChange(tx.QueryRowContext(ctx, accessChangeSelect+` WHERE id=?`, changeID), false)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.AccessChange{}, ErrNotFound
+	}
+	if err != nil {
+		return model.AccessChange{}, err
+	}
+	if change.IdempotencyKey != mutation.IdempotencyKey {
+		return model.AccessChange{}, ErrIdempotency
+	}
+	if mutation.AccessChangeDigest == "" || change.RequestDigest != mutation.AccessChangeDigest {
+		return model.AccessChange{}, ErrIdempotency
+	}
+	if change.State == model.AccessChangeApplied {
+		if change.AppliedByHash != actor {
+			return model.AccessChange{}, ErrActorMismatch
+		}
+		// The durable change envelope is the idempotency authority once the
+		// change is applied. Do not rebuild or compare the policy digest here:
+		// an unrelated policy update between two retries must not turn a
+		// successful execution into a false conflict.
+		if err := tx.Commit(); err != nil {
+			return model.AccessChange{}, err
+		}
+		return change, nil
+	}
+	if change.State != model.AccessChangeApproved {
+		return model.AccessChange{}, errors.New("访问策略变更尚未完成双人批准")
+	}
+	if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
+		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
+	}
+	snapshot, _, err := store.applyAccessPolicyMutationTx(ctx, tx, mutation)
+	if err != nil {
+		return model.AccessChange{}, err
+	}
+	now := store.now()
+	result, err := tx.ExecContext(ctx, `UPDATE access_changes
+		SET state=?,applied_by_hash=?,applied_policy_digest=?,applied_policy_version=?,applied_at=?,error=''
+		WHERE id=? AND state=?`, model.AccessChangeApplied, actor, snapshot.Digest, snapshot.Version,
+		timeText(now), changeID, model.AccessChangeApproved)
+	if err := requireOne(result, err, "访问策略变更收口失败"); err != nil {
+		return model.AccessChange{}, err
+	}
+	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
+		ActorHash: actor, Event: "access.change.applied", Resource: "access/" + changeID,
+		Outcome: "accepted", Detail: map[string]any{
+			"changeId": changeID, "policyDigest": snapshot.Digest, "policyVersion": snapshot.Version,
+		},
+	}, now); err != nil {
+		return model.AccessChange{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.AccessChange{}, err
+	}
+	change.State = model.AccessChangeApplied
+	change.AppliedByHash = actor
+	change.AppliedPolicyDigest = snapshot.Digest
+	change.AppliedPolicyVersion = snapshot.Version
+	change.AppliedAt = &now
+	return change, nil
+}
+
+func (store *Store) applyAccessPolicyMutationTx(
+	ctx context.Context,
+	tx *sql.Tx,
 	mutation AccessPolicyMutation,
 ) (model.AccessPolicySnapshot, bool, error) {
 	if mutation.Actor == "" || mutation.IdempotencyKey == "" || mutation.RequestDigest == "" {
@@ -51,12 +156,18 @@ func (store *Store) ApplyAccessPolicyMutation(
 	if digestPolicyJSON(mutation.Snapshot.PolicyJSON) != mutation.Snapshot.Digest {
 		return model.AccessPolicySnapshot{}, false, errors.New("访问策略快照摘要不匹配")
 	}
-
-	tx, err := store.db.BeginTx(ctx, nil)
-	if err != nil {
+	var accessChangeDigest string
+	err := tx.QueryRowContext(ctx, `SELECT request_digest FROM access_changes WHERE idempotency_key=?`, mutation.IdempotencyKey).
+		Scan(&accessChangeDigest)
+	if err == nil {
+		if mutation.AccessChangeDigest == "" || mutation.AccessChangeDigest != accessChangeDigest {
+			return model.AccessPolicySnapshot{}, false, ErrIdempotency
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return model.AccessPolicySnapshot{}, false, err
+	} else if mutation.AccessChangeDigest != "" {
+		return model.AccessPolicySnapshot{}, false, ErrIdempotency
 	}
-	defer tx.Rollback()
 
 	var existingActor, existingDigest string
 	err = tx.QueryRowContext(ctx, `SELECT actor_hash,request_digest FROM access_mutation_receipts WHERE idempotency_key=?`, mutation.IdempotencyKey).
@@ -68,12 +179,9 @@ func (store *Store) ApplyAccessPolicyMutation(
 		if existingDigest != mutation.RequestDigest {
 			return model.AccessPolicySnapshot{}, false, ErrIdempotency
 		}
-		snapshot, snapshotErr := latestSnapshotTx(ctx, tx)
+		snapshot, snapshotErr := snapshotByDigestTx(ctx, tx, existingDigest)
 		if snapshotErr != nil {
 			return model.AccessPolicySnapshot{}, false, snapshotErr
-		}
-		if err := tx.Commit(); err != nil {
-			return model.AccessPolicySnapshot{}, false, err
 		}
 		return snapshot, false, nil
 	}
@@ -195,8 +303,14 @@ func (store *Store) ApplyAccessPolicyMutation(
 		mutation.IdempotencyKey, mutation.Actor, mutation.RequestDigest, timeText(store.now())); err != nil {
 		return model.AccessPolicySnapshot{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return model.AccessPolicySnapshot{}, false, err
+	if mutation.Audit != nil {
+		audit := *mutation.Audit
+		if audit.ActorHash == "" {
+			audit.ActorHash = mutation.Actor
+		}
+		if err := appendPlanAudit(ctx, tx, audit, store.now()); err != nil {
+			return model.AccessPolicySnapshot{}, false, err
+		}
 	}
 	return mutation.Snapshot, true, nil
 }
@@ -219,6 +333,22 @@ func latestSnapshotTx(ctx context.Context, tx *sql.Tx) (model.AccessPolicySnapsh
 	var parseErr error
 	snapshot.CreatedAt, parseErr = time.Parse(time.RFC3339Nano, created)
 	return snapshot, parseErr
+}
+
+func snapshotByDigestTx(ctx context.Context, tx *sql.Tx, digest string) (model.AccessPolicySnapshot, error) {
+	var snapshot model.AccessPolicySnapshot
+	var created string
+	if err := tx.QueryRowContext(ctx, `SELECT version,digest,policy_json,actor_hash,created_at
+		FROM access_policy_snapshots WHERE digest=? ORDER BY version DESC LIMIT 1`, digest).
+		Scan(&snapshot.Version, &snapshot.Digest, &snapshot.PolicyJSON, &snapshot.ActorHash, &created); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.AccessPolicySnapshot{}, errors.New("访问策略幂等收据缺少策略快照")
+		}
+		return model.AccessPolicySnapshot{}, err
+	}
+	var err error
+	snapshot.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+	return snapshot, err
 }
 
 func rowCreatedBy(ctx context.Context, tx *sql.Tx, table, id string) (string, bool, error) {

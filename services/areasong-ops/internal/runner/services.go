@@ -35,7 +35,8 @@ func (engine *Engine) serviceViews(ctx context.Context, names []string) []model.
 			defer wait.Done()
 			view := model.ServiceView{
 				Name: service.Name, ObjectID: service.ObjectID, DisplayName: service.DisplayName,
-				Metadata: service.Metadata, Description: service.Description, Actions: exposedActions(service),
+				Metadata: service.Metadata, Description: service.Description,
+				ManagedCompose: service.Runtime != nil, Actions: engine.exposedActions(service),
 			}
 			view.TenantID, view.ServerID = service.TenantID, service.ServerID
 			status, err := engine.inspect(ctx, service)
@@ -147,7 +148,7 @@ func (engine *Engine) authorizedObjectNames(
 func (engine *Engine) objectView(ctx context.Context, object model.ServiceDefinition) model.ManagedObjectView {
 	view := model.ManagedObjectView{
 		Name: object.Name, ObjectID: object.ObjectID, Metadata: object.Metadata,
-		DisplayName: object.DisplayName, Description: object.Description, Actions: exposedActions(object),
+		DisplayName: object.DisplayName, Description: object.Description, Actions: engine.exposedActions(object),
 	}
 	view.TenantID, view.ServerID = object.TenantID, object.ServerID
 	status, err := engine.inspect(ctx, object)
@@ -166,7 +167,7 @@ func (engine *Engine) objectView(ctx context.Context, object model.ServiceDefini
 	return view
 }
 
-func exposedActions(service model.ServiceDefinition) map[string]model.ActionDefinition {
+func (engine *Engine) exposedActions(service model.ServiceDefinition) map[string]model.ActionDefinition {
 	result := make(map[string]model.ActionDefinition, len(service.Actions)+5)
 	for name, action := range service.Actions {
 		result[name] = action
@@ -175,7 +176,7 @@ func exposedActions(service model.ServiceDefinition) map[string]model.ActionDefi
 		if _, exists := result[name]; exists {
 			continue
 		}
-		if action, ok := lifecycleAction(service, name); ok {
+		if action, ok := engine.lifecycleAction(service, name); ok {
 			result[name] = action
 		}
 	}

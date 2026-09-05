@@ -69,11 +69,28 @@ func (engine *Engine) UpdateAccess(
 	actor string,
 	request model.AccessControlUpdateRequest,
 ) (model.AccessControlView, error) {
+	if err := engine.authorizePlatform(ctx, actor, model.PermissionManageAccess, "access"); err != nil {
+		return model.AccessControlView{}, err
+	}
+	return engine.updateAccess(ctx, actor, request, nil)
+}
+
+type approvedAccessExecution struct {
+	changeID      string
+	requestDigest string
+}
+
+func (engine *Engine) updateAccess(
+	ctx context.Context,
+	actor string,
+	request model.AccessControlUpdateRequest,
+	execution *approvedAccessExecution,
+) (model.AccessControlView, error) {
 	if !uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.AccessControlView{}, errors.New("访问策略幂等键无效")
 	}
-	if err := engine.authorizePlatform(ctx, actor, model.PermissionManageAccess, "access"); err != nil {
-		return model.AccessControlView{}, err
+	if !actorPattern.MatchString(actor) {
+		return model.AccessControlView{}, errors.New("操作者标识无效")
 	}
 	policy, snapshot, err := engine.effectiveAccessPolicy(ctx)
 	if err != nil {
@@ -259,20 +276,33 @@ func (engine *Engine) UpdateAccess(
 	if request.ExpectedVersion > 0 {
 		expectedVersion = request.ExpectedVersion
 	}
-	if _, _, err := engine.store.ApplyAccessPolicyMutation(ctx, store.AccessPolicyMutation{
+	mutation := store.AccessPolicyMutation{
 		Actor: actor, IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		ExpectedVersion: expectedVersion,
 		Snapshot:        model.AccessPolicySnapshot{Digest: requestDigest, PolicyJSON: string(policyJSON), ActorHash: actor},
 		Tenants:         normalizedTenants, Roles: normalizedRoles, Bindings: normalizedBindings,
 		RemoveTenantIDs: normalizedRemoveTenants, RemoveRoleIDs: normalizedRemoveRoles,
 		RemoveBindingIDs: normalizedRemoveBindings,
-	}); err != nil {
+		Audit: &model.AuditEntry{
+			ActorHash: actor, Event: "access.policy.updated", Resource: "access", Outcome: "accepted",
+			Detail: map[string]any{"bindingCount": len(normalizedBindings), "enforced": proposed.Enforced},
+		},
+	}
+	if execution != nil {
+		mutation.AccessChangeDigest = execution.requestDigest
+		applied, err := engine.store.ApplyAccessChangeMutation(ctx, execution.changeID, actor, mutation)
+		if err != nil {
+			return model.AccessControlView{}, err
+		}
+		return model.AccessControlView{
+			CurrentSubject: model.AccessSubject{Subject: actor},
+			Version:        applied.AppliedPolicyVersion,
+			Digest:         applied.AppliedPolicyDigest,
+		}, nil
+	}
+	if _, _, err := engine.store.ApplyAccessPolicyMutation(ctx, mutation); err != nil {
 		return model.AccessControlView{}, err
 	}
-	_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
-		ActorHash: actor, Event: "access.policy.updated", Resource: "access", Outcome: "accepted",
-		Detail: map[string]any{"bindingCount": len(normalizedBindings), "enforced": proposed.Enforced},
-	})
 	return engine.AccessControl(ctx, actor)
 }
 

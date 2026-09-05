@@ -13,6 +13,8 @@ import (
 
 const kubernetesApplyConfirmationPrefix = "批准 Kubernetes 变更"
 
+const kubernetesRollbackConfirmationPrefix = "批准 Kubernetes 回滚"
+
 func (engine *Engine) CreateKubernetesPlan(
 	ctx context.Context,
 	actor string,
@@ -58,6 +60,87 @@ func (engine *Engine) CreateKubernetesPlan(
 		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "kubernetes.plan.created", Resource: plan.ID, Outcome: "accepted", Detail: map[string]any{
 			"tenantId": target.TenantID, "cluster": target.Cluster, "namespace": target.Namespace, "manifestDigest": digest,
 		}})
+	}
+	return created, wasCreated, nil
+}
+
+func (engine *Engine) CreateKubernetesRollbackPlan(
+	ctx context.Context,
+	actor, sourcePlanID string,
+	request model.KubernetesRollbackPlanRequest,
+) (model.KubernetesPlan, bool, error) {
+	if !actorPattern.MatchString(actor) || !uuidPattern.MatchString(sourcePlanID) {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚身份无效")
+	}
+	if !uuidPattern.MatchString(request.IdempotencyKey) {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚计划幂等键无效")
+	}
+	if len(request.Manifest) == 0 || len(request.Manifest) > maxKubernetesManifestBytes || strings.ContainsRune(request.Manifest, '\x00') {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚 manifest 为空、过大或包含非法字符")
+	}
+	source, err := engine.store.GetKubernetesPlan(ctx, sourcePlanID)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if err := engine.authorizePlatform(ctx, actor, model.PermissionDeploy, "kubernetes:"+source.Target.Cluster); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if err := engine.authorizeKubernetesTenant(ctx, actor, source.Target); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if source.State != "succeeded" || source.OperationID == "" {
+		return model.KubernetesPlan{}, false, errors.New("只有成功且具备操作记录的 Kubernetes 计划可以创建回滚")
+	}
+	sourceOperation, _, err := engine.store.GetKubernetesOperation(ctx, source.OperationID)
+	if err != nil {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚来源操作记录不可用")
+	}
+	if sourceOperation.State != "succeeded" || sourceOperation.ManifestDigest != source.ManifestDigest ||
+		(sourceOperation.RolloutState != "succeeded" && sourceOperation.RolloutState != "not_required") ||
+		sourceOperation.Target.Cluster != source.Target.Cluster ||
+		sourceOperation.Target.Context != source.Target.Context ||
+		sourceOperation.Target.Namespace != source.Target.Namespace ||
+		sourceOperation.TenantID != source.TenantID {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚来源身份或健康状态不一致")
+	}
+	target, err := engine.kubernetesTarget(source.Target)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if _, err := validateKubernetesManifest(request.Manifest, target); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	digest := digestText(request.Manifest)
+	if digest == source.ManifestDigest {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚 manifest 与当前计划相同")
+	}
+	requestDigest := digestText(strings.Join([]string{
+		actor, sourcePlanID, source.ManifestDigest, target.Cluster, target.Context,
+		target.Namespace, target.TenantID, digest,
+	}, "\x00"))
+	phrase := fmt.Sprintf("%s %s %s/%s %s", kubernetesRollbackConfirmationPrefix,
+		sourcePlanID, target.Cluster, target.Namespace, digest[:minInt(22, len(digest))])
+	plan := model.KubernetesPlan{
+		ID: newPlanID(), IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
+		ActorHash: actor, TenantID: target.TenantID, Target: target, ManifestDigest: digest,
+		Action: "rollback", State: "pending_approval", RollbackOfPlanID: sourcePlanID,
+		SourceManifestDigest: source.ManifestDigest, ConfirmationPhrase: phrase,
+		RequiresDualApproval: true, CreatedAt: time.Now().UTC(),
+	}
+	created, wasCreated, err := engine.store.CreateKubernetesPlan(
+		ctx, plan, request.Manifest, store.HashConfirmation(phrase),
+	)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if wasCreated {
+		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{
+			ActorHash: actor, Event: "kubernetes.rollback_plan.created", Resource: plan.ID,
+			Outcome: "accepted", Detail: map[string]any{
+				"sourcePlanId": sourcePlanID, "sourceManifestDigest": source.ManifestDigest,
+				"rollbackManifestDigest": digest, "tenantId": target.TenantID,
+			},
+		})
 	}
 	return created, wasCreated, nil
 }
@@ -146,6 +229,14 @@ func (engine *Engine) ExecuteKubernetesPlan(
 	if plan.State != "approved" && plan.State != "running" && plan.State != "succeeded" && plan.State != "needs_attention" {
 		return model.KubernetesOperation{}, errors.New("Kubernetes 计划尚未完成批准")
 	}
+	if plan.Action != "apply" && plan.Action != "rollback" {
+		return model.KubernetesOperation{}, errors.New("Kubernetes 计划动作无效")
+	}
+	if plan.Action == "rollback" {
+		if err := engine.verifyKubernetesRollbackSource(ctx, plan); err != nil {
+			return model.KubernetesOperation{}, err
+		}
+	}
 	if plan.RequiresDualApproval && (plan.ApprovedByHash == "" || plan.SecondApprovedByHash == "" || actor == plan.ApprovedByHash || actor == plan.SecondApprovedByHash) {
 		return model.KubernetesOperation{}, errors.New("Kubernetes 执行人必须独立于两名批准人")
 	}
@@ -203,9 +294,14 @@ func (engine *Engine) ExecuteKubernetesPlan(
 		op, _, err := engine.store.GetKubernetesOperation(ctx, plan.OperationID)
 		return op, err
 	}
+	confirmation := "应用 Kubernetes 清单"
+	if plan.Action == "rollback" {
+		confirmation = "回滚 Kubernetes 清单"
+	}
 	op, _, runErr := engine.applyKubernetesPlan(ctx, actor, model.KubernetesRequest{
-		Target: plan.Target, Action: "apply", Manifest: manifest,
-		Confirmation: "应用 Kubernetes 清单", IdempotencyKey: executionKey,
+		Target: plan.Target, Action: plan.Action, Manifest: manifest,
+		Confirmation: confirmation, IdempotencyKey: executionKey,
+		RollbackOfPlanID: plan.RollbackOfPlanID,
 	})
 	if op.ID != "" {
 		_ = engine.store.SetKubernetesPlanOperationID(context.Background(), id, op.ID)
@@ -221,6 +317,22 @@ func (engine *Engine) ExecuteKubernetesPlan(
 	}
 	_, _ = engine.store.AppendAudit(context.Background(), model.AuditEntry{ActorHash: actor, Event: "kubernetes.plan.executed", Resource: id, Outcome: "succeeded", Detail: map[string]any{"operationId": op.ID}})
 	return op, nil
+}
+
+func (engine *Engine) verifyKubernetesRollbackSource(ctx context.Context, plan model.KubernetesPlan) error {
+	if !uuidPattern.MatchString(plan.RollbackOfPlanID) || plan.SourceManifestDigest == "" {
+		return errors.New("Kubernetes 回滚计划缺少来源身份")
+	}
+	source, err := engine.store.GetKubernetesPlan(ctx, plan.RollbackOfPlanID)
+	if err != nil {
+		return errors.New("Kubernetes 回滚来源计划不可用")
+	}
+	if source.State != "succeeded" || source.ManifestDigest != plan.SourceManifestDigest ||
+		source.TenantID != plan.TenantID || source.Target.Cluster != plan.Target.Cluster ||
+		source.Target.Context != plan.Target.Context || source.Target.Namespace != plan.Target.Namespace {
+		return errors.New("Kubernetes 回滚来源计划身份已变化")
+	}
+	return nil
 }
 
 func (engine *Engine) kubernetesPlanOperation(

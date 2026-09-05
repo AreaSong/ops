@@ -1,5 +1,6 @@
 import { AlertTriangle, Ban, CheckCircle2, LoaderCircle, PackageCheck, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { runAction } from '../action'
 import { formatTime, shortHash } from '../labels'
 import type {
   RunnerUpdate as RunnerUpdateRecord,
@@ -192,9 +193,9 @@ export function RunnerUpdate({
                 {update.state === 'activating' && <div className="runner-update-progress"><LoaderCircle className="spin" size={16} /><span>{update.phase || '执行中'}</span></div>}
                 {update.state === 'prepared' && <div className="runner-update-actions">
                   <label><span>独立激活确认</span><code>{activatePhrase}</code><input value={activateConfirmation} onChange={(event) => setConfirmation(`activate:${update.id}`, event.target.value)} /></label>
-                  <button className="button danger" type="button" disabled={!status.canManage || sameActor || busy === `runner-activate:${update.id}` || activateConfirmation !== activatePhrase} onClick={() => void run('activate', update)}><ShieldCheck size={14} />{sameActor ? '需其他操作人激活' : busy === `runner-activate:${update.id}` ? '激活中' : '激活更新'}</button>
+                  <button className="button danger" type="button" disabled={!status.canManage || sameActor || busy === `runner-activate:${update.id}` || activateConfirmation !== activatePhrase} onClick={() => runAction(run('activate', update))}><ShieldCheck size={14} />{sameActor ? '需其他操作人激活' : busy === `runner-activate:${update.id}` ? '激活中' : '激活更新'}</button>
                   <label><span>取消确认</span><code>{cancelPhrase}</code><input value={cancelConfirmation} onChange={(event) => setConfirmation(`cancel:${update.id}`, event.target.value)} /></label>
-                  <button className="button secondary" type="button" disabled={!status.canManage || busy === `runner-cancel:${update.id}` || cancelConfirmation !== cancelPhrase} onClick={() => void run('cancel', update)}><Ban size={14} />{busy === `runner-cancel:${update.id}` ? '取消中' : '取消准备'}</button>
+                  <button className="button secondary" type="button" disabled={!status.canManage || busy === `runner-cancel:${update.id}` || cancelConfirmation !== cancelPhrase} onClick={() => runAction(run('cancel', update))}><Ban size={14} />{busy === `runner-cancel:${update.id}` ? '取消中' : '取消准备'}</button>
                 </div>}
                 {update.state === 'needs_attention' && <div className="runner-update-actions attention">
                   <div className="runner-update-form">
@@ -206,7 +207,7 @@ export function RunnerUpdate({
                     <label className="wide"><span>核对原因与处置说明</span><textarea rows={3} value={evidence.reason} onChange={(event) => setEvidence(update.id, { reason: event.target.value })} /></label>
                     <label className="wide"><span>人工核对收口</span><code>{resolvePhrase}</code><input value={resolveConfirmation} onChange={(event) => setConfirmation(`resolve:${update.id}`, event.target.value)} /></label>
                   </div>
-                  <button className="button danger" type="button" disabled={!status.canManage || busy === `runner-resolve:${update.id}` || resolveConfirmation !== resolvePhrase || !completeEvidence(evidence)} onClick={() => void run('resolve', update)}><RotateCcw size={14} />{busy === `runner-resolve:${update.id}` ? '收口中' : '标记核对完成'}</button>
+                  <button className="button danger" type="button" disabled={!status.canManage || busy === `runner-resolve:${update.id}` || resolveConfirmation !== resolvePhrase || !completeEvidence(evidence)} onClick={() => runAction(run('resolve', update))}><RotateCcw size={14} />{busy === `runner-resolve:${update.id}` ? '收口中' : '标记核对完成'}</button>
                 </div>}
               </article>
             })}
@@ -221,7 +222,7 @@ export function RunnerUpdate({
             <div><dt>目标平台</dt><dd><code>{status.manifestGoos}/{status.manifestGoarch}</code></dd></div>
             <div><dt>Runner ID</dt><dd><code>{status.runnerId}</code></dd></div>
           </dl>
-          <form className="runner-update-form" onSubmit={(event) => void submit(event)}>
+          <form className="runner-update-form" onSubmit={(event) => runAction(submit(event))}>
             <label><span>目标版本</span><input required pattern="[A-Za-z0-9][A-Za-z0-9._+:-]{0,63}" value={form.targetVersion} onChange={(event) => setForm({ ...form, targetVersion: event.target.value })} /></label>
             <label><span>受控目录相对路径</span><input required value={form.artifactPath} onChange={(event) => setForm({ ...form, artifactPath: event.target.value })} /></label>
             <label><span>发布者</span><input required readOnly value={form.publisher} /></label>

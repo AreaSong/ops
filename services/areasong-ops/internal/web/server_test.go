@@ -52,13 +52,14 @@ func TestSessionReturnsConfiguredExternalLinks(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 	var payload struct {
-		Email string        `json:"email"`
-		Links ExternalLinks `json:"links"`
+		Email       string        `json:"email"`
+		Environment string        `json:"environment"`
+		Links       ExternalLinks `json:"links"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Email != "operator@example.com" || payload.Links != server.externalLinks {
+	if payload.Email != "operator@example.com" || payload.Environment != "development" || payload.Links != server.externalLinks {
 		t.Fatalf("payload=%+v", payload)
 	}
 }

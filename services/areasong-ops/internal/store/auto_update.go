@@ -15,7 +15,8 @@ func (store *Store) UpsertAutoUpdatePolicy(ctx context.Context, policy model.Aut
 	}
 	raw, err := encodeJSON(model.AutoUpdatePolicy{
 		Enabled: policy.Enabled, Channel: policy.Channel,
-		MaintenanceWindow: policy.MaintenanceWindow, CanaryPercent: policy.CanaryPercent,
+		MaintenanceWindow: policy.MaintenanceWindow, MaintenanceTimezone: policy.MaintenanceTimezone,
+		CanaryPercent:  policy.CanaryPercent,
 		MaxUnavailable: policy.MaxUnavailable, RequireBackup: policy.RequireBackup,
 		RequireApproval: policy.RequireApproval, RollbackOnAlert: policy.RollbackOnAlert,
 		ObservationSeconds: policy.ObservationSeconds,
@@ -49,13 +50,15 @@ func (store *Store) ApplyAutoUpdatePolicy(
 	ctx context.Context,
 	actor, idempotencyKey, requestDigest string,
 	policy model.AutoUpdatePolicyView,
+	audit model.AuditEntry,
 ) (bool, error) {
 	if actor == "" || idempotencyKey == "" || requestDigest == "" {
 		return false, errors.New("自动更新策略幂等信息不完整")
 	}
 	raw, err := encodeJSON(model.AutoUpdatePolicy{
 		Enabled: policy.Enabled, Channel: policy.Channel,
-		MaintenanceWindow: policy.MaintenanceWindow, CanaryPercent: policy.CanaryPercent,
+		MaintenanceWindow: policy.MaintenanceWindow, MaintenanceTimezone: policy.MaintenanceTimezone,
+		CanaryPercent:  policy.CanaryPercent,
 		MaxUnavailable: policy.MaxUnavailable, RequireBackup: policy.RequireBackup,
 		RequireApproval: policy.RequireApproval, RollbackOnAlert: policy.RollbackOnAlert,
 		ObservationSeconds: policy.ObservationSeconds,
@@ -89,6 +92,15 @@ func (store *Store) ApplyAutoUpdatePolicy(
 	if _, err := tx.ExecContext(ctx, `INSERT INTO auto_update_receipts(idempotency_key,actor_hash,request_digest,created_at) VALUES(?,?,?,?)`, idempotencyKey, actor, requestDigest, timeText(store.now())); err != nil {
 		return false, err
 	}
+	if audit.Event == "" || audit.Resource == "" {
+		return false, errors.New("自动更新策略审计信息不完整")
+	}
+	if audit.ActorHash == "" {
+		audit.ActorHash = actor
+	}
+	if err := appendPlanAudit(ctx, tx, audit, store.now()); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
@@ -115,6 +127,10 @@ func (store *Store) ListAutoUpdatePolicies(ctx context.Context) ([]model.AutoUpd
 		}
 		item.Enabled, item.Channel = policy.Enabled, policy.Channel
 		item.MaintenanceWindow, item.CanaryPercent = policy.MaintenanceWindow, policy.CanaryPercent
+		item.MaintenanceTimezone = policy.MaintenanceTimezone
+		if item.MaintenanceTimezone == "" {
+			item.MaintenanceTimezone = "UTC"
+		}
 		item.MaxUnavailable, item.RequireBackup = policy.MaxUnavailable, policy.RequireBackup
 		item.RequireApproval, item.RollbackOnAlert = policy.RequireApproval, policy.RollbackOnAlert
 		item.ObservationSeconds = policy.ObservationSeconds

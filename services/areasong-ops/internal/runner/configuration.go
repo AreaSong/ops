@@ -23,6 +23,8 @@ const maxComposeBytes = 1 << 20
 
 const maxKubernetesManifestBytes = 2 << 20
 
+const kubernetesRolloutTimeout = "5m"
+
 func (engine *Engine) ComposeFile(ctx context.Context, serviceName string) (model.ComposeFileView, error) {
 	service, ok := engine.catalog.Services[serviceName]
 	if !ok || service.Runtime == nil {
@@ -33,7 +35,7 @@ func (engine *Engine) ComposeFile(ctx context.Context, serviceName string) (mode
 		return model.ComposeFileView{}, err
 	}
 	digest := digestText(content)
-	validationErr := validateComposeContent(content)
+	_, validationErr := analyzeComposeChange(service.Runtime, content, content)
 	revisions, err := engine.store.ListComposeRevisions(ctx, serviceName, 20)
 	if err != nil {
 		return model.ComposeFileView{}, err
@@ -42,14 +44,25 @@ func (engine *Engine) ComposeFile(ctx context.Context, serviceName string) (mode
 	if validationErr != nil {
 		validationError = validationErr.Error()
 	}
+	recoveryPoints, err := engine.store.ListRecoveryPoints(ctx, serviceName, 20)
+	if err != nil {
+		return model.ComposeFileView{}, err
+	}
+	tenantID := ""
+	if engine.catalog.Access != nil {
+		tenantID = engine.catalog.Access.DefaultTenant
+	}
 	return model.ComposeFileView{
 		Service: serviceName, ControlledPath: service.Runtime.ControlledCompose, RuntimePath: service.Runtime.RuntimeCompose,
 		Digest: digest, Content: content, Source: "controlled-file", Validated: validationErr == nil,
 		ValidationError: validationError, ControlledCompose: service.Runtime.ControlledCompose,
 		RuntimeCompose: service.Runtime.RuntimeCompose, EnvFile: service.Runtime.EnvFile,
+		ProjectName: service.Runtime.ProjectName, TenantID: composeTenantID(service, tenantID), ServerID: service.ServerID,
 		ApplicationService: service.Runtime.ApplicationService, ApplicationContainer: service.Runtime.ApplicationContainer,
+		DependencyServices:   append([]string(nil), service.Runtime.DependencyServices...),
 		DependencyContainers: append([]string(nil), service.Runtime.DependencyContainers...), HealthURL: service.Runtime.HealthURL,
-		Revisions: revisions,
+		ProposalTTLSeconds: int(composeProposalTTL(service.Runtime) / time.Second),
+		RecoveryPoints:     recoveryPoints, Revisions: revisions,
 	}, nil
 }
 
@@ -63,9 +76,6 @@ func (engine *Engine) ProposeCompose(ctx context.Context, actor string, request 
 	if len(request.Content) == 0 || len(request.Content) > maxComposeBytes || strings.ContainsRune(request.Content, '\x00') {
 		return model.ComposeRevision{}, errors.New("Compose 内容为空、过大或包含非法字符")
 	}
-	if err := validateComposeContent(request.Content); err != nil {
-		return model.ComposeRevision{}, err
-	}
 	current, err := engine.ComposeFile(ctx, request.Service)
 	if err != nil {
 		return model.ComposeRevision{}, err
@@ -73,8 +83,37 @@ func (engine *Engine) ProposeCompose(ctx context.Context, actor string, request 
 	if request.ExpectedDigest != current.Digest {
 		return model.ComposeRevision{}, errors.New("Compose 基线摘要已变化，请重新读取")
 	}
+	service := engine.catalog.Services[request.Service]
+	controlled, runtimeFile, err := readComposePair(service.Runtime)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	if controlled.Digest != current.Digest || runtimeFile.Digest != current.Digest {
+		return model.ComposeRevision{}, errors.New("Compose 受控文件与运行文件存在漂移")
+	}
+	analysis, err := analyzeComposeChange(service.Runtime, controlled.Content, request.Content)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	if err := validateComposeCandidate(ctx, service.Runtime, request.Content, engine.composeRunner); err != nil {
+		return model.ComposeRevision{}, err
+	}
+	effective, err := inspectComposeEffectiveEvidence(
+		ctx, service.Runtime, controlled.Content, request.Content, engine.composeRunner,
+	)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
 	if request.Mode == "validate" {
-		return model.ComposeRevision{Service: request.Service, Digest: digestText(request.Content), Source: "validation", Content: request.Content, Validated: true, CreatedAt: time.Now().UTC()}, nil
+		return model.ComposeRevision{Service: request.Service, Digest: digestText(request.Content), Source: "validation", Content: request.Content, Validated: true,
+			BaselineSemanticDigest: analysis.BaselineSemanticDigest, CandidateSemanticDigest: analysis.CandidateSemanticDigest,
+			BaselineEffectiveDigest: effective.BaselineDigest, CandidateEffectiveDigest: effective.CandidateDigest,
+			EnvFileDigest: effective.EnvFileDigest,
+			SemanticDiff:  analysis.Diff, CandidateImage: analysis.CandidateImage,
+			CandidateImageDigest: analysis.CandidateImageDigest, CreatedAt: time.Now().UTC()}, nil
+	}
+	if analysis.BaselineSemanticDigest == analysis.CandidateSemanticDigest {
+		return model.ComposeRevision{}, errors.New("Compose 候选与当前语义一致，无需创建提案")
 	}
 	if !uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.ComposeRevision{}, errors.New("Compose 提案幂等键无效")
@@ -83,19 +122,125 @@ func (engine *Engine) ProposeCompose(ctx context.Context, actor string, request 
 	if err != nil {
 		return model.ComposeRevision{}, err
 	}
+	if request.RecoveryPointID == "" {
+		return model.ComposeRevision{}, errors.New("Compose 提案必须显式选择已验证恢复点")
+	}
+	identity, err := engine.inspectForAction(ctx, service, "inspect")
+	if err != nil || !hasRuntimeIdentity(identity) {
+		return model.ComposeRevision{}, errors.New("Compose 提案无法证明当前运行身份")
+	}
+	point, err := engine.verifyComposeRecoveryPoint(ctx, service, request.RecoveryPointID, identity)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	defaultTenant := ""
+	if engine.catalog.Access != nil {
+		defaultTenant = engine.catalog.Access.DefaultTenant
+	}
+	tenantID := composeTenantID(service, defaultTenant)
+	if service.ServerID == "" {
+		return model.ComposeRevision{}, errors.New("Compose 提案必须绑定明确服务器")
+	}
+	policyDigest, err := composePolicyDigest(service, tenantID)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	runtimeIdentityDigest, err := canonicalDigest(map[string]any{
+		"currentVersion": identity["currentVersion"], "currentImage": identity["currentImage"],
+		"currentImageId": identity["currentImageId"], "runtimeIdentityHash": identity["runtimeIdentityHash"],
+	})
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	composeIdentity, err := engine.inspectComposeApplication(ctx, service.Runtime, service.Runtime.RuntimeCompose)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	composeIdentityDigest, err := verifyComposeApplicationIdentity(composeIdentity, service.Runtime, analysis.BaselineImage)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	candidateImageID, err := engine.inspectComposeImageReference(ctx, service.Runtime, analysis.CandidateImage)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	runtimeIdentityDigest, err = canonicalDigest(map[string]string{
+		"adapter": runtimeIdentityDigest, "compose": composeIdentityDigest,
+	})
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
+	alerts, err := engine.blockingAlerts(ctx, service)
+	if err != nil {
+		return model.ComposeRevision{}, fmt.Errorf("Compose 提案无法读取 Alertmanager: %w", err)
+	}
+	fingerprints := alertFingerprints(alerts)
+	if len(fingerprints) != 0 {
+		return model.ComposeRevision{}, fmt.Errorf("存在阻断告警，禁止创建 Compose 提案: %s", alertNames(alerts))
+	}
+	now := time.Now().UTC()
+	alertDigest, err := composeAlertEvidence(now, fingerprints)
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
 	revision := model.ComposeRevision{ID: id, IdempotencyKey: request.IdempotencyKey,
 		Service: request.Service, Digest: digestText(request.Content), ExpectedDigest: current.Digest,
 		Source: "web-proposal", Content: request.Content, Validated: true, State: "proposed",
-		ActorHash: actor, CreatedAt: time.Now().UTC()}
+		ActorHash: actor, CreatedAt: now, ExpiresAt: now.Add(composeProposalTTL(service.Runtime)),
+		TenantID: tenantID, ServerID: service.ServerID, ProjectName: service.Runtime.ProjectName,
+		BaselineSemanticDigest: analysis.BaselineSemanticDigest, CandidateSemanticDigest: analysis.CandidateSemanticDigest,
+		BaselineEffectiveDigest: effective.BaselineDigest, CandidateEffectiveDigest: effective.CandidateDigest,
+		EnvFileDigest: effective.EnvFileDigest,
+		SemanticDiff:  analysis.Diff, PolicyDigest: policyDigest,
+		RecoveryPointID: point.ID, RecoveryPointExpectedDigest: point.ExpectedBeforeDigest,
+		RecoveryPointBindingDigest: point.BindingDigest, RecoveryPointEvidenceDigest: point.EvidenceDigest,
+		RecoveryPointVerifiedAt: point.VerifiedAt, RecoveryPointRecoverableUntil: point.RecoverableUntil,
+		AlertEvidenceDigest: alertDigest, BlockingAlertFingerprints: fingerprints, AlertCheckedAt: &now,
+		ExpectedRuntimeIdentityDigest: runtimeIdentityDigest,
+		ExpectedRuntimeImage:          composeIdentity.DeclaredImage, ExpectedRuntimeImageID: composeIdentity.ImageID,
+		CandidateImage: analysis.CandidateImage, CandidateImageDigest: analysis.CandidateImageDigest,
+		CandidateImageID: candidateImageID}
 	revision.ConfirmationPhrase = fmt.Sprintf("批准 Compose 变更 %s %s", request.Service, shortDigest(revision.Digest))
-	requestDigest := digestText(strings.Join([]string{actor, request.Service, current.Digest, revision.Digest}, "\x00"))
+	requestDigest, err := canonicalDigest(struct {
+		SchemaVersion            int                      `json:"schemaVersion"`
+		Actor                    string                   `json:"actor"`
+		Service                  string                   `json:"service"`
+		ExpectedDigest           string                   `json:"expectedDigest"`
+		CandidateDigest          string                   `json:"candidateDigest"`
+		BaselineSemanticDigest   string                   `json:"baselineSemanticDigest"`
+		CandidateSemanticDigest  string                   `json:"candidateSemanticDigest"`
+		BaselineEffectiveDigest  string                   `json:"baselineEffectiveDigest"`
+		CandidateEffectiveDigest string                   `json:"candidateEffectiveDigest"`
+		EnvFileDigest            string                   `json:"envFileDigest"`
+		SemanticDiff             []model.ComposeDiffEntry `json:"semanticDiff"`
+		PolicyDigest             string                   `json:"policyDigest"`
+		RecoveryPointID          string                   `json:"recoveryPointId"`
+		RecoveryPointBinding     string                   `json:"recoveryPointBindingDigest"`
+		RecoveryPointEvidence    string                   `json:"recoveryPointEvidenceDigest"`
+		RuntimeIdentityDigest    string                   `json:"runtimeIdentityDigest"`
+		CandidateImageID         string                   `json:"candidateImageId"`
+	}{
+		SchemaVersion: 2, Actor: actor, Service: request.Service,
+		ExpectedDigest: request.ExpectedDigest, CandidateDigest: revision.Digest,
+		BaselineSemanticDigest:   revision.BaselineSemanticDigest,
+		CandidateSemanticDigest:  revision.CandidateSemanticDigest,
+		BaselineEffectiveDigest:  revision.BaselineEffectiveDigest,
+		CandidateEffectiveDigest: revision.CandidateEffectiveDigest,
+		EnvFileDigest:            revision.EnvFileDigest, SemanticDiff: revision.SemanticDiff,
+		PolicyDigest: revision.PolicyDigest, RecoveryPointID: revision.RecoveryPointID,
+		RecoveryPointBinding:  revision.RecoveryPointBindingDigest,
+		RecoveryPointEvidence: revision.RecoveryPointEvidenceDigest,
+		RuntimeIdentityDigest: revision.ExpectedRuntimeIdentityDigest,
+		CandidateImageID:      revision.CandidateImageID,
+	})
+	if err != nil {
+		return model.ComposeRevision{}, err
+	}
 	stored, created, err := engine.store.SaveComposeRevisionIdempotent(ctx, revision, requestDigest)
 	if err != nil {
 		return model.ComposeRevision{}, err
 	}
-	if created {
-		_, _ = engine.store.AppendAudit(ctx, model.AuditEntry{ActorHash: actor, Event: "compose.revision.proposed", Resource: request.Service, Outcome: "accepted", Detail: map[string]any{"revisionId": id, "digest": revision.Digest}})
-	}
+	_ = created
 	return stored, nil
 }
 
@@ -235,26 +380,17 @@ func validateComposeService(node *yaml.Node, name string) error {
 	for index := 0; index < len(node.Content); index += 2 {
 		keys[node.Content[index].Value] = node.Content[index+1]
 	}
-	if keys["image"] == nil && keys["build"] == nil {
-		return fmt.Errorf("Compose 服务 %q 必须声明 image 或 build", name)
+	if keys["image"] == nil {
+		return fmt.Errorf("Compose 服务 %q 必须声明不可变 image", name)
 	}
 	if build := keys["build"]; build != nil {
-		if build.Kind == yaml.ScalarNode {
-			if strings.HasPrefix(build.Value, "/") || strings.HasPrefix(build.Value, "../") || build.Value == ".." {
-				return fmt.Errorf("Compose 服务 %q build 路径越界", name)
-			}
-		} else if build.Kind == yaml.MappingNode {
-			for index := 0; index < len(build.Content); index += 2 {
-				if build.Content[index].Value == "context" {
-					contextPath := build.Content[index+1].Value
-					if strings.HasPrefix(contextPath, "/") || strings.HasPrefix(contextPath, "../") || contextPath == ".." {
-						return fmt.Errorf("Compose 服务 %q build context 越界", name)
-					}
-				}
-			}
-		} else {
-			return fmt.Errorf("Compose 服务 %q build 声明无效", name)
-		}
+		_ = build
+		return fmt.Errorf("Compose 服务 %q 禁止 build", name)
+	}
+	if image := keys["image"]; image.Kind != yaml.ScalarNode {
+		return fmt.Errorf("Compose 服务 %q image 必须是字符串", name)
+	} else if _, err := immutableImageDigest(image.Value); err != nil {
+		return fmt.Errorf("Compose 服务 %q: %w", name, err)
 	}
 	for _, key := range []string{"privileged", "pid", "ipc", "network_mode", "userns_mode", "devices", "cap_add", "capabilities"} {
 		if value := keys[key]; value != nil {
@@ -337,8 +473,8 @@ func (engine *Engine) applyKubernetesPlan(
 	actor string,
 	request model.KubernetesRequest,
 ) (model.KubernetesOperation, string, error) {
-	if request.Action != "apply" {
-		return model.KubernetesOperation{}, "", errors.New("Kubernetes 计划内部执行只允许 apply")
+	if request.Action != "apply" && request.Action != "rollback" {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes 计划内部执行只允许 apply 或 rollback")
 	}
 	return engine.runKubernetesOperation(ctx, actor, request, true)
 }
@@ -355,19 +491,26 @@ func (engine *Engine) runKubernetesOperation(
 	if len(request.Manifest) == 0 || len(request.Manifest) > maxKubernetesManifestBytes || strings.ContainsRune(request.Manifest, '\x00') {
 		return model.KubernetesOperation{}, "", errors.New("Kubernetes manifest 为空、过大或包含非法字符")
 	}
-	if request.Action != "validate" && request.Action != "apply" {
-		return model.KubernetesOperation{}, "", errors.New("Kubernetes 只支持 validate 或 apply")
+	if request.Action != "validate" && request.Action != "apply" && request.Action != "rollback" {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes 只支持 validate、apply 或 rollback")
 	}
-	if request.Action == "apply" && !allowApply {
-		return model.KubernetesOperation{}, "", errors.New("Kubernetes apply 必须通过双人批准计划执行")
+	mutation := request.Action == "apply" || request.Action == "rollback"
+	if mutation && !allowApply {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes apply/rollback 必须通过双人批准计划执行")
 	}
-	if request.Action == "apply" && request.DryRun {
-		return model.KubernetesOperation{}, "", errors.New("apply 请求不能同时声明 dryRun")
+	if mutation && request.DryRun {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes 变更请求不能同时声明 dryRun")
 	}
 	if request.Action == "apply" && request.Confirmation != "应用 Kubernetes 清单" {
 		return model.KubernetesOperation{}, "", errors.New("Kubernetes apply 需要精确确认短语")
 	}
+	if request.Action == "rollback" && request.Confirmation != "回滚 Kubernetes 清单" {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes rollback 需要精确确认短语")
+	}
 	request.DryRun = request.Action == "validate"
+	if request.Action == "validate" && request.RollbackOfPlanID != "" {
+		return model.KubernetesOperation{}, "", errors.New("Kubernetes validate 不能声明回滚来源")
+	}
 	if strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > 128 {
 		return model.KubernetesOperation{}, "", errors.New("Kubernetes 幂等键无效")
 	}
@@ -381,9 +524,11 @@ func (engine *Engine) runKubernetesOperation(
 	if err := engine.authorizeKubernetesTenant(ctx, actor, target); err != nil {
 		return model.KubernetesOperation{}, "", err
 	}
-	if _, err := validateKubernetesManifest(request.Manifest, target); err != nil {
+	objects, err := validateKubernetesManifest(request.Manifest, target)
+	if err != nil {
 		return model.KubernetesOperation{}, "", err
 	}
+	rolloutResources := kubernetesRolloutResources(objects)
 	requestDigest := kubernetesRequestDigest(request, target)
 	digest := digestText(request.Manifest)
 	id, err := newUUID()
@@ -394,14 +539,16 @@ func (engine *Engine) runKubernetesOperation(
 	op := model.KubernetesOperation{
 		ID: id, IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		Target: target, TenantID: target.TenantID, Action: request.Action, ManifestDigest: digest,
-		DryRun: request.Action == "validate", State: "pending", CreatedAt: now,
+		DryRun: request.Action == "validate", State: "pending", Phase: "preflight",
+		RolloutState: "pending", RolloutResources: rolloutResources,
+		RollbackOfPlanID: request.RollbackOfPlanID, CreatedAt: now,
 	}
 	stored, previousOutput, created, err := engine.store.BeginKubernetesOperation(ctx, op, actor, requestDigest)
 	if err != nil {
 		return model.KubernetesOperation{}, "", err
 	}
 	if !created {
-		if request.Action != "apply" {
+		if !mutation {
 			return stored, previousOutput, nil
 		}
 		switch stored.State {
@@ -422,7 +569,9 @@ func (engine *Engine) runKubernetesOperation(
 	if created {
 		op = stored
 	}
-	if err := engine.store.UpdateKubernetesOperation(ctx, op.ID, "running", "", ""); err != nil {
+	if err := engine.store.UpdateKubernetesOperationRollout(
+		ctx, op.ID, "running", request.Action, "pending", rolloutResources, "", "",
+	); err != nil {
 		failure := fmt.Errorf("Kubernetes 操作状态持久化失败: %w", err)
 		engine.markKubernetesNeedsAttention(ctx, op.ID, "", failure.Error())
 		op.State = "needs_attention"
@@ -441,30 +590,116 @@ func (engine *Engine) runKubernetesOperation(
 	cleanOutput := redactText(string(output))
 	if runErr != nil {
 		state := "failed"
-		if request.Action == "apply" {
+		if mutation {
 			state = "needs_attention"
 		}
 		errorText := redactText(runErr.Error())
-		if persistErr := engine.store.UpdateKubernetesOperation(ctx, op.ID, state, cleanOutput, errorText); persistErr != nil {
+		if persistErr := engine.store.UpdateKubernetesOperationRollout(
+			ctx, op.ID, state, request.Action+"_failed", "not_started", rolloutResources, cleanOutput, errorText,
+		); persistErr != nil {
 			failure := fmt.Errorf("kubectl 操作失败: %s；结果持久化失败: %w", errorText, persistErr)
 			engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error())
 			op.State, op.Error = "needs_attention", failure.Error()
 			return op, cleanOutput, failure
 		}
 		op.State, op.Error = state, errorText
+		op.Phase, op.RolloutState = request.Action+"_failed", "not_started"
 		finished := time.Now().UTC()
 		op.FinishedAt = &finished
 		return op, cleanOutput, fmt.Errorf("kubectl 操作失败: %s", errorText)
 	}
-	if persistErr := engine.store.UpdateKubernetesOperation(ctx, op.ID, "succeeded", cleanOutput, ""); persistErr != nil {
-		failure := fmt.Errorf("Kubernetes 操作已执行但结果持久化失败: %w", persistErr)
+	if !mutation {
+		return engine.finishKubernetesOperation(ctx, op, "validated", "not_required", rolloutResources, cleanOutput)
+	}
+	if len(rolloutResources) == 0 {
+		return engine.finishKubernetesOperation(ctx, op, "health", "not_required", rolloutResources, cleanOutput)
+	}
+	if persistErr := engine.store.UpdateKubernetesOperationRollout(
+		ctx, op.ID, "running", "rollout", "running", rolloutResources, cleanOutput, "",
+	); persistErr != nil {
+		failure := fmt.Errorf("Kubernetes apply 已完成但 rollout 状态持久化失败: %w", persistErr)
 		engine.markKubernetesNeedsAttention(ctx, op.ID, cleanOutput, failure.Error())
-		op.State, op.Error = "needs_attention", failure.Error()
+		op.State, op.Phase, op.RolloutState, op.Error = "needs_attention", "rollout", "unknown", failure.Error()
 		return op, cleanOutput, failure
 	}
+	op.Phase, op.RolloutState = "rollout", "running"
+	rolloutOutput, rolloutErr := runKubernetesRollout(ctx, target, rolloutResources)
+	combinedOutput := strings.TrimSpace(strings.Join([]string{cleanOutput, rolloutOutput}, "\n"))
+	if rolloutErr != nil {
+		errorText := redactText(rolloutErr.Error())
+		if persistErr := engine.store.UpdateKubernetesOperationRollout(
+			ctx, op.ID, "needs_attention", "rollout_failed", "failed", rolloutResources, combinedOutput, errorText,
+		); persistErr != nil {
+			errorText = redactText(fmt.Sprintf("%s；rollout 结果持久化失败: %v", errorText, persistErr))
+			engine.markKubernetesNeedsAttention(ctx, op.ID, combinedOutput, errorText)
+		}
+		finished := time.Now().UTC()
+		op.State, op.Phase, op.RolloutState, op.Error, op.FinishedAt = "needs_attention", "rollout_failed", "failed", errorText, &finished
+		return op, combinedOutput, fmt.Errorf("Kubernetes rollout 健康检查失败: %s", errorText)
+	}
+	return engine.finishKubernetesOperation(ctx, op, "health", "succeeded", rolloutResources, combinedOutput)
+}
+
+func (engine *Engine) finishKubernetesOperation(
+	ctx context.Context,
+	op model.KubernetesOperation,
+	phase, rolloutState string,
+	rolloutResources []string,
+	output string,
+) (model.KubernetesOperation, string, error) {
+	if persistErr := engine.store.UpdateKubernetesOperationRollout(
+		ctx, op.ID, "succeeded", phase, rolloutState, rolloutResources, output, "",
+	); persistErr != nil {
+		failure := fmt.Errorf("Kubernetes 操作已执行但结果持久化失败: %w", persistErr)
+		engine.markKubernetesNeedsAttention(ctx, op.ID, output, failure.Error())
+		op.State, op.Error = "needs_attention", failure.Error()
+		return op, output, failure
+	}
 	finished := time.Now().UTC()
-	op.State, op.FinishedAt = "succeeded", &finished
-	return op, cleanOutput, nil
+	op.State, op.Phase, op.RolloutState, op.RolloutResources, op.FinishedAt =
+		"succeeded", phase, rolloutState, append([]string(nil), rolloutResources...), &finished
+	return op, output, nil
+}
+
+func runKubernetesRollout(
+	ctx context.Context,
+	target model.KubernetesTarget,
+	resources []string,
+) (string, error) {
+	outputs := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		args := []string{
+			"--context", target.Context, "-n", target.Namespace,
+			"rollout", "status", resource, "--timeout=" + kubernetesRolloutTimeout,
+		}
+		output, err := exec.CommandContext(ctx, "kubectl", args...).CombinedOutput()
+		clean := redactText(string(output))
+		if clean != "" {
+			outputs = append(outputs, clean)
+		}
+		if err != nil {
+			return strings.TrimSpace(strings.Join(outputs, "\n")), fmt.Errorf("%s: %w", resource, err)
+		}
+	}
+	return strings.TrimSpace(strings.Join(outputs, "\n")), nil
+}
+
+func kubernetesRolloutResources(objects []kubernetesManifestObject) []string {
+	resources := make([]string, 0, len(objects))
+	seen := make(map[string]struct{}, len(objects))
+	for _, object := range objects {
+		kind := strings.ToLower(strings.TrimSpace(object.Kind))
+		switch kind {
+		case "deployment", "statefulset", "daemonset":
+			resource := kind + "/" + object.Metadata.Name
+			if _, exists := seen[resource]; !exists {
+				seen[resource] = struct{}{}
+				resources = append(resources, resource)
+			}
+		}
+	}
+	sort.Strings(resources)
+	return resources
 }
 
 func (engine *Engine) validateKubernetesTarget(target model.KubernetesTarget) error {

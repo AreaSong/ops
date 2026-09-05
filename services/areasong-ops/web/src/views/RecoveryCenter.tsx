@@ -1,5 +1,6 @@
 import { ArchiveRestore, CheckCircle2, CircleAlert, CircleHelp, FileCheck2, LoaderCircle, RefreshCw, RotateCcw, SearchCheck, ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
+import { runAction } from '../action'
 import { formatTime, shortHash } from '../labels'
 import type { RecoveryCenterView, RecoveryAction } from '../types'
 
@@ -70,7 +71,7 @@ export function RecoveryCenter({ items, loading, available, error, busy, onRefre
                   const actionBusy = busy === `${item.service}/${action.name}`
                   return <button className="button secondary" type="button" key={action.name} disabled={!action.enabled || actionBusy || ((action.name === 'restore' || action.name === 'restore-drill') && !pointFresh)} title={action.reason || actionLabel(action)} onClick={() => (action.name === 'restore' || action.name === 'restore-drill') && point
                     ? setRestore({ service: item.service, pointId, mode: action.name === 'restore' ? 'production' : 'isolated', confirmation: '' })
-                    : void onAction(item.service, action.name, pointId)}><Icon size={14} />{actionBusy ? '提交中' : actionLabel(action)}</button>
+                    : runAction(onAction(item.service, action.name, pointId))}><Icon size={14} />{actionBusy ? '提交中' : actionLabel(action)}</button>
                 })}
                 {point && <button className="button danger" type="button" disabled={!pointFresh || busy === `${item.service}/restore`} title={!pointFresh ? '恢复点已过期' : '打开恢复确认'} onClick={() => setRestore({ service: item.service, pointId, mode: 'isolated', confirmation: '' })}><ArchiveRestore size={14} />恢复</button>}
               </div>
@@ -83,7 +84,7 @@ export function RecoveryCenter({ items, loading, available, error, busy, onRefre
         <section className="modal recovery-modal" role="dialog" aria-modal="true" aria-labelledby="restore-title">
           <header className="modal-header"><div className="modal-title-group"><span className="warning-icon"><ArchiveRestore size={19} /></span><div><h2 id="restore-title">创建恢复请求</h2><span>{restore.service} · {shortHash(restore.pointId)}</span></div></div></header>
           <div className="modal-body"><div className="recovery-mode-tabs" role="group" aria-label="恢复模式"><button type="button" className={restore.mode === 'isolated' ? 'active' : ''} onClick={() => setRestore({ ...restore, mode: 'isolated', confirmation: '' })}><CheckCircle2 size={15} />隔离验证</button><button type="button" className={restore.mode === 'production' ? 'active danger' : ''} onClick={() => setRestore({ ...restore, mode: 'production', confirmation: '' })}><ShieldAlert size={15} />生产恢复</button></div><label className="confirmation-field"><span>确认短语</span><code>{restorePhrase}</code><input autoFocus value={restore.confirmation} onChange={(event) => setRestore({ ...restore, confirmation: event.target.value })} autoComplete="off" spellCheck={false} /></label></div>
-          <footer className="modal-footer"><button className="button secondary" type="button" onClick={() => setRestore(null)}>取消</button><button className={restore.mode === 'production' ? 'button danger' : 'button secondary'} type="button" disabled={busy === `${restore.service}/restore` || restore.confirmation !== restorePhrase} onClick={() => { const value = restore; setRestore(null); void onRestore(value.service, value.pointId, value.mode, value.confirmation) }}>{busy === `${restore.service}/restore` ? '提交中' : '提交恢复请求'}</button></footer>
+          <footer className="modal-footer"><button className="button secondary" type="button" onClick={() => setRestore(null)}>取消</button><button className={restore.mode === 'production' ? 'button danger' : 'button secondary'} type="button" disabled={busy === `${restore.service}/restore` || restore.confirmation !== restorePhrase} onClick={() => { const value = restore; setRestore(null); runAction(onRestore(value.service, value.pointId, value.mode, value.confirmation)) }}>{busy === `${restore.service}/restore` ? '提交中' : '提交恢复请求'}</button></footer>
         </section>
       </div>}
     </div>

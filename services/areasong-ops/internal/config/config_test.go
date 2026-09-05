@@ -302,7 +302,9 @@ func validComposeCatalog() *Catalog {
 			Adapter: "/usr/local/libexec/demo.sh",
 			Runtime: &model.ComposeServiceRuntime{
 				ControlledCompose: "/opt/ops/demo/compose.yml", RuntimeCompose: "/opt/services/demo/compose.yml",
-				EnvFile: "/opt/services/demo/.env", ApplicationService: "demo", ApplicationContainer: "demo",
+				EnvFile: "/opt/services/demo/.env", ProjectName: "demo",
+				ApplicationService: "demo", ApplicationContainer: "demo",
+				DependencyServices: []string{}, DependencyContainers: []string{}, ProposalTTLSeconds: 900,
 				HealthURL: "http://127.0.0.1:8080/health", ReleaseRepository: "owner/demo",
 				ReleaseCatalog: "/opt/ops/demo/releases.json", PreparedReleaseDir: "/var/lib/areasong-ops/prepared/demo",
 				InspectExecutable: "/usr/local/libexec/demo-inspect.sh",
@@ -655,5 +657,18 @@ func TestSecureExecutableRejectsWritableHook(t *testing.T) {
 	}
 	if err := verifySecureExecutable(path); err == nil {
 		t.Fatal("expected insecure hook validation error")
+	}
+}
+
+func TestSecureDirectoryTreeLooseRejectsWritableAllowlistRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "managed")
+	if err := os.Mkdir(root, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySecureDirectoryTreeLoose(root); err == nil {
+		t.Fatal("writable allowlist root was accepted")
 	}
 }

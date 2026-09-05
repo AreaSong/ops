@@ -44,6 +44,20 @@ type fakeCredentialRotator struct {
 	removeCalls int
 }
 
+func TestWithBackupRootOnlyAcceptsScopedAbsolutePath(t *testing.T) {
+	engine := &Engine{backupRoot: "/var/backups/ops"}
+	WithBackupRoot("relative/backups")(engine)
+	WithBackupRoot("/")(engine)
+	if engine.backupRoot != "/var/backups/ops" {
+		t.Fatalf("unsafe backup root accepted: %s", engine.backupRoot)
+	}
+	want := filepath.Join(t.TempDir(), "backups")
+	WithBackupRoot(want)(engine)
+	if engine.backupRoot != want {
+		t.Fatalf("backup root=%s want=%s", engine.backupRoot, want)
+	}
+}
+
 func (rotator *fakeCredentialRotator) Current(context.Context) (CurrentCredential, error) {
 	return rotator.current, nil
 }
@@ -119,7 +133,7 @@ func (executor *fakeExecutor) Execute(_ context.Context, input ExecuteInput) (mo
 	}
 	if input.Action == "inspect" {
 		return model.AdapterResult{OK: true, Summary: "checked", Data: map[string]any{
-			"currentVersion": "1.0.0", "currentImage": "demo:v1.0.0@sha256:test",
+			"currentVersion": "1.0.0", "currentImage": "demo@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			"currentImageId": "sha256:image", "runtimeIdentityHash": "sha256:runtime",
 		}}, nil
 	}
@@ -131,7 +145,7 @@ func (executor *fakeExecutor) Execute(_ context.Context, input ExecuteInput) (mo
 	return model.AdapterResult{OK: true, Summary: input.Phase + " ok", Data: map[string]any{"phase": input.Phase}}, nil
 }
 
-func testEngine(t *testing.T, executor *fakeExecutor) (*Engine, *store.Store) {
+func testEngine(t *testing.T, executor Executor) (*Engine, *store.Store) {
 	t.Helper()
 	stateRoot := t.TempDir()
 	database, err := store.Open(filepath.Join(stateRoot, "ops.db"))
@@ -224,6 +238,24 @@ func TestAutomaticTaskUsesManagedObjectPlanAndExecution(t *testing.T) {
 	finished, err := database.GetTask(ctx, task.ID)
 	if err != nil || finished.State != model.TaskSucceeded || finished.ProductionChanged || len(finished.Stages) != 3 {
 		t.Fatalf("task=%+v err=%v", finished, err)
+	}
+}
+
+func TestServiceViewsExposeManagedComposeCapability(t *testing.T) {
+	ctx := context.Background()
+	engine, _ := testEngine(t, &fakeExecutor{})
+
+	views := engine.Services(ctx)
+	if len(views) != 1 || views[0].ManagedCompose {
+		t.Fatalf("custom service unexpectedly exposes managed Compose: %+v", views)
+	}
+
+	service := engine.catalog.Services["demo"]
+	service.Runtime = &model.ComposeServiceRuntime{}
+	engine.catalog.Services["demo"] = service
+	views = engine.Services(ctx)
+	if len(views) != 1 || !views[0].ManagedCompose {
+		t.Fatalf("managed Compose capability missing: %+v", views)
 	}
 }
 
@@ -414,14 +446,9 @@ func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	}); err == nil {
 		t.Fatal("unapproved plan executed")
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil || approved.State != model.PlanApproved {
-		t.Fatalf("approved=%+v err=%v", approved, err)
-	}
+	approved := approveReleasePlanForTest(t, engine, plan, approver)
 	executionKey := mustUUID(t)
-	task, created, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
+	task, created, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: executionKey,
 	})
 	if err != nil || !created || task.PlanID != plan.ID {
@@ -456,17 +483,15 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	approved := approveReleasePlanForTest(t, engine, plan, approver)
 	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !plan.RequiresDualApproval {
+		t.Fatal("high-risk plan did not require dual approval")
 	}
 	engine.Wait()
 	observing, err := database.GetReleasePlan(ctx, plan.ID)
@@ -492,6 +517,59 @@ func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
 	}
 }
 
+func TestPlanClosureObservationWindowIsRetryableWithoutStickyReason(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	service := engine.catalog.Services["demo"]
+	action := service.Actions["restart"]
+	action.ObservationSeconds = 1
+	service.Actions["restart"] = action
+	engine.catalog.Services["demo"] = service
+	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
+		Service: "demo", Action: "restart",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Wait()
+	observing, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || observing.State != model.PlanObserving || observing.ObservationEndsAt == nil {
+		t.Fatalf("plan=%+v err=%v", observing, err)
+	}
+	_, err = engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err == nil || !strings.Contains(err.Error(), "观察窗口尚未结束") {
+		t.Fatalf("early close err=%v", err)
+	}
+	blocked, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.ClosureReason != "" {
+		t.Fatalf("temporary observation rejection became sticky: %+v", blocked)
+	}
+	time.Sleep(time.Until(*blocked.ObservationEndsAt) + 20*time.Millisecond)
+	closed, err := engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	})
+	if err != nil || closed.State != model.PlanCompleted {
+		t.Fatalf("retry close plan=%+v err=%v", closed, err)
+	}
+}
+
 func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
 	ctx := context.Background()
 	engine, _ := testEngine(t, &fakeExecutor{})
@@ -502,10 +580,43 @@ func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !plan.RequiresDualApproval {
+		t.Fatal("high-risk plan did not require dual approval")
+	}
 	if _, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
 		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
 	}); !errors.Is(err, store.ErrActorMismatch) {
 		t.Fatalf("creator approval err=%v, want actor mismatch", err)
+	}
+}
+
+func TestLegacyHighRiskPlanWithoutDualApprovalIsInvalidatedBeforeExecution(t *testing.T) {
+	ctx := context.Background()
+	engine, database := testEngine(t, &fakeExecutor{})
+	now := time.Now().UTC()
+	plan := model.ReleasePlan{
+		ID: mustUUID(t), ActorHash: actorHash(), Service: "demo", Action: "update", Target: "v1.1.0",
+		TenantID: "default", Risk: model.RiskHigh, State: model.PlanApproved, Digest: "sha256:legacy",
+		ApprovalSummary: model.ApprovalSummary{
+			SchemaVersion: 1, Service: "demo", Action: "update", TenantID: "default",
+			Risk: model.RiskHigh, ExpectedBefore: map[string]any{"currentVersion": "1.0.0"},
+		},
+		ConfirmationPhrase: "更新 demo 到 v1.1.0", ApprovedByHash: strings.Repeat("b", 64),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, store.ReleasePlanInput{
+		Plan: plan, ConfirmationHash: store.HashConfirmation(plan.ConfirmationPhrase),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{
+		IdempotencyKey: mustUUID(t),
+	}); err == nil || !strings.Contains(err.Error(), "缺少双人审批门禁") {
+		t.Fatalf("legacy weak plan execution err=%v", err)
+	}
+	stored, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil || stored.State != model.PlanInvalidated {
+		t.Fatalf("legacy weak plan was not invalidated: plan=%+v err=%v", stored, err)
 	}
 }
 
@@ -528,6 +639,9 @@ func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T
 	}
 	if plan.Risk != model.RiskHigh || plan.ApprovalSummary.ApprovalException != model.ApprovalExceptionC2LifecycleSingleActor {
 		t.Fatalf("plan exception not bound: %+v", plan)
+	}
+	if plan.RequiresDualApproval {
+		t.Fatal("C2 lifecycle exception unexpectedly required dual approval")
 	}
 	// The signed summary must use the same normalized alert policy shape that
 	// execution revalidates; nil and empty map/slice JSON forms are distinct.
@@ -814,12 +928,7 @@ func TestControlledRollbackPlanRevalidatesCurrentSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	approved := approveReleasePlanForTest(t, engine, plan, approver)
 	task, _, err := engine.ExecuteReleasePlan(ctx, creator, approved.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
 	})
@@ -933,6 +1042,38 @@ func TestServicesRestoresDiscoveryAndSafeRollbackSource(t *testing.T) {
 
 func actorHash() string {
 	return strings.Repeat("a", 64)
+}
+
+func approveReleasePlanForTest(
+	t *testing.T,
+	engine *Engine,
+	plan model.ReleasePlan,
+	firstApprover string,
+) model.ReleasePlan {
+	t.Helper()
+	approved, err := engine.ApproveReleasePlan(context.Background(), firstApprover, plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.RequiresDualApproval {
+		return approved
+	}
+	if approved.State != model.PlanPendingApproval || approved.ApprovedByHash != firstApprover {
+		t.Fatalf("first approval did not preserve pending state: %+v", approved)
+	}
+	secondApprover := strings.Repeat("c", 64)
+	if secondApprover == plan.ActorHash || secondApprover == firstApprover {
+		secondApprover = strings.Repeat("d", 64)
+	}
+	approved, err = engine.ApproveReleasePlan(context.Background(), secondApprover, plan.ID, model.ApprovePlanRequest{
+		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
+	})
+	if err != nil || (approved.State != model.PlanApproved && approved.State != model.PlanScheduled) {
+		t.Fatalf("second approval failed: plan=%+v err=%v", approved, err)
+	}
+	return approved
 }
 
 func mustUUID(t *testing.T) string {

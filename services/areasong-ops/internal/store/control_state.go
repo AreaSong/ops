@@ -89,12 +89,22 @@ func (store *Store) ListServiceStates(ctx context.Context) ([]model.ServiceState
 		return nil, err
 	}
 	defer rows.Close()
-	states := make([]model.ServiceState, 0)
+	services := make([]string, 0)
 	for rows.Next() {
 		var service string
 		if err := rows.Scan(&service); err != nil {
 			return nil, err
 		}
+		services = append(services, service)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	states := make([]model.ServiceState, 0, len(services))
+	for _, service := range services {
 		state, found, err := store.GetServiceState(ctx, service)
 		if err != nil {
 			return nil, err
@@ -103,7 +113,7 @@ func (store *Store) ListServiceStates(ctx context.Context) ([]model.ServiceState
 			states = append(states, state)
 		}
 	}
-	return states, rows.Err()
+	return states, nil
 }
 
 func (store *Store) SetDesiredState(ctx context.Context, input DesiredStateInput) (model.ServiceState, error) {

@@ -244,6 +244,11 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 			if !namePattern.MatchString(name) || !filepath.IsAbs(root) {
 				return fmt.Errorf("文件根目录 %s 声明无效", name)
 			}
+			if requireRoot {
+				if err := verifySecureDirectoryTreeLoose(filepath.Clean(root)); err != nil {
+					return fmt.Errorf("文件根目录 %s: %w", name, err)
+				}
+			}
 		}
 	}
 	if catalog.RunnerUpdate != nil && catalog.RunnerUpdate.Enabled {
@@ -1077,16 +1082,21 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 	if filepath.Clean(runtime.ControlledCompose) == filepath.Clean(runtime.RuntimeCompose) {
 		return fmt.Errorf("服务 %s 的 controlled 与 runtime Compose 不得是同一路径", service)
 	}
-	if runtime.ApplicationService == "" || runtime.ApplicationContainer == "" ||
+	if runtime.ProjectName == "" || runtime.ApplicationService == "" || runtime.ApplicationContainer == "" ||
 		!repositoryPattern.MatchString(runtime.ReleaseRepository) {
-		return fmt.Errorf("服务 %s 的 Compose 服务、容器或发布仓库无效", service)
+		return fmt.Errorf("服务 %s 的 Compose 项目、服务、容器或发布仓库无效", service)
 	}
-	if !composeServicePattern.MatchString(runtime.ApplicationService) ||
+	if !composeServicePattern.MatchString(runtime.ProjectName) ||
+		!composeServicePattern.MatchString(runtime.ApplicationService) ||
 		!composeServicePattern.MatchString(runtime.ApplicationContainer) {
-		return fmt.Errorf("服务 %s 的 Compose 应用服务或容器名称无效", service)
+		return fmt.Errorf("服务 %s 的 Compose 项目、应用服务或容器名称无效", service)
 	}
-	seenDependencies := make(map[string]struct{}, len(runtime.DependencyContainers))
-	for _, dependency := range runtime.DependencyContainers {
+	if len(runtime.DependencyServices) != len(runtime.DependencyContainers) {
+		return fmt.Errorf("服务 %s 的 Compose 依赖服务与容器映射数量不一致", service)
+	}
+	seenDependencies := make(map[string]struct{}, len(runtime.DependencyServices))
+	seenContainers := make(map[string]struct{}, len(runtime.DependencyContainers))
+	for index, dependency := range runtime.DependencyServices {
 		if !composeServicePattern.MatchString(dependency) || dependency == runtime.ApplicationService {
 			return fmt.Errorf("服务 %s 的 Compose 依赖服务名称无效", service)
 		}
@@ -1094,12 +1104,42 @@ func validateComposeRuntime(service string, runtime *model.ComposeServiceRuntime
 			return fmt.Errorf("服务 %s 的 Compose 依赖服务重复", service)
 		}
 		seenDependencies[dependency] = struct{}{}
+		container := runtime.DependencyContainers[index]
+		if !composeServicePattern.MatchString(container) || container == runtime.ApplicationContainer {
+			return fmt.Errorf("服务 %s 的 Compose 依赖容器名称无效", service)
+		}
+		if _, exists := seenContainers[container]; exists {
+			return fmt.Errorf("服务 %s 的 Compose 依赖容器重复", service)
+		}
+		seenContainers[container] = struct{}{}
+	}
+	if runtime.ProposalTTLSeconds == 0 {
+		runtime.ProposalTTLSeconds = 900
+	}
+	if runtime.ProposalTTLSeconds < 300 || runtime.ProposalTTLSeconds > 3600 {
+		return fmt.Errorf("服务 %s 的 Compose 提案有效期必须在 300 到 3600 秒之间", service)
 	}
 	parsed, err := url.Parse(runtime.HealthURL)
 	if err != nil || parsed.Scheme != "http" || (parsed.Hostname() != "127.0.0.1" && parsed.Hostname() != "localhost") || parsed.User != nil {
 		return fmt.Errorf("服务 %s 的健康地址必须是本机 HTTP 地址", service)
 	}
 	if requireRoot {
+		for _, directory := range []string{
+			filepath.Dir(runtime.ControlledCompose), filepath.Dir(runtime.RuntimeCompose),
+			filepath.Dir(runtime.EnvFile), filepath.Dir(runtime.ReleaseCatalog),
+			runtime.PreparedReleaseDir,
+		} {
+			if err := verifySecureDirectoryTreeLoose(filepath.Clean(directory)); err != nil {
+				return fmt.Errorf("服务 %s 的 Compose 目录: %w", service, err)
+			}
+		}
+		for _, file := range []string{
+			runtime.ControlledCompose, runtime.RuntimeCompose, runtime.EnvFile, runtime.ReleaseCatalog,
+		} {
+			if err := verifySecureRegularFile(file); err != nil {
+				return fmt.Errorf("服务 %s 的 Compose 文件: %w", service, err)
+			}
+		}
 		executables := []string{runtime.InspectExecutable, runtime.BackupEvidenceExecutable}
 		executables = append(executables, runtime.BackupExecutables...)
 		executables = append(executables, runtime.RestoreDrillExecutable, runtime.RestoreExecutable,
@@ -1396,6 +1436,21 @@ func verifySecureExecutable(path string) error {
 	return nil
 }
 
+func verifySecureRegularFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("检查文件失败: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ok || stat.Uid != 0 {
+		return fmt.Errorf("文件必须是 root 拥有的普通非符号链接: %s", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("文件不能由 group/other 写入: %s", path)
+	}
+	return nil
+}
+
 func verifySecureDirectory(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -1432,6 +1487,26 @@ func verifySecureDirectoryTree(path string) error {
 	}
 	if info.Mode().Perm() != 0o700 {
 		return errors.New("Runner 更新 artifactRoot 权限必须为 0700")
+	}
+	return nil
+}
+
+// verifySecureDirectoryTreeLoose validates an allowlist path without forcing
+// the leaf to use the private 0700 mode required by update staging.
+func verifySecureDirectoryTreeLoose(path string) error {
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) || cleaned != path || cleaned == string(filepath.Separator) {
+		return errors.New("目录路径必须是规范绝对路径且不能是根目录")
+	}
+	current := string(filepath.Separator)
+	for _, part := range strings.Split(strings.TrimPrefix(cleaned, string(filepath.Separator)), string(filepath.Separator)) {
+		if part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		if err := verifySecureDirectory(current); err != nil {
+			return err
+		}
 	}
 	return nil
 }

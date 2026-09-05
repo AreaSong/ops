@@ -5,3 +5,5 @@
 /.playwright-cli/
 /build/
 /output/
+/web/.playwright-cli/
+/web/output/

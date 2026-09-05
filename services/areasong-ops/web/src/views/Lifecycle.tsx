@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, CircleHelp, LoaderCircle, RefreshCw, RotateCcw, Save, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { runAction } from '../action'
 import { formatTime } from '../labels'
 import type { ActionDefinition, DesiredState, ServiceState, ServiceView } from '../types'
 import { StatusBadge } from '../components/StatusBadge'
@@ -155,13 +156,13 @@ export function Lifecycle({
                   </div>
                   <div className="lifecycle-actions">
                     <button className="icon-button bordered" type="button" title="重新核对状态" disabled={reconcileBusy || actionBusy}
-                      onClick={() => void onReconcile(state.service)}>
+                      onClick={() => runAction(onReconcile(state.service))}>
                       {reconcileBusy ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}
                     </button>
                     <button className="button secondary lifecycle-save" type="button"
                       disabled={!changed || reconcileBusy || actionBusy || !service || !lifecycleAction?.enabled}
                       title={!lifecycleAction ? '该目标状态没有对应的受控动作' : lifecycleAction.impact}
-                      onClick={() => { if (service && lifecycleAction) void onAction(service, lifecycleAction) }}>
+                      onClick={() => { if (service && lifecycleAction) runAction(onAction(service, lifecycleAction)) }}>
                       {actionBusy ? <LoaderCircle className="spin" size={14} /> : <Save size={14} aria-hidden="true" />}创建计划
                     </button>
                   </div>
