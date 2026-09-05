@@ -76,3 +76,20 @@
 ## 关闭条件
 
 只有当某一包的运行证据、审计事件、观察窗口和回滚验证全部归档，并更新 `inventory/` 后，才能把该包标为“生产已启用”。其他包保持“代码已具备/默认关闭/待审批”，不能因为页面可见或本地 profile 可用而提前开启。
+
+## 控制面发布统一入口（C0）
+
+Web + Runner 的版本发布不再由多条临时命令拼接，统一通过
+`deploy/release-orchestrator.sh`。它是 C1–C7 能力启用前的控制面基础变更，固定执行顺序为：
+
+1. manifest、签名、版本、revision、Web digest、Runner checksum 校验；
+2. 生产源码和已安装运行态只读 preflight；
+3. 创建唯一 deployment ID，备份 Runner/updater/unit、Web env、Compose、image inspect 和 SQLite；
+4. 先安装并验证 Runner，再拉取 immutable Web digest 并仅重建 Web；
+5. 运行 health、socket、metrics、rootfs/用户/Docker Socket 隔离和 runtime preflight；
+6. 原子写入 state/audit，失败立即停止并按组件逆序回滚，保留恢复材料。
+
+相同 deployment ID 只允许相同制品摘要的幂等重放；成功重试不重复重启/重建，已回滚或
+`needs_attention` 必须新建 ID。入口默认固定生产路径并要求 root，测试只能通过
+`OPS_RELEASE_TEST_MODE=1` 使用临时隔离目录；它不执行业务服务生命周期、数据库恢复、流量切换、
+Kubernetes apply 或 Git checkout/pull。

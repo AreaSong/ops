@@ -33,6 +33,18 @@
 - [ ] 执行 `migrate_github_credential.py --validate-destination` 后再切换 cron；两条新 cron 和 Runner smoke 均按旧锁、新锁顺序取锁。旧配置只作为部署回滚点保留，不能进入普通备份。
 - [ ] 最近完整备份 manifest 与 R2 校验均有效。
 
+## 控制面统一发布入口（C0）
+
+- [ ] 发布参数通过 `deploy/release-orchestrator.sh` 进入；禁止临时拼接 Runner/Web 部署命令。
+- [ ] manifest、Sigstore bundle、Runner checksum、Web digest 和完整 revision 已互相绑定并验证。
+- [ ] 生产 `/opt/ops` 已在批准 revision，工作树干净；入口不会隐式 checkout/pull。
+- [ ] deployment ID 唯一且可重放；同 ID 制品摘要漂移、已回滚或 `needs_attention` 均拒绝继续。
+- [ ] 备份 Runner/updater/unit、Web env、Compose、image inspect 和 SQLite snapshot；备份目录已有残留时拒绝覆盖。
+- [ ] Runner 先于 Web 安装和健康验证；Web 只按 immutable digest 拉取并 `--force-recreate --no-deps`。
+- [ ] 每个阶段状态与脱敏审计原子落盘；不记录环境文件、Token、密码或命令输出。
+- [ ] 任一步失败立即停止后续阶段，仅按实际已改变组件逆序回滚；回滚验证失败进入 `needs_attention` 并保留证据。
+- [ ] 生产入口固定 root-only 路径；测试必须设置 `OPS_RELEASE_TEST_MODE=1` 并使用临时隔离目录。
+
 ## 阶段 1：离线构建与静态门禁
 
 - [ ] 仅在工作树/隔离目录运行 JSON schema、`jq empty`、Go、适配器、Shell、前端和 Docker Compose 静态检查。

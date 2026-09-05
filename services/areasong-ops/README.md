@@ -155,4 +155,14 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 
 详细分阶段检查见 [deploy/deploy-checklist.md](deploy/deploy-checklist.md)，schema/生命周期/fleet/Compose/Kubernetes 见 [docs/control-plane-schema.md](docs/control-plane-schema.md)，Access 见 [deploy/cloudflare-access.md](deploy/cloudflare-access.md)。
 
+## 控制面统一发布入口
+
+Web 与 Runner 的生产发布统一使用 [`deploy/release-orchestrator.sh`](deploy/release-orchestrator.sh)。
+入口只接受 GHCR 固定 digest 和签名 Runner 归档，要求生产 `/opt/ops` 已处于批准 revision；它不会
+隐式执行 Git checkout/pull。执行链固定为：只读 preflight、备份（Runner/updater/unit、Web env、
+Compose、image inspect、SQLite snapshot）、Runner 安装与健康验证、Web digest 拉取和单容器重建、
+runtime preflight、审计收口。状态和审计保存在 root-only 的 deployment 目录，失败自动按已改变组件
+回滚并保留证据。使用 `plan` 可只创建可审计计划，`status` 查看状态；生产 `deploy`/`rollback` 必须
+root 执行并拒绝任意路径覆盖。
+
 签名发布的 manifest 使用 schema 2：Web 必须绑定 revision 与不可变镜像 digest，Runner 归档名必须绑定同一 revision，`sha256` 必须是规范的 `sha256:<64>`；配套 checksum 只能引用归档 basename。发布端和下载端都必须运行 `deploy/verify-release-assets.sh`，拒绝 CI 绝对路径、身份漂移、文件名漂移、摘要不一致以及不属于本仓库发布工作流的 Runner/Web 签名。
