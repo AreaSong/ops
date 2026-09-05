@@ -131,6 +131,29 @@ class ReleaseOrchestratorTests(unittest.TestCase):
             f"SECRET_TOKEN=do-not-log\nOPS_BUILD_VERSION=1.1.1\nOTHER=value\nOPS_BUILD_REVISION={self.revision}\n",
         )
 
+    def test_container_inspect_backup_is_secret_free(self) -> None:
+        raw = json.dumps(
+            [
+                {
+                    "Id": "container-id",
+                    "Image": "sha256:" + "d" * 64,
+                    "Config": {
+                        "Image": "areasong-ops-web:old",
+                        "User": "65532:65532",
+                        "Env": ["ACCESS_CLIENT_SECRET=must-not-persist"],
+                        "Labels": {"org.opencontainers.image.revision": "c" * 40},
+                    },
+                    "HostConfig": {"ReadonlyRootfs": True, "NetworkMode": "areasong-ops-network"},
+                    "State": {"Running": True, "Status": "running"},
+                    "Mounts": [],
+                }
+            ]
+        )
+        sanitized = MODULE.sanitized_container_inspect(raw)
+        serialized = json.dumps(sanitized, sort_keys=True)
+        self.assertNotIn("ACCESS_CLIENT_SECRET", serialized)
+        self.assertEqual(sanitized["Image"], "sha256:" + "d" * 64)
+
     def test_deploy_rejects_non_root_without_test_mode(self) -> None:
         env = os.environ.copy()
         env.pop("OPS_RELEASE_TEST_MODE", None)

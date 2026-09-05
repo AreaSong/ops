@@ -24,7 +24,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import time
 import uuid
 from pathlib import Path
 from typing import Any, Iterable
@@ -91,6 +90,57 @@ def checked(command: list[str], *, env: dict[str, str] | None = None, cwd: Path 
     if result.returncode != 0:
         fail(f"{label} 失败 (exit={result.returncode})")
     return result.stdout
+
+
+def sanitized_container_inspect(raw: str) -> dict[str, Any]:
+    """只保留回滚和隔离验收必需的 Docker 字段，绝不持久化 Config.Env。"""
+    try:
+        records = json.loads(raw)
+    except json.JSONDecodeError:
+        fail("Web 容器 inspect 不是 JSON")
+    if not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict):
+        fail("Web 容器 inspect 结果不唯一")
+    record = records[0]
+    config = record.get("Config") if isinstance(record.get("Config"), dict) else {}
+    host_config = record.get("HostConfig") if isinstance(record.get("HostConfig"), dict) else {}
+    state = record.get("State") if isinstance(record.get("State"), dict) else {}
+    mounts: list[dict[str, Any]] = []
+    for mount in record.get("Mounts", []):
+        if not isinstance(mount, dict):
+            continue
+        mounts.append(
+            {
+                "Type": mount.get("Type"),
+                "Source": mount.get("Source"),
+                "Destination": mount.get("Destination"),
+                "RW": mount.get("RW"),
+            }
+        )
+    raw_labels = config.get("Labels") if isinstance(config.get("Labels"), dict) else {}
+    labels = {
+        key: raw_labels[key]
+        for key in ("org.opencontainers.image.revision", "service", "component")
+        if key in raw_labels
+    }
+    health = state.get("Health") if isinstance(state.get("Health"), dict) else None
+    health_summary = None
+    if health is not None:
+        health_summary = {"Status": health.get("Status"), "FailingStreak": health.get("FailingStreak")}
+    return {
+        "Id": record.get("Id"),
+        "Image": record.get("Image"),
+        "Config": {
+            "Image": config.get("Image"),
+            "User": config.get("User"),
+            "Labels": labels,
+        },
+        "HostConfig": {
+            "ReadonlyRootfs": host_config.get("ReadonlyRootfs"),
+            "NetworkMode": host_config.get("NetworkMode"),
+        },
+        "State": {"Running": state.get("Running"), "Status": state.get("Status"), "Health": health_summary},
+        "Mounts": mounts,
+    }
 
 
 def parse_manifest(path: Path) -> dict[str, Any]:
@@ -357,7 +407,11 @@ class Orchestrator:
             regular_file(source, label=f"备份 {name}")
             copy_atomic(source, target, 0o600)
         image_inspect = checked(["docker", "inspect", self.container], label="保存 Web image inspect")
-        (self.backup / "web-image-inspect.json").write_text(image_inspect, encoding="utf-8")
+        sanitized_inspect = sanitized_container_inspect(image_inspect)
+        (self.backup / "web-image-inspect.json").write_text(
+            json.dumps(sanitized_inspect, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
         os.chmod(self.backup / "web-image-inspect.json", 0o600)
         snapshot_sqlite(self.db_path, self.backup / "ops.db")
         self.state.step("backup", "succeeded", files=sorted([path.name for path in self.backup.iterdir()]))
@@ -496,7 +550,7 @@ class Orchestrator:
             try:
                 for name, target in (("runtime-env", self.runtime_dir / ".env"),):
                     copy_atomic(self.backup / name, target, target.stat().st_mode & 0o777)
-                old_image = json.loads((self.backup / "web-image-inspect.json").read_text(encoding="utf-8"))[0].get("Image")
+                old_image = json.loads((self.backup / "web-image-inspect.json").read_text(encoding="utf-8")).get("Image")
                 old_revision = read_env(self.runtime_dir / ".env").get("OPS_BUILD_REVISION", "")
                 if isinstance(old_image, str) and old_image.startswith("sha256:") and SHA40.fullmatch(old_revision):
                     checked(["docker", "tag", old_image, f"areasong-ops-web:{old_revision}"], label="恢复旧 Web image")
