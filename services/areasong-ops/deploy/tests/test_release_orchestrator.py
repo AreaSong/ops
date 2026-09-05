@@ -238,7 +238,7 @@ class ReleaseOrchestratorTests(unittest.TestCase):
                 payload = [{"State": {"Running": True}, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}, "Image": "sha256:" + "d" * 64}]
                 return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             if command[:3] == ["docker", "image", "inspect"]:
-                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"]]}]
+                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"].split("@", 1)[0].rsplit(":", 1)[0] + "@" + metadata["web_image"].split("@", 1)[1]]}]
                 return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             if command[:2] == ["systemctl", "restart"]:
                 runner_restarted = True
@@ -288,7 +288,7 @@ class ReleaseOrchestratorTests(unittest.TestCase):
                 payload = [{"State": {"Running": True}, "Config": {"Labels": {"org.opencontainers.image.revision": "c" * 40}}, "Image": "sha256:" + "d" * 64}]
                 return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             if command[:3] == ["docker", "image", "inspect"]:
-                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"]]}]
+                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"].split("@", 1)[0].rsplit(":", 1)[0] + "@" + metadata["web_image"].split("@", 1)[1]]}]
                 return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             if command[:2] == ["systemctl", "restart"]:
                 runner_restarted = True

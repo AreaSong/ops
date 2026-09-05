@@ -476,7 +476,12 @@ class Orchestrator:
             if not isinstance(image_id, str) or not image_id.startswith("sha256:"):
                 fail("Web image ID 无效")
             repo_digests = image_data[0].get("RepoDigests", [])
-            if image not in repo_digests:
+            # Docker records RepoDigests without the mutable tag (repo@digest),
+            # while the manifest intentionally binds both tag and digest.
+            repo_with_tag, digest = image.rsplit("@", 1)
+            repository = repo_with_tag.rsplit(":", 1)[0]
+            expected_repo_digest = f"{repository}@{digest}"
+            if expected_repo_digest not in repo_digests:
                 fail("Web image inspect 未证明目标 digest")
         except json.JSONDecodeError:
             fail("Web image inspect 不是 JSON")
