@@ -54,12 +54,13 @@ servers:
       audit_or_security_notifications: none
       billing_expiry_alerts: deferred_by_user
     phase9_acceptance:
-      validated_at: "2026-09-01"
-      ops_revision: "9fb1da8fd5ed63a686a7ab7ac9cdf71fd09dba46"
+      validated_at: "2026-09-05"
+      ops_revision: "a232253805286d8a72ba8fda4453afda0c676916"
       ops_version: phase9
-      ops_release_version: "1.0.3"
-      ops_web_image_digest: "sha256:ae3f70e14e2651435ddc4ef740459497059d20a264b013458bde4b6e836d87f5"
-      ops_runner_bundle_sha256: "48d6a94e201089609443175021fb83594d4cffa24c119465da6a287a9ebe4b3a"
+      ops_release_version: "1.1.5"
+      ops_web_image_digest: "sha256:59d9d6839dda3f474a154e8a52bd5d1edbce0c56971ebbaf896f8912ad13c014"
+      ops_runner_bundle_sha256: "f87047befa20049440f5f58d79b494850cba2c12805d14bc25c9545bd1cada19"
+      ops_deployment_id: "ops-20260905T143013Z-2597b20be3e240c8ae502cf1c423dfc1"
       running_containers: 19
       prometheus_targets: "23/23 up"
       auditd_rule_keys: 7
@@ -91,6 +92,10 @@ servers:
       authenticated UI-backed API smoke；2026-09-01 再次完成登录后只读 UI smoke，生命周期
       两个受控服务均健康、服务操作与审计页面正常、实时连接正常且前端无 console error，
       未启用能力和平台级权限仍按策略保持关闭。
+      2026-09-05 通过统一发布编排器将 AreaSong Ops Web 与 Runner 同 revision 更新至
+      1.1.5/a2322538；签名制品、原子备份、失败自动回滚、Runner/Web health、非 root
+      只读 Web、网络隔离、installed/runtime preflight 和业务服务无关性检查均通过。
+      deployment ID 为 ops-20260905T143013Z-2597b20be3e240c8ae502cf1c423dfc1。
       AreaForge stop 生命周期 preflight 于 2026-08-27 因 service:areaforge trafficPolicy=null
       按门禁拒绝，未改变生产状态；2026-08-27 已通过 la-share 完成 AreaForge 受控 Nginx
       站点与 snippet 安装、权限校验、nginx -t、reload 和 HTTPS 200 健康检查，traffic 状态
