@@ -197,7 +197,7 @@ class ReleaseOrchestratorTests(unittest.TestCase):
         args.db_path.write_bytes(b"SQLite format 3\x00")
         for path in (
             args.runner_root / "runner/areasong-ops-runner",
-            args.runner_root / "runner/areasong-ops-runner-updater",
+            args.runner_root / "areasong-ops-runner-updater",
             args.unit_path,
             args.updater_unit_path,
             args.candidate_unit,
@@ -255,6 +255,15 @@ class ReleaseOrchestratorTests(unittest.TestCase):
         self.assertEqual(state.data["status"], "succeeded")
         self.assertEqual(first_restart_count, 1)
         self.assertEqual(first_compose_count, 1)
+        self.assertEqual(
+            (args.runner_root / "areasong-ops-runner-updater").read_text(encoding="utf-8"),
+            "areasong-ops-runner-updater",
+        )
+        self.assertEqual(
+            (state.directory / "backup/runner-updater").read_text(encoding="utf-8"),
+            "old",
+        )
+        self.assertFalse((args.runner_root / "runner/areasong-ops-runner-updater").exists())
 
     def test_web_failure_rolls_back_changed_components(self) -> None:
         state_dir = self.root / "state"
@@ -296,6 +305,11 @@ class ReleaseOrchestratorTests(unittest.TestCase):
         self.assertEqual(state.data["status"], "rolled_back")
         self.assertEqual(state.data["rollback"]["status"], "succeeded")
         self.assertGreaterEqual(compose_calls, 2)
+        self.assertEqual(
+            (args.runner_root / "areasong-ops-runner-updater").read_text(encoding="utf-8"),
+            "old",
+        )
+        self.assertFalse((args.runner_root / "runner/areasong-ops-runner-updater").exists())
 
 
 if __name__ == "__main__":

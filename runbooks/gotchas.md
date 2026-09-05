@@ -56,6 +56,7 @@
 
 ## 系统 / 启动链路
 
+- **同一发布归档中的二进制不能默认安装到同一目录**——AreaSong Ops Runner 运行文件位于 `runner/` 目录，而负责原子替换该目录的独立 Updater 必须位于父目录；发布编排器的备份、安装、回滚和 preflight 若未分别绑定 systemd 的真实 `ExecStart` 路径，可能在备份阶段失败，或静默保留旧 Updater 形成版本漂移。路径合同及测试要求见 [playbooks/areasong-ops-release-orchestrator.md](playbooks/areasong-ops-release-orchestrator.md)。
 - **`ProtectSystem=strict` 的特权服务必须把适配器真实写入目录逐项加入 `ReadWritePaths`**——root 身份不会绕过 systemd 的只读挂载；如果预检只验证 unit 语法和服务健康，任务可能在 mutation 阶段创建同目录临时文件时才以 `Read-only file system` 失败。发布门禁应同时检查 unit 声明和 `systemctl show` 的实际生效写路径，并只放行适配器合同内的最小目录，不能扩大到整个 `/etc`。
 - **`/etc/fstab` 改动必须走验证链，且不主动重启**——`findmnt --verify --verbose` → `mount -a` → `systemctl daemon-reload`，启动级验证留到维护窗口。swap 文件的 `non-bind mount source is a regular file` warning 是正常形态，不是错误。
   → 详见 [records/losangeles-standards-09-b3-fstab-uuid-20260706.md](records/losangeles-standards-09-b3-fstab-uuid-20260706.md)

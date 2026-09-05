@@ -395,7 +395,7 @@ class Orchestrator:
         ensure_dir(self.backup)
         paths = {
             "runner": self.runner_root / "runner/areasong-ops-runner",
-            "runner-updater": self.runner_root / "runner/areasong-ops-runner-updater",
+            "runner-updater": self.runner_root / "areasong-ops-runner-updater",
             "runner-unit": self.unit_path,
             "runner-updater-unit": self.updater_unit_path,
             "web-env": self.config_dir / "web.env",
@@ -427,7 +427,7 @@ class Orchestrator:
             self.state.data["changed"]["runner"] = True
             self.state.save()
             copy_atomic(runner, self.runner_root / "runner/areasong-ops-runner", 0o755)
-            copy_atomic(updater, self.runner_root / "runner/areasong-ops-runner-updater", 0o755)
+            copy_atomic(updater, self.runner_root / "areasong-ops-runner-updater", 0o755)
             candidate_unit = Path(self.args.candidate_unit)
             candidate_updater_unit = Path(self.args.candidate_updater_unit)
             regular_file(candidate_unit, label="候选 Runner unit")
@@ -566,7 +566,7 @@ class Orchestrator:
         if self.state.data.get("changed", {}).get("runner"):
             try:
                 copy_atomic(self.backup / "runner", self.runner_root / "runner/areasong-ops-runner", 0o755)
-                copy_atomic(self.backup / "runner-updater", self.runner_root / "runner/areasong-ops-runner-updater", 0o755)
+                copy_atomic(self.backup / "runner-updater", self.runner_root / "areasong-ops-runner-updater", 0o755)
                 copy_atomic(self.backup / "runner-unit", self.unit_path, 0o644)
                 copy_atomic(self.backup / "runner-updater-unit", self.updater_unit_path, 0o644)
                 checked(["systemctl", "daemon-reload"], label="回滚 Runner daemon-reload")

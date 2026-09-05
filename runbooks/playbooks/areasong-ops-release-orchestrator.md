@@ -33,6 +33,12 @@ sudo /opt/ops/services/areasong-ops/deploy/release-orchestrator.sh deploy \
 → Web health/隔离检查 → runtime preflight → 审计收口
 ```
 
+Runner 主程序固定安装到
+`/usr/local/libexec/areasong-ops/runner/areasong-ops-runner`；Updater 固定安装到
+`/usr/local/libexec/areasong-ops/areasong-ops-runner-updater`。Updater 自身不放入 `runner/`
+目录，因为它需要在独立 systemd oneshot 中原子替换该目录内的 Runner。发布前备份、安装、
+回滚和 installed preflight 必须使用这两个不同的固定路径。
+
 每一步状态原子写入 `/var/lib/areasong-ops/release-orchestrator/deployments/<id>/state.json`，
 审计追加到同目录 `audit.jsonl`。状态目录和备份材料均为 root-only；日志只记录摘要、路径名和
 结果，不记录环境文件内容、Token、密码或命令输出。
