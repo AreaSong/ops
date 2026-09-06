@@ -381,6 +381,74 @@ func TestProductionExampleCatalogIsValid(t *testing.T) {
 			t.Fatalf("service %s traffic policy digest mismatch", name)
 		}
 	}
+	approverHash := AccessHashForEmail("3177348309@qq.com")
+	role, ok := catalog.Access.Roles["change-approver"]
+	if !ok {
+		t.Fatal("change-approver role is missing")
+	}
+	wantPermissions := map[model.Permission]bool{
+		model.PermissionRead: true, model.PermissionInspect: true,
+		model.PermissionLifecycle: true, model.PermissionDeploy: true,
+		model.PermissionBatch: true, model.PermissionRecover: true,
+		model.PermissionManageAccess: true, model.PermissionManageConfig: true,
+		model.PermissionBreakGlass: true, model.PermissionRunnerUpdate: true,
+	}
+	if len(role.Permissions) != len(wantPermissions) {
+		t.Fatalf("change-approver permissions=%v", role.Permissions)
+	}
+	for _, permission := range role.Permissions {
+		if permission == "*" || !wantPermissions[permission] {
+			t.Fatalf("unexpected change-approver permission %q", permission)
+		}
+	}
+	var approverBinding model.RoleBinding
+	for _, binding := range catalog.Access.Bindings {
+		if binding.Subject == approverHash && binding.RoleID == role.ID {
+			approverBinding = binding
+			break
+		}
+	}
+	if approverBinding.ID == "" {
+		t.Fatal("change-approver binding is missing")
+	}
+	wantObjects := map[string]bool{
+		"service:areaforge": true, "service:sub2api": true,
+		"access": true, "extensions": true, "file:ops-config": true,
+		"kubernetes": true, "kubernetes:plans": true,
+		"kubernetes:areasong-production": true,
+		"runner:runner-losangeles":       true, "terminal": true,
+	}
+	if len(approverBinding.ObjectIDs) != len(wantObjects) {
+		t.Fatalf("change-approver objects=%v", approverBinding.ObjectIDs)
+	}
+	for _, objectID := range approverBinding.ObjectIDs {
+		if objectID == "*" || !wantObjects[objectID] {
+			t.Fatalf("unexpected change-approver object %q", objectID)
+		}
+	}
+}
+
+func TestAccessBindingRejectsUndeclaredManagedFileRoot(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime caller unavailable")
+	}
+	path := filepath.Join(filepath.Dir(currentFile), "..", "..", "config", "services.example.json")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modified := strings.Replace(string(content), `"file:ops-config"`, `"file:missing"`, 1)
+	if modified == string(content) {
+		t.Fatal("managed file binding fixture was not replaced")
+	}
+	temporaryPath := filepath.Join(t.TempDir(), "services.json")
+	if err := os.WriteFile(temporaryPath, []byte(modified), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(temporaryPath, false); err == nil || !strings.Contains(err.Error(), "未知对象 file:missing") {
+		t.Fatalf("undeclared managed file root err=%v", err)
+	}
 }
 
 func TestLegacyComposeRuntimeDefaultsProjectAndAcceptsContainerOnlyDependencies(t *testing.T) {

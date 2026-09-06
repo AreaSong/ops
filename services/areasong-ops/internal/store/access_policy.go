@@ -105,7 +105,11 @@ func (store *Store) ApplyAccessChangeMutation(
 	if change.State != model.AccessChangeApproved {
 		return model.AccessChange{}, errors.New("访问策略变更尚未完成双人批准")
 	}
-	if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
+	if model.UsesTwoPartyApproval(change.ApprovalPolicy) {
+		if actor != change.ActorHash || change.ApprovedByHash == "" || change.ApprovedByHash == actor {
+			return model.AccessChange{}, errors.New("访问策略变更需要由创建人执行，且批准人必须独立")
+		}
+	} else if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
 		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
 	}
 	snapshot, _, err := store.applyAccessPolicyMutationTx(ctx, tx, mutation)

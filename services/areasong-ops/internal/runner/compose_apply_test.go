@@ -258,7 +258,7 @@ func TestComposeApplyAndRollbackAreBoundedAndIdempotent(t *testing.T) {
 	point := createComposeRecoveryPoint(t, engine, database, engine.catalog.Services["demo"])
 	runner := &fakeComposeCommandRunner{dependency: "db-container-id", currentImage: oldImage, candidateImage: newImage}
 	engine.composeRunner = runner
-	actorA, actorB, actorC, actorD := actorHash(), strings.Repeat("b", 64), strings.Repeat("c", 64), strings.Repeat("d", 64)
+	actorA, actorB, actorD := actorHash(), strings.Repeat("b", 64), strings.Repeat("d", 64)
 	ctx := context.Background()
 	expectedDigest := digestText(oldContent)
 	proposalKey := mustUUID(t)
@@ -298,26 +298,30 @@ func TestComposeApplyAndRollbackAreBoundedAndIdempotent(t *testing.T) {
 		model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase}); err != nil {
 		t.Fatal(err)
 	}
-	approved, err := engine.ApproveComposeRevision(ctx, actorC, "demo", revision.ID,
+	approved, err := engine.ApproveComposeRevision(ctx, actorB, "demo", revision.ID,
 		model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase})
-	if err != nil || approved.State != "approved" {
+	if err != nil || approved.State != "approved" || approved.ApprovedBy != actorB || approved.SecondApprovedByHash != "" {
 		t.Fatalf("approved=%+v err=%v", approved, err)
 	}
 	manager := engine.alertmanager.(*fakeAlertmanager)
 	manager.alerts = []model.ActiveAlert{{AlertName: "AppHttpProbeFailed", Fingerprint: "blocker", Labels: map[string]string{"service": "demo"}}}
-	if _, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+	if _, err := engine.ApplyComposeRevision(ctx, actorA, "demo", revision.ID,
 		model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}); err == nil || !strings.Contains(err.Error(), "阻断告警") {
 		t.Fatalf("blocking alert did not stop apply: %v", err)
 	}
 	manager.alerts = nil
 	runner.currentImage = "example/web@sha256:9999999999999999999999999999999999999999999999999999999999999999"
-	if _, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+	if _, err := engine.ApplyComposeRevision(ctx, actorA, "demo", revision.ID,
 		model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}); err == nil || !strings.Contains(err.Error(), "运行") {
 		t.Fatalf("runtime drift did not stop apply: %v", err)
 	}
 	runner.currentImage = oldImage
 	applyKey := mustUUID(t)
-	applied, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+	if _, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+		model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}); err == nil {
+		t.Fatal("non-creator applied two-party Compose revision")
+	}
+	applied, err := engine.ApplyComposeRevision(ctx, actorA, "demo", revision.ID,
 		model.ComposeApplyRequest{IdempotencyKey: applyKey})
 	if err != nil || applied.State != "applied" {
 		t.Fatalf("applied=%+v err=%v", applied, err)
@@ -334,7 +338,7 @@ func TestComposeApplyAndRollbackAreBoundedAndIdempotent(t *testing.T) {
 	runner.mu.Lock()
 	callCount := len(runner.calls)
 	runner.mu.Unlock()
-	replayed, err := engine.ApplyComposeRevision(ctx, actorD, "demo", revision.ID,
+	replayed, err := engine.ApplyComposeRevision(ctx, actorA, "demo", revision.ID,
 		model.ComposeApplyRequest{IdempotencyKey: applyKey})
 	if err != nil || replayed.State != "applied" {
 		t.Fatalf("apply replay=%+v err=%v", replayed, err)
@@ -345,7 +349,7 @@ func TestComposeApplyAndRollbackAreBoundedAndIdempotent(t *testing.T) {
 	}
 	runner.mu.Unlock()
 
-	rolledBack, err := engine.RollbackComposeRevision(ctx, actorD, "demo", revision.ID,
+	rolledBack, err := engine.RollbackComposeRevision(ctx, actorA, "demo", revision.ID,
 		model.ComposeRollbackRequest{Confirmation: "回滚 Compose 变更 " + revision.ID, IdempotencyKey: mustUUID(t)})
 	if err != nil || rolledBack.State != "rolled_back" {
 		t.Fatalf("rolledBack=%+v err=%v", rolledBack, err)
@@ -422,11 +426,7 @@ func TestComposeApplyFailureRestoresBothFiles(t *testing.T) {
 		model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.ApproveComposeRevision(ctx, strings.Repeat("c", 64), "demo", revision.ID,
-		model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase}); err != nil {
-		t.Fatal(err)
-	}
-	failed, err := engine.ApplyComposeRevision(ctx, strings.Repeat("d", 64), "demo", revision.ID,
+	failed, err := engine.ApplyComposeRevision(ctx, actorHash(), "demo", revision.ID,
 		model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)})
 	if err == nil || failed.State != "rolled_back" {
 		t.Fatalf("failed=%+v err=%v", failed, err)

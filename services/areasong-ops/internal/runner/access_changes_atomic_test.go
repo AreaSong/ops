@@ -80,8 +80,8 @@ func (fixture atomicAccessFixture) approvedExecutorRevocation(t *testing.T, key 
 	if _, err := fixture.engine.ApproveAccessChange(ctx, fixture.firstApprover, change.ID, approval); err != nil {
 		t.Fatal(err)
 	}
-	change, err = fixture.engine.ApproveAccessChange(ctx, fixture.secondApprover, change.ID, approval)
-	if err != nil || change.State != model.AccessChangeApproved {
+	change, err = fixture.database.GetAccessChange(ctx, change.ID)
+	if err != nil || change.State != model.AccessChangeApproved || change.ApprovedByHash != fixture.firstApprover {
 		t.Fatalf("approve change=%+v err=%v", change, err)
 	}
 	return change
@@ -96,11 +96,11 @@ func TestAccessChangeRevokingExecutorIsAtomicAndRetryable(t *testing.T) {
 		t.Fatalf("initial snapshot found=%v err=%v", found, err)
 	}
 
-	applied, err := fixture.engine.ApplyAccessChange(ctx, fixture.executor, change.ID)
+	applied, err := fixture.engine.ApplyAccessChange(ctx, fixture.creator, change.ID)
 	if err != nil || applied.State != model.AccessChangeApplied {
 		t.Fatalf("apply=%+v err=%v", applied, err)
 	}
-	if applied.AppliedByHash != fixture.executor || applied.AppliedPolicyDigest == "" ||
+	if applied.AppliedByHash != fixture.creator || applied.AppliedPolicyDigest == "" ||
 		applied.AppliedPolicyVersion != before.Version+1 || applied.AppliedAt == nil {
 		t.Fatalf("applied envelope is incomplete: %+v", applied)
 	}
@@ -126,7 +126,7 @@ func TestAccessChangeRevokingExecutorIsAtomicAndRetryable(t *testing.T) {
 	if postChange.Version != applied.AppliedPolicyVersion+1 {
 		t.Fatalf("unrelated update version=%d applied=%d", postChange.Version, applied.AppliedPolicyVersion)
 	}
-	retried, err := fixture.engine.ApplyAccessChange(ctx, fixture.executor, change.ID)
+	retried, err := fixture.engine.ApplyAccessChange(ctx, fixture.creator, change.ID)
 	if err != nil || retried.AppliedPolicyDigest != applied.AppliedPolicyDigest ||
 		retried.AppliedPolicyVersion != applied.AppliedPolicyVersion {
 		t.Fatalf("retry=%+v err=%v", retried, err)
@@ -147,7 +147,7 @@ func TestAccessChangeRevokingExecutorIsAtomicAndRetryable(t *testing.T) {
 	assertAtomicAccessAuditCounts(t, fixture.database, change.ID, 2, 1)
 
 	changes, err := fixture.database.ListAccessChanges(ctx, 10)
-	if err != nil || len(changes) != 1 || changes[0].AppliedByHash != fixture.executor ||
+	if err != nil || len(changes) != 1 || changes[0].AppliedByHash != fixture.creator ||
 		changes[0].AppliedPolicyDigest != applied.AppliedPolicyDigest ||
 		changes[0].AppliedPolicyVersion != applied.AppliedPolicyVersion {
 		t.Fatalf("listed changes=%+v err=%v", changes, err)
@@ -189,7 +189,7 @@ func TestConcurrentAccessChangeExecutionCommitsOnce(t *testing.T) {
 	for range 2 {
 		go func() {
 			<-start
-			applied, applyErr := fixture.engine.ApplyAccessChange(ctx, fixture.executor, change.ID)
+			applied, applyErr := fixture.engine.ApplyAccessChange(ctx, fixture.creator, change.ID)
 			if applyErr == nil && applied.State != model.AccessChangeApplied {
 				applyErr = errors.New("并发执行未返回 applied 终态")
 			}

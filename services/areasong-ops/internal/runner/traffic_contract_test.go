@@ -90,14 +90,6 @@ func TestLifecycleFailureRestoresMaintenanceBarrier(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if plan.RequiresDualApproval {
-				approved, err = engine.ApproveReleasePlan(context.Background(), strings.Repeat("c", 64), plan.ID, model.ApprovePlanRequest{
-					Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
 			task, created, err := engine.ExecuteReleasePlan(context.Background(), releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
 				IdempotencyKey: mustUUID(t),
 			})

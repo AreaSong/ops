@@ -186,7 +186,7 @@ func (engine *Engine) ProposeCompose(ctx context.Context, actor string, request 
 	revision := model.ComposeRevision{ID: id, IdempotencyKey: request.IdempotencyKey,
 		Service: request.Service, Digest: digestText(request.Content), ExpectedDigest: current.Digest,
 		Source: "web-proposal", Content: request.Content, Validated: true, State: "proposed",
-		ActorHash: actor, CreatedAt: now, ExpiresAt: now.Add(composeProposalTTL(service.Runtime)),
+		ActorHash: actor, ApprovalPolicy: model.ApprovalPolicyTwoParty, CreatedAt: now, ExpiresAt: now.Add(composeProposalTTL(service.Runtime)),
 		TenantID: tenantID, ServerID: service.ServerID, ProjectName: service.Runtime.ProjectName,
 		BaselineSemanticDigest: analysis.BaselineSemanticDigest, CandidateSemanticDigest: analysis.CandidateSemanticDigest,
 		BaselineEffectiveDigest: effective.BaselineDigest, CandidateEffectiveDigest: effective.CandidateDigest,

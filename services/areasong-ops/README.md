@@ -56,7 +56,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 
 ### 生命周期动作
 
-当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。生产 C2 仅对 `service:areaforge` 的 `start`/`stop` 允许同一操作者审批自己的计划，且必须在签名摘要和审计中标记 `c2_lifecycle_single_actor`；其他高风险操作仍保持独立双人审批。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
+当服务 `metadata.lifecycle` 为 `active` 时，Runner 会动态生成 `enter-maintenance`、`drain`、`resume-traffic`、`start` 和 `stop`。这些动作不需要在每个服务的 `actions` 中重复声明；它们仍需预览、确认、RBAC、服务锁和审计。声明 `trafficPolicy` 后，`stop`/`start` 会组合流量保护、应用变更和健康检查；`drain` 必须等待活动连接归零或明确超时。全局高风险计划默认按两方流程执行：创建人创建、独立批准人批准、创建人执行；生产 C2 仅对 `service:areaforge` 的 `start`/`stop` 允许同一操作者审批自己的计划，且必须在签名摘要和审计中标记 `c2_lifecycle_single_actor`。详细状态转换见 [docs/control-plane-schema.md](docs/control-plane-schema.md)。
 
 ### 高风险边界
 
@@ -100,7 +100,7 @@ OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
 需要验收平台级写能力时，必须再显式设置 `OPS_DEV_ADMIN_EMAIL=<开发邮箱>`；该变量
 只由 `cmd/dev-runner` 读取，并只给对应开发身份临时加入 `platform-admin`，生产 Runner
-和生产访问策略均不识别此开关。需要验收三方或四方独立批准链路时，使用
+和生产访问策略均不识别此开关。默认高风险流程只需要两个不同账号：创建人/执行人和独立批准人。需要验收历史四方兼容链路时，使用
 `OPS_DEV_ADMIN_EMAILS=<邮箱1>,<邮箱2>,<邮箱3>,<邮箱4>` 显式登记多个开发身份；各身份仍需
 通过独立 Web 会话发起请求，不能由页面切换或请求参数伪造。
 

@@ -9,7 +9,7 @@
 - [ ] 记录目标 commit、变更编号、操作人、批准人、维护窗口和预计影响。
 - [ ] 记录当前 Runner/Web/Nginx/Compose/image digest、SQLite 快照和最近完整备份 manifest；确认回滚文件可读。
 - [ ] 明确本次是否涉及 Compose apply、生命周期状态、Kubernetes dry-run/apply、生产恢复或多服务器批量；未列出的能力默认不执行。
-- [ ] 生产恢复至少有两名独立确认（操作者确认恢复点/目标，第二确认人确认影响与窗口）；普通版本回滚确认不能替代生产恢复双确认。
+- [ ] 生产恢复至少有创建人和独立批准人两方确认；普通版本回滚确认不能替代生产恢复审批。
 
 ## 部署前
 
@@ -65,9 +65,9 @@
 - [ ] `stop`/`start` 验证网站保护顺序；`drain` 保存旧 worker 与活动连接归零或明确超时的证据，失败保持维护页并进入 `needs_attention`。
 - [ ] Compose 依次验证 `validate`、`propose`、摘要 digest、审批失效条件、受控 apply、health/smoke/identity、观察窗口和失败回滚；验证任意路径、依赖容器和过期 digest 被拒绝。
 - [ ] 恢复演练只使用 `isolated` 模式和临时资源，验证备份角色、SHA-256、expected-before、清理和生产数据不变；不得以演练替代生产恢复批准。
-- [ ] fleet 批量只在非生产或明确隔离目标上验证 selector、DAG、canary、并发上限、暂停/失败策略、变更窗口、心跳租约和审计；禁止通配符扩大目标。
-- [ ] Runner Fleet 自更新验证四方独立身份、显式目标、v2 签名心跳、mTLS 指纹、制品/策略摘要、assignment fencing、Canary 观察、临时错误退避、重启回执恢复、失败停止和逐节点回滚；生产开关仍保持关闭。
-- [ ] WASM 扩展验证用途隔离签名、双人批准、独立执行、输入/输出/内存/超时限制以及无宿主文件、网络、环境变量和 Docker Socket 权限；生产开关仍保持关闭。
+- [ ] fleet 批量只在非生产或明确隔离目标上验证 selector、DAG、canary、并发上限、暂停/失败策略、变更窗口、心跳租约和审计；禁止通配符扩大目标；审批使用创建人/独立批准人两方模型。
+- [ ] Runner Fleet 自更新验证创建人与独立批准人分离、显式目标、v2 签名心跳、mTLS 指纹、制品/策略摘要、assignment fencing、Canary 观察、临时错误退避、重启回执恢复、失败停止和逐节点回滚；生产开关仍保持关闭。
+- [ ] WASM 扩展验证用途隔离签名、独立批准、创建人执行、输入/输出/内存/超时限制以及无宿主文件、网络、环境变量和 Docker Socket 权限；生产开关仍保持关闭。
 - [ ] Kubernetes 只验证声明 allowlist 内的 dry-run、manifest digest、命名空间和资源 kind；任何 apply 另建计划并单独批准。
 
 ## 阶段 4：生产变更与观察收口

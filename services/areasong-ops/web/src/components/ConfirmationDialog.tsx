@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { formatTime, phaseLabel } from '../labels'
+import { canCurrentActorApproveReleasePlan, canCurrentActorExecuteReleasePlan } from '../approval'
 import type { ReleasePlan } from '../types'
 import { StatusBadge } from './StatusBadge'
 
@@ -10,17 +11,38 @@ interface ConfirmationDialogProps {
   onCancel: () => void
   onConfirm: (value: string) => void
   onClosePlan: () => void
+  currentActorHash: string
 }
-export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClosePlan }: ConfirmationDialogProps) {
+export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClosePlan, currentActorHash }: ConfirmationDialogProps) {
   const [value, setValue] = useState('')
   useEffect(() => setValue(''), [plan.id, plan.state])
   const phrase = plan.confirmationPhrase ?? ''
   const approving = plan.state === 'pending_approval'
   const scheduled = plan.state === 'scheduled'
   const observing = plan.state === 'observing'
+  const summary = plan.approvalSummary
+  const canApprove = canCurrentActorApproveReleasePlan({
+    actorHash: plan.actorHash,
+    approvedByHash: plan.approvedByHash,
+    secondApprovedByHash: plan.secondApprovedByHash,
+    approvalPolicy: plan.approvalPolicy ?? summary.approvalPolicy,
+    approvalException: summary.approvalException,
+    risk: plan.risk,
+    service: plan.service,
+    action: plan.action,
+  }, currentActorHash)
+  const canExecute = canCurrentActorExecuteReleasePlan({
+    actorHash: plan.actorHash,
+    approvedByHash: plan.approvedByHash,
+    secondApprovedByHash: plan.secondApprovedByHash,
+    approvalPolicy: plan.approvalPolicy ?? summary.approvalPolicy,
+    approvalException: summary.approvalException,
+    risk: plan.risk,
+    service: plan.service,
+    action: plan.action,
+  }, currentActorHash)
   const canClose = Boolean(plan.observationEndsAt && Date.now() >= new Date(plan.observationEndsAt).getTime())
   const matches = !plan.requiresConfirmation || value === phrase
-  const summary = plan.approvalSummary
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
@@ -68,7 +90,7 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
               </span>
             ))}
           </div>
-          {approving && plan.requiresConfirmation && (
+          {approving && plan.requiresConfirmation && canApprove && (
             <label className="confirmation-field">
               <span>输入确认短语</span>
               <code>{phrase}</code>
@@ -88,12 +110,14 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
           <button
             type="button"
             className={observing ? 'button secondary' : 'button danger'}
-            disabled={scheduled || (approving && !matches) || (observing && !canClose) || pending}
+            disabled={scheduled || (approving && (!matches || !canApprove)) || (plan.state === 'approved' && !canExecute) || (observing && !canExecute) || pending}
             onClick={() => observing ? onClosePlan() : onConfirm(value)}
           >
             <Check size={17} aria-hidden="true" />
-            {pending ? '提交中' : scheduled ? '等待调度' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? '批准计划' : '执行计划'}
+            {pending ? '提交中' : scheduled ? '等待调度' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? canApprove ? '批准计划' : '当前身份不能批准' : canExecute ? '执行计划' : '当前身份不能执行'}
           </button>
+          {approving && !canApprove && <small className="inline-error">当前身份不能批准此计划，请使用独立批准账号。</small>}
+          {plan.state === 'approved' && !canExecute && <small className="inline-error">当前身份不能执行此计划，请由创建人执行。</small>}
         </footer>
       </section>
     </div>

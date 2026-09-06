@@ -189,8 +189,9 @@ func (engine *Engine) CreateReleasePlan(
 	requiresDualApproval := requiredDualApproval(
 		service, tenantID, action, request.RequiresDualApproval,
 	)
+	approvalPolicy := approvalPolicyFor(service, action, requiresDualApproval)
 	summary := model.ApprovalSummary{
-		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: request.Target,
+		SchemaVersion: 1, ApprovalPolicy: approvalPolicy, Service: service.Name, Action: action.Name, Target: request.Target,
 		ApprovalException:   approvalExceptionFor(service, tenantID, action.Name, requiresDualApproval),
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback,
@@ -220,6 +221,7 @@ func (engine *Engine) CreateReleasePlan(
 		TenantID: tenantID, ServerID: service.ServerID, ScheduleAt: request.ScheduleAt,
 		Digest: digest, ApprovalSummary: summary, ConfirmationPhrase: phrase,
 		RequiresConfirmation: action.Risk != model.RiskReadOnly,
+		ApprovalPolicy:       approvalPolicy,
 		ObservationSeconds:   action.ObservationSeconds, CreatedAt: now, UpdatedAt: now,
 		RequestIdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
@@ -338,7 +340,8 @@ func (engine *Engine) ExecuteReleasePlan(
 		}
 		return model.Task{}, false, store.ErrIdempotency
 	}
-	if plan.RequiresDualApproval && (plan.SecondApprovedByHash == "" || plan.SecondApprovedByHash == plan.ApprovedByHash) {
+	if plan.RequiresDualApproval && !model.UsesTwoPartyApproval(plan.ApprovalPolicy) &&
+		(plan.SecondApprovedByHash == "" || plan.SecondApprovedByHash == plan.ApprovedByHash) {
 		return model.Task{}, false, errors.New("高风险计划尚未完成独立第二批准")
 	}
 	if plan.State != model.PlanApproved {
@@ -367,7 +370,7 @@ func (engine *Engine) ExecuteReleasePlan(
 			redactText(err.Error()), err)
 	}
 	currentSummary := model.ApprovalSummary{
-		SchemaVersion: 1, Service: service.Name, Action: action.Name, Target: plan.Target,
+		SchemaVersion: 1, ApprovalPolicy: plan.ApprovalPolicy, Service: service.Name, Action: action.Name, Target: plan.Target,
 		ApprovalException:   approvalExceptionFor(service, plan.TenantID, action.Name, plan.RequiresDualApproval),
 		TrafficPolicyDigest: service.PolicyDigest(),
 		Risk:                action.Risk, Impact: action.Impact, Rollback: action.Rollback, Scope: action.Scope,
@@ -496,6 +499,13 @@ func approvalExceptionFor(
 	if service.ObjectID == "service:areaforge" && tenantID == "production" &&
 		(action == "start" || action == "stop") && !requiresDualApproval {
 		return model.ApprovalExceptionC2LifecycleSingleActor
+	}
+	return ""
+}
+
+func approvalPolicyFor(service model.ServiceDefinition, action model.ActionDefinition, requiresDualApproval bool) string {
+	if action.Risk == model.RiskHigh && requiresDualApproval {
+		return model.ApprovalPolicyTwoParty
 	}
 	return ""
 }

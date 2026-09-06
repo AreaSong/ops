@@ -37,27 +37,17 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	first := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+created.ID+"/approve", model.KubernetesPlanApprovalRequest{
 		Digest: created.ManifestDigest, Confirmation: created.ConfirmationPhrase,
 	}, http.StatusOK)
-	if first.State != "pending_approval" || first.ApprovedByHash != actors[1] {
+	if first.State != "approved" || first.ApprovedByHash != actors[1] || first.ApprovalPolicy != model.ApprovalPolicyTwoParty {
 		t.Fatalf("first approval=%+v", first)
-	}
-	second := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[2], "/v1/kubernetes/plans/"+created.ID+"/approve", model.KubernetesPlanApprovalRequest{
-		Digest: created.ManifestDigest, Confirmation: created.ConfirmationPhrase,
-	}, http.StatusOK)
-	if second.State != "approved" || second.SecondApprovedByHash != actors[2] {
-		t.Fatalf("second approval=%+v", second)
 	}
 
 	executeKey := mustUUID(t)
-	postKubernetesJSON[map[string]any](t, handler, actors[2], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	postKubernetesJSON[map[string]any](t, handler, actors[1], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: executeKey,
 	}, http.StatusConflict)
-	postKubernetesJSON[map[string]any](t, handler, actors[0], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
-		IdempotencyKey: executeKey,
-	}, http.StatusConflict)
-
 	firstExecution := postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
-	}](t, handler, actors[3], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	}](t, handler, actors[0], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: executeKey,
 	}, http.StatusAccepted)
 	if firstExecution.Operation.State != "succeeded" || firstExecution.Operation.Action != "apply" || firstExecution.Operation.DryRun ||
@@ -69,13 +59,13 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 
 	replayed := postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
-	}](t, handler, actors[3], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	}](t, handler, actors[0], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: executeKey,
 	}, http.StatusAccepted)
 	if replayed.Operation.ID != firstExecution.Operation.ID {
 		t.Fatalf("replayed operation=%s want=%s", replayed.Operation.ID, firstExecution.Operation.ID)
 	}
-	postKubernetesJSON[map[string]any](t, handler, actors[3], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	postKubernetesJSON[map[string]any](t, handler, actors[2], "/v1/kubernetes/plans/"+created.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: mustUUID(t),
 	}, http.StatusConflict)
 
@@ -90,7 +80,7 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	}
 	stored, err := database.GetKubernetesPlan(context.Background(), created.ID)
 	if err != nil || stored.State != "succeeded" || stored.OperationID != firstExecution.Operation.ID ||
-		stored.ExecuteIdempotencyKey != executeKey || stored.ExecutedByHash != actors[3] {
+		stored.ExecuteIdempotencyKey != executeKey || stored.ExecutedByHash != actors[0] {
 		t.Fatalf("stored plan=%+v err=%v", stored, err)
 	}
 	assertKubernetesPlanAudit(t, database, created.ID)
@@ -103,7 +93,7 @@ func assertKubernetesPlanAudit(t *testing.T, database *store.Store, planID strin
 		t.Fatal(err)
 	}
 	want := map[string]int{
-		"kubernetes.plan.created": 1, "kubernetes.plan.approved": 2,
+		"kubernetes.plan.created": 1, "kubernetes.plan.approved": 1,
 		"kubernetes.plan.started": 1, "kubernetes.plan.executed": 1,
 	}
 	for _, entry := range entries {
@@ -141,14 +131,12 @@ func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
 		rollback.ManifestDigest != baseline.ManifestDigest || rollback.ManifestDigest == source.ManifestDigest {
 		t.Fatalf("rollback plan=%+v", rollback)
 	}
-	for _, actor := range actors[1:3] {
-		rollback = postKubernetesJSON[model.KubernetesPlan](t, handler, actor, "/v1/kubernetes/plans/"+rollback.ID+"/approve", model.KubernetesPlanApprovalRequest{
-			Digest: rollback.ManifestDigest, Confirmation: rollback.ConfirmationPhrase,
-		}, http.StatusOK)
-	}
+	rollback = postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+rollback.ID+"/approve", model.KubernetesPlanApprovalRequest{
+		Digest: rollback.ManifestDigest, Confirmation: rollback.ConfirmationPhrase,
+	}, http.StatusOK)
 	result := postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
-	}](t, handler, actors[3], "/v1/kubernetes/plans/"+rollback.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	}](t, handler, actors[0], "/v1/kubernetes/plans/"+rollback.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: mustUUID(t),
 	}, http.StatusAccepted)
 	if result.Operation.State != "succeeded" || result.Operation.Action != "rollback" ||
@@ -172,7 +160,7 @@ func TestKubernetesRolloutFailureNeedsAttention(t *testing.T) {
 	handler := NewServer(engine, database)
 	manifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: app-a\n  namespace: ns-a\n"
 	plan := createApprovedKubernetesPlan(t, handler, actors, engine.catalog.Kubernetes["cluster-a"], manifest)
-	response := postKubernetesJSON[map[string]any](t, handler, actors[3], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	response := postKubernetesJSON[map[string]any](t, handler, actors[0], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: mustUUID(t),
 	}, http.StatusConflict)
 	if response["error"] == nil {
@@ -199,7 +187,7 @@ func createAndExecuteKubernetesPlan(
 	plan := createApprovedKubernetesPlan(t, handler, actors, target, manifest)
 	postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
-	}](t, handler, actors[3], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
+	}](t, handler, actors[0], "/v1/kubernetes/plans/"+plan.ID+"/execute", model.KubernetesPlanExecuteRequest{
 		IdempotencyKey: mustUUID(t),
 	}, http.StatusAccepted)
 	return plan
@@ -216,11 +204,9 @@ func createApprovedKubernetesPlan(
 	plan := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[0], "/v1/kubernetes/plans", model.KubernetesPlanRequest{
 		Target: target, Manifest: manifest, IdempotencyKey: mustUUID(t),
 	}, http.StatusCreated)
-	for _, actor := range actors[1:3] {
-		plan = postKubernetesJSON[model.KubernetesPlan](t, handler, actor, "/v1/kubernetes/plans/"+plan.ID+"/approve", model.KubernetesPlanApprovalRequest{
-			Digest: plan.ManifestDigest, Confirmation: plan.ConfirmationPhrase,
-		}, http.StatusOK)
-	}
+	plan = postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+plan.ID+"/approve", model.KubernetesPlanApprovalRequest{
+		Digest: plan.ManifestDigest, Confirmation: plan.ConfirmationPhrase,
+	}, http.StatusOK)
 	return plan
 }
 

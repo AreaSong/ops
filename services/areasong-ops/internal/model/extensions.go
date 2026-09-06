@@ -30,6 +30,7 @@ type ExtensionPlan struct {
 	ConfirmationPhrase      string     `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash          string     `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash    string     `json:"secondApprovedByHash,omitempty"`
+	ApprovalPolicy          string     `json:"approvalPolicy,omitempty"`
 	ExecutedByHash          string     `json:"executedByHash,omitempty"`
 	ExecutionIdempotencyKey string     `json:"-"`
 	Output                  string     `json:"output,omitempty"`

@@ -22,7 +22,7 @@ const fleetRunnerUpdatePlanSelect = `SELECT id,idempotency_key,execution_idempot
 	cancellation_idempotency_key,request_digest,plan_digest,policy_digest,actor_hash,tenant_id,
 	manifest_json,artifact_path,artifact_signature,staged_path,target_runner_ids_json,batch_policy_json,
 	max_concurrent,change_window_json,rollback_on_failure,state,current_batch,confirmation_hash,
-	confirmation_phrase,approved_by_hash,second_approved_by_hash,executed_by_hash,cancelled_by_hash,
+	confirmation_phrase,approved_by_hash,second_approved_by_hash,approval_policy,executed_by_hash,cancelled_by_hash,
 	summary,error,created_at,expires_at,approved_at,second_approved_at,started_at,
 	observation_started_at,observation_ends_at,finished_at,updated_at FROM runner_fleet_update_plans`
 
@@ -101,13 +101,13 @@ func insertFleetRunnerUpdatePlan(ctx context.Context, tx *sql.Tx, plan model.Fle
 		id,idempotency_key,request_digest,plan_digest,policy_digest,actor_hash,tenant_id,
 		manifest_json,artifact_path,artifact_signature,staged_path,target_runner_ids_json,
 		batch_policy_json,max_concurrent,change_window_json,rollback_on_failure,state,current_batch,
-		confirmation_hash,confirmation_phrase,created_at,expires_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		confirmation_hash,confirmation_phrase,approval_policy,created_at,expires_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.PlanDigest, plan.PolicyDigest,
 		plan.ActorHash, plan.TenantID, string(manifest), plan.ArtifactPath, plan.ArtifactSignature,
 		plan.StagedPath, string(targets), string(batch), plan.MaxConcurrent, string(window), plan.RollbackOnFailure,
 		plan.State, plan.CurrentBatch, HashConfirmation(plan.ConfirmationPhrase),
-		plan.ConfirmationPhrase, timeText(plan.CreatedAt), timeText(plan.ExpiresAt), timeText(plan.UpdatedAt))
+		plan.ConfirmationPhrase, plan.ApprovalPolicy, timeText(plan.CreatedAt), timeText(plan.ExpiresAt), timeText(plan.UpdatedAt))
 	return err
 }
 
@@ -263,6 +263,12 @@ func (store *Store) ApproveFleetRunnerUpdatePlan(
 	if err := validateFleetRunnerUpdateApproval(plan, actor, digest, confirmation, confirmationHash, store.now()); err != nil {
 		return model.FleetRunnerUpdatePlan{}, err
 	}
+	if plan.State == model.FleetRunnerUpdateApproved && model.UsesTwoPartyApproval(plan.ApprovalPolicy) && plan.ApprovedByHash == actor {
+		if err := tx.Commit(); err != nil {
+			return model.FleetRunnerUpdatePlan{}, err
+		}
+		return plan, nil
+	}
 	now := store.now()
 	if plan.State == model.FleetRunnerUpdatePendingApproval {
 		err = approveFirstFleetRunnerUpdate(ctx, tx, &plan, actor, now)
@@ -283,14 +289,16 @@ func validateFleetRunnerUpdateApproval(
 	actor, digest, confirmation, confirmationHash string,
 	now time.Time,
 ) error {
-	if plan.State != model.FleetRunnerUpdatePendingApproval && plan.State != model.FleetRunnerUpdatePendingSecondApproval {
+	idempotentRetry := plan.State == model.FleetRunnerUpdateApproved &&
+		model.UsesTwoPartyApproval(plan.ApprovalPolicy) && plan.ApprovedByHash == actor
+	if !idempotentRetry && plan.State != model.FleetRunnerUpdatePendingApproval && plan.State != model.FleetRunnerUpdatePendingSecondApproval {
 		return errors.New("Runner Fleet 更新计划不在待批准状态")
 	}
 	if !now.Before(plan.ExpiresAt) {
 		return errors.New("Runner Fleet 更新计划已过期")
 	}
-	if actor == plan.ActorHash || (plan.ApprovedByHash != "" && actor == plan.ApprovedByHash) {
-		return errors.New("Runner Fleet 更新创建人和两名批准人必须相互独立")
+	if !idempotentRetry && (actor == plan.ActorHash || (plan.ApprovedByHash != "" && actor == plan.ApprovedByHash)) {
+		return errors.New("Runner Fleet 更新创建人和批准人必须相互独立")
 	}
 	if subtle.ConstantTimeCompare([]byte(plan.PlanDigest), []byte(digest)) != 1 {
 		return errors.New("Runner Fleet 更新计划摘要已变化")
@@ -302,6 +310,16 @@ func validateFleetRunnerUpdateApproval(
 }
 
 func approveFirstFleetRunnerUpdate(ctx context.Context, tx *sql.Tx, plan *model.FleetRunnerUpdatePlan, actor string, now time.Time) error {
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		result, err := tx.ExecContext(ctx, `UPDATE runner_fleet_update_plans
+			SET state='approved',approved_by_hash=?,approved_at=?,updated_at=?
+			WHERE id=? AND state='pending_approval'`, actor, timeText(now), timeText(now), plan.ID)
+		if err = requireOne(result, err, "Runner Fleet 更新独立批准状态已变化"); err != nil {
+			return err
+		}
+		plan.State, plan.ApprovedByHash, plan.ApprovedAt, plan.UpdatedAt = model.FleetRunnerUpdateApproved, actor, &now, now
+		return nil
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE runner_fleet_update_plans
 		SET state='pending_second_approval',approved_by_hash=?,approved_at=?,updated_at=?
 		WHERE id=? AND state='pending_approval'`, actor, timeText(now), timeText(now), plan.ID)
@@ -364,12 +382,20 @@ func (store *Store) StartFleetRunnerUpdatePlan(
 }
 
 func validateFleetRunnerUpdateExecution(plan model.FleetRunnerUpdatePlan, actor string, now time.Time) error {
-	if plan.State != model.FleetRunnerUpdateApproved || plan.ApprovedByHash == "" ||
-		plan.SecondApprovedByHash == "" || plan.ApprovedByHash == plan.SecondApprovedByHash {
-		return errors.New("Runner Fleet 更新尚未完成两名独立批准")
+	if plan.State != model.FleetRunnerUpdateApproved || plan.ApprovedByHash == "" {
+		return errors.New("Runner Fleet 更新尚未完成独立批准")
 	}
-	if actor == plan.ActorHash || actor == plan.ApprovedByHash || actor == plan.SecondApprovedByHash {
-		return errors.New("Runner Fleet 更新执行人必须独立于创建人和两名批准人")
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		if actor != plan.ActorHash || actor == plan.ApprovedByHash {
+			return errors.New("Runner Fleet 更新执行必须由创建人完成，且批准人必须独立")
+		}
+	} else {
+		if plan.SecondApprovedByHash == "" || plan.ApprovedByHash == plan.SecondApprovedByHash {
+			return errors.New("Runner Fleet 更新尚未完成两名独立批准")
+		}
+		if actor == plan.ActorHash || actor == plan.ApprovedByHash || actor == plan.SecondApprovedByHash {
+			return errors.New("Runner Fleet 更新执行人必须独立于创建人和两名批准人")
+		}
 	}
 	if !now.Before(plan.ExpiresAt) || plan.ChangeWindow == nil || !plan.ChangeWindow.Contains(now) {
 		return errors.New("Runner Fleet 更新不在有效计划与变更窗口内")
@@ -989,7 +1015,7 @@ func scanFleetRunnerUpdatePlan(scanner interface{ Scan(...any) error }) (model.F
 		&plan.ActorHash, &plan.TenantID, &manifestJSON, &plan.ArtifactPath, &plan.ArtifactSignature,
 		&plan.StagedPath, &targetsJSON, &batchJSON, &plan.MaxConcurrent, &windowJSON, &rollback,
 		&state, &plan.CurrentBatch, &confirmationHash, &plan.ConfirmationPhrase, &plan.ApprovedByHash,
-		&plan.SecondApprovedByHash, &plan.ExecutedByHash, &plan.CancelledByHash, &plan.Summary,
+		&plan.SecondApprovedByHash, &plan.ApprovalPolicy, &plan.ExecutedByHash, &plan.CancelledByHash, &plan.Summary,
 		&plan.Error, &created, &expires, &approved, &secondApproved, &started, &observationStarted,
 		&observationEnds, &finished, &updated)
 	if errors.Is(err, sql.ErrNoRows) {

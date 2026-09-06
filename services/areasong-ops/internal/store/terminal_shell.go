@@ -37,10 +37,10 @@ func (store *Store) CreateTerminalShellPlan(
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO terminal_shell_plans(
 		id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,created_at,expires_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)`, plan.ID, idempotencyKey, requestDigest, plan.ObjectID,
+		confirmation_hash,confirmation_phrase,approval_policy,created_at,expires_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, plan.ID, idempotencyKey, requestDigest, plan.ObjectID,
 		plan.State, plan.ActorHash, plan.InputDigest, HashConfirmation(plan.ConfirmationPhrase),
-		plan.ConfirmationPhrase, timeText(plan.CreatedAt), timeText(plan.ExpiresAt))
+		plan.ConfirmationPhrase, plan.ApprovalPolicy, timeText(plan.CreatedAt), timeText(plan.ExpiresAt))
 	if err != nil {
 		return model.TerminalShellPlan{}, false, err
 	}
@@ -66,7 +66,7 @@ func (store *Store) GetTerminalShellPlan(ctx context.Context, id string) (model.
 
 func (store *Store) ListTerminalShellPlans(ctx context.Context, limit int) ([]model.TerminalShellPlan, error) {
 	rows, err := store.db.QueryContext(ctx, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		confirmation_hash,confirmation_phrase,approval_policy,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
 		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at
 		FROM terminal_shell_plans ORDER BY created_at DESC LIMIT ?`, clampLimit(limit, 200))
 	if err != nil {
@@ -149,7 +149,11 @@ func (store *Store) ApproveTerminalShellPlan(
 		}
 		return model.TerminalShellPlan{}, err
 	}
-	if stored.plan.State != "pending_approval" && stored.plan.State != "pending_second_approval" {
+	// In the two-party workflow approval is a terminal transition. Permit a
+	// retry from the same approver so network retries remain idempotent, while
+	// preserving the normal pending-state gate for all other requests.
+	if !(stored.plan.State == "approved" && model.UsesTwoPartyApproval(stored.plan.ApprovalPolicy) && stored.plan.ApprovedByHash == actor) &&
+		stored.plan.State != "pending_approval" && stored.plan.State != "pending_second_approval" {
 		return model.TerminalShellPlan{}, errors.New("紧急终端计划不在待批准状态")
 	}
 	if stored.plan.ActorHash == actor {
@@ -163,6 +167,32 @@ func (store *Store) ApproveTerminalShellPlan(
 		return model.TerminalShellPlan{}, ErrConfirmation
 	}
 	now := store.now()
+	if model.UsesTwoPartyApproval(stored.plan.ApprovalPolicy) {
+		if stored.plan.State == "approved" && stored.plan.ApprovedByHash == actor {
+			if err := tx.Commit(); err != nil {
+				return model.TerminalShellPlan{}, err
+			}
+			return stored.plan, nil
+		}
+		if stored.plan.State != "pending_approval" {
+			return model.TerminalShellPlan{}, errors.New("紧急终端计划已完成批准")
+		}
+		result, updateErr := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='approved',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval'`, actor, timeText(now), id)
+		if updateErr != nil {
+			return model.TerminalShellPlan{}, updateErr
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return model.TerminalShellPlan{}, errors.New("紧急终端计划状态已变化")
+		}
+		stored.plan.State, stored.plan.ApprovedByHash, stored.plan.ApprovedAt = "approved", actor, &now
+		if err := appendTerminalShellAudit(ctx, tx, actor, "terminal.shell.approved", stored.plan.State, stored.plan, now); err != nil {
+			return model.TerminalShellPlan{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.TerminalShellPlan{}, err
+		}
+		return stored.plan, nil
+	}
 	if stored.plan.State == "pending_approval" {
 		result, updateErr := tx.ExecContext(ctx, `UPDATE terminal_shell_plans SET state='pending_second_approval',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval'`, actor, timeText(now), id)
 		if updateErr != nil {
@@ -243,9 +273,12 @@ func (store *Store) StartTerminalShellPlan(
 		}
 		return plan, false, nil
 	}
-	if plan.State != "approved" || plan.ApprovedByHash == "" || plan.SecondApprovedByHash == "" ||
-		plan.ApprovedByHash == plan.SecondApprovedByHash {
+	if plan.State != "approved" || plan.ApprovedByHash == "" ||
+		(!model.UsesTwoPartyApproval(plan.ApprovalPolicy) && (plan.SecondApprovedByHash == "" || plan.ApprovedByHash == plan.SecondApprovedByHash)) {
 		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划尚未完成两名独立批准")
+	}
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) && actor != plan.ActorHash {
+		return model.TerminalShellPlan{}, false, ErrActorMismatch
 	}
 	if !store.now().Before(plan.ExpiresAt) {
 		return model.TerminalShellPlan{}, false, errors.New("紧急终端计划已过期")
@@ -329,13 +362,13 @@ func appendTerminalShellAudit(
 
 func terminalShellPlanByID(ctx context.Context, db queryer, id string) (storedTerminalShellPlan, bool, error) {
 	return terminalShellPlanQuery(ctx, db, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		confirmation_hash,confirmation_phrase,approval_policy,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
 		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at FROM terminal_shell_plans WHERE id=?`, id)
 }
 
 func terminalShellPlanByIdempotency(ctx context.Context, db queryer, key string) (storedTerminalShellPlan, bool, error) {
 	return terminalShellPlanQuery(ctx, db, `SELECT id,idempotency_key,request_digest,object_id,state,actor_hash,input_digest,
-		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
+		confirmation_hash,confirmation_phrase,approval_policy,approved_by_hash,second_approved_by_hash,execution_idempotency_key,exit_code,output,error,
 		created_at,expires_at,approved_at,second_approved_at,started_at,finished_at FROM terminal_shell_plans WHERE idempotency_key=?`, key)
 }
 
@@ -360,7 +393,7 @@ func scanTerminalShellPlanScanner(scanner terminalShellScanner) (storedTerminalS
 	var approved, secondApproved, started, finished sql.NullString
 	err := scanner.Scan(&item.plan.ID, &item.idempotencyKey, &item.requestDigest, &item.plan.ObjectID,
 		&item.plan.State, &item.plan.ActorHash, &item.plan.InputDigest, &item.confirmation,
-		&item.plan.ConfirmationPhrase, &item.plan.ApprovedByHash, &item.plan.SecondApprovedByHash, &item.plan.ExecutionIdempotencyKey,
+		&item.plan.ConfirmationPhrase, &item.plan.ApprovalPolicy, &item.plan.ApprovedByHash, &item.plan.SecondApprovedByHash, &item.plan.ExecutionIdempotencyKey,
 		&item.plan.ExitCode, &item.plan.Output, &item.plan.Error, &created, &expires,
 		&approved, &secondApproved, &started, &finished)
 	if errors.Is(err, sql.ErrNoRows) {

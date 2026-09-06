@@ -926,4 +926,13 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 ALTER TABLE kubernetes_plans ADD COLUMN executed_by_hash TEXT NOT NULL DEFAULT '';
 	 CREATE INDEX idx_kubernetes_plans_rollback_target
 	 ON kubernetes_plans(rollback_target_plan_id) WHERE rollback_target_plan_id != '';`,
+	`ALTER TABLE release_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE batch_jobs ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE access_changes ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE terminal_shell_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE managed_file_proposals ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE compose_revisions ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE extension_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE runner_fleet_update_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';`,
 }

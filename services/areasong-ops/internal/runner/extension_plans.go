@@ -87,7 +87,8 @@ func (engine *Engine) CreateExtensionPlan(
 		MaxPackageBytes: policy.MaxPackageBytes, MaxInputBytes: policy.MaxInputBytes,
 		MaxOutputBytes: policy.MaxOutputBytes, MaxMemoryPages: policy.MaxMemoryPages,
 		State: "pending_approval", ConfirmationPhrase: phrase,
-		CreatedAt: now, ExpiresAt: now.Add(extensionPlanTTL),
+		ApprovalPolicy: model.ApprovalPolicyTwoParty,
+		CreatedAt:      now, ExpiresAt: now.Add(extensionPlanTTL),
 	}
 	stored, created, err := engine.store.CreateExtensionPlan(ctx, plan, input)
 	if err != nil {

@@ -60,6 +60,7 @@ type BatchOperation struct {
 	ApprovedByHash             string              `json:"approvedByHash,omitempty"`
 	ApprovedAt                 *time.Time          `json:"approvedAt,omitempty"`
 	RequiresDualApproval       bool                `json:"requiresDualApproval,omitempty"`
+	ApprovalPolicy             string              `json:"approvalPolicy,omitempty"`
 	ApprovalPolicyVersion      int                 `json:"approvalPolicyVersion"`
 	SecondApprovedByHash       string              `json:"secondApprovedByHash,omitempty"`
 	SecondApprovedAt           *time.Time          `json:"secondApprovedAt,omitempty"`

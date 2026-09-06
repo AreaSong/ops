@@ -11,6 +11,7 @@ type TerminalShellPlan struct {
 	ConfirmationPhrase      string     `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash          string     `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash    string     `json:"secondApprovedByHash,omitempty"`
+	ApprovalPolicy          string     `json:"approvalPolicy,omitempty"`
 	ExecutionIdempotencyKey string     `json:"-"`
 	ExitCode                int        `json:"exitCode,omitempty"`
 	Output                  string     `json:"output,omitempty"`

@@ -75,17 +75,10 @@ func TestAccessChangeAppliesRBACMutationOnlyAfterIndependentExecution(t *testing
 	if _, err := engine.ApproveAccessChange(ctx, approver, change.ID, model.AccessChangeApprovalRequest{Digest: change.RequestDigest, Confirmation: change.ConfirmationPhrase}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.ApplyAccessChange(ctx, secondApprover, change.ID); err == nil {
-		t.Fatal("second approver unexpectedly executed change")
-	}
-	change, err = engine.ApproveAccessChange(ctx, secondApprover, change.ID, model.AccessChangeApprovalRequest{Digest: change.RequestDigest, Confirmation: change.ConfirmationPhrase})
-	if err != nil || change.State != model.AccessChangeApproved {
-		t.Fatalf("second approval=%+v err=%v", change, err)
-	}
 	if _, err := engine.ApplyAccessChange(ctx, approver, change.ID); err == nil {
 		t.Fatal("approver unexpectedly executed change")
 	}
-	change, err = engine.ApplyAccessChange(ctx, executor, change.ID)
+	change, err = engine.ApplyAccessChange(ctx, creator, change.ID)
 	if err != nil || change.State != model.AccessChangeApplied {
 		t.Fatalf("apply=%+v err=%v", change, err)
 	}

@@ -54,13 +54,13 @@ func (store *Store) CreateKubernetesPlan(
 	_, err = tx.ExecContext(ctx, `INSERT INTO kubernetes_plans(
 		id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,manifest_digest,manifest,
 		action,state,confirmation_hash,confirmation_phrase,approved_by_hash,approved_at,
-		second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,created_at,started_at,finished_at
+		second_approved_by_hash,second_approved_at,requires_dual_approval,approval_policy,operation_id,error,created_at,started_at,finished_at
 			,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.ActorHash, plan.TenantID,
 		targetJSON, plan.ManifestDigest, manifest, plan.Action, plan.State, confirmationHash,
 		plan.ConfirmationPhrase, plan.ApprovedByHash, nullableTimeText(plan.ApprovedAt),
-		plan.SecondApprovedByHash, nullableTimeText(plan.SecondApprovedAt), plan.RequiresDualApproval,
+		plan.SecondApprovedByHash, nullableTimeText(plan.SecondApprovedAt), plan.RequiresDualApproval, plan.ApprovalPolicy,
 		plan.OperationID, plan.Error, timeText(plan.CreatedAt), nullableTimeText(plan.StartedAt), nullableTimeText(plan.FinishedAt), plan.ExecuteIdempotencyKey,
 		plan.RollbackOfPlanID, plan.RollbackTargetPlanID, plan.SourceManifestDigest, plan.ExecutedByHash)
 	if err != nil {
@@ -142,6 +142,29 @@ func (store *Store) ApproveKubernetesPlan(
 	}
 	now := store.now()
 	if plan.RequiresDualApproval {
+		if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+			if plan.State == "approved" && plan.ApprovedByHash == actorHash {
+				if err := tx.Commit(); err != nil {
+					return model.KubernetesPlan{}, err
+				}
+				return plan, nil
+			}
+			if plan.State != "pending_approval" {
+				return model.KubernetesPlan{}, errors.New("Kubernetes 计划已完成批准")
+			}
+			result, execErr := tx.ExecContext(ctx, `UPDATE kubernetes_plans SET state='approved',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval' AND approved_by_hash=''`, actorHash, timeText(now), id)
+			if err := requireOne(result, execErr, "Kubernetes 独立批准无法写入"); err != nil {
+				return model.KubernetesPlan{}, err
+			}
+			plan.State, plan.ApprovedByHash, plan.ApprovedAt = "approved", actorHash, &now
+			if err := appendKubernetesPlanAudit(ctx, tx, actorHash, "kubernetes.plan.approved", "accepted", plan, now); err != nil {
+				return model.KubernetesPlan{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return model.KubernetesPlan{}, err
+			}
+			return plan, nil
+		}
 		if plan.State == "approved" {
 			return model.KubernetesPlan{}, errors.New("Kubernetes 计划已完成双人批准")
 		}
@@ -209,7 +232,11 @@ func (store *Store) StartKubernetesPlan(
 	if plan.State != "approved" {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 计划尚未完成批准")
 	}
-	if plan.RequiresDualApproval && !model.IndependentExecutor(actorHash, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
+	if plan.RequiresDualApproval && model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		if actorHash != plan.ActorHash || plan.ApprovedByHash == "" || plan.ApprovedByHash == actorHash {
+			return model.KubernetesPlan{}, false, errors.New("Kubernetes 执行必须由创建人完成，且批准人必须独立")
+		}
+	} else if plan.RequiresDualApproval && !model.IndependentExecutor(actorHash, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 执行人必须独立于创建人和两名批准人")
 	}
 	if err := validateKubernetesPlanOperation(plan, operation); err != nil {
@@ -334,7 +361,7 @@ func appendKubernetesPlanAudit(
 
 const kubernetesPlanSelect = `SELECT id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,
 		manifest_digest,manifest,action,state,confirmation_phrase,approved_by_hash,approved_at,
-	second_approved_by_hash,second_approved_at,requires_dual_approval,operation_id,error,
+	second_approved_by_hash,second_approved_at,requires_dual_approval,approval_policy,operation_id,error,
 		created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash FROM kubernetes_plans`
 
 func (store *Store) getKubernetesPlan(ctx context.Context, id string) (model.KubernetesPlan, string, error) {
@@ -355,7 +382,7 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 	var dual int
 	err := row.Scan(&plan.ID, &plan.IdempotencyKey, &plan.RequestDigest, &plan.ActorHash, &plan.TenantID,
 		&targetJSON, &plan.ManifestDigest, &manifest, &plan.Action, &plan.State, &plan.ConfirmationPhrase,
-		&plan.ApprovedByHash, &approvedAt, &plan.SecondApprovedByHash, &secondApprovedAt, &dual,
+		&plan.ApprovedByHash, &approvedAt, &plan.SecondApprovedByHash, &secondApprovedAt, &dual, &plan.ApprovalPolicy,
 		&plan.OperationID, &plan.Error, &createdAt, &startedAt, &finishedAt, &plan.ExecuteIdempotencyKey,
 		&rollbackOfPlanID, &rollbackTargetPlanID, &sourceManifestDigest, &executedByHash)
 	if err != nil {

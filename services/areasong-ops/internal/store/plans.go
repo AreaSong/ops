@@ -22,9 +22,9 @@ const planSelect = `
 	       invalidated_reason, task_id, observation_seconds, observation_started_at,
 	       observation_ends_at, closure_reason, maintenance_silence_id,
 	       maintenance_silence_ends_at, maintenance_silence_released_at,
-		       blocking_alert_fingerprints_json, closed_at, created_at, updated_at,
-		       request_idempotency_key, request_digest, restore_mode, recovery_point_id,
-		       requires_dual_approval, second_approved_by_hash, restore_tenant_id,
+	       blocking_alert_fingerprints_json, closed_at, created_at, updated_at,
+	       request_idempotency_key, request_digest, restore_mode, recovery_point_id,
+	       requires_dual_approval, second_approved_by_hash, approval_policy, restore_tenant_id,
 		       restore_server_id, restore_expected_before_digest, restore_contract_digest,
 		       restore_revalidation_digest, restore_revalidated_at, executed_by_hash,
 		       restore_outcome, restore_evidence_digest
@@ -60,18 +60,18 @@ func (store *Store) createReleasePlan(ctx context.Context, db planExecer, input 
 			approval_summary_json, confirmation_hash, confirmation_phrase,
 			observation_seconds, created_at, updated_at, request_idempotency_key,
 			request_digest, restore_mode, recovery_point_id, requires_dual_approval,
-			second_approved_by_hash, restore_tenant_id, restore_server_id,
+			second_approved_by_hash, approval_policy, restore_tenant_id, restore_server_id,
 			restore_expected_before_digest, restore_contract_digest,
 			restore_revalidation_digest, restore_revalidated_at, executed_by_hash,
 			restore_outcome, restore_evidence_digest
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, input.Plan.ID, input.Plan.ActorHash, input.Plan.Service, input.Plan.Action,
 		input.Plan.Target, input.Plan.TenantID, input.Plan.ServerID, nullableTimeValue(input.Plan.ScheduleAt), input.Plan.Risk, input.Plan.State, input.Plan.Digest,
 		summary, input.ConfirmationHash, input.Plan.ConfirmationPhrase,
 		input.Plan.ObservationSeconds, timeText(input.Plan.CreatedAt), timeText(input.Plan.UpdatedAt),
 		input.Plan.RequestIdempotencyKey, input.Plan.RequestDigest, input.Plan.RestoreMode,
-		input.Plan.RecoveryPointID, input.Plan.RequiresDualApproval, input.Plan.SecondApprovedByHash,
+		input.Plan.RecoveryPointID, input.Plan.RequiresDualApproval, input.Plan.SecondApprovedByHash, input.Plan.ApprovalPolicy,
 		input.Plan.RestoreTenantID, input.Plan.RestoreServerID, input.Plan.RestoreExpectedBeforeDigest,
 		input.Plan.RestoreContractDigest, input.Plan.RestoreRevalidationDigest,
 		nullableTimeValue(input.Plan.RestoreRevalidatedAt), input.Plan.ExecutedByHash,
@@ -152,6 +152,7 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	var tenantID, serverID string
 	var approvedAt, observationStartedAt, observationEndsAt, silenceEndsAt, silenceReleasedAt,
 		closedAt, restoreRevalidatedAt sql.NullString
+	var approvalPolicy string
 	var blockingAlertsJSON string
 	err := row.Scan(&plan.ID, &plan.ActorHash, &plan.Service, &plan.Action, &plan.Target,
 		&tenantID, &serverID, &scheduleAt, &risk, &state, &plan.Digest, &summaryJSON, &plan.ConfirmationPhrase,
@@ -161,7 +162,7 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 		&blockingAlertsJSON, &closedAt,
 		&createdAt, &updatedAt, &plan.RequestIdempotencyKey, &plan.RequestDigest,
 		&plan.RestoreMode, &plan.RecoveryPointID, &plan.RequiresDualApproval,
-		&plan.SecondApprovedByHash, &plan.RestoreTenantID, &plan.RestoreServerID,
+		&plan.SecondApprovedByHash, &approvalPolicy, &plan.RestoreTenantID, &plan.RestoreServerID,
 		&plan.RestoreExpectedBeforeDigest, &plan.RestoreContractDigest,
 		&plan.RestoreRevalidationDigest, &restoreRevalidatedAt, &plan.ExecutedByHash,
 		&plan.RestoreOutcome, &plan.RestoreEvidenceDigest)
@@ -171,6 +172,7 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	plan.Risk = model.Risk(risk)
 	plan.State = model.PlanState(state)
 	plan.TenantID, plan.ServerID = tenantID, serverID
+	plan.ApprovalPolicy = approvalPolicy
 	plan.ScheduleAt, err = nullableTime(scheduleAt)
 	if err != nil {
 		return model.ReleasePlan{}, err
@@ -178,6 +180,9 @@ func scanPlan(row scanner) (model.ReleasePlan, error) {
 	plan.RequiresConfirmation = plan.Risk != model.RiskReadOnly
 	if err := decodeJSON(summaryJSON, &plan.ApprovalSummary); err != nil {
 		return model.ReleasePlan{}, err
+	}
+	if plan.ApprovalPolicy == "" {
+		plan.ApprovalPolicy = plan.ApprovalSummary.ApprovalPolicy
 	}
 	var parseErr error
 	if plan.CreatedAt, parseErr = time.Parse(time.RFC3339Nano, createdAt); parseErr != nil {
@@ -369,6 +374,35 @@ func (store *Store) ApproveReleasePlan(
 	targetState := model.PlanApproved
 	if plan.ScheduleAt != nil && now.Before(*plan.ScheduleAt) {
 		targetState = model.PlanScheduled
+	}
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) && plan.RequiresDualApproval {
+		if plan.State != model.PlanPendingApproval {
+			if plan.ApprovedByHash == actorHash && (plan.State == model.PlanApproved || plan.State == model.PlanScheduled) {
+				if err := tx.Commit(); err != nil {
+					return model.ReleasePlan{}, err
+				}
+				return plan, nil
+			}
+			return model.ReleasePlan{}, errors.New("发布计划已完成批准")
+		}
+		if plan.ActorHash == actorHash {
+			return model.ReleasePlan{}, ErrActorMismatch
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE release_plans SET state = ?, approved_by_hash = ?, approved_at = ?, updated_at = ?
+			WHERE id = ? AND state = ? AND digest = ? AND approved_by_hash = ''
+		`, targetState, actorHash, timeText(now), timeText(now), id, model.PlanPendingApproval, digest)
+		if err = requireOne(result, err, "生产计划独立批准无法写入"); err != nil {
+			return model.ReleasePlan{}, err
+		}
+		plan.State, plan.ApprovedByHash, plan.ApprovedAt, plan.UpdatedAt = targetState, actorHash, &now, now
+		if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
+			return model.ReleasePlan{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ReleasePlan{}, err
+		}
+		return plan, nil
 	}
 	if plan.RequiresDualApproval {
 		if plan.State == model.PlanApproved {

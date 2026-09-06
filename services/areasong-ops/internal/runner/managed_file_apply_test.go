@@ -11,7 +11,7 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
-func TestManagedFileRequiresDualApprovalAndIndependentExecutor(t *testing.T) {
+func TestManagedFileRequiresIndependentApprovalAndCreatorExecution(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "managed.conf")
 	oldContent, newContent := "enabled=false\n", "enabled=true\n"
@@ -40,17 +40,15 @@ func TestManagedFileRequiresDualApprovalAndIndependentExecutor(t *testing.T) {
 		t.Fatalf("unapproved apply changed file content=%q", content)
 	}
 
-	for _, approver := range actors[1:3] {
-		proposal, err = engine.ApproveManagedFileProposal(ctx, approver, proposal.ID,
-			model.ManagedFileApprovalRequest{Digest: proposal.ProposedDigest, Confirmation: proposal.ConfirmationPhrase})
-		if err != nil {
-			t.Fatal(err)
-		}
+	proposal, err = engine.ApproveManagedFileProposal(ctx, actors[1], proposal.ID,
+		model.ManagedFileApprovalRequest{Digest: proposal.ProposedDigest, Confirmation: proposal.ConfirmationPhrase})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if proposal.State != "approved" {
+	if proposal.State != "approved" || proposal.ApprovalPolicy != model.ApprovalPolicyTwoParty || proposal.SecondApprovedByHash != "" {
 		t.Fatalf("proposal state=%s want approved", proposal.State)
 	}
-	applied, err := engine.ApplyManagedFileProposal(ctx, actors[3], proposal.ID,
+	applied, err := engine.ApplyManagedFileProposal(ctx, actors[0], proposal.ID,
 		model.ManagedFileApplyRequest{IdempotencyKey: mustUUID(t)})
 	if err != nil || applied.State != "applied" {
 		t.Fatalf("applied=%+v err=%v", applied, err)

@@ -13,7 +13,7 @@
 ## 包 C1：生命周期与审计
 
 - **范围**：AreaForge/Sub2API inspect、check、维护、排空、start/stop、计划批准、任务、观察、回滚和审计。
-- **等级**：L2；AreaForge `start/stop` 允许已批准的 C2 单人例外，其他高风险动作保持独立双人批准。
+- **等级**：L2；AreaForge `start/stop` 允许已批准的 C2 单人例外，其他高风险动作按创建人/独立批准人两方流程执行。
 - **前置证据**：TrafficPolicy digest、Nginx `-t`、drain 连接归零或明确超时、健康端点、维护文件可读、Runner/Web runtime preflight PASS。
 - **执行**：逐服务创建计划，先 preflight 和流量保护，再应用变更；start 只有健康后恢复流量。
 - **回滚**：失败保持维护页并标记 `needs_attention`；恢复上一受控配置/应用身份后再次 health，不自动暴露 502。
@@ -39,10 +39,10 @@
 
 ## 包 C4：受控终端与 Break-glass
 
-- **范围**：只读命令目录、Shell 计划、双人批准、短时租约、录制和审计。
+- **范围**：只读命令目录、Shell 计划、独立批准、短时租约、录制和审计。
 - **等级**：L3；Break-glass 必须两名独立主体，不能由操作人自批。
 - **前置证据**：固定命令 allowlist、root-owned 工作目录、命令超时、录制存储、自动过期和告警验证。
-- **执行**：先创建计划，再第二人批准，最后独立执行人提交原始输入；只允许声明对象和命令。
+- **执行**：先创建计划，再由独立批准人批准，最后创建人提交原始输入；只允许声明对象和命令。
 - **回滚**：终止未收口会话，保留录制和审计；不提供任意 root Shell 或任意路径写入。
 - **当前状态**：本地只读命令 profile 已验证；生产 `terminal.enabled`/`breakGlass` 默认关闭。
 
@@ -58,7 +58,7 @@
 ## 包 C6：扩展与 Runner 自更新
 
 - **范围**：用途隔离的签名插件 WASM 沙箱、Runner signed bundle、分批激活和失败收口。
-- **等级**：L3；Runner 更新至少两名独立授权主体，插件默认关闭。
+- **等级**：L3；Runner 更新采用创建人/独立批准人两方授权，插件默认关闭。
 - **前置证据**：发布者公钥、Sigstore/Ed25519 签名、artifact digest、Runner mTLS、当前二进制备份和 systemd 状态。
 - **执行**：先准备和验证制品，再独立激活；重启单个 Runner 后验证 socket、revision、版本和 preflight。
 - **回滚**：恢复旧二进制和 unit 状态，只重启 Runner；插件失败删除隔离暂存，不触碰宿主 Docker Socket。

@@ -70,6 +70,29 @@ func (store *Store) ApproveManagedFileProposal(
 		return model.ManagedFileProposal{}, ErrConfirmation
 	}
 	now := store.now()
+	if model.UsesTwoPartyApproval(proposal.ApprovalPolicy) {
+		if proposal.State == "approved" && proposal.ApprovedByHash == actor {
+			if err := tx.Commit(); err != nil {
+				return model.ManagedFileProposal{}, err
+			}
+			return proposal, nil
+		}
+		if proposal.State != "proposed" {
+			return model.ManagedFileProposal{}, errors.New("文件提案已完成批准或执行")
+		}
+		result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='approved',approved_by_hash=?,approved_at=? WHERE id=? AND state='proposed'`, actor, timeText(now), id)
+		if err := requireOne(result, updateErr, "文件独立批准无法写入"); err != nil {
+			return model.ManagedFileProposal{}, err
+		}
+		proposal.State, proposal.ApprovedByHash, proposal.ApprovedAt = "approved", actor, &now
+		if err := appendManagedFileAudit(ctx, tx, actor, "file.proposal.approved", proposal.State, proposal, now); err != nil {
+			return model.ManagedFileProposal{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ManagedFileProposal{}, err
+		}
+		return proposal, nil
+	}
 	switch proposal.State {
 	case "proposed":
 		result, updateErr := tx.ExecContext(ctx, `UPDATE managed_file_proposals SET state='pending_second_approval',approved_by_hash=?,approved_at=? WHERE id=? AND state='proposed'`, actor, timeText(now), id)
@@ -142,10 +165,15 @@ func (store *Store) StartManagedFileApply(
 		}
 		return proposal, false, nil
 	}
-	if proposal.State != "approved" || proposal.ApprovedByHash == "" || proposal.SecondApprovedByHash == "" {
+	if proposal.State != "approved" || proposal.ApprovedByHash == "" ||
+		(!model.UsesTwoPartyApproval(proposal.ApprovalPolicy) && proposal.SecondApprovedByHash == "") {
 		return model.ManagedFileProposal{}, false, errors.New("文件提案尚未完成双人批准")
 	}
-	if actor == proposal.ActorHash || actor == proposal.ApprovedByHash || actor == proposal.SecondApprovedByHash {
+	if model.UsesTwoPartyApproval(proposal.ApprovalPolicy) {
+		if actor != proposal.ActorHash || actor == proposal.ApprovedByHash {
+			return model.ManagedFileProposal{}, false, errors.New("文件应用必须由创建人执行，且批准人必须独立")
+		}
+	} else if actor == proposal.ActorHash || actor == proposal.ApprovedByHash || actor == proposal.SecondApprovedByHash {
 		return model.ManagedFileProposal{}, false, errors.New("文件应用执行人必须独立于创建人与批准人")
 	}
 	now := store.now()
@@ -296,6 +324,7 @@ func appendManagedFileAudit(
 const managedFileProposalSelect = `SELECT id,idempotency_key,request_digest,actor_hash,root_id,relative_path,
 	expected_digest,proposed_digest,content,state,confirmation_hash,confirmation_phrase,
 	approved_by_hash,second_approved_by_hash,applied_by_hash,apply_idempotency_key,
+	approval_policy,
 	backup_path,rolled_back_by_hash,rollback_idempotency_key,error,created_at,
 	approved_at,second_approved_at,applied_at,finished_at,rolled_back_at
 	FROM managed_file_proposals`
@@ -329,6 +358,7 @@ func scanManagedFileProposal(scanner managedFileScanner) (managedFileRow, error)
 		&row.proposal.State, &row.confirmationHash, &row.proposal.ConfirmationPhrase,
 		&row.proposal.ApprovedByHash, &row.proposal.SecondApprovedByHash,
 		&row.proposal.AppliedByHash, &row.proposal.ApplyIdempotencyKey,
+		&row.proposal.ApprovalPolicy,
 		&row.proposal.BackupPath, &row.proposal.RolledBackByHash,
 		&row.proposal.RollbackIdempotencyKey, &row.proposal.Error, &created,
 		&approved, &secondApproved, &applied, &finished, &rolledBack)

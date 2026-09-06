@@ -84,7 +84,7 @@ func TestProductionRestoreRequiresFreshDrillAndIndependentDualApproval(t *testin
 	engine.backupRoot = t.TempDir()
 	service := enableRecoveryActions(engine)
 	point := createVerifiedRecoveryPoint(t, engine, database, service)
-	creator, firstApprover, secondApprover := actorHash(), strings.Repeat("b", 64), strings.Repeat("c", 64)
+	creator, approver := actorHash(), strings.Repeat("b", 64)
 
 	productionRequest := model.RestoreRequest{
 		Service: service.Name, RecoveryPointID: point.ID, Mode: "production",
@@ -124,22 +124,13 @@ func TestProductionRestoreRequiresFreshDrillAndIndependentDualApproval(t *testin
 	}); !errors.Is(err, store.ErrActorMismatch) {
 		t.Fatalf("creator approval err=%v, want actor mismatch", err)
 	}
-	plan, err = engine.ApproveReleasePlan(ctx, firstApprover, plan.ID, model.ApprovePlanRequest{
+	plan, err = engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
 		Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase,
 	})
-	if err != nil || plan.State != model.PlanPendingApproval {
-		t.Fatalf("first approval plan=%+v err=%v", plan, err)
+	if err != nil || plan.State != model.PlanApproved || plan.ApprovedByHash != approver {
+		t.Fatalf("independent approval plan=%+v err=%v", plan, err)
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err == nil {
-		t.Fatal("production restore with one approval executed")
-	}
-	plan, err = engine.ApproveReleasePlan(ctx, secondApprover, plan.ID, model.ApprovePlanRequest{
-		Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase,
-	})
-	if err != nil || plan.State != model.PlanApproved || plan.ApprovedByHash == plan.SecondApprovedByHash {
-		t.Fatalf("second approval plan=%+v err=%v", plan, err)
-	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(plan), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
 	}
 	engine.Wait()

@@ -18,8 +18,8 @@ func (engine *Engine) AccessChanges(ctx context.Context, actor string) ([]model.
 }
 
 // CreateAccessChange creates the approval envelope for a high-risk RBAC
-// mutation. The actual policy is not changed until a third, independent
-// executor calls ApplyAccessChange after two approvals are recorded.
+// mutation. New plans use a two-party workflow: an independent approver
+// authorizes the creator to apply the mutation.
 func (engine *Engine) CreateAccessChange(
 	ctx context.Context,
 	actor string,
@@ -50,7 +50,7 @@ func (engine *Engine) CreateAccessChange(
 		ID: id, IdempotencyKey: request.IdempotencyKey, RequestDigest: digest,
 		ActorHash: actor, State: model.AccessChangePendingApproval,
 		ConfirmationPhrase:   fmt.Sprintf("批准访问策略变更 %s", shortDigest(digest)),
-		RequiresDualApproval: true,
+		RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty,
 	}
 	stored, created, err := engine.store.CreateAccessChange(ctx, change, string(payload), store.HashConfirmation(change.ConfirmationPhrase))
 	if err != nil {
@@ -101,7 +101,11 @@ func (engine *Engine) ApplyAccessChange(ctx context.Context, actor, id string) (
 	if change.State != model.AccessChangeApproved {
 		return model.AccessChange{}, errors.New("访问策略变更尚未完成双人批准")
 	}
-	if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
+	if model.UsesTwoPartyApproval(change.ApprovalPolicy) {
+		if actor != change.ActorHash || change.ApprovedByHash == "" || actor == change.ApprovedByHash {
+			return model.AccessChange{}, errors.New("访问策略变更需要由创建人执行，且批准人必须独立")
+		}
+	} else if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
 		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
 	}
 	var request model.AccessControlUpdateRequest

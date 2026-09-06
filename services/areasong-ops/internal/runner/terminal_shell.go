@@ -66,7 +66,8 @@ func (engine *Engine) CreateTerminalShellPlan(
 	now := time.Now().UTC()
 	plan := model.TerminalShellPlan{
 		ID: id, ObjectID: request.ObjectID, State: "pending_approval", ActorHash: actor,
-		InputDigest: digest, ConfirmationPhrase: fmt.Sprintf("批准紧急终端 %s %s", id, shortDigest(digest)),
+		ApprovalPolicy: model.ApprovalPolicyTwoParty,
+		InputDigest:    digest, ConfirmationPhrase: fmt.Sprintf("批准紧急终端 %s %s", id, shortDigest(digest)),
 		CreatedAt: now, ExpiresAt: now.Add(time.Duration(policy.MaxSessionSeconds) * time.Second),
 	}
 	requestDigest := digestText(strings.Join([]string{actor, request.ObjectID, digest, request.Confirmation}, "\x00"))

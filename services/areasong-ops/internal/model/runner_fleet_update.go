@@ -127,6 +127,7 @@ type FleetRunnerUpdatePlan struct {
 	ConfirmationPhrase         string                     `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash             string                     `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash       string                     `json:"secondApprovedByHash,omitempty"`
+	ApprovalPolicy             string                     `json:"approvalPolicy,omitempty"`
 	ExecutedByHash             string                     `json:"executedByHash,omitempty"`
 	CancelledByHash            string                     `json:"cancelledByHash,omitempty"`
 	Summary                    string                     `json:"summary,omitempty"`

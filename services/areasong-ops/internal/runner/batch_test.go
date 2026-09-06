@@ -185,7 +185,7 @@ func TestProductionBatchRequiresExplicitCanaryAndFailStop(t *testing.T) {
 	}
 }
 
-func TestBatchChildPlanPreservesParentFourActorChain(t *testing.T) {
+func TestBatchChildPlanPreservesParentTwoPartyChain(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	service := engine.catalog.Services["demo"]
@@ -194,7 +194,7 @@ func TestBatchChildPlanPreservesParentFourActorChain(t *testing.T) {
 	action.ObservationSeconds = 0
 	service.Actions["restart"] = action
 	engine.catalog.Services["demo"] = service
-	op := model.BatchOperation{ID: "batch-child-identity", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("4", 64), ExecutedByHash: strings.Repeat("3", 64), Action: "restart", Target: "", RequiresDualApproval: true, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
+	op := model.BatchOperation{ID: "batch-child-identity", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), ExecutedByHash: strings.Repeat("1", 64), Action: "restart", Target: "", RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
 	item := model.BatchItem{ID: "item-child-identity", Service: "demo", State: model.BatchNodeReady}
 	engine.startBatchItem(ctx, op, item)
 
@@ -202,8 +202,8 @@ func TestBatchChildPlanPreservesParentFourActorChain(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("child plan lookup: plan=%+v found=%v err=%v", plan, found, err)
 	}
-	if plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != op.SecondApprovedByHash {
-		t.Fatalf("child plan identities: actor=%q approver=%q second=%q, want actor=%q approver=%q second=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, op.ActorHash, op.ApprovedByHash, op.SecondApprovedByHash)
+	if plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != "" || plan.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+		t.Fatalf("child plan identities: actor=%q approver=%q second=%q policy=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, plan.ApprovalPolicy)
 	}
 	// startBatchItem enqueues the child task asynchronously.  Wait before the
 	// fixture closes SQLite so terminal-state writes cannot race database.Close.
@@ -223,7 +223,7 @@ func TestBatchChildPlanResumesAfterFirstApproval(t *testing.T) {
 	action.ObservationSeconds = 0
 	service.Actions["restart"] = action
 	engine.catalog.Services["demo"] = service
-	op := model.BatchOperation{ID: "batch-child-resume", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("3", 64), ExecutedByHash: strings.Repeat("4", 64), Action: "restart", RequiresDualApproval: true, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
+	op := model.BatchOperation{ID: "batch-child-resume", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), ExecutedByHash: strings.Repeat("1", 64), Action: "restart", RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
 	item := model.BatchItem{ID: "item-child-resume", Service: "demo", State: model.BatchNodeReady}
 	plan, err := engine.CreateReleasePlan(ctx, op.ActorHash, model.PreviewRequest{
 		Service: item.Service, Action: op.Action,
@@ -240,12 +240,12 @@ func TestBatchChildPlanResumesAfterFirstApproval(t *testing.T) {
 	engine.Wait()
 	stored, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || stored.State != model.PlanCompleted || stored.ApprovedByHash != op.ApprovedByHash ||
-		stored.SecondApprovedByHash != op.SecondApprovedByHash || stored.ExecutedByHash != op.ExecutedByHash {
+		stored.SecondApprovedByHash != "" || stored.ExecutedByHash != op.ActorHash {
 		t.Fatalf("resumed child plan=%+v err=%v", stored, err)
 	}
 }
 
-func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
+func TestProductionHighRiskBatchPreservesTwoPartyApprovalChain(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	engine.catalog.SchemaVersion = 4
@@ -260,7 +260,7 @@ func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
 		service.Actions["restart"] = action
 		engine.catalog.Services[name] = service
 	}
-	creator, first, second, executor := strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), strings.Repeat("4", 64)
+	creator, approver := strings.Repeat("1", 64), strings.Repeat("2", 64)
 	admin := model.Role{ID: "admin", Permissions: []model.Permission{model.Permission("*")}}
 	engine.catalog.Access = &config.AccessPolicy{
 		Enforced: true, DefaultTenant: "default",
@@ -268,9 +268,7 @@ func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
 		Roles:   map[string]model.Role{"admin": admin},
 		Principals: map[string]config.AccessPrincipal{
 			creator:  {Subject: creator, TenantID: "default", Roles: []string{"admin"}},
-			first:    {Subject: first, TenantID: "default", Roles: []string{"admin"}},
-			second:   {Subject: second, TenantID: "default", Roles: []string{"admin"}},
-			executor: {Subject: executor, TenantID: "default", Roles: []string{"admin"}},
+			approver: {Subject: approver, TenantID: "default", Roles: []string{"admin"}},
 		},
 	}
 	op, created, err := engine.CreateBatch(ctx, creator, model.BatchCreateRequest{
@@ -282,23 +280,16 @@ func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
 	if err != nil || !created || !op.RequiresDualApproval {
 		t.Fatalf("create=%+v created=%v err=%v", op, created, err)
 	}
-	op, err = engine.ApproveBatch(ctx, first, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
-	if err != nil || op.State != model.BatchPendingApproval || op.ApprovedByHash != first {
-		t.Fatalf("first approval=%+v err=%v", op, err)
+	op, err = engine.ApproveBatch(ctx, approver, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
+	if err != nil || op.State != model.BatchApproved || op.ApprovedByHash != approver || op.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+		t.Fatalf("independent approval=%+v err=%v", op, err)
 	}
-	if _, err := engine.ExecuteBatch(ctx, executor, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err == nil {
-		t.Fatal("batch executed before second approval")
-	}
-	op, err = engine.ApproveBatch(ctx, second, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
-	if err != nil || op.State != model.BatchApproved || op.SecondApprovedByHash != second {
-		t.Fatalf("second approval=%+v err=%v", op, err)
-	}
-	for _, forbidden := range []string{creator, first, second} {
+	for _, forbidden := range []string{approver} {
 		if _, err := engine.ExecuteBatch(ctx, forbidden, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); !errors.Is(err, store.ErrActorMismatch) {
 			t.Fatalf("forbidden executor %q err=%v", forbidden[:4], err)
 		}
 	}
-	if _, err := engine.ExecuteBatch(ctx, executor, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+	if _, err := engine.ExecuteBatch(ctx, creator, op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
 	}
 	engine.Wait()
@@ -308,7 +299,7 @@ func TestProductionHighRiskBatchPreservesFourActorApprovalChain(t *testing.T) {
 	}
 	for _, item := range finished.Items {
 		plan, err := database.GetReleasePlan(ctx, item.PlanID)
-		if err != nil || plan.ActorHash != creator || plan.ApprovedByHash != first || plan.SecondApprovedByHash != second || plan.ExecutedByHash != executor {
+		if err != nil || plan.ActorHash != creator || plan.ApprovedByHash != approver || plan.SecondApprovedByHash != "" || plan.ExecutedByHash != creator {
 			t.Fatalf("child plan=%+v err=%v", plan, err)
 		}
 	}

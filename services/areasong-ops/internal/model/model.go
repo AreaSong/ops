@@ -177,9 +177,12 @@ type RecoveryAction struct {
 }
 
 type ApprovalSummary struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	Service       string `json:"service"`
-	Action        string `json:"action"`
+	SchemaVersion int `json:"schemaVersion"`
+	// ApprovalPolicy is signed into the summary so an approved plan cannot be
+	// reinterpreted under a different identity workflow.
+	ApprovalPolicy string `json:"approvalPolicy,omitempty"`
+	Service        string `json:"service"`
+	Action         string `json:"action"`
 	// ApprovalException records a narrowly-scoped, policy-approved deviation
 	// from the default high-risk approval gate. It is part of the signed
 	// summary so the exception cannot be added after approval.
@@ -212,6 +215,25 @@ type ApprovalSummary struct {
 }
 
 const ApprovalExceptionC2LifecycleSingleActor = "c2_lifecycle_single_actor"
+
+// ApprovalPolicy identifies the identity workflow used by a plan. Empty is
+// deliberately treated as the legacy four-identity workflow when reading
+// persisted records created before this field existed.
+const (
+	ApprovalPolicyLegacyFourParty = "legacy_four_party"
+	ApprovalPolicyTwoParty        = "two_party_v1"
+)
+
+func EffectiveApprovalPolicy(policy string) string {
+	if policy == ApprovalPolicyTwoParty {
+		return ApprovalPolicyTwoParty
+	}
+	return ApprovalPolicyLegacyFourParty
+}
+
+func UsesTwoPartyApproval(policy string) bool {
+	return EffectiveApprovalPolicy(policy) == ApprovalPolicyTwoParty
+}
 
 // AllowsC2LifecycleSingleActorApproval is intentionally strict. It applies
 // only to the production AreaForge lifecycle plan and never to an explicit
@@ -247,6 +269,14 @@ func IndependentExecutor(actor, creator, firstApprover, secondApprover string) b
 
 func (plan ReleasePlan) AllowsExecutor(actor string) bool {
 	if plan.Risk == RiskHigh && !plan.AllowsC2LifecycleSingleActorApproval() {
+		if UsesTwoPartyApproval(plan.ApprovalPolicy) {
+			// A two-party plan is executable only after an independent
+			// approver has been durably recorded.  Treat a malformed or
+			// partially migrated row as unexecutable rather than allowing the
+			// creator through on the actor check alone.
+			return actor != "" && actor == plan.ActorHash &&
+				plan.ApprovedByHash != "" && plan.ApprovedByHash != plan.ActorHash
+		}
 		return IndependentExecutor(actor, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash)
 	}
 	return actor != "" && actor == plan.ActorHash
@@ -265,6 +295,7 @@ type ReleasePlan struct {
 	State                        PlanState       `json:"state"`
 	Digest                       string          `json:"digest"`
 	ApprovalSummary              ApprovalSummary `json:"approvalSummary"`
+	ApprovalPolicy               string          `json:"approvalPolicy,omitempty"`
 	ConfirmationPhrase           string          `json:"confirmationPhrase,omitempty"`
 	RequiresConfirmation         bool            `json:"requiresConfirmation"`
 	ApprovedByHash               string          `json:"approvedByHash,omitempty"`

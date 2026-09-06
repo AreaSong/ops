@@ -7,11 +7,12 @@
 - DNS：`ops.areasong.top`，A 记录指向 LosAngeles，开启 Cloudflare 代理。
 - Application：Self-hosted，域名 `ops.areasong.top`。
 - Session duration：6 小时。
-- Allow policy：仅 `song80184@gmail.com`，登录方式使用 Email OTP。
+- Allow policy：仅 `song80184@gmail.com`、`3177348309@qq.com`，登录方式使用 Email OTP。
 - 不创建 Bypass policy，不复用 Grafana 的 service token，不开放公共 health 路径。
 - Web 端校验 Access JWT 的 issuer、audience、有效期和邮箱；Nginx 头不能替代 JWT。
 - Web 将规范化邮箱转换为 SHA-256 subject 交给 Runner；`config/services.example.json` 的 `access.principals` 使用该 hash 作为 key，不能把前端传入的邮箱、角色或租户当作授权依据。
 - Access 登录成功不等于拥有运维权限。Runner 还要按 `tenantId`、角色 permission 和 `objectIds` 绑定做 RBAC；未登记、过期或越过对象范围的请求必须拒绝。
+- 生产高风险审批使用两账号策略：`song80184@gmail.com` 创建/执行，`3177348309@qq.com` 独立批准；两者不能在同一高风险计划中重复充当独立批准人。C2 AreaForge `start/stop` 是唯一保留的单人例外。
 
 ## 写入 Web 配置
 
@@ -24,7 +25,7 @@
 固定值：
 
 ```dotenv
-OPS_ALLOWED_EMAIL=song80184@gmail.com
+OPS_ALLOWED_EMAILS=song80184@gmail.com,3177348309@qq.com
 OPS_ACCESS_ISSUER=https://areasong.cloudflareaccess.com
 OPS_ACCESS_AUDIENCE=<AreaSong Ops Application AUD>
 OPS_PUBLIC_ORIGIN=https://ops.areasong.top

@@ -13,7 +13,7 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
-func TestComposeHTTPFourActorApplyAndRollbackEndToEnd(t *testing.T) {
+func TestComposeHTTPTwoPartyApplyAndRollbackEndToEnd(t *testing.T) {
 	root := t.TempDir()
 	controlledPath := filepath.Join(root, "controlled.yml")
 	runtimePath := filepath.Join(root, "runtime.yml")
@@ -92,40 +92,36 @@ func TestComposeHTTPFourActorApplyAndRollbackEndToEnd(t *testing.T) {
 	}
 	client.as(actors[0]).request(http.MethodPost, composeRevisionPath(revision.ID, "approve"), approval, http.StatusConflict, nil)
 	client.as(actors[1]).request(http.MethodPost, composeRevisionPath(revision.ID, "approve"), approval, http.StatusOK, &revision)
-	if revision.State != "pending_second_approval" || revision.ApprovedBy != actors[1] {
-		t.Fatalf("first approval=%+v", revision)
-	}
-	client.as(actors[2]).request(http.MethodPost, composeRevisionPath(revision.ID, "approve"), approval, http.StatusOK, &revision)
-	if revision.State != "approved" || revision.SecondApprovedByHash != actors[2] {
-		t.Fatalf("second approval=%+v", revision)
+	if revision.State != "approved" || revision.ApprovedBy != actors[1] || revision.SecondApprovedByHash != "" || revision.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+		t.Fatalf("independent approval=%+v", revision)
 	}
 
 	apply := model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}
-	client.as(actors[2]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusConflict, nil)
-	client.as(actors[3]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusOK, &revision)
-	if revision.State != "applied" || revision.AppliedByHash != actors[3] {
+	client.as(actors[1]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusConflict, nil)
+	client.as(actors[0]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusOK, &revision)
+	if revision.State != "applied" || revision.AppliedByHash != actors[0] {
 		t.Fatalf("applied revision=%+v", revision)
 	}
 	assertFileContent(t, controlledPath, newContent)
 	assertFileContent(t, runtimePath, newContent)
 	commandCount := composeCommandCount(commandRunner)
-	client.as(actors[3]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusOK, &replay)
+	client.as(actors[0]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusOK, &replay)
 	if composeCommandCount(commandRunner) != commandCount {
 		t.Fatal("idempotent HTTP apply executed Compose again")
 	}
-	client.as(actors[4]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusConflict, nil)
+	client.as(actors[2]).request(http.MethodPost, composeRevisionPath(revision.ID, "apply"), apply, http.StatusConflict, nil)
 
 	rollback := model.ComposeRollbackRequest{
 		Confirmation: "回滚 Compose 变更 " + revision.ID, IdempotencyKey: mustUUID(t),
 	}
-	client.as(actors[3]).request(http.MethodPost, composeRevisionPath(revision.ID, "rollback"), rollback, http.StatusOK, &revision)
-	if revision.State != "rolled_back" || revision.RolledBackByHash != actors[3] {
+	client.as(actors[0]).request(http.MethodPost, composeRevisionPath(revision.ID, "rollback"), rollback, http.StatusOK, &revision)
+	if revision.State != "rolled_back" || revision.RolledBackByHash != actors[0] {
 		t.Fatalf("rolled back revision=%+v", revision)
 	}
 	assertFileContent(t, controlledPath, oldContent)
 	assertFileContent(t, runtimePath, oldContent)
 	commandCount = composeCommandCount(commandRunner)
-	client.as(actors[3]).request(http.MethodPost, composeRevisionPath(revision.ID, "rollback"), rollback, http.StatusOK, &replay)
+	client.as(actors[0]).request(http.MethodPost, composeRevisionPath(revision.ID, "rollback"), rollback, http.StatusOK, &replay)
 	if composeCommandCount(commandRunner) != commandCount {
 		t.Fatal("idempotent HTTP rollback executed Compose again")
 	}
@@ -143,7 +139,7 @@ func TestComposeHTTPFourActorApplyAndRollbackEndToEnd(t *testing.T) {
 	}
 	wantEvents := map[string]int{
 		"compose.revision.proposed":          1,
-		"compose.revision.approved":          2,
+		"compose.revision.approved":          1,
 		"compose.revision.apply_started":     1,
 		"compose.revision.apply_finished":    1,
 		"compose.revision.rollback_started":  1,
@@ -199,7 +195,7 @@ func TestComposeHTTPExecutionGatesFailClosed(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newComposeHTTPGateFixture(t)
 			test.mutate(fixture)
-			response := fixture.client.as(fixture.actors[3]).request(
+			response := fixture.client.as(fixture.actors[0]).request(
 				http.MethodPost, composeRevisionPath(fixture.revision.ID, "apply"),
 				model.ComposeApplyRequest{IdempotencyKey: mustUUID(t)}, http.StatusConflict, nil,
 			)
@@ -290,9 +286,7 @@ func newComposeHTTPGateFixture(t *testing.T) *composeHTTPGateFixture {
 		IdempotencyKey: mustUUID(t), RecoveryPointID: point.ID,
 	}, http.StatusCreated, &revision)
 	approval := model.ComposeApprovalRequest{Digest: revision.Digest, Confirmation: revision.ConfirmationPhrase}
-	for _, actor := range actors[1:3] {
-		client.as(actor).request(http.MethodPost, composeRevisionPath(revision.ID, "approve"), approval, http.StatusOK, &revision)
-	}
+	client.as(actors[1]).request(http.MethodPost, composeRevisionPath(revision.ID, "approve"), approval, http.StatusOK, &revision)
 	return &composeHTTPGateFixture{
 		t: t, database: database, client: client, actors: actors, revision: revision, point: point,
 		commandRunner: commandRunner, alertmanager: engine.alertmanager.(*fakeAlertmanager),

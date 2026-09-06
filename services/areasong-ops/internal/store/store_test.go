@@ -497,6 +497,32 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	}
 }
 
+func TestStartPlanTaskRejectsTwoPartyPlanWithoutIndependentApprover(t *testing.T) {
+	ctx := context.Background()
+	database := openTestStore(t)
+	now := time.Now().UTC()
+	plan := model.ReleasePlan{
+		ID: "malformed-two-party", ActorHash: "creator", Service: "demo", Action: "update",
+		Risk: model.RiskHigh, State: model.PlanApproved, Digest: "sha256:malformed",
+		ApprovalPolicy: model.ApprovalPolicyTwoParty, RequiresDualApproval: true,
+		ApprovalSummary: model.ApprovalSummary{
+			SchemaVersion: 1, Service: "demo", Action: "update", Risk: model.RiskHigh,
+			Steps: []string{"preflight"}, ExpectedBefore: map[string]any{"currentVersion": "1.0.0"},
+		}, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{
+		Plan: plan, ConfirmationHash: HashConfirmation("确认"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := database.StartPlanTask(ctx, plan, "creator", "malformed-idem", "malformed-task", nil); err != ErrActorMismatch {
+		t.Fatalf("malformed two-party plan start err=%v, want ErrActorMismatch", err)
+	}
+	if _, err := database.GetTask(ctx, "malformed-task"); err != ErrNotFound {
+		t.Fatalf("malformed plan created a task: err=%v", err)
+	}
+}
+
 func TestReleasePlanApprovalAndAuditAreAtomic(t *testing.T) {
 	database := openTestStore(t)
 	ctx := context.Background()

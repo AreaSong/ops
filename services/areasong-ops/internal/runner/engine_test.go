@@ -1061,6 +1061,12 @@ func approveReleasePlanForTest(
 	if !plan.RequiresDualApproval {
 		return approved
 	}
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		if approved.State != model.PlanApproved && approved.State != model.PlanScheduled {
+			t.Fatalf("two-party approval did not enter approved state: %+v", approved)
+		}
+		return approved
+	}
 	if approved.State != model.PlanPendingApproval || approved.ApprovedByHash != firstApprover {
 		t.Fatalf("first approval did not preserve pending state: %+v", approved)
 	}
@@ -1088,6 +1094,9 @@ func mustUUID(t *testing.T) string {
 
 func releasePlanExecutor(plan model.ReleasePlan) string {
 	if plan.Risk != model.RiskHigh || plan.AllowsC2LifecycleSingleActorApproval() {
+		return plan.ActorHash
+	}
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
 		return plan.ActorHash
 	}
 	for _, candidate := range []string{strings.Repeat("d", 64), strings.Repeat("e", 64), strings.Repeat("f", 64)} {

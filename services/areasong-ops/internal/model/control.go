@@ -152,6 +152,7 @@ type AccessChange struct {
 	ApprovedByHash       string            `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash string            `json:"secondApprovedByHash,omitempty"`
 	RequiresDualApproval bool              `json:"requiresDualApproval"`
+	ApprovalPolicy       string            `json:"approvalPolicy,omitempty"`
 	Version              int64             `json:"version,omitempty"`
 	Error                string            `json:"error,omitempty"`
 	CreatedAt            time.Time         `json:"createdAt"`
@@ -265,6 +266,7 @@ type ComposeRevision struct {
 	ConfirmationPhrase            string             `json:"confirmationPhrase,omitempty"`
 	ApprovedBy                    string             `json:"approvedBy,omitempty"`
 	SecondApprovedByHash          string             `json:"secondApprovedByHash,omitempty"`
+	ApprovalPolicy                string             `json:"approvalPolicy,omitempty"`
 	AppliedByHash                 string             `json:"appliedByHash,omitempty"`
 	ApplyIdempotencyKey           string             `json:"-"`
 	RollbackIdempotencyKey        string             `json:"-"`
@@ -428,6 +430,7 @@ type KubernetesPlan struct {
 	ApprovedByHash        string           `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash  string           `json:"secondApprovedByHash,omitempty"`
 	RequiresDualApproval  bool             `json:"requiresDualApproval"`
+	ApprovalPolicy        string           `json:"approvalPolicy,omitempty"`
 	OperationID           string           `json:"operationId,omitempty"`
 	ExecuteIdempotencyKey string           `json:"executeIdempotencyKey,omitempty"`
 	ExecutedByHash        string           `json:"executedByHash,omitempty"`
@@ -548,6 +551,7 @@ type ManagedFileProposal struct {
 	ConfirmationPhrase     string     `json:"confirmationPhrase,omitempty"`
 	ApprovedByHash         string     `json:"approvedByHash,omitempty"`
 	SecondApprovedByHash   string     `json:"secondApprovedByHash,omitempty"`
+	ApprovalPolicy         string     `json:"approvalPolicy,omitempty"`
 	AppliedByHash          string     `json:"appliedByHash,omitempty"`
 	ApplyIdempotencyKey    string     `json:"-"`
 	BackupPath             string     `json:"backupPath,omitempty"`

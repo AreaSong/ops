@@ -35,7 +35,7 @@ func (runtime *fakeExtensionRuntime) Execute(
 	return "extension-ok", 0, nil
 }
 
-func TestExtensionPlanRequiresDualApprovalAndIndependentExecution(t *testing.T) {
+func TestExtensionPlanRequiresIndependentApprovalAndCreatorExecution(t *testing.T) {
 	fixture := newExtensionPlanFixture(t)
 	ctx := context.Background()
 	content := minimalWASMModule()
@@ -59,36 +59,30 @@ func TestExtensionPlanRequiresDualApprovalAndIndependentExecution(t *testing.T) 
 	plan, err = fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{
 		Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
 	})
-	if err != nil || plan.State != "pending_second_approval" {
-		t.Fatalf("first approval=%+v err=%v", plan, err)
+	if err != nil || plan.State != "approved" || plan.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+		t.Fatalf("independent approval=%+v err=%v", plan, err)
 	}
-	if _, err := fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{
+	if replay, err := fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{
 		Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
-	}); err == nil {
-		t.Fatal("same actor completed both extension approvals")
-	}
-	plan, err = fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[2], plan.ID, model.ExtensionPlanApprovalRequest{
-		Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
-	})
-	if err != nil || plan.State != "approved" {
-		t.Fatalf("second approval=%+v err=%v", plan, err)
+	}); err != nil || replay.State != "approved" || replay.ApprovedByHash != fixture.actors[1] {
+		t.Fatalf("approval replay=%+v err=%v", replay, err)
 	}
 	if _, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)}); err == nil {
 		t.Fatal("approver executed extension plan")
 	}
 	key := mustUUID(t)
-	finished, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[3], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key})
+	finished, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key})
 	if err != nil || finished.State != "succeeded" || finished.Output != "extension-ok" || fixture.runtime.calls != 1 {
 		t.Fatalf("finished=%+v calls=%d err=%v", finished, fixture.runtime.calls, err)
 	}
-	replayed, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[3], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key})
+	replayed, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key})
 	if err != nil || replayed.State != "succeeded" || fixture.runtime.calls != 1 {
 		t.Fatalf("replayed=%+v calls=%d err=%v", replayed, fixture.runtime.calls, err)
 	}
-	if _, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key}); err == nil {
+	if _, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[2], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: key}); err == nil {
 		t.Fatal("a different actor replayed the execution idempotency key")
 	}
-	if _, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[3], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)}); err == nil {
+	if _, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)}); err == nil {
 		t.Fatal("extension plan accepted a different execution idempotency key")
 	}
 	audit, err := fixture.database.ListAudit(ctx, 30, 0)
@@ -128,9 +122,6 @@ func TestExtensionExecutionRejectsTamperedArtifact(t *testing.T) {
 	if _, err := fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[2], plan.ID, model.ExtensionPlanApprovalRequest{Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase}); err != nil {
-		t.Fatal(err)
-	}
 	_, path, err := fixture.database.GetStoredExtensionPackage(ctx, manifest.ID, manifest.Version)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +129,7 @@ func TestExtensionExecutionRejectsTamperedArtifact(t *testing.T) {
 	if err := os.WriteFile(path, []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	finished, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[3], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)})
+	finished, err := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID, model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)})
 	if err == nil || finished.State != "failed" || fixture.runtime.calls != 0 {
 		t.Fatalf("tampered execution plan=%+v calls=%d err=%v", finished, fixture.runtime.calls, err)
 	}
@@ -262,16 +253,13 @@ func TestExtensionPlanHTTPAPIUsesPlanApprovalAndDoesNotReturnInput(t *testing.T)
 	if bytes.Contains(planBody, []byte("must-stay-in-runner")) {
 		t.Fatal("extension plan API returned private input")
 	}
-	first := postExtensionJSON[model.ExtensionPlan](t, handler, fixture.actors[1], "/v1/extensions/plans/"+created.ID+"/approve", model.ExtensionPlanApprovalRequest{
+	approved := postExtensionJSON[model.ExtensionPlan](t, handler, fixture.actors[1], "/v1/extensions/plans/"+created.ID+"/approve", model.ExtensionPlanApprovalRequest{
 		Digest: created.PlanDigest, Confirmation: created.ConfirmationPhrase,
 	}, http.StatusOK)
-	second := postExtensionJSON[model.ExtensionPlan](t, handler, fixture.actors[2], "/v1/extensions/plans/"+created.ID+"/approve", model.ExtensionPlanApprovalRequest{
-		Digest: created.PlanDigest, Confirmation: created.ConfirmationPhrase,
-	}, http.StatusOK)
-	if first.State != "pending_second_approval" || second.State != "approved" {
-		t.Fatalf("approval states first=%+v second=%+v", first, second)
+	if approved.State != "approved" || approved.ApprovedByHash != fixture.actors[1] || approved.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+		t.Fatalf("approval=%+v", approved)
 	}
-	executed := postExtensionJSON[model.ExtensionPlan](t, handler, fixture.actors[3], "/v1/extensions/plans/"+created.ID+"/execute", model.ExtensionPlanExecuteRequest{
+	executed := postExtensionJSON[model.ExtensionPlan](t, handler, fixture.actors[0], "/v1/extensions/plans/"+created.ID+"/execute", model.ExtensionPlanExecuteRequest{
 		IdempotencyKey: mustUUID(t),
 	}, http.StatusAccepted)
 	if executed.State != "succeeded" || executed.Output != "extension-ok" {
@@ -304,16 +292,14 @@ func TestExtensionExecutionRejectsApprovedPolicyDrift(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, actor := range fixture.actors[1:3] {
-				plan, err = fixture.engine.ApproveExtensionPlan(ctx, actor, plan.ID, model.ExtensionPlanApprovalRequest{
-					Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
-				})
-				if err != nil {
-					t.Fatal(err)
-				}
+			plan, err = fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{
+				Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
 			test.mutate(fixture.engine.catalog.Extensions)
-			finished, runErr := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[3], plan.ID,
+			finished, runErr := fixture.engine.ExecuteExtensionPlan(ctx, fixture.actors[0], plan.ID,
 				model.ExtensionPlanExecuteRequest{IdempotencyKey: mustUUID(t)})
 			if runErr == nil || finished.State != "failed" || fixture.runtime.calls != 0 {
 				t.Fatalf("policy drift execution plan=%+v calls=%d err=%v", finished, fixture.runtime.calls, runErr)
@@ -370,15 +356,13 @@ func TestExtensionPlanRecoveryMarksRunningNeedsAttention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, actor := range fixture.actors[1:3] {
-		plan, err = fixture.engine.ApproveExtensionPlan(ctx, actor, plan.ID, model.ExtensionPlanApprovalRequest{
-			Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
-		})
-		if err != nil {
-			t.Fatalf("approval %d: %v", index+1, err)
-		}
+	plan, err = fixture.engine.ApproveExtensionPlan(ctx, fixture.actors[1], plan.ID, model.ExtensionPlanApprovalRequest{
+		Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
+	})
+	if err != nil {
+		t.Fatalf("approval: %v", err)
 	}
-	if _, _, fresh, err := fixture.database.StartExtensionPlan(ctx, plan.ID, fixture.actors[3], mustUUID(t)); err != nil || !fresh {
+	if _, _, fresh, err := fixture.database.StartExtensionPlan(ctx, plan.ID, fixture.actors[0], mustUUID(t)); err != nil || !fresh {
 		t.Fatalf("start running fresh=%v err=%v", fresh, err)
 	}
 	if _, err := NewEngineChecked(fixture.engine.catalog, fixture.database, &fakeExecutor{}, fixture.engine.stateRoot, WithExtensionRuntime(fixture.runtime)); err != nil {

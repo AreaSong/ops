@@ -217,30 +217,26 @@ func TestFleetRunnerUpdateRequestRejectsImplicitOrUnsafeTargets(t *testing.T) {
 	}
 }
 
-func TestFleetRunnerUpdateRequiresFourIndependentActorsAndRevalidatesArtifact(t *testing.T) {
+func TestFleetRunnerUpdateRequiresIndependentApprovalAndCreatorExecution(t *testing.T) {
 	fixture := newFleetRunnerUpdateFixture(t)
 	plan := fixture.createPlan(t)
 	if _, err := fixture.engine.ApproveFleetRunnerUpdatePlan(context.Background(), fixture.actors[0], plan.ID, model.FleetRunnerUpdateApprovalRequest{Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase}); err == nil {
 		t.Fatal("creator approved its own Fleet update")
 	}
 	first, err := fixture.engine.ApproveFleetRunnerUpdatePlan(context.Background(), fixture.actors[1], plan.ID, model.FleetRunnerUpdateApprovalRequest{Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase})
-	if err != nil || first.State != model.FleetRunnerUpdatePendingSecondApproval {
-		t.Fatalf("first approval state=%s err=%v", first.State, err)
+	if err != nil || first.State != model.FleetRunnerUpdateApproved || first.ApprovedByHash != fixture.actors[1] || first.SecondApprovedByHash != "" {
+		t.Fatalf("approval state=%s err=%v", first.State, err)
 	}
-	second, err := fixture.engine.ApproveFleetRunnerUpdatePlan(context.Background(), fixture.actors[2], plan.ID, model.FleetRunnerUpdateApprovalRequest{Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase})
-	if err != nil || second.State != model.FleetRunnerUpdateApproved {
-		t.Fatalf("second approval state=%s err=%v", second.State, err)
-	}
-	for _, actor := range fixture.actors[:3] {
+	for _, actor := range fixture.actors[1:3] {
 		if _, _, err := fixture.engine.ExecuteFleetRunnerUpdatePlan(context.Background(), actor, plan.ID, model.FleetRunnerUpdateExecuteRequest{IdempotencyKey: "22222222-2222-4222-8222-222222222222"}); err == nil {
 			t.Fatalf("non-independent actor %s executed Fleet update", actor[:4])
 		}
 	}
-	started, fresh, err := fixture.engine.ExecuteFleetRunnerUpdatePlan(context.Background(), fixture.actors[3], plan.ID, model.FleetRunnerUpdateExecuteRequest{IdempotencyKey: "22222222-2222-4222-8222-222222222222"})
+	started, fresh, err := fixture.engine.ExecuteFleetRunnerUpdatePlan(context.Background(), fixture.actors[0], plan.ID, model.FleetRunnerUpdateExecuteRequest{IdempotencyKey: "22222222-2222-4222-8222-222222222222"})
 	if err != nil || !fresh || started.State != model.FleetRunnerUpdateRunning {
 		t.Fatalf("execute fresh=%v state=%s err=%v", fresh, started.State, err)
 	}
-	if _, fresh, err := fixture.engine.ExecuteFleetRunnerUpdatePlan(context.Background(), fixture.actors[3], plan.ID, model.FleetRunnerUpdateExecuteRequest{IdempotencyKey: "22222222-2222-4222-8222-222222222222"}); err != nil || fresh {
+	if _, fresh, err := fixture.engine.ExecuteFleetRunnerUpdatePlan(context.Background(), fixture.actors[0], plan.ID, model.FleetRunnerUpdateExecuteRequest{IdempotencyKey: "22222222-2222-4222-8222-222222222222"}); err != nil || fresh {
 		t.Fatalf("execution replay fresh=%v err=%v", fresh, err)
 	}
 
@@ -261,10 +257,7 @@ func TestFleetRunnerUpdateCanaryFailureStopsAndRollsBack(t *testing.T) {
 	if _, err := fixture.db.ApproveFleetRunnerUpdatePlan(ctx, plan.ID, fixture.actors[1], plan.PlanDigest, plan.ConfirmationPhrase); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.db.ApproveFleetRunnerUpdatePlan(ctx, plan.ID, fixture.actors[2], plan.PlanDigest, plan.ConfirmationPhrase); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := fixture.db.StartFleetRunnerUpdatePlan(ctx, plan.ID, fixture.actors[3], "execution-key"); err != nil {
+	if _, _, err := fixture.db.StartFleetRunnerUpdatePlan(ctx, plan.ID, fixture.actors[0], "execution-key"); err != nil {
 		t.Fatal(err)
 	}
 	canary := claimFleetRunnerUpdateForTest(t, fixture.db, "runner-a")

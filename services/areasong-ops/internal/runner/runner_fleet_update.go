@@ -202,7 +202,7 @@ func (engine *Engine) CreateFleetRunnerUpdatePlan(
 		ArtifactSignature: request.ArtifactSignature, StagedPath: stagedPath,
 		TargetRunnerIDs: append([]string(nil), request.TargetRunnerIDs...),
 		BatchPolicy:     request.BatchPolicy, MaxConcurrent: request.MaxConcurrent,
-		ChangeWindow: &window, RollbackOnFailure: true,
+		ChangeWindow: &window, RollbackOnFailure: true, ApprovalPolicy: model.ApprovalPolicyTwoParty,
 		State: model.FleetRunnerUpdatePendingApproval, CurrentBatch: -1,
 		ConfirmationPhrase: phrase, Items: items, CreatedAt: now,
 		ExpiresAt: request.ChangeWindow.EndAt.UTC(), UpdatedAt: now,

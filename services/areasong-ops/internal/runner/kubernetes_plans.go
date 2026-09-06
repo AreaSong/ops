@@ -50,7 +50,7 @@ func (engine *Engine) CreateKubernetesPlan(
 		ID: newPlanID(), IdempotencyKey: request.IdempotencyKey, RequestDigest: requestDigest,
 		ActorHash: actor, TenantID: target.TenantID, Target: target, ManifestDigest: digest,
 		Action: "apply", State: "pending_approval", ConfirmationPhrase: phrase,
-		RequiresDualApproval: true, CreatedAt: now,
+		RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, CreatedAt: now,
 	}
 	created, wasCreated, err := engine.store.CreateKubernetesPlan(ctx, plan, request.Manifest, store.HashConfirmation(phrase))
 	if err != nil {
@@ -114,7 +114,7 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 		ActorHash: actor, TenantID: target.TenantID, Target: target, ManifestDigest: digest,
 		Action: "rollback", State: "pending_approval", RollbackOfPlanID: sourcePlanID,
 		RollbackTargetPlanID: request.RollbackToPlanID, SourceManifestDigest: source.ManifestDigest, ConfirmationPhrase: phrase,
-		RequiresDualApproval: true, CreatedAt: time.Now().UTC(),
+		RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, CreatedAt: time.Now().UTC(),
 	}
 	created, wasCreated, err := engine.store.CreateKubernetesPlan(
 		ctx, plan, manifest, store.HashConfirmation(phrase),
@@ -214,8 +214,14 @@ func (engine *Engine) ExecuteKubernetesPlan(
 			return model.KubernetesOperation{}, err
 		}
 	}
-	if plan.RequiresDualApproval && !model.IndependentExecutor(actor, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
-		return model.KubernetesOperation{}, errors.New("Kubernetes 执行人必须独立于创建人和两名批准人")
+	if plan.RequiresDualApproval {
+		if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+			if actor != plan.ActorHash || plan.ApprovedByHash == "" || plan.ApprovedByHash == actor {
+				return model.KubernetesOperation{}, errors.New("Kubernetes 执行必须由创建人完成，且批准人必须独立")
+			}
+		} else if !model.IndependentExecutor(actor, plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash) {
+			return model.KubernetesOperation{}, errors.New("Kubernetes 执行人必须独立于创建人和两名批准人")
+		}
 	}
 	if plan.ExecutedByHash != "" && plan.ExecutedByHash != actor {
 		return model.KubernetesOperation{}, store.ErrActorMismatch

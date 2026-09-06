@@ -168,11 +168,11 @@ func (store *Store) SaveManagedFileProposal(
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO managed_file_proposals(
 		id,idempotency_key,request_digest,actor_hash,root_id,relative_path,
-		expected_digest,proposed_digest,content,state,confirmation_hash,confirmation_phrase,created_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, proposal.ID, proposal.IdempotencyKey, requestDigest,
+		expected_digest,proposed_digest,content,state,confirmation_hash,confirmation_phrase,approval_policy,created_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, proposal.ID, proposal.IdempotencyKey, requestDigest,
 		proposal.ActorHash, proposal.RootID, proposal.Path, proposal.ExpectedDigest,
 		proposal.ProposedDigest, proposal.Content, proposal.State,
-		HashConfirmation(proposal.ConfirmationPhrase), proposal.ConfirmationPhrase, timeText(proposal.CreatedAt))
+		HashConfirmation(proposal.ConfirmationPhrase), proposal.ConfirmationPhrase, proposal.ApprovalPolicy, timeText(proposal.CreatedAt))
 	if err != nil {
 		return model.ManagedFileProposal{}, false, err
 	}

@@ -1,6 +1,7 @@
 import { CheckCircle2, FileCode2, FolderOpen, LoaderCircle, RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { runAction } from '../action'
+import { canCurrentActorApprove, canCurrentActorExecute } from '../approval'
 import { formatTime, shortHash } from '../labels'
 import type { ManagedFileProposal, ManagedFileView } from '../types'
 
@@ -11,6 +12,7 @@ interface FilesProps {
   available: boolean
   error: string
   busy: string
+  currentActorHash?: string
   onRefresh: () => void
   onRead: (rootId: string, path: string) => Promise<void>
   onPropose: (body: { rootId: string; path: string; content: string; expectedDigest: string }) => Promise<void>
@@ -34,6 +36,14 @@ function proposalLabel(state: string): string {
   }
 }
 
+function approvalLabel(proposal: ManagedFileProposal, state: string): string {
+  if (proposal.approvalPolicy === 'two_party_v1') {
+    if (state === 'proposed') return '等待独立批准'
+    if (state === 'approved') return '等待创建人应用'
+  }
+  return proposalLabel(state)
+}
+
 function proposalTone(state: string): 'healthy' | 'warning' | 'error' | 'unknown' {
   if (state === 'applied' || state === 'rolled_back') return 'healthy'
   if (state === 'proposed' || state === 'pending_second_approval' || state === 'approved' || state === 'applying' || state === 'rolling_back') return 'warning'
@@ -43,7 +53,7 @@ function proposalTone(state: string): 'healthy' | 'warning' | 'error' | 'unknown
 
 export function Files({
   file, proposals, loading, available, error, busy,
-  onRefresh, onRead, onPropose, onApprove, onApply, onRollback,
+  onRefresh, onRead, onPropose, onApprove, onApply, onRollback, currentActorHash,
 }: FilesProps) {
   const [rootId, setRootId] = useState('')
   const [path, setPath] = useState('')
@@ -136,12 +146,15 @@ export function Files({
             const confirmation = confirmations[proposal.id] ?? ''
             const approvalPhrase = proposal.confirmationPhrase ?? ''
             const rollbackPhrase = `回滚文件变更 ${proposal.id}`
-            const canApprove = state === 'proposed' || state === 'pending_second_approval'
+            const approvalPending = state === 'proposed' || (proposal.approvalPolicy !== 'two_party_v1' && state === 'pending_second_approval')
+            const canApprove = approvalPending && canCurrentActorApprove(proposal, currentActorHash)
+            const twoParty = proposal.approvalPolicy === 'two_party_v1'
             return <article className={`runner-update-card runner-update-${state}`} key={proposal.id}>
-              <header><div className="runner-update-title"><span className={`service-indicator ${tone}`} /><div><strong>{proposal.rootId}/{proposal.path}</strong><small>{proposalLabel(state)} · {formatTime(proposal.createdAt)}</small></div></div><span className={`credential-health ${tone}`}>{proposalLabel(state)}</span></header>
+              <header><div className="runner-update-title"><span className={`service-indicator ${tone}`} /><div><strong>{proposal.rootId}/{proposal.path}</strong><small>{approvalLabel(proposal, state)} · {formatTime(proposal.createdAt)}</small></div></div><span className={`credential-health ${tone}`}>{approvalLabel(proposal, state)}</span></header>
               <dl className="runner-update-detail"><div><dt>原摘要</dt><dd><code>{shortHash(proposal.expectedDigest)}</code></dd></div><div><dt>新摘要</dt><dd><code>{shortHash(proposal.proposedDigest)}</code></dd></div><div><dt>第一批准</dt><dd><code>{shortHash(proposal.approvedByHash)}</code></dd></div><div><dt>第二批准</dt><dd><code>{shortHash(proposal.secondApprovedByHash)}</code></dd></div></dl>
-              {canApprove && <div className="runner-update-actions attention"><label><span>批准确认</span><code>{approvalPhrase}</code><input value={confirmation} onChange={(event) => setConfirmation(proposal.id, event.target.value)} /></label><button className="button secondary" type="button" disabled={!approvalPhrase || confirmation !== approvalPhrase || busy === `files-approve:${proposal.id}`} onClick={() => runAction(approve(proposal))}><ShieldCheck size={14} />{busy === `files-approve:${proposal.id}` ? '批准中' : state === 'proposed' ? '第一人批准' : '第二人批准'}</button></div>}
-              {state === 'approved' && <div className="runner-update-actions"><span>双人批准已完成，执行人需独立于两位批准人。</span><button className="button danger" type="button" disabled={busy === `files-apply:${proposal.id}`} onClick={() => runAction(onApply(proposal))}><CheckCircle2 size={14} />{busy === `files-apply:${proposal.id}` ? '应用中' : '独立应用'}</button></div>}
+              {canApprove && <div className="runner-update-actions attention"><label><span>批准确认</span><code>{approvalPhrase}</code><input value={confirmation} onChange={(event) => setConfirmation(proposal.id, event.target.value)} /></label><button className="button secondary" type="button" disabled={!approvalPhrase || confirmation !== approvalPhrase || busy === `files-approve:${proposal.id}`} onClick={() => runAction(approve(proposal))}><ShieldCheck size={14} />{busy === `files-approve:${proposal.id}` ? '批准中' : twoParty ? '独立批准' : state === 'proposed' ? '第一人批准' : '第二人批准'}</button></div>}
+              {approvalPending && !canApprove && <small>等待尚未参与该提案的独立批准账号处理。</small>}
+              {state === 'approved' && <div className="runner-update-actions"><span>{twoParty ? '独立批准已完成，由创建人应用。' : '双人批准已完成，执行人需独立于两位批准人。'}</span><button className="button danger" type="button" disabled={busy === `files-apply:${proposal.id}` || !canCurrentActorExecute(proposal, currentActorHash)} onClick={() => runAction(onApply(proposal))}><CheckCircle2 size={14} />{busy === `files-apply:${proposal.id}` ? '应用中' : twoParty ? '创建人应用' : '独立应用'}</button></div>}
               {state === 'applied' && <div className="runner-update-actions attention"><label><span>回滚确认</span><code>{rollbackPhrase}</code><input value={confirmation} onChange={(event) => setConfirmation(proposal.id, event.target.value)} /></label><button className="button danger" type="button" disabled={confirmation !== rollbackPhrase || busy === `files-rollback:${proposal.id}`} onClick={() => runAction(rollback(proposal))}><RotateCcw size={14} />{busy === `files-rollback:${proposal.id}` ? '回滚中' : '回滚'}</button></div>}
               {proposal.error && <div className="runner-update-error">{proposal.error}</div>}
             </article>

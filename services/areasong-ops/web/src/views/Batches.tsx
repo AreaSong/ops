@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, CircleHelp, LoaderCircle, Play, Plus, RefreshCw, ShieldAlert } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { runAction } from '../action'
+import { canCurrentActorApprove, canCurrentActorExecute } from '../approval'
 import { formatTime } from '../labels'
 import type { BatchPolicy, BatchStrategy, BatchTask, FailurePolicy } from '../types'
 import { StatusBadge } from '../components/StatusBadge'
@@ -11,6 +12,7 @@ interface BatchesProps {
   available: boolean
   error: string
   busy: string
+  currentActorHash?: string
   onRefresh: () => void
   onCreate: (task: BatchTask) => Promise<void>
   onApprove: (id: string, digest: string, confirmation: string) => Promise<void>
@@ -86,7 +88,7 @@ function makeTask(draft: BatchDraft): BatchTask {
   }
 }
 
-export function Batches({ batches, loading, available, error, busy, onRefresh, onCreate, onApprove, onRun }: BatchesProps) {
+export function Batches({ batches, loading, available, error, busy, currentActorHash, onRefresh, onCreate, onApprove, onRun }: BatchesProps) {
   const [draft, setDraft] = useState<BatchDraft>(initialDraft)
   const [formOpen, setFormOpen] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -156,6 +158,9 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
           {batches.map((batch) => {
             const isExpanded = expanded === batch.id
             const canRun = batch.state === 'pending' || batch.state === 'planning' || batch.state === 'paused'
+            const approvalPending = batch.operationState === 'pending_approval'
+            const canApprove = approvalPending && canCurrentActorApprove(batch, currentActorHash)
+            const canExecute = batch.operationState !== 'approved' || canCurrentActorExecute(batch, currentActorHash)
             return <article className="batch-card" key={batch.id}>
               <button className="batch-card-header" type="button" onClick={() => setExpanded(isExpanded ? null : batch.id)} aria-expanded={isExpanded}>
                 {isExpanded ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
@@ -165,14 +170,15 @@ export function Batches({ batches, loading, available, error, busy, onRefresh, o
                 <StatusBadge kind="health" value={stateTone(batch.state)} label={stateLabels[batch.state]} />
               </button>
               {isExpanded && <div className="batch-card-detail">
-                <dl className="batch-facts"><div><dt>批次策略</dt><dd>{describeBatchPolicy(batch.batchPolicy)}</dd></div><div><dt>并发</dt><dd>{batch.concurrency.scope} · {batch.concurrency.maxConcurrent}</dd></div><div><dt>失败策略</dt><dd>{batch.failurePolicy}</dd></div><div><dt>审批</dt><dd>{batch.requiresDualApproval ? `${batch.approvedByHash ? '第一批准完成' : '等待第一批准'} · ${batch.secondApprovedByHash ? '第二批准完成' : '等待第二批准'}` : batch.approvedByHash ? '已批准' : '等待批准'}</dd></div><div><dt>开始时间</dt><dd>{formatTime(batch.startedAt)}</dd></div></dl>
+                <dl className="batch-facts"><div><dt>批次策略</dt><dd>{describeBatchPolicy(batch.batchPolicy)}</dd></div><div><dt>并发</dt><dd>{batch.concurrency.scope} · {batch.concurrency.maxConcurrent}</dd></div><div><dt>失败策略</dt><dd>{batch.failurePolicy}</dd></div><div><dt>审批</dt><dd>{batch.approvalPolicy === 'two_party_v1' ? (batch.approvedByHash ? '独立批准完成 · 创建人可执行' : '等待独立批准') : batch.requiresDualApproval ? `${batch.approvedByHash ? '第一批准完成' : '等待第一批准'} · ${batch.secondApprovedByHash ? '第二批准完成' : '等待第二批准'}` : batch.approvedByHash ? '已批准' : '等待批准'}</dd></div><div><dt>开始时间</dt><dd>{formatTime(batch.startedAt)}</dd></div></dl>
                 <div className="batch-nodes">{batch.nodes.map((node) => <span className={`batch-node batch-node-${node.state}`} key={node.id}><b>{node.targetId || node.id}</b><small>{node.state}{node.error ? ` · ${node.error}` : ''}</small></span>)}</div>
                 <div className="form-actions">
-                  {batch.operationState === 'pending_approval' && <>
+                  {canApprove && <>
                     <label className="batch-approval-field"><span>确认短语</span><code>{batch.confirmationPhrase || '后端未返回确认短语'}</code><input value={approval?.id === batch.id ? approval.value : ''} onChange={(event) => setApproval({ id: batch.id, value: event.target.value })} placeholder="输入确认短语" /></label>
-                    <button className="button danger" type="button" disabled={!batch.digest || approval?.id !== batch.id || approval.value !== batch.confirmationPhrase || busy === batch.id} onClick={() => runAction(onApprove(batch.id, batch.digest ?? '', approval?.value ?? ''))}><ShieldAlert size={14} />{busy === batch.id ? '批准中' : batch.requiresDualApproval && batch.approvedByHash ? '第二人批准' : '批准作业'}</button>
+                    <button className="button danger" type="button" disabled={!batch.digest || approval?.id !== batch.id || approval.value !== batch.confirmationPhrase || busy === batch.id} onClick={() => runAction(onApprove(batch.id, batch.digest ?? '', approval?.value ?? ''))}><ShieldAlert size={14} />{busy === batch.id ? '批准中' : batch.approvalPolicy === 'two_party_v1' ? '独立批准' : batch.requiresDualApproval && batch.approvedByHash ? '第二人批准' : '批准作业'}</button>
                   </>}
-                  <button className="button secondary" type="button" disabled={!canRun || batch.operationState === 'pending_approval' || busy === batch.id} title={!canRun ? '当前状态不可启动' : '启动下一批'} onClick={() => runAction(onRun(batch.id))}><Play size={14} />{busy === batch.id ? '启动中' : '启动下一批'}</button>
+                  {approvalPending && !canApprove && <small>等待独立批准账号处理。</small>}
+                  <button className="button secondary" type="button" disabled={!canRun || approvalPending || !canExecute || busy === batch.id} title={!canRun ? '当前状态不可启动' : !canExecute ? '当前身份不是该计划的执行人' : '启动下一批'} onClick={() => runAction(onRun(batch.id))}><Play size={14} />{busy === batch.id ? '启动中' : '启动下一批'}</button>
                 </div>
               </div>}
             </article>

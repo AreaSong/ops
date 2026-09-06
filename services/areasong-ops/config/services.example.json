@@ -23,8 +23,8 @@
         "tenantId": "production",
         "roles": ["viewer"]
       },
-      "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727": {
-        "emailHash": "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727",
+      "2b6eaf9e354a055d34934f2cfef2fced968ec1539856ee67df36daeb7df55c5b": {
+        "emailHash": "2b6eaf9e354a055d34934f2cfef2fced968ec1539856ee67df36daeb7df55c5b",
         "tenantId": "production",
         "roles": ["viewer"]
       }
@@ -61,6 +61,23 @@
         "id": "release-manager",
         "displayName": "发布管理员",
         "permissions": ["ops.read", "ops.inspect", "ops.lifecycle", "ops.deploy", "ops.batch", "ops.recover"],
+        "builtIn": true
+      },
+      "change-approver": {
+        "id": "change-approver",
+        "displayName": "独立变更批准人",
+        "permissions": [
+          "ops.read",
+          "ops.inspect",
+          "ops.lifecycle",
+          "ops.deploy",
+          "ops.batch",
+          "ops.recover",
+          "access.manage",
+          "config.manage",
+          "break_glass",
+          "runner.update"
+        ],
         "builtIn": true
       },
       "platform-admin": {
@@ -109,13 +126,21 @@
         "createdBy": "bootstrap"
       },
       {
-        "id": "binding-production-recovery-approver",
-        "subject": "b94694a9500b70da60cdd3fc98e20f47f4afcdd93f2d1de9eaf8557e78758727",
+        "id": "binding-production-change-approver",
+        "subject": "2b6eaf9e354a055d34934f2cfef2fced968ec1539856ee67df36daeb7df55c5b",
         "tenantId": "production",
-        "roleId": "release-manager",
+        "roleId": "change-approver",
         "objectIds": [
           "service:areaforge",
-          "service:sub2api"
+          "service:sub2api",
+          "access",
+          "extensions",
+          "file:ops-config",
+          "kubernetes",
+          "kubernetes:plans",
+          "kubernetes:areasong-production",
+          "runner:runner-losangeles",
+          "terminal"
         ],
         "createdAt": "2026-08-20T00:00:00Z",
         "createdBy": "bootstrap"

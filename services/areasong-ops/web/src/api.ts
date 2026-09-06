@@ -29,6 +29,8 @@ function normalizeBatch(value: BatchTask | BatchOperation): BatchTask {
     return {
       ...task,
       id: operation.id || task.id,
+      actorHash: operation.actorHash,
+      tenantId: operation.tenantId,
       action: operation.action || task.action,
       nodes: operation.items?.map((item) => ({
         id: item.id,
@@ -48,9 +50,11 @@ function normalizeBatch(value: BatchTask | BatchOperation): BatchTask {
       confirmationPhrase: operation.confirmationPhrase,
       approvedAt: operation.approvedAt,
       approvedByHash: operation.approvedByHash,
+      approvalPolicy: operation.approvalPolicy,
       requiresDualApproval: operation.requiresDualApproval,
       secondApprovedByHash: operation.secondApprovedByHash,
       secondApprovedAt: operation.secondApprovedAt,
+      executedByHash: operation.executedByHash,
       operationState: operation.state,
     }
   }

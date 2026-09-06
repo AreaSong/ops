@@ -118,7 +118,8 @@ func (server *Server) session(response http.ResponseWriter, request *http.Reques
 	})
 	writeJSON(response, http.StatusOK, map[string]any{
 		"email": session.Email, "tenantId": session.TenantID,
-		"csrfToken": token, "links": server.externalLinks, "environment": environment,
+		"actorHash": session.Subject, "csrfToken": token,
+		"links": server.externalLinks, "environment": environment,
 	})
 }
 

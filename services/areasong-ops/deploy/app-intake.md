@@ -22,4 +22,4 @@
 | 生产恢复 | 与隔离演练分离；恢复点、目标身份、影响范围和双确认均通过后才可执行 |
 | 批量变更 | 默认不跨服务器；启用 fleet 后仍需目标 selector、DAG、并发/失败策略、变更窗口和单独批准 |
 
-Cloudflare Access 仅允许 `song80184@gmail.com`。Web 不挂载 Docker Socket、业务卷、备份目录或 SQLite。
+Cloudflare Access 仅允许 `song80184@gmail.com`、`3177348309@qq.com`。Web 不挂载 Docker Socket、业务卷、备份目录或 SQLite。

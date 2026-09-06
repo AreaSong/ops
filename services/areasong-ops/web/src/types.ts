@@ -51,6 +51,7 @@ export interface ActiveAlert {
 export interface SessionResponse {
   email: string
   tenantId?: string
+  actorHash: string
   csrfToken: string
   environment: 'production' | 'development'
   links?: NavigationLinks
@@ -174,6 +175,8 @@ export interface Preview {
 
 export interface ApprovalSummary {
   schemaVersion: number
+  approvalPolicy?: string
+  approvalException?: string
   service: string
   action: string
   target?: string
@@ -214,6 +217,8 @@ export interface ReleasePlan {
   confirmationPhrase?: string
   requiresConfirmation: boolean
   approvedByHash?: string
+  secondApprovedByHash?: string
+  approvalPolicy?: string
   approvedAt?: string
   invalidatedReason?: string
   taskId?: string
@@ -476,6 +481,8 @@ export interface DAGNode {
 
 export interface BatchTask {
   id: string
+  actorHash?: string
+  tenantId?: string
   name?: string
   action?: string
   capability?: string
@@ -497,14 +504,18 @@ export interface BatchTask {
   confirmationPhrase?: string
   approvedAt?: string
   approvedByHash?: string
+  approvalPolicy?: string
   requiresDualApproval?: boolean
   secondApprovedByHash?: string
   secondApprovedAt?: string
+  executedByHash?: string
   operationState?: 'pending_approval' | 'approved' | 'running' | 'paused' | 'observing' | 'succeeded' | 'failed' | 'rolling_back' | 'rolled_back' | 'needs_attention' | 'cancelled'
 }
 
 export interface BatchOperation {
   id: string
+  actorHash: string
+  tenantId: string
   action: string
   target?: string
   task: BatchTask
@@ -527,9 +538,11 @@ export interface BatchOperation {
   }>
   approvedAt?: string
   approvedByHash?: string
+  approvalPolicy?: string
   requiresDualApproval?: boolean
   secondApprovedByHash?: string
   secondApprovedAt?: string
+  executedByHash?: string
   startedAt?: string
   finishedAt?: string
   summary?: string
@@ -586,6 +599,7 @@ export interface ComposeRevision {
   actorHash?: string
   confirmationPhrase?: string
   approvedBy?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   appliedByHash?: string
   backupControlledPath?: string
@@ -730,6 +744,7 @@ export interface TerminalShellPlan {
   inputDigest: string
   confirmationPhrase?: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   exitCode?: number
   output?: string
@@ -784,6 +799,7 @@ export interface ManagedFileProposal {
   state: ManagedFileProposalState | string
   confirmationPhrase?: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   appliedByHash?: string
   backupPath?: string
@@ -853,6 +869,7 @@ export interface KubernetesOperation {
 export interface KubernetesPlan {
   id: string
   idempotencyKey?: string
+  actorHash?: string
   tenantId?: string
   target: KubernetesTarget
   manifestDigest: string
@@ -863,6 +880,7 @@ export interface KubernetesPlan {
 	sourceManifestDigest?: string
   confirmationPhrase?: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   requiresDualApproval: boolean
 	operationId?: string
@@ -942,6 +960,7 @@ export interface ExtensionUploadResult {
 
 export interface ExtensionPlan {
   id: string
+  actorHash?: string
   tenantId?: string
   objectId: string
   extensionId: string
@@ -961,6 +980,7 @@ export interface ExtensionPlan {
   state: string
   confirmationPhrase?: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   executedByHash?: string
   output?: string
@@ -1112,6 +1132,7 @@ export interface FleetRunnerUpdatePlan {
   currentBatch: number
   confirmationPhrase?: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   executedByHash?: string
   summary?: string
@@ -1234,6 +1255,7 @@ export interface AccessChange {
   state: AccessChangeState
   confirmationPhrase: string
   approvedByHash?: string
+  approvalPolicy?: string
   secondApprovedByHash?: string
   requiresDualApproval: boolean
   version?: number

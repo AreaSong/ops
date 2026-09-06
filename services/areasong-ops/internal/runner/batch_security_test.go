@@ -51,26 +51,22 @@ func TestBatchHTTPFourActorTwoTargetCanaryEndToEnd(t *testing.T) {
 	approval := model.BatchApproveRequest{Digest: operation.Digest, Confirmation: operation.ConfirmationPhrase}
 	client.as(actors[0]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/approve", approval, http.StatusConflict, nil)
 	client.as(actors[1]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/approve", approval, http.StatusOK, &operation)
-	if operation.State != model.BatchPendingApproval || operation.ApprovedByHash != actors[1] || operation.SecondApprovedByHash != "" {
-		t.Fatalf("first approval=%+v", operation)
-	}
-	client.as(actors[2]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/approve", approval, http.StatusOK, &operation)
-	if operation.State != model.BatchApproved || operation.ApprovedByHash != actors[1] || operation.SecondApprovedByHash != actors[2] {
-		t.Fatalf("second approval=%+v", operation)
+	if operation.State != model.BatchApproved || operation.ApprovedByHash != actors[1] || operation.SecondApprovedByHash != "" {
+		t.Fatalf("independent approval=%+v", operation)
 	}
 
 	execution := model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}
-	client.as(actors[2]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusConflict, nil)
-	client.as(actors[3]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusAccepted, &operation)
-	if operation.State != model.BatchRunning || operation.ExecutedByHash != actors[3] {
+	client.as(actors[1]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusConflict, nil)
+	client.as(actors[0]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusAccepted, &operation)
+	if operation.State != model.BatchRunning || operation.ExecutedByHash != actors[0] {
 		t.Fatalf("started batch=%+v", operation)
 	}
-	client.as(actors[3]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusAccepted, &replay)
+	client.as(actors[0]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusAccepted, &replay)
 	client.as(actors[4]).request(http.MethodPost, "/v1/batches/"+operation.ID+"/run", execution, http.StatusConflict, nil)
 
 	engine.Wait()
-	client.as(actors[3]).request(http.MethodGet, "/v1/batches/"+operation.ID, nil, http.StatusOK, &operation)
-	if operation.State != model.BatchSucceeded || operation.CanaryObservedAt == nil || operation.ExecutedByHash != actors[3] {
+	client.as(actors[0]).request(http.MethodGet, "/v1/batches/"+operation.ID, nil, http.StatusOK, &operation)
+	if operation.State != model.BatchSucceeded || operation.CanaryObservedAt == nil || operation.ExecutedByHash != actors[0] {
 		t.Fatalf("finished batch=%+v", operation)
 	}
 	for _, item := range operation.Items {
@@ -82,7 +78,7 @@ func TestBatchHTTPFourActorTwoTargetCanaryEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		if plan.ActorHash != actors[0] || plan.ApprovedByHash != actors[1] ||
-			plan.SecondApprovedByHash != actors[2] || plan.ExecutedByHash != actors[3] ||
+			plan.SecondApprovedByHash != "" || plan.ExecutedByHash != actors[0] ||
 			!plan.RequiresDualApproval {
 			t.Fatalf("child plan identity=%+v", plan)
 		}
@@ -101,7 +97,7 @@ func TestBatchHTTPFourActorTwoTargetCanaryEndToEnd(t *testing.T) {
 			events[entry.Event]++
 		}
 	}
-	if events["batch.created"] != 1 || events["batch.approved"] != 2 || events["batch.started"] != 1 {
+	if events["batch.created"] != 1 || events["batch.approved"] != 1 || events["batch.started"] != 1 {
 		t.Fatalf("batch audit events=%v", events)
 	}
 }
@@ -182,7 +178,7 @@ func TestBatchChildBindingRejectsPreoccupiedIdempotencyKeys(t *testing.T) {
 	}
 	engine.Wait()
 
-	if _, err := engine.ExecuteBatch(ctx, actors[3], op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+	if _, err := engine.ExecuteBatch(ctx, actors[0], op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
 	}
 	engine.Wait()
@@ -206,7 +202,7 @@ func TestMixedRiskBatchUsesPerChildApprovalPolicy(t *testing.T) {
 
 	op := createSecurityBatch(t, engine, actors[0], []string{"demo", "demo-two"})
 	op = approveSecurityBatch(t, engine, op, actors[1], actors[2])
-	if _, err := engine.ExecuteBatch(ctx, actors[3], op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
+	if _, err := engine.ExecuteBatch(ctx, actors[0], op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
 	}
 	engine.Wait()
@@ -221,15 +217,15 @@ func TestMixedRiskBatchUsesPerChildApprovalPolicy(t *testing.T) {
 		}
 		if item.Service == "demo" {
 			if !plan.RequiresDualApproval || plan.ActorHash != actors[0] ||
-				plan.ApprovedByHash != actors[1] || plan.SecondApprovedByHash != actors[2] ||
-				plan.ExecutedByHash != actors[3] {
+				plan.ApprovedByHash != actors[1] || plan.SecondApprovedByHash != "" ||
+				plan.ExecutedByHash != actors[0] {
 				t.Fatalf("high-risk child=%+v", plan)
 			}
 			continue
 		}
-		if plan.RequiresDualApproval || plan.ActorHash != actors[3] ||
-			plan.ApprovedByHash != actors[3] || plan.SecondApprovedByHash != "" ||
-			plan.ExecutedByHash != actors[3] {
+		if plan.RequiresDualApproval || plan.ActorHash != actors[0] ||
+			plan.ApprovedByHash != actors[0] || plan.SecondApprovedByHash != "" ||
+			plan.ExecutedByHash != actors[0] {
 			t.Fatalf("medium-risk child=%+v", plan)
 		}
 	}
@@ -270,8 +266,8 @@ func TestAreaForgeLifecycleBatchDoesNotInheritC2SingleActorException(t *testing.
 	}
 	op := model.BatchOperation{
 		ID: "batch-c2-scope", ActorHash: strings.Repeat("1", 64),
-		ApprovedByHash: strings.Repeat("2", 64), SecondApprovedByHash: strings.Repeat("3", 64),
-		ExecutedByHash: strings.Repeat("4", 64), Action: "stop", RequiresDualApproval: true,
+		ApprovedByHash: strings.Repeat("2", 64), ExecutedByHash: strings.Repeat("1", 64),
+		Action: "stop", RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty,
 		ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion,
 	}
 	item := model.BatchItem{ID: "item-c2-scope", Service: "areaforge", State: model.BatchNodeReady}
@@ -295,7 +291,7 @@ func TestAreaForgeLifecycleBatchDoesNotInheritC2SingleActorException(t *testing.
 	}
 	if !plan.RequiresDualApproval || plan.ApprovalSummary.ApprovalException != "" ||
 		plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash ||
-		plan.SecondApprovedByHash != op.SecondApprovedByHash || plan.ExecutedByHash != op.ExecutedByHash {
+		plan.SecondApprovedByHash != "" || plan.ExecutedByHash != op.ActorHash {
 		t.Fatalf("C2 batch child inherited direct-plan exception: %+v", plan)
 	}
 }
@@ -329,7 +325,9 @@ func approveSecurityBatch(
 	var err error
 	op, err = engine.ApproveBatch(context.Background(), first, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
 	if err == nil {
-		op, err = engine.ApproveBatch(context.Background(), second, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
+		if !model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+			op, err = engine.ApproveBatch(context.Background(), second, op.ID, model.BatchApproveRequest{Digest: op.Digest, Confirmation: op.ConfirmationPhrase})
+		}
 	}
 	if err != nil {
 		t.Fatal(err)

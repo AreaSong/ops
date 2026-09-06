@@ -13,7 +13,7 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
-func TestTerminalShellRequiresTwoApproversAndCreatorExecution(t *testing.T) {
+func TestTerminalShellRequiresIndependentApprovalAndCreatorExecution(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	engine.catalog.Terminal = &config.TerminalPolicy{
@@ -21,7 +21,7 @@ func TestTerminalShellRequiresTwoApproversAndCreatorExecution(t *testing.T) {
 		ShellExecutable: "/bin/bash", ShellWorkingDir: t.TempDir(),
 	}
 	creator := actorHash()
-	firstApprover, secondApprover := strings.Repeat("b", 64), strings.Repeat("c", 64)
+	firstApprover := strings.Repeat("b", 64)
 	outputPath := filepath.Join(t.TempDir(), "executed")
 	input := "printf 'executed' > " + outputPath + " && printf 'break-glass-ok'"
 	plan, created, err := engine.CreateTerminalShellPlan(ctx, creator, model.TerminalShellPlanRequest{
@@ -45,25 +45,8 @@ func TestTerminalShellRequiresTwoApproversAndCreatorExecution(t *testing.T) {
 	plan, err = engine.ApproveTerminalShellPlan(ctx, firstApprover, plan.ID, model.TerminalShellApprovalRequest{
 		Confirmation: plan.ConfirmationPhrase,
 	})
-	if err != nil || plan.State != "pending_second_approval" || plan.ApprovedByHash != firstApprover {
-		t.Fatalf("first approval plan=%+v err=%v", plan, err)
-	}
-	if _, err := engine.ApproveTerminalShellPlan(ctx, firstApprover, plan.ID, model.TerminalShellApprovalRequest{
-		Confirmation: plan.ConfirmationPhrase,
-	}); err == nil {
-		t.Fatal("same actor completed both terminal approvals")
-	}
-	if _, err := engine.ExecuteTerminalShellPlan(ctx, creator, plan.ID, model.TerminalShellExecuteRequest{
-		Input: input, IdempotencyKey: mustUUID(t),
-	}); err == nil {
-		t.Fatal("terminal plan executed after only one approval")
-	}
-
-	plan, err = engine.ApproveTerminalShellPlan(ctx, secondApprover, plan.ID, model.TerminalShellApprovalRequest{
-		Confirmation: plan.ConfirmationPhrase,
-	})
-	if err != nil || plan.State != "approved" || plan.SecondApprovedByHash != secondApprover {
-		t.Fatalf("second approval plan=%+v err=%v", plan, err)
+	if err != nil || plan.State != "approved" || plan.ApprovedByHash != firstApprover || plan.SecondApprovedByHash != "" {
+		t.Fatalf("approval plan=%+v err=%v", plan, err)
 	}
 	if _, err := engine.ExecuteTerminalShellPlan(ctx, firstApprover, plan.ID, model.TerminalShellExecuteRequest{
 		Input: input, IdempotencyKey: mustUUID(t),
@@ -109,7 +92,7 @@ func TestTerminalShellRequiresTwoApproversAndCreatorExecution(t *testing.T) {
 			executed++
 		}
 	}
-	if !steps["first"] || !steps["second"] || executed != 1 {
+	if !steps["first"] || steps["second"] || executed != 1 {
 		t.Fatalf("approval steps=%v executed audits=%d audit=%+v", steps, executed, audit)
 	}
 }

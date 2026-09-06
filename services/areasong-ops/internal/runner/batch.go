@@ -180,7 +180,11 @@ func (engine *Engine) CreateBatch(ctx context.Context, actor string, request mod
 	if firstTenant == "" {
 		firstTenant = "default"
 	}
-	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, RequiresDualApproval: requiresDualApproval, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion, Items: items, CreatedAt: now, UpdatedAt: now}
+	approvalPolicy := ""
+	if requiresDualApproval {
+		approvalPolicy = model.ApprovalPolicyTwoParty
+	}
+	op := model.BatchOperation{ID: task.ID, IdempotencyKey: request.IdempotencyKey, ActorHash: actor, TenantID: firstTenant, Action: request.Action, Target: request.Target, Task: task, Digest: digest, ConfirmationPhrase: fmt.Sprintf("批量%s %d 项", lifecycleDisplayName(request.Action), len(targets)), State: model.BatchPendingApproval, RequiresDualApproval: requiresDualApproval, ApprovalPolicy: approvalPolicy, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion, Items: items, CreatedAt: now, UpdatedAt: now}
 	created, wasCreated, err := engine.store.CreateBatchOperation(ctx, store.BatchOperationInput{Operation: op, ConfirmationHash: store.HashConfirmation(op.ConfirmationPhrase)})
 	if err != nil {
 		return model.BatchOperation{}, false, err
@@ -716,13 +720,24 @@ func (engine *Engine) ExecuteBatch(ctx context.Context, actor, id string, input 
 	if err := engine.authorizeBatchOperation(ctx, actor, op); err != nil {
 		return model.BatchOperation{}, err
 	}
-	if op.RequiresDualApproval && op.SecondApprovedByHash == "" {
-		return model.BatchOperation{}, errors.New("生产批量计划尚未完成独立双人批准")
-	}
-	if engine.catalog.SchemaVersion >= 4 && (op.ActorHash == actor ||
-		(op.ApprovedByHash != "" && op.ApprovedByHash == actor) ||
-		(op.SecondApprovedByHash != "" && op.SecondApprovedByHash == actor)) {
-		return model.BatchOperation{}, store.ErrActorMismatch
+	if op.RequiresDualApproval {
+		if model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+			if op.ApprovedByHash == "" {
+				return model.BatchOperation{}, errors.New("生产批量计划尚未完成独立批准")
+			}
+			if actor != op.ActorHash {
+				return model.BatchOperation{}, store.ErrActorMismatch
+			}
+		} else {
+			if op.SecondApprovedByHash == "" {
+				return model.BatchOperation{}, errors.New("生产批量计划尚未完成独立双人批准")
+			}
+			if engine.catalog.SchemaVersion >= 4 && (op.ActorHash == actor ||
+				(op.ApprovedByHash != "" && op.ApprovedByHash == actor) ||
+				(op.SecondApprovedByHash != "" && op.SecondApprovedByHash == actor)) {
+				return model.BatchOperation{}, store.ErrActorMismatch
+			}
+		}
 	}
 	if !uuidPattern.MatchString(input.IdempotencyKey) {
 		return model.BatchOperation{}, errors.New("批量执行幂等键无效")
@@ -791,11 +806,18 @@ func (engine *Engine) runBatch(op model.BatchOperation) {
 				"批量计划审批策略版本过旧", "请按当前审批策略重新创建批量计划", fence)
 			return
 		}
-		if current.RequiresDualApproval && !model.IndependentExecutor(current.ExecutedByHash,
-			current.ActorHash, current.ApprovedByHash, current.SecondApprovedByHash) {
-			_ = engine.store.FinishBatchOperation(ctx, current.ID, model.BatchNeedsAttention,
-				"批量计划四方身份不完整", "请重新创建并完成独立双人批准与独立执行", fence)
-			return
+		if current.RequiresDualApproval {
+			valid := false
+			if model.UsesTwoPartyApproval(current.ApprovalPolicy) {
+				valid = current.ExecutedByHash == current.ActorHash && current.ApprovedByHash != "" && current.ApprovedByHash != current.ActorHash
+			} else {
+				valid = model.IndependentExecutor(current.ExecutedByHash, current.ActorHash, current.ApprovedByHash, current.SecondApprovedByHash)
+			}
+			if !valid {
+				_ = engine.store.FinishBatchOperation(ctx, current.ID, model.BatchNeedsAttention,
+					"批量计划审批身份不完整", "请重新创建并完成独立批准与执行", fence)
+				return
+			}
 		}
 		pending, running, terminalFailure := batchWave(current)
 		if current.Task.BatchPolicy.Strategy == model.BatchCanary && canaryWaveFailed(current) {
@@ -1177,6 +1199,12 @@ func batchChildActors(op model.BatchOperation, requiresDual bool) (creator, exec
 	if !requiresDual {
 		return creator, executor, nil
 	}
+	if model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+		if op.ActorHash == "" || op.ApprovedByHash == "" || op.ApprovedByHash == op.ActorHash || executor != op.ActorHash {
+			return "", "", errors.New("父批量计划缺少两方独立身份")
+		}
+		return op.ActorHash, executor, nil
+	}
 	if !model.IndependentExecutor(executor, op.ActorHash, op.ApprovedByHash, op.SecondApprovedByHash) {
 		return "", "", errors.New("父批量计划缺少完整四方独立身份")
 	}
@@ -1209,6 +1237,18 @@ func (engine *Engine) approveBatchChildPlan(
 	}
 	if !op.RequiresDualApproval || !plan.RequiresDualApproval || plan.ActorHash != op.ActorHash {
 		return model.ReleasePlan{}, errors.New("批量子计划审批策略与父批量计划不一致")
+	}
+	if model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+		if plan.ApprovalPolicy != model.ApprovalPolicyTwoParty {
+			return model.ReleasePlan{}, errors.New("批量子计划审批策略与父批量计划不一致")
+		}
+		if plan.ApprovedByHash == "" {
+			return approve(op.ApprovedByHash, plan)
+		}
+		if plan.ApprovedByHash != op.ApprovedByHash {
+			return model.ReleasePlan{}, errors.New("批量子计划批准人与父批量计划不一致")
+		}
+		return plan, nil
 	}
 	var err error
 	if plan.ApprovedByHash == "" {

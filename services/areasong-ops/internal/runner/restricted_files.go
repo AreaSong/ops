@@ -84,7 +84,8 @@ func (engine *Engine) ProposeManagedFile(
 	}
 	proposal := model.ManagedFileProposal{
 		ID: id, IdempotencyKey: request.IdempotencyKey, ActorHash: actor,
-		RootID: request.RootID, Path: current.Path, ExpectedDigest: current.Digest,
+		ApprovalPolicy: model.ApprovalPolicyTwoParty,
+		RootID:         request.RootID, Path: current.Path, ExpectedDigest: current.Digest,
 		ProposedDigest: digestText(request.Content), Content: request.Content,
 		State: "proposed", CreatedAt: time.Now().UTC(),
 	}

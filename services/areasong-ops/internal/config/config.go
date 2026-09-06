@@ -351,17 +351,25 @@ func (catalog *Catalog) Validate(requireRoot bool) error {
 		return err
 	}
 	objectIDs := map[string]string{
-		"access":       "access policy",
-		"audit":        "audit records",
-		"auto-updates": "automatic update policy",
-		"batch":        "batch operations",
-		"credentials":  "credential metadata",
-		"events":       "event stream",
-		"extensions":   "extension policy",
-		"files":        "managed files",
-		"fleet":        "fleet inventory",
-		"kubernetes":   "Kubernetes policy",
-		"terminal":     "restricted terminal",
+		"access":           "access policy",
+		"audit":            "audit records",
+		"auto-updates":     "automatic update policy",
+		"batch":            "batch operations",
+		"credentials":      "credential metadata",
+		"events":           "event stream",
+		"extensions":       "extension policy",
+		"files":            "managed files",
+		"fleet":            "fleet inventory",
+		"kubernetes":       "Kubernetes policy",
+		"kubernetes:plans": "Kubernetes plans",
+		"terminal":         "restricted terminal",
+	}
+	if catalog.Files != nil {
+		for rootID := range catalog.Files.Roots {
+			if namePattern.MatchString(rootID) {
+				objectIDs["file:"+rootID] = "managed file root"
+			}
+		}
 	}
 	if catalog.Fleet != nil {
 		for _, server := range catalog.Fleet.Inventory.Servers {

@@ -15,7 +15,7 @@ const extensionPlanSelect = `SELECT id,idempotency_key,request_digest,plan_diges
 	tenant_id,object_id,extension_id,extension_version,extension_digest,publisher,
 	manifest_digest,policy_digest,sandbox,input_json,input_digest,timeout_seconds,max_package_bytes,
 	max_input_bytes,max_output_bytes,max_memory_pages,state,confirmation_hash,confirmation_phrase,approved_by_hash,
-	second_approved_by_hash,executed_by_hash,execution_idempotency_key,output,exit_code,error,
+	second_approved_by_hash,approval_policy,executed_by_hash,execution_idempotency_key,output,exit_code,error,
 	created_at,expires_at,approved_at,second_approved_at,started_at,finished_at FROM extension_plans`
 
 type storedExtensionPlan struct {
@@ -48,14 +48,14 @@ func (store *Store) CreateExtensionPlan(
 		id,idempotency_key,request_digest,plan_digest,actor_hash,tenant_id,object_id,
 		extension_id,extension_version,extension_digest,publisher,manifest_digest,policy_digest,
 		sandbox,input_json,input_digest,timeout_seconds,max_package_bytes,max_input_bytes,
-		max_output_bytes,max_memory_pages,state,confirmation_hash,confirmation_phrase,created_at,expires_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		max_output_bytes,max_memory_pages,state,confirmation_hash,confirmation_phrase,approval_policy,created_at,expires_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.PlanDigest, plan.ActorHash,
 		plan.TenantID, plan.ObjectID, plan.ExtensionID, plan.ExtensionVersion,
 		plan.ExtensionDigest, plan.Publisher, plan.ManifestDigest, plan.PolicyDigest,
 		plan.Sandbox, input, plan.InputDigest, plan.TimeoutSeconds, plan.MaxPackageBytes,
 		plan.MaxInputBytes, plan.MaxOutputBytes, plan.MaxMemoryPages,
-		plan.State, HashConfirmation(plan.ConfirmationPhrase), plan.ConfirmationPhrase,
+		plan.State, HashConfirmation(plan.ConfirmationPhrase), plan.ConfirmationPhrase, plan.ApprovalPolicy,
 		timeText(plan.CreatedAt), timeText(plan.ExpiresAt))
 	if err != nil {
 		return model.ExtensionPlan{}, false, err
@@ -183,7 +183,12 @@ func (store *Store) ApproveExtensionPlan(
 		return model.ExtensionPlan{}, err
 	}
 	plan := stored.plan
-	if plan.State != "pending_approval" && plan.State != "pending_second_approval" {
+	// Two-party approvals are terminal at the approval step. Keep an
+	// idempotent retry available for the same approver, but do not let any
+	// other actor reinterpret an already-approved plan.
+	if plan.State == "approved" && model.UsesTwoPartyApproval(plan.ApprovalPolicy) && plan.ApprovedByHash == actor {
+		// Confirmation and expiry are still checked below before returning.
+	} else if plan.State != "pending_approval" && plan.State != "pending_second_approval" {
 		return model.ExtensionPlan{}, errors.New("扩展计划不在待批准状态")
 	}
 	if !store.now().Before(plan.ExpiresAt) {
@@ -199,6 +204,32 @@ func (store *Store) ApproveExtensionPlan(
 		return model.ExtensionPlan{}, ErrConfirmation
 	}
 	now := store.now()
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		if plan.State == "approved" && plan.ApprovedByHash == actor {
+			if err := tx.Commit(); err != nil {
+				return model.ExtensionPlan{}, err
+			}
+			return plan, nil
+		}
+		if plan.State != "pending_approval" {
+			return model.ExtensionPlan{}, errors.New("扩展计划已完成批准或执行")
+		}
+		result, updateErr := tx.ExecContext(ctx, `UPDATE extension_plans SET state='approved',approved_by_hash=?,approved_at=? WHERE id=? AND state='pending_approval'`, actor, timeText(now), id)
+		if updateErr != nil {
+			return model.ExtensionPlan{}, updateErr
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return model.ExtensionPlan{}, errors.New("扩展计划状态已变化")
+		}
+		plan.State, plan.ApprovedByHash, plan.ApprovedAt = "approved", actor, &now
+		if err := appendExtensionPlanAudit(ctx, tx, actor, "extension.plan.approved", plan.State, plan, now); err != nil {
+			return model.ExtensionPlan{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ExtensionPlan{}, err
+		}
+		return plan, nil
+	}
 	if plan.State == "pending_approval" {
 		result, updateErr := tx.ExecContext(ctx, `UPDATE extension_plans
 			SET state='pending_second_approval',approved_by_hash=?,approved_at=?
@@ -269,11 +300,15 @@ func (store *Store) StartExtensionPlan(
 		}
 		return plan, stored.input, false, nil
 	}
-	if plan.State != "approved" || plan.ApprovedByHash == "" || plan.SecondApprovedByHash == "" ||
-		plan.ApprovedByHash == plan.SecondApprovedByHash {
+	if plan.State != "approved" || plan.ApprovedByHash == "" ||
+		(!model.UsesTwoPartyApproval(plan.ApprovalPolicy) && (plan.SecondApprovedByHash == "" || plan.ApprovedByHash == plan.SecondApprovedByHash)) {
 		return model.ExtensionPlan{}, "", false, errors.New("扩展计划尚未完成两名独立批准")
 	}
-	if actor == plan.ActorHash || actor == plan.ApprovedByHash || actor == plan.SecondApprovedByHash {
+	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
+		if actor != plan.ActorHash || actor == plan.ApprovedByHash {
+			return model.ExtensionPlan{}, "", false, errors.New("扩展执行必须由创建人完成，且批准人必须独立")
+		}
+	} else if actor == plan.ActorHash || actor == plan.ApprovedByHash || actor == plan.SecondApprovedByHash {
 		return model.ExtensionPlan{}, "", false, errors.New("扩展执行人必须独立于创建人和两名批准人")
 	}
 	if !store.now().Before(plan.ExpiresAt) {
@@ -431,7 +466,7 @@ func scanExtensionPlan(scanner extensionPlanScanner) (storedExtensionPlan, bool,
 		&item.plan.InputDigest, &item.plan.TimeoutSeconds, &item.plan.MaxPackageBytes,
 		&item.plan.MaxInputBytes, &item.plan.MaxOutputBytes, &item.plan.MaxMemoryPages,
 		&item.plan.State, &item.confirmation,
-		&item.plan.ConfirmationPhrase, &item.plan.ApprovedByHash, &item.plan.SecondApprovedByHash,
+		&item.plan.ConfirmationPhrase, &item.plan.ApprovedByHash, &item.plan.SecondApprovedByHash, &item.plan.ApprovalPolicy,
 		&item.plan.ExecutedByHash, &item.plan.ExecutionIdempotencyKey, &item.plan.Output,
 		&item.plan.ExitCode, &item.plan.Error, &created, &expires, &approved, &secondApproved,
 		&started, &finished,

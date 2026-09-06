@@ -62,10 +62,10 @@ func (store *Store) CreateBatchOperation(ctx context.Context, input BatchOperati
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO batch_jobs(id,idempotency_key,actor_hash,tenant_id,action,target,strategy,policy_json,task_json,digest,
-		 confirmation_hash,confirmation_phrase,state,failure_policy,requires_dual_approval,approval_policy_version,second_approved_by_hash,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
+		 confirmation_hash,confirmation_phrase,state,failure_policy,requires_dual_approval,approval_policy_version,approval_policy,second_approved_by_hash,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, op.ID, op.IdempotencyKey, op.ActorHash, op.TenantID, op.Action, op.Target,
 		op.Task.BatchPolicy.Strategy, policyJSON, taskJSON, op.Digest, input.ConfirmationHash, op.ConfirmationPhrase, op.State,
-		op.Task.FailurePolicy, op.RequiresDualApproval, op.ApprovalPolicyVersion, op.SecondApprovedByHash, timeText(op.CreatedAt), timeText(op.UpdatedAt))
+		op.Task.FailurePolicy, op.RequiresDualApproval, op.ApprovalPolicyVersion, op.ApprovalPolicy, op.SecondApprovedByHash, timeText(op.CreatedAt), timeText(op.UpdatedAt))
 	if err != nil {
 		return model.BatchOperation{}, false, err
 	}
@@ -109,7 +109,7 @@ func batchByIdempotency(ctx context.Context, db queryer, key string) (model.Batc
 }
 
 const batchSelect = `SELECT id,idempotency_key,run_idempotency_key,actor_hash,tenant_id,action,target,task_json,digest,confirmation_hash,confirmation_phrase,state,
-		approved_by_hash,approved_at,requires_dual_approval,approval_policy_version,second_approved_by_hash,second_approved_at,
+		approved_by_hash,approved_at,requires_dual_approval,approval_policy_version,approval_policy,second_approved_by_hash,second_approved_at,
 	executed_by_hash,executed_at,started_at,finished_at,summary,error,created_at,updated_at,
 	canary_observation_started_at,canary_observed_at FROM batch_jobs`
 
@@ -119,7 +119,7 @@ func scanBatchOperation(row scanner) (model.BatchOperation, error) {
 	var approved, secondApproved, executed, started, finished, canaryStarted, canaryObserved sql.NullString
 	var dual int
 	if err := row.Scan(&op.ID, &op.IdempotencyKey, &op.RunIdempotencyKey, &op.ActorHash, &op.TenantID, &op.Action, &op.Target, &taskJSON,
-		&op.Digest, &confirmationHash, &op.ConfirmationPhrase, &state, &op.ApprovedByHash, &approved, &dual, &op.ApprovalPolicyVersion, &op.SecondApprovedByHash, &secondApproved,
+		&op.Digest, &confirmationHash, &op.ConfirmationPhrase, &state, &op.ApprovedByHash, &approved, &dual, &op.ApprovalPolicyVersion, &op.ApprovalPolicy, &op.SecondApprovedByHash, &secondApproved,
 		&op.ExecutedByHash, &executed, &started, &finished, &op.Summary, &op.Error,
 		&created, &updated, &canaryStarted, &canaryObserved); err != nil {
 		return op, err
@@ -284,7 +284,15 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
 		return op, errors.New("批量计划审批策略版本过旧，请重新创建")
 	}
-	if op.RequiresDualApproval && op.State == model.BatchApproved {
+	var expected string
+	if err := tx.QueryRowContext(ctx, `SELECT confirmation_hash FROM batch_jobs WHERE id=?`, id).Scan(&expected); err != nil {
+		return op, err
+	}
+	provided := HashConfirmation(confirmation)
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+		return op, ErrConfirmation
+	}
+	if op.RequiresDualApproval && !model.UsesTwoPartyApproval(op.ApprovalPolicy) && op.State == model.BatchApproved {
 		if op.SecondApprovedByHash == actor {
 			// A retry of the second approval is idempotent and must not create a
 			// second durable transition.
@@ -295,19 +303,47 @@ func (store *Store) ApproveBatchOperation(ctx context.Context, id, actor, digest
 		}
 		return op, errors.New("批量计划已完成双人批准")
 	}
+	if model.UsesTwoPartyApproval(op.ApprovalPolicy) && op.State == model.BatchApproved && op.ApprovedByHash == actor {
+		if err := tx.Commit(); err != nil {
+			return model.BatchOperation{}, err
+		}
+		return op, nil
+	}
 	if op.State != model.BatchPendingApproval {
 		return op, errors.New("批量计划已变化或不能批准")
 	}
-	var expected string
-	if err := tx.QueryRowContext(ctx, `SELECT confirmation_hash FROM batch_jobs WHERE id=?`, id).Scan(&expected); err != nil {
-		return op, err
-	}
-	provided := HashConfirmation(confirmation)
-	if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
-		return op, ErrConfirmation
-	}
 	now := store.now()
 	if op.RequiresDualApproval {
+		if model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+			if op.State == model.BatchApproved && op.ApprovedByHash == actor {
+				if err := tx.Commit(); err != nil {
+					return model.BatchOperation{}, err
+				}
+				return op, nil
+			}
+			if op.ApprovedByHash == "" {
+				if op.ActorHash == actor {
+					return model.BatchOperation{}, ErrActorMismatch
+				}
+				result, err := tx.ExecContext(ctx, `UPDATE batch_jobs SET state=?,approved_by_hash=?,approved_at=?,updated_at=? WHERE id=? AND state=? AND approved_by_hash=''`, model.BatchApproved, actor, timeText(now), timeText(now), id, model.BatchPendingApproval)
+				if err = requireOne(result, err, "批量计划独立批准无法写入"); err != nil {
+					return model.BatchOperation{}, err
+				}
+				op.State, op.ApprovedByHash, op.ApprovedAt, op.UpdatedAt = model.BatchApproved, actor, &now, now
+				if err := syncBatchTaskSnapshot(ctx, tx, &op); err != nil {
+					return model.BatchOperation{}, err
+				}
+				if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "batch.approved", Resource: id,
+					Outcome: "approved", Detail: map[string]any{"digest": digest, "createdBy": op.ActorHash, "approvalPolicy": op.ApprovalPolicy}}, now); err != nil {
+					return model.BatchOperation{}, err
+				}
+				if err := tx.Commit(); err != nil {
+					return model.BatchOperation{}, err
+				}
+				return op, nil
+			}
+			return model.BatchOperation{}, errors.New("批量计划已完成批准")
+		}
 		if op.ApprovedByHash == "" {
 			if op.ActorHash == actor {
 				return model.BatchOperation{}, ErrActorMismatch
@@ -408,7 +444,11 @@ func (store *Store) StartBatchOperation(
 	if op.ApprovalPolicyVersion != model.CurrentBatchApprovalPolicyVersion {
 		return model.BatchOperation{}, false, errors.New("批量计划审批策略版本过旧，请重新创建")
 	}
-	if op.RequiresDualApproval && (op.SecondApprovedByHash == "" || actor == op.ActorHash || actor == op.ApprovedByHash || actor == op.SecondApprovedByHash) {
+	if op.RequiresDualApproval && model.UsesTwoPartyApproval(op.ApprovalPolicy) {
+		if op.ApprovedByHash == "" || actor != op.ActorHash {
+			return model.BatchOperation{}, false, ErrActorMismatch
+		}
+	} else if op.RequiresDualApproval && (op.SecondApprovedByHash == "" || actor == op.ActorHash || actor == op.ApprovedByHash || actor == op.SecondApprovedByHash) {
 		return model.BatchOperation{}, false, ErrActorMismatch
 	}
 	now := store.now()

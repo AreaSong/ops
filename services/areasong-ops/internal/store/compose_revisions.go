@@ -63,8 +63,8 @@ func (store *Store) SaveComposeRevisionIdempotent(
 		recovery_point_evidence_digest,recovery_point_verified_at,recovery_point_recoverable_until,
 		alert_evidence_digest,blocking_alert_fingerprints_json,alert_checked_at,expires_at,
 		expected_runtime_identity_digest,expected_runtime_image,expected_runtime_image_id,
-		candidate_image,candidate_image_digest,candidate_image_id)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID, revision.Service, revision.Digest,
+		candidate_image,candidate_image_digest,candidate_image_id,approval_policy)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID, revision.Service, revision.Digest,
 		revision.Source, revision.Content, revision.Validated, revision.ApprovedBy,
 		timeText(revision.CreatedAt), revision.IdempotencyKey, requestDigest,
 		revision.ExpectedDigest, revision.State, revision.ActorHash,
@@ -79,7 +79,7 @@ func (store *Store) SaveComposeRevisionIdempotent(
 		revision.AlertEvidenceDigest, alertFingerprints, nullableTimeValue(revision.AlertCheckedAt),
 		timeText(revision.ExpiresAt), revision.ExpectedRuntimeIdentityDigest,
 		revision.ExpectedRuntimeImage, revision.ExpectedRuntimeImageID,
-		revision.CandidateImage, revision.CandidateImageDigest, revision.CandidateImageID)
+		revision.CandidateImage, revision.CandidateImageDigest, revision.CandidateImageID, revision.ApprovalPolicy)
 	if err != nil {
 		return model.ComposeRevision{}, false, err
 	}
@@ -153,6 +153,29 @@ func (store *Store) ApproveComposeRevision(
 	}
 	if subtle.ConstantTimeCompare([]byte(HashConfirmation(confirmation)), []byte(confirmationHash)) != 1 {
 		return model.ComposeRevision{}, ErrConfirmation
+	}
+	if model.UsesTwoPartyApproval(revision.ApprovalPolicy) {
+		if revision.State == "approved" && revision.ApprovedBy == actor {
+			if err := tx.Commit(); err != nil {
+				return model.ComposeRevision{}, err
+			}
+			return revision, nil
+		}
+		if revision.State != "proposed" {
+			return model.ComposeRevision{}, errors.New("Compose 修订已完成批准或执行")
+		}
+		result, updateErr := tx.ExecContext(ctx, `UPDATE compose_revisions SET state='approved',approved_by=?,approved_at=? WHERE id=? AND state='proposed'`, actor, timeText(now), id)
+		if err := requireOne(result, updateErr, "Compose 独立批准无法写入"); err != nil {
+			return model.ComposeRevision{}, err
+		}
+		revision.State, revision.ApprovedBy, revision.ApprovedAt = "approved", actor, &now
+		if err := appendComposeAudit(ctx, tx, actor, "compose.revision.approved", revision.State, revision, now); err != nil {
+			return model.ComposeRevision{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.ComposeRevision{}, err
+		}
+		return revision, nil
 	}
 	switch revision.State {
 	case "proposed":
@@ -229,10 +252,15 @@ func (store *Store) StartComposeApply(
 		}
 		return revision, false, nil
 	}
-	if revision.State != "approved" || revision.ApprovedBy == "" || revision.SecondApprovedByHash == "" {
+	if revision.State != "approved" || revision.ApprovedBy == "" ||
+		(!model.UsesTwoPartyApproval(revision.ApprovalPolicy) && revision.SecondApprovedByHash == "") {
 		return model.ComposeRevision{}, false, errors.New("Compose 修订尚未完成双人批准")
 	}
-	if actor == revision.ActorHash || actor == revision.ApprovedBy || actor == revision.SecondApprovedByHash {
+	if model.UsesTwoPartyApproval(revision.ApprovalPolicy) {
+		if actor != revision.ActorHash || actor == revision.ApprovedBy {
+			return model.ComposeRevision{}, false, errors.New("Compose 执行必须由创建人完成，且批准人必须独立")
+		}
+	} else if actor == revision.ActorHash || actor == revision.ApprovedBy || actor == revision.SecondApprovedByHash {
 		return model.ComposeRevision{}, false, errors.New("Compose 执行人必须独立于创建人与批准人")
 	}
 	now := store.now()
@@ -420,7 +448,7 @@ const composeRevisionSelect = `SELECT id,proposal_idempotency_key,request_digest
 	recovery_point_recoverable_until,alert_evidence_digest,blocking_alert_fingerprints_json,
 	alert_checked_at,expires_at,expected_runtime_identity_digest,expected_runtime_image,
 	expected_runtime_image_id,candidate_image,candidate_image_digest,
-	candidate_image_id,applied_runtime_identity_digest,rolled_back_by_hash,rollback_started_at,rollback_finished_at
+		candidate_image_id,applied_runtime_identity_digest,rolled_back_by_hash,rollback_started_at,rollback_finished_at,approval_policy
 	FROM compose_revisions`
 
 func composeRevisionByIdempotency(ctx context.Context, db queryer, key string) (model.ComposeRevision, string, bool, error) {
@@ -466,7 +494,7 @@ func scanComposeRevision(scanner composeRevisionScanner) (model.ComposeRevision,
 		&alertFingerprintsJSON, &alertChecked, &expiresAt,
 		&item.ExpectedRuntimeIdentityDigest, &item.ExpectedRuntimeImage,
 		&item.ExpectedRuntimeImageID, &item.CandidateImage, &item.CandidateImageDigest,
-		&item.CandidateImageID, &item.AppliedRuntimeIdentityDigest, &item.RolledBackByHash, &rollbackStarted, &rollbackFinished)
+		&item.CandidateImageID, &item.AppliedRuntimeIdentityDigest, &item.RolledBackByHash, &rollbackStarted, &rollbackFinished, &item.ApprovalPolicy)
 	if err != nil {
 		return model.ComposeRevision{}, "", err
 	}

@@ -34,13 +34,14 @@ func (store *Store) CreateAccessChange(
 	var appliedByHash, appliedPolicyDigest string
 	var appliedPolicyVersion int64
 	var dual int
+	var approvalPolicy string
 	err = tx.QueryRowContext(ctx, `SELECT id,idempotency_key,request_digest,actor_hash,payload_json,state,
-		requires_dual_approval,confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,
+		requires_dual_approval,approval_policy,confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,
 		error,created_at,approved_at,second_approved_at,applied_by_hash,applied_policy_digest,
 		applied_policy_version,applied_at
 		FROM access_changes WHERE idempotency_key=?`, change.IdempotencyKey).Scan(
 		&existing.ID, &existing.IdempotencyKey, &existing.RequestDigest, &existing.ActorHash, &existingPayload,
-		&existing.State, &dual, &existingConfirmationHash, &existing.ConfirmationPhrase,
+		&existing.State, &dual, &approvalPolicy, &existingConfirmationHash, &existing.ConfirmationPhrase,
 		&existing.ApprovedByHash, &existing.SecondApprovedByHash, &existing.Error,
 		&created, &approvedAt, &secondApprovedAt, &appliedByHash, &appliedPolicyDigest,
 		&appliedPolicyVersion, &appliedAt)
@@ -49,6 +50,7 @@ func (store *Store) CreateAccessChange(
 			return model.AccessChange{}, false, ErrIdempotency
 		}
 		existing.RequiresDualApproval = dual != 0
+		existing.ApprovalPolicy = approvalPolicy
 		existing.AppliedByHash = appliedByHash
 		existing.AppliedPolicyDigest = appliedPolicyDigest
 		existing.AppliedPolicyVersion = appliedPolicyVersion
@@ -86,12 +88,12 @@ func (store *Store) CreateAccessChange(
 	}
 	now := store.now()
 	_, err = tx.ExecContext(ctx, `INSERT INTO access_changes(
-		id,idempotency_key,request_digest,actor_hash,payload_json,state,requires_dual_approval,
+		id,idempotency_key,request_digest,actor_hash,payload_json,state,requires_dual_approval,approval_policy,
 		confirmation_hash,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
 		created_at,approved_at,second_approved_at,applied_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		change.ID, change.IdempotencyKey, change.RequestDigest, change.ActorHash, payloadJSON,
-		change.State, change.RequiresDualApproval, confirmationHash, change.ConfirmationPhrase,
+		change.State, change.RequiresDualApproval, change.ApprovalPolicy, confirmationHash, change.ConfirmationPhrase,
 		change.ApprovedByHash, change.SecondApprovedByHash, change.Error, timeText(change.CreatedAt),
 		nullableTimeText(change.ApprovedAt), nullableTimeText(change.SecondApprovedAt), nullableTimeText(change.AppliedAt))
 	if err != nil {
@@ -120,7 +122,7 @@ func (store *Store) GetAccessChangeWithPayload(ctx context.Context, id string) (
 
 func (store *Store) ListAccessChanges(ctx context.Context, limit int) ([]model.AccessChange, error) {
 	rows, err := store.db.QueryContext(ctx, `SELECT id,idempotency_key,request_digest,actor_hash,state,
-		requires_dual_approval,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
+		requires_dual_approval,approval_policy,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
 		created_at,approved_at,second_approved_at,applied_by_hash,applied_policy_digest,
 		applied_policy_version,applied_at
 		FROM access_changes ORDER BY created_at DESC LIMIT ?`, clampLimit(limit, 200))
@@ -136,7 +138,7 @@ func (store *Store) ListAccessChanges(ctx context.Context, limit int) ([]model.A
 		var appliedPolicyVersion int64
 		var dual int
 		if err := rows.Scan(&change.ID, &change.IdempotencyKey, &change.RequestDigest, &change.ActorHash,
-			&change.State, &dual, &change.ConfirmationPhrase, &change.ApprovedByHash,
+			&change.State, &dual, &change.ApprovalPolicy, &change.ConfirmationPhrase, &change.ApprovedByHash,
 			&change.SecondApprovedByHash, &change.Error, &created, &approvedAt, &secondApprovedAt,
 			&appliedByHash, &appliedPolicyDigest, &appliedPolicyVersion, &appliedAt); err != nil {
 			return nil, err
@@ -185,6 +187,12 @@ func (store *Store) ApproveAccessChange(
 	if change.ActorHash == actor {
 		return model.AccessChange{}, errors.New("访问策略变更创建人不能批准自己的变更")
 	}
+	if model.UsesTwoPartyApproval(change.ApprovalPolicy) && change.State == model.AccessChangeApproved && change.ApprovedByHash == actor {
+		if err := tx.Commit(); err != nil {
+			return model.AccessChange{}, err
+		}
+		return change, nil
+	}
 	if change.State != model.AccessChangePendingApproval {
 		if (change.State == model.AccessChangeApproved || change.State == model.AccessChangeApplied) &&
 			(change.ApprovedByHash == actor || change.SecondApprovedByHash == actor) {
@@ -193,6 +201,21 @@ func (store *Store) ApproveAccessChange(
 		return model.AccessChange{}, errors.New("访问策略变更当前不能批准")
 	}
 	now := store.now()
+	if model.UsesTwoPartyApproval(change.ApprovalPolicy) {
+		result, execErr := tx.ExecContext(ctx, `UPDATE access_changes SET state=?,approved_by_hash=?,approved_at=? WHERE id=? AND state=? AND approved_by_hash=''`, model.AccessChangeApproved, actor, timeText(now), id, model.AccessChangePendingApproval)
+		if err := requireOne(result, execErr, "访问策略独立批准无法写入"); err != nil {
+			return model.AccessChange{}, err
+		}
+		change.State, change.ApprovedByHash, change.ApprovedAt = model.AccessChangeApproved, actor, &now
+		if err := appendPlanAudit(ctx, tx, model.AuditEntry{ActorHash: actor, Event: "access.change.approved", Resource: "access/" + id,
+			Outcome: "accepted", Detail: map[string]any{"state": change.State, "approvalPolicy": change.ApprovalPolicy}}, now); err != nil {
+			return model.AccessChange{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return model.AccessChange{}, err
+		}
+		return change, nil
+	}
 	if change.ApprovedByHash == "" {
 		result, execErr := tx.ExecContext(ctx, `UPDATE access_changes SET approved_by_hash=?,approved_at=? WHERE id=? AND state=? AND approved_by_hash=''`, actor, timeText(now), id, model.AccessChangePendingApproval)
 		if err := requireOne(result, execErr, "访问策略第一批准无法写入"); err != nil {
@@ -262,12 +285,12 @@ func (store *Store) RejectAccessChange(ctx context.Context, id, actor, reason st
 }
 
 const accessChangeSelect = `SELECT id,idempotency_key,request_digest,actor_hash,state,
-	requires_dual_approval,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
+	requires_dual_approval,approval_policy,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
 	created_at,approved_at,second_approved_at,applied_by_hash,applied_policy_digest,
 	applied_policy_version,applied_at FROM access_changes`
 
 const accessChangeSelectWithPayload = `SELECT id,idempotency_key,request_digest,actor_hash,state,
-	requires_dual_approval,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
+			requires_dual_approval,approval_policy,confirmation_phrase,approved_by_hash,second_approved_by_hash,error,
 	created_at,approved_at,second_approved_at,applied_by_hash,applied_policy_digest,
 	applied_policy_version,applied_at,payload_json FROM access_changes`
 
@@ -287,12 +310,12 @@ func scanAccessChange(row accessChangeScanner, withPayload bool) (model.AccessCh
 	var err error
 	if withPayload {
 		err = row.Scan(&change.ID, &change.IdempotencyKey, &change.RequestDigest, &change.ActorHash, &change.State,
-			&dual, &change.ConfirmationPhrase, &change.ApprovedByHash, &change.SecondApprovedByHash,
+			&dual, &change.ApprovalPolicy, &change.ConfirmationPhrase, &change.ApprovedByHash, &change.SecondApprovedByHash,
 			&change.Error, &created, &approvedAt, &secondApprovedAt, &appliedByHash,
 			&appliedPolicyDigest, &appliedPolicyVersion, &appliedAt, &payload)
 	} else {
 		err = row.Scan(&change.ID, &change.IdempotencyKey, &change.RequestDigest, &change.ActorHash, &change.State,
-			&dual, &change.ConfirmationPhrase, &change.ApprovedByHash, &change.SecondApprovedByHash,
+			&dual, &change.ApprovalPolicy, &change.ConfirmationPhrase, &change.ApprovedByHash, &change.SecondApprovedByHash,
 			&change.Error, &created, &approvedAt, &secondApprovedAt, &appliedByHash,
 			&appliedPolicyDigest, &appliedPolicyVersion, &appliedAt)
 	}
