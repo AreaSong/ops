@@ -1,6 +1,24 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+func (policy AutoUpdatePolicy) Normalized() AutoUpdatePolicy {
+	if policy.Channel == "" {
+		policy.Channel = "stable"
+	}
+	policy.MaintenanceWindow = strings.TrimSpace(strings.TrimSuffix(policy.MaintenanceWindow, "Z"))
+	policy.MaintenanceTimezone = strings.TrimSpace(policy.MaintenanceTimezone)
+	if policy.MaintenanceTimezone == "" {
+		policy.MaintenanceTimezone = "UTC"
+	}
+	if policy.ObservationSeconds == 0 {
+		policy.ObservationSeconds = 300
+	}
+	return policy
+}
 
 // AutoUpdatePolicyView is the durable, actor-filtered representation exposed
 // to the control plane. It intentionally omits adapter paths and credentials.

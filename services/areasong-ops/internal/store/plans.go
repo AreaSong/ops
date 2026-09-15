@@ -732,6 +732,9 @@ func (store *Store) startPlanTask(
 		return TaskStartResult{}, errors.New("发布计划未批准或已变化")
 	}
 	plan = storedPlan
+	if err := verifyAutomaticPlanPolicy(ctx, tx, plan); err != nil {
+		return TaskStartResult{}, err
+	}
 	var activeID string
 	err = tx.QueryRowContext(ctx, `
 		SELECT id FROM tasks WHERE service = ? AND state IN (?, ?, ?, ?) LIMIT 1

@@ -122,12 +122,15 @@ class ComposeServiceAdapterTests(unittest.TestCase):
                     "  esac",
                     "  exit 0",
                     "fi",
+                    'if [[ "${1:-}" == image && "${2:-}" == inspect ]]; then printf \'[{"Config":{"Labels":{"org.opencontainers.image.version":"1.2.3"}}}]\\n\'; exit 0; fi',
                     '[[ "${1:-}" == inspect ]] || { printf "unexpected docker invocation: %s\\n" "$*" >&2; exit 1; }',
                     'if [[ "$*" == *--format* ]]; then',
                     '  container="${!#}"',
                     '  format="${3:-}"',
                     '  if [[ "$container" == demo ]]; then',
                     '    case "$format" in',
+                    '      *Config.Image*) printf "example.invalid/app@sha256:' + 'a' * 64 + '\\n" ;;',
+                    '      *Image*) printf "sha256:' + 'a' * 64 + '\\n" ;;',
                     '      *State.Running*) [[ "$(cat "$state")" == running ]] && printf "true\\n" || printf "false\\n" ;;',
                     '      *State.Status*) cat "$state" ;;',
                     '      *) printf "running\\n" ;;',
@@ -262,6 +265,16 @@ class ComposeServiceAdapterTests(unittest.TestCase):
         result = self.run_lifecycle("drain", "preflight")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unsupported traffic action", result.stderr)
+
+    def test_digest_pinned_identity_uses_oci_version_without_health(self) -> None:
+        self._enable_lifecycle_fakes()
+        (self.bin_dir / "curl").write_text("#!/bin/sh\nexit 93\n")
+        result = self.run_lifecycle("inspect", "lifecycle")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)["data"]
+        self.assertEqual(data["currentVersion"], "1.2.3")
+        self.assertIn("@sha256:", data["currentImage"])
+        self.assertFalse((self.operation / "dependencies.before.json").exists())
 
 
 if __name__ == "__main__":

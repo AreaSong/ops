@@ -135,6 +135,10 @@ roles = {
 print(json.dumps({
     "schemaVersion": 1,
     "taskId": os.environ["TEST_TASK_ID"],
+    "runtimeSnapshot": {"containers": {
+        "postgres": {"image_id": "sha256:" + "b" * 64},
+        "redis": {"image_id": "sha256:" + "c" * 64},
+    }},
     "artifacts": {role: {"path": path} for role, path in roles.items()},
 }))
 """,

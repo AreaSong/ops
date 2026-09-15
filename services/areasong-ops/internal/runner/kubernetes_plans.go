@@ -44,6 +44,9 @@ func (engine *Engine) CreateKubernetesPlan(
 	}
 	digest := digestText(request.Manifest)
 	requestDigest := digestText(strings.Join([]string{actor, target.Cluster, target.Context, target.Namespace, target.TenantID, digest}, "\x00"))
+	if prior, found, err := engine.kubernetesPlanReplay(ctx, actor, request.IdempotencyKey, requestDigest); found || err != nil {
+		return prior, false, err
+	}
 	now := time.Now().UTC()
 	phrase := fmt.Sprintf("%s %s/%s %s", kubernetesApplyConfirmationPrefix, target.Cluster, target.Namespace, digest[:minInt(22, len(digest))])
 	plan := model.KubernetesPlan{
@@ -52,6 +55,10 @@ func (engine *Engine) CreateKubernetesPlan(
 		Action: "apply", State: "pending_approval", ConfirmationPhrase: phrase,
 		RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, CreatedAt: now,
 	}
+	if err := engine.prepareKubernetesPreview(ctx, &plan, request.Manifest, ""); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	phrase = plan.ConfirmationPhrase
 	created, wasCreated, err := engine.store.CreateKubernetesPlan(ctx, plan, request.Manifest, store.HashConfirmation(phrase))
 	if err != nil {
 		return model.KubernetesPlan{}, false, err
@@ -70,7 +77,7 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 	if !uuidPattern.MatchString(request.IdempotencyKey) || !uuidPattern.MatchString(request.RollbackToPlanID) {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚计划幂等键无效")
 	}
-	source, err := engine.successfulKubernetesPlan(ctx, sourcePlanID)
+	source, err := engine.store.GetKubernetesPlan(ctx, sourcePlanID)
 	if err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
@@ -80,8 +87,12 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 	if err := engine.authorizeKubernetesTenant(ctx, actor, source.Target); err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
+	source, err = engine.kubernetesRollbackSource(ctx, sourcePlanID)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
 	if source.Action != "apply" {
-		return model.KubernetesPlan{}, false, errors.New("只有成功的 Kubernetes apply 计划可以作为回滚来源")
+		return model.KubernetesPlan{}, false, errors.New("只有已确认 apply 完成的计划可以作为回滚来源")
 	}
 	target, err := engine.kubernetesTarget(source.Target)
 	if err != nil {
@@ -99,6 +110,13 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 	if _, err := validateKubernetesManifest(manifest, target); err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
+	_, sourceManifest, err := engine.store.GetKubernetesPlanWithManifest(ctx, sourcePlanID)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if err := sameKubernetesObjectSet(sourceManifest, manifest, target); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
 	digest := digestText(manifest)
 	if digest == source.ManifestDigest {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 回滚 manifest 与当前计划相同")
@@ -107,6 +125,9 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 		actor, sourcePlanID, request.RollbackToPlanID, source.ManifestDigest,
 		target.Cluster, target.Context, target.Namespace, target.TenantID, digest,
 	}, "\x00"))
+	if prior, found, err := engine.kubernetesPlanReplay(ctx, actor, request.IdempotencyKey, requestDigest); found || err != nil {
+		return prior, false, err
+	}
 	phrase := fmt.Sprintf("%s %s %s/%s %s", kubernetesRollbackConfirmationPrefix,
 		sourcePlanID, target.Cluster, target.Namespace, digest[:minInt(22, len(digest))])
 	plan := model.KubernetesPlan{
@@ -116,6 +137,10 @@ func (engine *Engine) CreateKubernetesRollbackPlan(
 		RollbackTargetPlanID: request.RollbackToPlanID, SourceManifestDigest: source.ManifestDigest, ConfirmationPhrase: phrase,
 		RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, CreatedAt: time.Now().UTC(),
 	}
+	if err := engine.prepareKubernetesPreview(ctx, &plan, manifest, source.OperationID); err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	phrase = plan.ConfirmationPhrase
 	created, wasCreated, err := engine.store.CreateKubernetesPlan(
 		ctx, plan, manifest, store.HashConfirmation(phrase),
 	)
@@ -139,6 +164,8 @@ func (engine *Engine) KubernetesPlan(ctx context.Context, actor, id string) (mod
 	if err := engine.authorizeKubernetesTenant(ctx, actor, plan.Target); err != nil {
 		return model.KubernetesPlan{}, err
 	}
+	_, rollbackErr := engine.kubernetesRollbackSource(ctx, plan.ID)
+	plan.RollbackEligible = rollbackErr == nil
 	return plan, nil
 }
 
@@ -157,7 +184,15 @@ func (engine *Engine) KubernetesPlans(ctx context.Context, actor string, limit i
 	if tenant == "" {
 		tenant = "default"
 	}
-	return engine.store.ListKubernetesPlans(ctx, tenant, limit)
+	plans, err := engine.store.ListKubernetesPlans(ctx, tenant, limit)
+	if err != nil {
+		return nil, err
+	}
+	for index := range plans {
+		_, err := engine.kubernetesRollbackSource(ctx, plans[index].ID)
+		plans[index].RollbackEligible = err == nil
+	}
+	return plans, nil
 }
 
 func (engine *Engine) ApproveKubernetesPlan(
@@ -168,7 +203,7 @@ func (engine *Engine) ApproveKubernetesPlan(
 	if !actorPattern.MatchString(actor) || !uuidPattern.MatchString(id) || request.Digest == "" || request.Confirmation == "" {
 		return model.KubernetesPlan{}, errors.New("Kubernetes 批准请求无效")
 	}
-	plan, err := engine.store.GetKubernetesPlan(ctx, id)
+	plan, manifest, err := engine.store.GetKubernetesPlanWithManifest(ctx, id)
 	if err != nil {
 		return model.KubernetesPlan{}, err
 	}
@@ -176,6 +211,9 @@ func (engine *Engine) ApproveKubernetesPlan(
 		return model.KubernetesPlan{}, err
 	}
 	if err := engine.authorizeKubernetesTenant(ctx, actor, plan.Target); err != nil {
+		return model.KubernetesPlan{}, err
+	}
+	if err := engine.verifyKubernetesPreview(ctx, plan, manifest); err != nil {
 		return model.KubernetesPlan{}, err
 	}
 	updated, err := engine.store.ApproveKubernetesPlan(ctx, id, actor, request.Digest, request.Confirmation)
@@ -192,6 +230,14 @@ func (engine *Engine) ExecuteKubernetesPlan(
 ) (model.KubernetesOperation, error) {
 	if !actorPattern.MatchString(actor) || !uuidPattern.MatchString(id) || !uuidPattern.MatchString(request.IdempotencyKey) {
 		return model.KubernetesOperation{}, errors.New("Kubernetes 执行请求标识无效")
+	}
+	engine.wait.Add(1)
+	defer engine.wait.Done()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if engine.fleetUpdateCtx != nil {
+		stop := context.AfterFunc(engine.fleetUpdateCtx, cancel)
+		defer stop()
 	}
 	plan, manifest, err := engine.store.GetKubernetesPlanWithManifest(ctx, id)
 	if err != nil {
@@ -236,21 +282,49 @@ func (engine *Engine) ExecuteKubernetesPlan(
 		return engine.kubernetesPlanOperation(ctx, plan)
 	}
 	executionKey := "plan-" + id
+	if plan.Preview == nil {
+		return model.KubernetesOperation{}, errors.New("旧 Kubernetes 计划缺少预览证据，请重建")
+	}
+	resources := []string{"kubernetes:" + plan.Preview.ClusterFingerprint + "/" + plan.Target.Namespace}
+	if !engine.acquire(resources, plan.ID) {
+		if plan.State == "running" {
+			return engine.kubernetesPlanOperation(ctx, plan)
+		}
+		return model.KubernetesOperation{}, errors.New("Kubernetes 目标已有在途操作")
+	}
+	defer engine.release(resources, plan.ID)
+	plan, manifest, err = engine.store.GetKubernetesPlanWithManifest(ctx, id)
+	if err != nil {
+		return model.KubernetesOperation{}, err
+	}
+	if plan.ExecutedByHash != "" && plan.ExecutedByHash != actor {
+		return model.KubernetesOperation{}, store.ErrActorMismatch
+	}
+	if plan.ExecuteIdempotencyKey != "" && plan.ExecuteIdempotencyKey != request.IdempotencyKey {
+		return model.KubernetesOperation{}, store.ErrIdempotency
+	}
+	if plan.State == "succeeded" || plan.State == "needs_attention" {
+		return engine.kubernetesPlanOperation(ctx, plan)
+	}
 	if plan.State == "running" {
 		op, resumable, err := engine.reconcileKubernetesRunningPlan(plan, executionKey)
 		if err != nil || !resumable {
 			return op, err
 		}
 	}
+	if err := engine.verifyKubernetesPreview(ctx, plan, manifest); err != nil {
+		return model.KubernetesOperation{}, err
+	}
 	operationRequest := model.KubernetesRequest{
 		Target: plan.Target, Action: plan.Action, Manifest: manifest,
 		IdempotencyKey: executionKey, RollbackOfPlanID: plan.RollbackOfPlanID,
+		ExpectedResources: plan.Preview.Resources,
 	}
 	operation, err := prepareKubernetesPlanOperation(operationRequest, executionKey)
 	if err != nil {
 		return model.KubernetesOperation{}, err
 	}
-	if _, _, startErr := engine.store.StartKubernetesPlan(ctx, id, actor, request.IdempotencyKey, operation); startErr != nil {
+	if _, _, startErr := engine.store.StartKubernetesPlan(ctx, id, actor, request.IdempotencyKey, plan.PlanDigest, operation); startErr != nil {
 		return model.KubernetesOperation{}, startErr
 	}
 	confirmation := "应用 Kubernetes 清单"
@@ -355,9 +429,12 @@ func (engine *Engine) verifyKubernetesRollbackSource(ctx context.Context, plan m
 	if !uuidPattern.MatchString(plan.RollbackOfPlanID) || !uuidPattern.MatchString(plan.RollbackTargetPlanID) || plan.SourceManifestDigest == "" {
 		return errors.New("Kubernetes 回滚计划缺少来源身份")
 	}
-	source, err := engine.successfulKubernetesPlan(ctx, plan.RollbackOfPlanID)
+	source, err := engine.kubernetesRollbackSource(ctx, plan.RollbackOfPlanID)
 	if err != nil {
 		return errors.New("Kubernetes 回滚来源计划不可用")
+	}
+	if plan.Preview != nil && plan.Preview.SourceOperationID != source.OperationID {
+		return errors.New("Kubernetes 回滚来源操作身份已变化")
 	}
 	target, manifest, err := engine.store.GetKubernetesPlanWithManifest(ctx, plan.RollbackTargetPlanID)
 	if err != nil {

@@ -127,6 +127,11 @@ func (engine *Engine) run(task model.Task) {
 			}
 		}
 		if semantics.ProducesRecoveryPoint {
+			if task.RestoreMode != "" {
+				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false,
+					lastSummary, fmt.Errorf("恢复动作不能替换已经批准的恢复点"))
+				return
+			}
 			point, err := engine.persistRecoveryPoint(context.Background(), task, service, result.RecoveryPoint)
 			if err != nil {
 				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary, err)
@@ -138,6 +143,12 @@ func (engine *Engine) run(task model.Task) {
 			}
 			result.Data["recoveryPointId"] = point.ID
 			result.Data["recoveryPointDigest"] = point.EvidenceDigest
+		}
+		if task.RestoreMode == "isolated" && phase == "verify" {
+			if err := verifyIsolatedRestoreResult(task, result.Data); err != nil {
+				engine.finishFailure(task, service, action, failureSemantics, operationDir, productionChanged, false, lastSummary, err)
+				return
+			}
 		}
 		changed, _ := result.Data["productionChanged"].(bool)
 		if changed || mutationSemantics(semantics) {
@@ -156,6 +167,11 @@ func (engine *Engine) run(task model.Task) {
 			TaskID: task.ID, Level: "info", Phase: phase,
 			Message: result.Summary, Data: result.Data,
 		})
+	}
+	if err := engine.captureAutomaticObservation(ctx, task, service); err != nil {
+		engine.finishFailure(task, service, action, model.PhaseSemantics{FailurePolicy: "needs_attention"},
+			operationDir, productionChanged, false, lastSummary, err)
+		return
 	}
 	engine.completeTask(task, model.TaskSucceeded, lastSummary, "", "", false, false, "")
 }
@@ -320,7 +336,7 @@ func (engine *Engine) completeTask(
 	summary, message, failureCode string,
 	retryable, rollbackAvailable bool,
 	rollbackReason string,
-) {
+) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	level := "info"
@@ -354,4 +370,5 @@ func (engine *Engine) completeTask(
 	} else {
 		slog.Error("任务终态事务提交失败", "task", task.ID, "state", state, "error", err)
 	}
+	return err
 }

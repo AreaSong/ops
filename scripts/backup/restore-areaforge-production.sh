@@ -64,8 +64,10 @@ validate_contract() {
     --service areaforge --target "$target" --backup-root "$BACKUP_ROOT" \
     --required-role postgres-areaforge \
     --required-role volume-areaforge-uploads \
-    --required-role volume-areaforge-ops-state)" || fail "恢复合同校验失败"
+    --required-role volume-areaforge-ops-state --required-role configs --required-role runtime-snapshot)" || fail "恢复合同校验失败"
   CONTRACT_JSON="$output"
+  recorded_image="$(jq -er '.runtimeSnapshot.containers.postgres.image_id' <<<"$CONTRACT_JSON")"
+  [[ "$(docker inspect --format '{{.Image}}' "$POSTGRES_CONTAINER")" == "$recorded_image" ]] || fail "PostgreSQL image differs from the selected recovery point"
 }
 
 require_state() {

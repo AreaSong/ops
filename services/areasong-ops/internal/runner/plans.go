@@ -165,6 +165,10 @@ func (engine *Engine) CreateReleasePlan(
 	if err := engine.authorize(ctx, actorHash, permissionForAction(action.Name), service.ObjectID); err != nil {
 		return model.ReleasePlan{}, err
 	}
+	action, err = engine.resolveAutoUpdateAction(ctx, service, action, request.AutoUpdatePolicy)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
 	if active, found, err := engine.store.ActiveTask(ctx, service.Name); err != nil {
 		return model.ReleasePlan{}, err
 	} else if found {
@@ -175,6 +179,11 @@ func (engine *Engine) CreateReleasePlan(
 		return model.ReleasePlan{}, fmt.Errorf("创建计划前检查失败: %w", err)
 	}
 	snapshot = approvalSnapshot(service, snapshot)
+	if request.AutoUpdatePolicy != nil {
+		if _, err := engine.inspectRollbackIdentity(ctx, service); err != nil {
+			return model.ReleasePlan{}, fmt.Errorf("自动更新需要独立于健康探针的回滚身份检查: %w", err)
+		}
+	}
 	if action.TargetMode == "controlled_rollback" {
 		if err := engine.validateRollbackSource(request.Service, request.Target, snapshot); err != nil {
 			return model.ReleasePlan{}, err
@@ -198,6 +207,7 @@ func (engine *Engine) CreateReleasePlan(
 		Scope: action.Scope, Steps: append([]string(nil), action.Steps...),
 		PhaseSemantics: resolvedPhaseSemantics(action), ObservationSeconds: action.ObservationSeconds, TimeoutSeconds: action.TimeoutSeconds,
 		AlertPolicy:        actionAlertPolicy(service),
+		AutoUpdatePolicy:   request.AutoUpdatePolicy,
 		ConfirmationPhrase: phrase,
 		ExpectedBefore:     snapshot, TargetEvidence: targetEvidence,
 		RestoreMode: request.RestoreMode, RecoveryPointID: request.RecoveryPointID,
@@ -276,6 +286,20 @@ func (engine *Engine) ApproveReleasePlan(
 	if err := engine.authorize(ctx, actorHash, permissionForAction(plan.Action), service.ObjectID); err != nil {
 		return model.ReleasePlan{}, err
 	}
+	if plan.State == model.PlanPendingApproval && plan.ApprovalSummary.AutoUpdatePolicy != nil {
+		_, action, actionErr := engine.resolveAction(plan.Service, plan.Action, plan.Target)
+		if actionErr != nil {
+			return model.ReleasePlan{}, actionErr
+		}
+		if _, err := engine.resolveAutoUpdateAction(ctx, service, action, plan.ApprovalSummary.AutoUpdatePolicy); err != nil {
+			return model.ReleasePlan{}, engine.invalidateReleasePlan(ctx, actorHash, plan.ID, err.Error(), err)
+		}
+	}
+	if plan.State == model.PlanPendingApproval {
+		if err := engine.rejectLegacyAutoUpdatePlan(ctx, actorHash, plan); err != nil {
+			return model.ReleasePlan{}, err
+		}
+	}
 	if !plan.HasRequiredApprovalPolicy() {
 		return model.ReleasePlan{}, errors.New("高风险计划缺少双人审批门禁")
 	}
@@ -347,10 +371,17 @@ func (engine *Engine) ExecuteReleasePlan(
 	if plan.State != model.PlanApproved {
 		return model.Task{}, false, errors.New("发布计划尚未批准或已经执行")
 	}
+	if err := engine.rejectLegacyAutoUpdatePlan(ctx, actorHash, plan); err != nil {
+		return model.Task{}, false, err
+	}
 	service, action, err := engine.resolveAction(plan.Service, plan.Action, plan.Target)
 	if err != nil {
 		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID,
 			"服务能力或目标策略已变化", err)
+	}
+	action, err = engine.resolveAutoUpdateAction(ctx, service, action, plan.ApprovalSummary.AutoUpdatePolicy)
+	if err != nil {
+		return model.Task{}, false, engine.invalidateReleasePlan(ctx, actorHash, plan.ID, err.Error(), err)
 	}
 	observed, err := engine.inspectForAction(ctx, service, action.Name)
 	if err != nil {
@@ -377,6 +408,7 @@ func (engine *Engine) ExecuteReleasePlan(
 		Steps: append([]string(nil), action.Steps...), PhaseSemantics: resolvedPhaseSemantics(action),
 		ObservationSeconds: action.ObservationSeconds, TimeoutSeconds: action.TimeoutSeconds,
 		AlertPolicy:        actionAlertPolicy(service),
+		AutoUpdatePolicy:   plan.ApprovalSummary.AutoUpdatePolicy,
 		ConfirmationPhrase: renderConfirmation(action.ConfirmationTemplate, service.Name, plan.Target),
 		ExpectedBefore:     observed, TargetEvidence: targetEvidence,
 		RestoreMode: plan.RestoreMode, RecoveryPointID: plan.RecoveryPointID,

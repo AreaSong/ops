@@ -1275,6 +1275,7 @@ export default function App() {
         updated,
         ...current.filter((item) => item.service !== service),
       ]);
+      return updated;
     } catch (reasonValue) {
       setError(errorMessage(reasonValue, "自动更新策略保存失败"));
       throw reasonValue;

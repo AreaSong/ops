@@ -15,6 +15,7 @@ select:focus-visible, textarea:focus-visible {
   color: var(--red); background: var(--red-soft); font-size: 11px;
 }
 .inline-error.compact { min-height: 34px; margin: 0 0 8px; padding: 7px 9px; }
+.auto-update-policy-feedback { margin: 0; color: var(--green); font-size: 11px; }
 .page-header-actions, .section-actions, .config-toolbar, .config-actions, .form-actions {
   display: flex; align-items: center; gap: 8px;
 }
@@ -170,6 +171,12 @@ select:focus-visible, textarea:focus-visible {
 .extension-row { grid-template-columns: minmax(180px, 1fr) 160px 80px; }
 .operation-row:last-child, .extension-row:last-child { border-bottom: 0; }
 .operation-row strong, .operation-row small, .extension-row strong, .extension-row small { display: block; }
+.kube-plan-row { grid-template-columns: minmax(0, 1fr) minmax(100px, auto); }
+.kube-plan-row .inline-confirm { grid-column: 1 / -1; min-width: 0; flex-wrap: wrap; }
+.kube-plan-row code { overflow-wrap: anywhere; }
+.kube-preview { grid-column: 1 / -1; min-width: 0; max-width: 100%; }
+.kube-preview summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.kube-preview pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
 .operation-row small, .extension-row small { margin-top: 3px; color: var(--muted); font-size: 9px; }
 .extension-policy-grid { display: grid; grid-template-columns: 160px 160px minmax(150px, 1fr); gap: 12px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 .extension-policy-grid textarea { min-height: 72px; resize: vertical; font-family: "SFMono-Regular", Consolas, monospace; }
@@ -181,7 +188,17 @@ select:focus-visible, textarea:focus-visible {
 .auto-update-policy-row > .automatic-task-main,
 .auto-update-policy-row > .automatic-task-action { margin-top: 12px; }
 .auto-update-policy-row > .extension-policy-grid { min-width: 0; margin: 0; }
+.auto-update-policy-row .extension-policy-grid input:not([type="checkbox"]) {
+  width: 100%; min-width: 0; height: 34px; padding: 0 9px;
+  border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); font-size: 11px;
+}
+.auto-update-policy-row .extension-policy-grid input:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 2px;
+}
+.auto-update-policy-row .extension-policy-grid small { color: var(--muted); font-size: 10px; line-height: 1.5; }
 .auto-update-policy-row > .automatic-task-facts { grid-column: 1 / -1; }
+.auto-update-policy-row > .auto-update-policy-feedback,
+.auto-update-policy-row > .inline-error { grid-column: 1 / -1; }
 
 .access-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .access-summary-main { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 11px; }

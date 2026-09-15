@@ -73,6 +73,7 @@ func TestKubernetesPlanDualApprovalAndIdempotentReplay(t *testing.T) {
 		Action: "apply", State: "pending_approval", ConfirmationPhrase: "批准 Kubernetes 变更 cluster/namespace sha256:manifest",
 		RequiresDualApproval: true, CreatedAt: now,
 	}
+	attachKubernetesPreview(&plan)
 	manifest := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: demo\n"
 	created, fresh, err := database.CreateKubernetesPlan(ctx, plan, manifest, HashConfirmation(plan.ConfirmationPhrase))
 	if err != nil || !fresh || created.ID != plan.ID {
@@ -82,20 +83,20 @@ func TestKubernetesPlanDualApprovalAndIdempotentReplay(t *testing.T) {
 	if err != nil || fresh || replayed.ID != plan.ID {
 		t.Fatalf("replayed=%+v fresh=%v err=%v", replayed, fresh, err)
 	}
-	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, plan.ActorHash, plan.ManifestDigest, plan.ConfirmationPhrase); err == nil {
+	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, plan.ActorHash, plan.PlanDigest, plan.ConfirmationPhrase); err == nil {
 		t.Fatal("plan creator unexpectedly approved own Kubernetes plan")
 	}
-	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.ManifestDigest, "wrong confirmation"); err != ErrConfirmation {
+	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.PlanDigest, "wrong confirmation"); err != ErrConfirmation {
 		t.Fatalf("wrong confirmation error=%v", err)
 	}
-	first, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.ManifestDigest, plan.ConfirmationPhrase)
+	first, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.PlanDigest, plan.ConfirmationPhrase)
 	if err != nil || first.ApprovedByHash != "actor-b" || first.State != "pending_approval" {
 		t.Fatalf("first approval=%+v err=%v", first, err)
 	}
-	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.ManifestDigest, plan.ConfirmationPhrase); err != ErrActorMismatch {
+	if _, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-b", plan.PlanDigest, plan.ConfirmationPhrase); err != ErrActorMismatch {
 		t.Fatalf("same approver error=%v", err)
 	}
-	second, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-c", plan.ManifestDigest, plan.ConfirmationPhrase)
+	second, err := database.ApproveKubernetesPlan(ctx, plan.ID, "actor-c", plan.PlanDigest, plan.ConfirmationPhrase)
 	if err != nil || second.State != "approved" || second.SecondApprovedByHash != "actor-c" {
 		t.Fatalf("second approval=%+v err=%v", second, err)
 	}
@@ -105,22 +106,22 @@ func TestKubernetesPlanDualApprovalAndIdempotentReplay(t *testing.T) {
 		State: "pending", Phase: "preflight", RolloutState: "pending",
 		RolloutResources: []string{"deployment/demo"},
 	}
-	started, ok, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", operation)
+	started, ok, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", plan.PlanDigest, operation)
 	if err != nil || !ok || started.State != "running" {
 		t.Fatalf("start=%+v ok=%v err=%v", started, ok, err)
 	}
 	if started.ExecuteIdempotencyKey != "exec-key" {
 		t.Fatalf("execute idempotency key=%q", started.ExecuteIdempotencyKey)
 	}
-	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "other-exec-key", operation); err != ErrIdempotency {
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "other-exec-key", plan.PlanDigest, operation); err != ErrIdempotency {
 		t.Fatalf("execute replay conflict error=%v", err)
 	}
-	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-e", "exec-key", operation); err != ErrActorMismatch {
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-e", "exec-key", plan.PlanDigest, operation); err != ErrActorMismatch {
 		t.Fatalf("execute actor replay error=%v", err)
 	}
 	conflictingOperation := operation
 	conflictingOperation.ID, conflictingOperation.IdempotencyKey = "other", "other"
-	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", conflictingOperation); err != ErrIdempotency {
+	if _, _, err := database.StartKubernetesPlan(ctx, plan.ID, "actor-d", "exec-key", plan.PlanDigest, conflictingOperation); err != ErrIdempotency {
 		t.Fatalf("replay conflict error=%v", err)
 	}
 	if err := database.FinishKubernetesPlan(ctx, plan.ID, "needs_attention", "apply failed"); err != nil {

@@ -269,14 +269,14 @@ esac
             check=False,
         )
 
-    def write_task_contract(self, action: str = "update") -> None:
+    def write_task_contract(self, action: str = "update", target: str = "v1.2.0") -> None:
         contract = {
             "schemaVersion": 1,
             "taskId": str(uuid.uuid4()),
             "actorHash": "f" * 64,
             "service": "areaforge",
             "action": action,
-            "target": "v1.2.0",
+            "target": target,
             "expectedBefore": self.expected_before,
             "createdAt": "2026-08-09T00:00:00Z",
         }
@@ -384,6 +384,46 @@ esac
         result = self.run_adapter("resume-traffic", "preflight")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unsupported traffic action", result.stderr)
+
+    def test_identity_probe_needs_neither_task_contract_nor_http_health(self) -> None:
+        self._enable_lifecycle_fakes()
+        self._write_executable(self.bin_dir / "curl", "#!/bin/sh\nexit 93\n")
+        result = self.run_adapter("inspect", "lifecycle")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["data"]["currentImageId"], self.old_image_id)
+        self.assertFalse((self.operation / "task-contract.json").exists())
+        self.assertFalse((self.operation / "dependencies.before.json").exists())
+
+    def test_selected_restore_uses_exact_artifacts_and_recorded_database(self) -> None:
+        from scripts.backup.tests.recovery_fixture import make_contract, write_fixture
+        backup_root = self.root / "backups"
+        fixture = write_fixture(backup_root / "A", service="areaforge", before=self.expected_before, database_name="areaforge_custom")
+        contract = make_contract(fixture, "areaforge")
+        point = self.operation / "recovery-point.json"
+        point.write_text(json.dumps(contract))
+        point.chmod(0o600)
+        self.write_task_contract("restore-drill", contract["recoveryPointId"])
+        restore = self.root / "selected-restore.sh"
+        capture = self.root / "restore-arguments"
+        imported = self.root / "restored.sql"
+        self._write_executable(restore, "#!/bin/sh\nset -eu\n"
+            f"printf '%s\\n' \"$@\" >'{capture}'\n"
+            "postgres=''\nwhile [ $# -gt 0 ]; do\n"
+            "if [ \"$1\" = --postgres-artifact ]; then postgres=$2; shift 2; else shift; fi\n"
+            "done\n" + f"gzip -dc \"$BACKUP_ROOT/$postgres\" >'{imported}'\n")
+        environment = self.environment()
+        script_dir = Path(__file__).resolve().parents[4] / "scripts" / "backup"
+        environment.update({"BACKUP_ROOT":str(backup_root),
+                            "AREAFORGE_OPS_RECOVERY_METADATA":str(script_dir / "restore_point_metadata.py"),
+                            "AREAFORGE_OPS_RESTORE_DRILL":str(restore),
+                            "AREAFORGE_OPS_LATEST_MANIFEST":str(self.root / "missing-latest")})
+        for phase in ("preflight", "drill", "verify"):
+            result = subprocess.run([str(ADAPTER),"restore-drill",phase,str(self.operation),contract["recoveryPointId"],""],
+                                    env=environment,text=True,capture_output=True,check=False)
+            self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn("--database\nareaforge_custom",capture.read_text())
+        self.assertNotIn("--manifest",capture.read_text())
+        self.assertIn("SELECT 'A'",imported.read_text())
 
 
 if __name__ == "__main__":

@@ -873,6 +873,20 @@ export interface KubernetesPlan {
   tenantId?: string
   target: KubernetesTarget
   manifestDigest: string
+  planDigest?: string
+  rollbackEligible?: boolean
+  preview?: {
+    version: number
+    policyDigest: string
+    clusterFingerprint: string
+    diff: string
+    diffDigest: string
+    hasChanges: boolean
+    observedAt: string
+    expiresAt: string
+    sourceOperationId?: string
+    resources: Array<{ apiVersion: string; kind: string; name: string; namespace: string; exists: boolean; uid?: string; resourceVersion?: string }>
+  }
   action: 'apply' | 'rollback'
   state: string
 	rollbackOfPlanId?: string

@@ -66,7 +66,13 @@ validate_contract() {
   CONTRACT_JSON="$("$CONTRACT_VALIDATOR" --contract "$operation_dir/recovery-point.json" \
     --service sub2api --target "$target" --backup-root "$BACKUP_ROOT" \
     --required-role postgres-sub2api --required-role redis \
-    --required-role volume-sub2api-data)" || fail "恢复合同校验失败"
+    --required-role volume-sub2api-data --required-role configs --required-role runtime-snapshot)" || fail "恢复合同校验失败"
+  for role in postgres redis; do
+    recorded_image="$(jq -er --arg role "$role" '.runtimeSnapshot.containers[$role].image_id' <<<"$CONTRACT_JSON")"
+    container="$POSTGRES_CONTAINER"
+    [[ "$role" == redis ]] && container="$REDIS_CONTAINER"
+    [[ "$(docker inspect --format '{{.Image}}' "$container")" == "$recorded_image" ]] || fail "database image differs from selected recovery point: $role"
+  done
 }
 
 require_state() {

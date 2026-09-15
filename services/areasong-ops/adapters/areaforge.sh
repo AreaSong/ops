@@ -17,10 +17,12 @@ RUNTIME_COMPOSE="${AREAFORGE_OPS_RUNTIME_COMPOSE:-/opt/areaforge/docker-compose.
 ENV_FILE="${AREAFORGE_OPS_ENV_FILE:-/opt/areaforge/.env.production}"
 BACKUP_POSTGRES="${AREAFORGE_OPS_BACKUP_POSTGRES:-/opt/ops/scripts/backup/backup-postgres.sh}"
 BACKUP_VOLUMES="${AREAFORGE_OPS_BACKUP_VOLUMES:-/opt/ops/scripts/backup/backup-volumes.sh}"
+BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"
 RESTORE_DRILL="${AREAFORGE_OPS_RESTORE_DRILL:-/opt/ops/scripts/backup/restore-areaforge-isolated.sh}"
 RESTORE_PRODUCTION="${AREAFORGE_OPS_RESTORE_PRODUCTION:-/opt/ops/scripts/backup/restore-areaforge-production.sh}"
 LATEST_MANIFEST="${AREAFORGE_OPS_LATEST_MANIFEST:-/var/backups/ops/manifests/latest-manifest.txt}"
 RESTORE_METRICS="${AREAFORGE_OPS_RESTORE_METRICS:-/var/lib/node_exporter/textfile_collector/areaforge-restore-drill.prom}"
+RECOVERY_METADATA="${AREAFORGE_OPS_RECOVERY_METADATA:-/opt/ops/scripts/backup/restore_point_metadata.py}"
 APP_CONTAINER="${AREAFORGE_OPS_APP_CONTAINER:-areaforge-web}"
 APP_SERVICE="${AREAFORGE_OPS_APP_SERVICE:-web}"
 POSTGRES_CONTAINER="${AREAFORGE_OPS_POSTGRES_CONTAINER:-areaforge-postgres}"
@@ -63,21 +65,27 @@ require_file() {
 
 recovery_artifact() {
   local role="$1" path="$2"
-  [[ "$path" == /var/backups/ops/* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
+  [[ "$BACKUP_ROOT" == /* && "$BACKUP_ROOT" != / && "$path" == "$BACKUP_ROOT/"* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
   jq -cn --arg role "$role" --arg path "$path" --argjson sizeBytes "$(stat -c %s "$path")" \
     --arg sha256 "sha256:$(sha256sum "$path" | awk '{print $1}')" \
     '{role:$role,path:$path,sizeBytes:$sizeBytes,sha256:$sha256}'
 }
 
 write_recovery_point() {
-  local postgres_output="$1" volumes_output="$2" postgres uploads ops_state artifacts point
+  local postgres_output="$1" volumes_output="$2" postgres uploads ops_state artifacts point metadata
   postgres="$(grep '/areaforge-postgres-' <<<"$postgres_output" | tail -n1)"
   uploads="$(grep '/areaforge-uploads-' <<<"$volumes_output" | tail -n1)"
   ops_state="$(grep '/areaforge-ops-state-' <<<"$volumes_output" | tail -n1)"
   artifacts="$(jq -cn --argjson postgres "$(recovery_artifact postgres-areaforge "$postgres")" \
     --argjson uploads "$(recovery_artifact volume-areaforge-uploads "$uploads")" \
     --argjson opsState "$(recovery_artifact volume-areaforge-ops-state "$ops_state")" \
-    '[$postgres,$uploads,$opsState]')"
+    '[$postgres,$uploads,$opsState]')" || return 1
+  require_file "$RECOVERY_METADATA" || return 1
+  metadata="$(python3 "$RECOVERY_METADATA" capture --service areaforge --operation-dir "$operation_dir" \
+    --backup-root "${BACKUP_ROOT:-/var/backups/ops}" --controlled-compose "$CONTROLLED_COMPOSE" \
+    --runtime-compose "$RUNTIME_COMPOSE" --env-file "$ENV_FILE" \
+    --app-container "$APP_CONTAINER" --postgres-container "$POSTGRES_CONTAINER")" || return 1
+  artifacts="$(jq -cn --argjson data "$artifacts" --argjson metadata "$metadata" '$data + $metadata.artifacts')" || return 1
   point="$(jq -cn --arg service "${OPS_SERVICE_NAME:-areaforge}" --arg taskId "$(basename "$operation_dir")" \
     --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson artifacts "$artifacts" \
     '{schemaVersion:1,service:$service,taskId:$taskId,createdAt:$createdAt,artifacts:$artifacts}')"
@@ -469,7 +477,8 @@ case "$action:$phase" in
     result "AreaForge 运行身份检查完成" "$(inspect_data)"
     ;;
   inspect:lifecycle)
-    verify_lifecycle_preflight
+    require_file "$UPDATER"
+    verify_compose_pair
     result "AreaForge 停止态运行身份检查完成" "$(lifecycle_identity)"
     ;;
   check:discover)
@@ -640,6 +649,16 @@ case "$action:$phase" in
     ;;
   restore-drill:preflight)
     assert_expected_before
+    if [[ -n "$target" || -e "$operation_dir/recovery-point.json" ]]; then
+      require_file "$RECOVERY_METADATA"
+      selected="$(python3 "$RECOVERY_METADATA" stage --service areaforge --expected-mode isolated \
+        --contract "$operation_dir/recovery-point.json" --target "$target" \
+        --backup-root "${BACKUP_ROOT:-/var/backups/ops}" --operation-dir "$operation_dir")"
+      printf '%s\n' "$selected" >"$operation_dir/selected-point.json"
+      chmod 0600 "$operation_dir/selected-point.json"
+      result "指定恢复点、配置和镜像身份已锁定" "$(jq -c '{recoveryPointId,bindingDigest,evidenceDigest}' <<<"$selected")"
+      exit 0
+    fi
     manifest="$(latest_manifest_relative)"
     printf '%s\n' "$manifest" >"$operation_dir/restore-manifest.txt"
     date +%s >"$operation_dir/restore-started.epoch"
@@ -647,12 +666,39 @@ case "$action:$phase" in
     result "最新完整备份集与生产身份已核验" "$(jq -cn --arg manifest "$manifest" '{manifest:$manifest}')"
     ;;
   restore-drill:drill)
+    if [[ -n "$target" || -e "$operation_dir/recovery-point.json" ]]; then
+      selected="$(python3 "$RECOVERY_METADATA" verify-staged --service areaforge --expected-mode isolated \
+        --contract "$operation_dir/recovery-point.json" --target "$target" \
+        --backup-root "${BACKUP_ROOT:-/var/backups/ops}" --operation-dir "$operation_dir")"
+      BACKUP_ROOT="$(jq -er .stagedRoot <<<"$selected")" "$RESTORE_DRILL" --source local \
+        --postgres-artifact "$(jq -er '.relativeArtifacts["postgres-areaforge"]' <<<"$selected")" \
+        --configs-artifact "$(jq -er '.relativeArtifacts.configs' <<<"$selected")" \
+        --uploads-artifact "$(jq -er '.relativeArtifacts["volume-areaforge-uploads"]' <<<"$selected")" \
+        --ops-state-artifact "$(jq -er '.relativeArtifacts["volume-areaforge-ops-state"]' <<<"$selected")" \
+        --postgres-image "$(jq -er '.runtime.containers.postgres.image_id' <<<"$selected")" \
+        --database "$(jq -er '.runtime.database.database' <<<"$selected")" \
+        --no-compare-production >"$operation_dir/restore-drill.log"
+      jq -c '{recoveryPointId,bindingDigest,evidenceDigest}' <<<"$selected" >"$operation_dir/selected-restore-result.json"
+      chmod 0600 "$operation_dir/restore-drill.log" "$operation_dir/selected-restore-result.json"
+      result "指定恢复点隔离恢复完成"
+      exit 0
+    fi
     "$RESTORE_DRILL" --source local --manifest "$(tr -d '\r\n' <"$operation_dir/restore-manifest.txt")" \
       --compare-production >"$operation_dir/restore-drill.log"
     chmod 0600 "$operation_dir/restore-drill.log"
     result "AreaForge 隔离恢复演练完成"
     ;;
   restore-drill:verify)
+    if [[ -n "$target" || -e "$operation_dir/recovery-point.json" ]]; then
+      selected="$(python3 "$RECOVERY_METADATA" verify-staged --service areaforge --expected-mode isolated \
+        --contract "$operation_dir/recovery-point.json" --target "$target" \
+        --backup-root "${BACKUP_ROOT:-/var/backups/ops}" --operation-dir "$operation_dir")"
+      require_file "$operation_dir/selected-restore-result.json"
+      receipt="$(jq -cS '{recoveryPointId,bindingDigest,evidenceDigest}' "$operation_dir/selected-restore-result.json")"
+      [[ "$receipt" == "$(jq -cS '{recoveryPointId,bindingDigest,evidenceDigest}' <<<"$selected")" ]] || fail "selected restore receipt mismatch"
+      result "指定恢复点演练证据已验证" "$receipt"
+      exit 0
+    fi
     require_file "$RESTORE_METRICS"
     started="$(tr -d '\r\n' <"$operation_dir/restore-started.epoch")"
     completed="$(awk '/^areaforge_restore_drill_last_success_timestamp\{source="local"\}/ {print $2}' "$RESTORE_METRICS")"

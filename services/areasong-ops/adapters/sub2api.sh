@@ -19,10 +19,12 @@ LEGACY_ADAPTER="${SUB2API_OPS_UPDATE_ADAPTER:-/opt/ops/scripts/deploy/update-con
 BACKUP_POSTGRES="${SUB2API_OPS_BACKUP_POSTGRES:-/opt/ops/scripts/backup/backup-postgres.sh}"
 BACKUP_REDIS="${SUB2API_OPS_BACKUP_REDIS:-/opt/ops/scripts/backup/backup-redis.sh}"
 BACKUP_VOLUMES="${SUB2API_OPS_BACKUP_VOLUMES:-/opt/ops/scripts/backup/backup-volumes.sh}"
+BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"
 APP_CONTAINER="${SUB2API_OPS_APP_CONTAINER:-sub2api}"
 POSTGRES_CONTAINER="${SUB2API_OPS_POSTGRES_CONTAINER:-sub2api-postgres}"
 REDIS_CONTAINER="${SUB2API_OPS_REDIS_CONTAINER:-sub2api-redis}"
 BASE_URL="${SUB2API_OPS_BASE_URL:-http://127.0.0.1:8080}"
+RECOVERY_METADATA="${SUB2API_OPS_RECOVERY_METADATA:-/opt/ops/scripts/backup/restore_point_metadata.py}"
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 result() {
@@ -36,20 +38,26 @@ result() {
 
 recovery_artifact() {
   local role="$1" path="$2"
-  [[ "$path" == /var/backups/ops/* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
+  [[ "$BACKUP_ROOT" == /* && "$BACKUP_ROOT" != / && "$path" == "$BACKUP_ROOT/"* && -f "$path" && ! -L "$path" ]] || fail "invalid recovery artifact: $role"
   jq -cn --arg role "$role" --arg path "$path" --argjson sizeBytes "$(stat -c %s "$path")" \
     --arg sha256 "sha256:$(sha256sum "$path" | awk '{print $1}')" \
     '{role:$role,path:$path,sizeBytes:$sizeBytes,sha256:$sha256}'
 }
 
 write_recovery_point() {
-  local postgres_output="$1" redis_output="$2" volumes_output="$3" postgres redis data artifacts point
+  local postgres_output="$1" redis_output="$2" volumes_output="$3" postgres redis data artifacts point metadata
   postgres="$(grep '/sub2api-postgres-' <<<"$postgres_output" | tail -n1)"
   redis="$(grep '/redis-' <<<"$redis_output" | tail -n1)"
   data="$(grep '/sub2api-data-' <<<"$volumes_output" | tail -n1)"
   artifacts="$(jq -cn --argjson postgres "$(recovery_artifact postgres-sub2api "$postgres")" \
     --argjson redis "$(recovery_artifact redis "$redis")" \
-    --argjson data "$(recovery_artifact volume-sub2api-data "$data")" '[$postgres,$redis,$data]')"
+    --argjson data "$(recovery_artifact volume-sub2api-data "$data")" '[$postgres,$redis,$data]')" || return 1
+  [[ -f "$RECOVERY_METADATA" && ! -L "$RECOVERY_METADATA" ]] || fail "recovery metadata tool is unavailable"
+  metadata="$(python3 "$RECOVERY_METADATA" capture --service sub2api --operation-dir "$operation_dir" \
+    --backup-root "${BACKUP_ROOT:-/var/backups/ops}" --controlled-compose "$CONTROLLED_COMPOSE" \
+    --runtime-compose "$RUNTIME_COMPOSE" --env-file "$ENV_FILE" --app-container "$APP_CONTAINER" \
+    --postgres-container "$POSTGRES_CONTAINER" --redis-container "$REDIS_CONTAINER")" || return 1
+  artifacts="$(jq -cn --argjson data "$artifacts" --argjson metadata "$metadata" '$data + $metadata.artifacts')" || return 1
   point="$(jq -cn --arg service "${OPS_SERVICE_NAME:-sub2api}" --arg taskId "$(basename "$operation_dir")" \
     --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson artifacts "$artifacts" \
     '{schemaVersion:1,service:$service,taskId:$taskId,createdAt:$createdAt,artifacts:$artifacts}')"

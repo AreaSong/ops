@@ -91,7 +91,7 @@ class RestoreContractTests(unittest.TestCase):
         self.contract["recoveryPoint"]["expectedBeforeDigest"] = before
         self.contract["recoveryPoint"]["evidence"]["expectedBeforeDigest"] = before
         unsigned = dict(self.contract["recoveryPoint"]["evidence"])
-        unsigned["bindingDigest"] = ""
+        unsigned.pop("bindingDigest", None)
         unsigned_digest = "sha256:" + hashlib.sha256(
             json.dumps(unsigned, separators=(",", ":")).encode()
         ).hexdigest()
@@ -145,6 +145,15 @@ class RestoreContractTests(unittest.TestCase):
         output = json.loads(result.stdout)
         self.assertEqual(sorted(output["artifacts"]), sorted(self.roles))
         self.assertEqual(output["service"], "demo")
+
+    def test_isolated_contract_requires_explicit_mode(self) -> None:
+        self.contract["mode"] = "isolated"
+        self.write_contract()
+        rejected = self.run_contract()
+        self.assertNotEqual(rejected.returncode, 0)
+        accepted = self.run_contract("--expected-mode", "isolated")
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual(json.loads(accepted.stdout)["mode"], "isolated")
 
     def test_tampered_artifact_is_rejected(self) -> None:
         Path(self.contract["recoveryPoint"]["evidence"]["artifacts"][0]["path"]).write_text(

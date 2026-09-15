@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -60,6 +61,9 @@ func (engine *Engine) UpdateAutoUpdatePolicy(
 	if err := validateAutoUpdatePolicyInput(service.Name, policy); err != nil {
 		return model.AutoUpdatePolicyView{}, err
 	}
+	if err := validateSingleTargetAutoUpdate(*policy); err != nil {
+		return model.AutoUpdatePolicyView{}, err
+	}
 	view := model.AutoUpdatePolicyView{Service: service.Name, ObjectID: service.ObjectID, TenantID: service.TenantID,
 		Enabled: policy.Enabled, Channel: policy.Channel, MaintenanceWindow: policy.MaintenanceWindow,
 		MaintenanceTimezone: policy.MaintenanceTimezone,
@@ -77,13 +81,11 @@ func (engine *Engine) UpdateAutoUpdatePolicy(
 	if _, err := engine.store.ApplyAutoUpdatePolicy(ctx, actor, request.IdempotencyKey, digest, view, audit); err != nil {
 		return model.AutoUpdatePolicyView{}, err
 	}
-	if _, err := engine.store.GetAutoUpdatePolicy(ctx, service.Name); err != nil {
-		return model.AutoUpdatePolicyView{}, err
-	}
-	return view, nil
+	return engine.store.GetAutoUpdatePolicy(ctx, service.Name)
 }
 
 func validateAutoUpdatePolicyInput(service string, policy *model.AutoUpdatePolicy) error {
+	*policy = policy.Normalized()
 	if policy.Channel == "" {
 		policy.Channel = "stable"
 	}
@@ -161,19 +163,39 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 	result := make([]model.AutoUpdateEvaluation, 0, len(policies))
 	for _, policy := range policies {
 		evaluation := model.AutoUpdateEvaluation{Service: policy.Service, EvaluatedAt: now}
+		if err := engine.authorize(ctx, actor, model.PermissionDeploy, policy.ObjectID); err != nil {
+			continue
+		}
 		if !policy.Enabled {
 			evaluation.Reason = "自动更新策略未启用"
 			result = append(result, evaluation)
 			continue
 		}
-		if policy.NextEvaluationAt != nil && now.Before(*policy.NextEvaluationAt) {
-			evaluation.Reason = "尚未到下一次评估时间"
+		planPolicy := autoUpdatePlanPolicy(policy)
+		if err := validateAutoUpdatePolicyInput(policy.Service, &planPolicy); err != nil {
+			evaluation.Reason = err.Error()
 			result = append(result, evaluation)
 			continue
 		}
+		if err := validateSingleTargetAutoUpdate(planPolicy); err != nil {
+			evaluation.Reason = err.Error()
+			result = append(result, evaluation)
+			continue
+		}
+		retryInvalidated := false
 		if policy.LastPlanID != "" {
-			if plan, getErr := engine.store.GetReleasePlan(ctx, policy.LastPlanID); getErr == nil &&
-				plan.State != model.PlanCompleted && plan.State != model.PlanInvalidated {
+			plan, getErr := engine.store.GetReleasePlan(ctx, policy.LastPlanID)
+			if getErr != nil && !errors.Is(getErr, store.ErrNotFound) {
+				return nil, getErr
+			}
+			if getErr == nil && autoUpdatePlanIsStale(plan, planPolicy) {
+				if err := engine.store.InvalidateReleasePlan(ctx, plan.ID, actor, "自动更新策略已变化，需要重新评估"); err != nil {
+					return nil, err
+				}
+				plan.State = model.PlanInvalidated
+			}
+			retryInvalidated = plan.State == model.PlanInvalidated
+			if getErr == nil && plan.State != model.PlanCompleted && !retryInvalidated {
 				evaluation.Reason = "已有未收口的自动更新计划"
 				if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), policy.LastPlanID, evaluation.Reason); err != nil {
 					return nil, err
@@ -181,6 +203,11 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 				result = append(result, evaluation)
 				continue
 			}
+		}
+		if !retryInvalidated && policy.NextEvaluationAt != nil && now.Before(*policy.NextEvaluationAt) {
+			evaluation.Reason = "尚未到下一次评估时间"
+			result = append(result, evaluation)
+			continue
 		}
 		if !autoUpdateWindowOpen(policy.MaintenanceWindow, policy.MaintenanceTimezone, now) {
 			evaluation.Reason = "当前不在维护窗口"
@@ -221,6 +248,7 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 		plan, planErr := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{
 			Service: policy.Service, Action: "update", Target: target,
 			IdempotencyKey: requestKey, RequestDigest: requestDigest,
+			AutoUpdatePolicy: &planPolicy,
 		})
 		if planErr != nil {
 			evaluation.Reason = redactText(planErr.Error())
@@ -248,8 +276,10 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 func autoTimePtr(value time.Time) *time.Time { return &value }
 
 func autoUpdatePlanRequestIdentity(policy model.AutoUpdatePolicyView, target string) (string, string) {
+	encodedPolicy, _ := json.Marshal(autoUpdatePlanPolicy(policy))
 	material := strings.Join([]string{
 		"auto-update", policy.Service, target, policy.Channel, policy.LastPlanID,
+		string(encodedPolicy),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(material))
 	value := append([]byte(nil), sum[:16]...)

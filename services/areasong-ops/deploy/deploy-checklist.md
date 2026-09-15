@@ -27,6 +27,8 @@
 - [ ] Kubernetes 目标的 cluster/context/namespace、resourceKinds 和对象 allowlist 已核对；没有 kubeconfig、token 或任意 manifest 路径进入 Git/浏览器。
 - [ ] schema 4 适配器及全部服务 hook 只输出带匹配 `schemaVersion: 2`、action 和 phase 的单个 JSON 对象。
 - [ ] 使用恢复点的服务声明完整 `requiredArtifactRoles` 和 1 小时至 7 天有效期；通用 Compose 服务配置专属 `backupEvidenceExecutable`。
+- [ ] AreaForge/Sub2API 恢复点包含原三个数据角色及 `configs/runtime-snapshot`；配套 `restore_point_metadata.py` 与 Runner/adapter 来自同一批准 revision，旧不完整恢复点不自动补齐。
+- [ ] 自动更新计划绑定完整策略和观察秒数；单实例批次参数归零。旧自动计划缺少策略绑定、旧 Kubernetes 计划缺少完整预览时必须重新创建。
 - [ ] 自动任务调度仍由现有 cron/systemd 管理；补跑只包含已审查的固定采集器，不接受 unit、脚本、命令、参数、target 或 source 输入。
 - [ ] 当前 Runner、Compose、Nginx 和 Web image 身份已保存为回滚点。
 - [ ] 先执行 `migrate_github_credential.py --validate-source`，再执行 `--apply`；工具必须按旧锁、新锁顺序互斥，将旧 4 键规范化为固定 8 键并原子创建目标，目标已存在且不一致时拒绝覆盖。
@@ -65,10 +67,13 @@
 - [ ] `stop`/`start` 验证网站保护顺序；`drain` 保存旧 worker 与活动连接归零或明确超时的证据，失败保持维护页并进入 `needs_attention`。
 - [ ] Compose 依次验证 `validate`、`propose`、摘要 digest、审批失效条件、受控 apply、health/smoke/identity、观察窗口和失败回滚；验证任意路径、依赖容器和过期 digest 被拒绝。
 - [ ] 恢复演练只使用 `isolated` 模式和临时资源，验证备份角色、SHA-256、expected-before、清理和生产数据不变；不得以演练替代生产恢复批准。
+- [ ] 验证选 A 而 latest 指向 B 时只导入 A；固定配置、镜像和数据库名，篡改派生参数、缺角色或跨语言摘要不一致均拒绝，原备份不变。
+- [ ] 自动更新验证策略变更失效未执行计划、真实观察窗口、告警回滚的身份／恢复点／冲突门禁，以及终态落库失败、重启回执补交不重复动作。
 - [ ] fleet 批量只在非生产或明确隔离目标上验证 selector、DAG、canary、并发上限、暂停/失败策略、变更窗口、心跳租约和审计；禁止通配符扩大目标；审批使用创建人/独立批准人两方模型。
 - [ ] Runner Fleet 自更新验证创建人与独立批准人分离、显式目标、v2 签名心跳、mTLS 指纹、制品/策略摘要、assignment fencing、Canary 观察、临时错误退避、重启回执恢复、失败停止和逐节点回滚；生产开关仍保持关闭。
 - [ ] WASM 扩展验证用途隔离签名、独立批准、创建人执行、输入/输出/内存/超时限制以及无宿主文件、网络、环境变量和 Docker Socket 权限；生产开关仍保持关闭。
-- [ ] Kubernetes 只验证声明 allowlist 内的 dry-run、manifest digest、命名空间和资源 kind；任何 apply 另建计划并单独批准。
+- [ ] Kubernetes 验证声明 allowlist 内的 dry-run、完整差异摘要、`planDigest`、集群指纹、UID/RV、15 分钟期限及脱敏展示；任何真实 apply 另建计划并单独批准。
+- [ ] Kubernetes 本地测试覆盖活跃执行并发重放、create-only 竞争、旧／过期预览拒绝、rollout 失败生成新审批回滚计划及未知 apply 不重试；记录是否仅为模拟器结果，真实集群验收暂缓时不得勾作通过。
 
 ## 阶段 4：生产变更与观察收口
 
@@ -87,6 +92,7 @@
 ## 离线门禁
 
 - [ ] `CGO_ENABLED=0 go test ./...`
+- [ ] 本机工具链支持时执行 `go test -race ./... -count=1 -timeout 20m`；跨架构模拟或 SQLite 竞态检测超时不能算成功，`linux/amd64` 非竞态检查和构建独立留证。
 - [ ] adapter Python tests、`bash -n`、`shellcheck` 通过。
 - [ ] `npm run lint && npm run typecheck && npm run build` 通过。
 - [ ] Runner export 与 Web Docker image 构建通过。
@@ -108,7 +114,7 @@
 - [ ] fleet 页面只显示登记的 server/Runner、能力、心跳和 lease；离线、draining、disabled 状态不能被调度器当作可用目标。
 - [ ] access 页面能显示租户、角色、binding 和当前 subject，但不显示凭据；修改 RBAC 必须具备 `access.manage` 并产生审计。
 - [ ] Compose 页面区分当前 revision、候选 propose/validate revision 和已批准摘要；没有审批或 digest 漂移时 apply 按预期拒绝。
-- [ ] Kubernetes 页面只显示登记目标、allowlist 和操作状态；默认 dry-run，manifest digest 与命名空间/资源 kind 一致。
+- [ ] Kubernetes 页面只显示登记目标、allowlist 和操作状态，展示脱敏差异与预览期限；批准使用 `planDigest`，旧／过期计划不可执行，创建人和独立批准人正确分离。
 - [ ] 自动任务页面可查看既有调度状态；只对运行资产快照和 Docker 运行指标显示固定补跑入口，运行期间正确锁定动作。
 - [ ] `/v1/alerts` 只投影声明映射的活动阻断告警；Alertmanager 不可用时明确返回 `503`，其他只读页面仍可用。
 - [ ] 凭据页只显示类型、目标、短指纹、到期日和轮换摘要；浏览器 localStorage/sessionStorage、Runner 日志、SQLite、审计和 API 响应均不包含 Token。
@@ -134,7 +140,7 @@
 - [ ] 将 Compose env 恢复为上一 Web commit tag并只重建 Web。
 - [ ] 如 Nginx 新站点异常，恢复配置后 `nginx -t` 再 reload。
 - [ ] Compose apply 失败时只恢复上一受控 revision；不得直接从用户输入覆盖运行文件，依赖容器和数据库 schema 保持人工核对。
-- [ ] Kubernetes 变更失败时保留 manifest digest、dry-run/apply 证据，按同一受控 manifest 回滚；不删除 namespace/PV，不执行未批准的广泛清理。
+- [ ] Kubernetes 变更失败保留原证据；仅 apply 已确认完成而 rollout 失败时，可从同对象集合的历史成功清单创建独立回滚计划并重新批准。未知写入不重试、不自动回滚；不删除额外资源、namespace/PV。
 - [ ] fleet 批量失败时停止后续批次，锁定已变更节点，按 failure policy 逐节点回滚或转人工；不能用全局重启止血。
 - [ ] 生产恢复失败时保留恢复点和隔离/生产日志，暂停后续恢复；再次执行必须重新双确认，不能自动重试或覆盖业务数据库。
 - [ ] 保留 `/var/lib/areasong-ops` 和审计证据，不恢复任何业务数据库。

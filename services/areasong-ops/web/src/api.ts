@@ -122,7 +122,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
     }
   }
   if (!response.ok) {
-    throw new APIError(response.status, payload?.error ?? `请求失败（HTTP ${response.status}）`, payload)
+    const detail = payload?.error ?? `请求失败（HTTP ${response.status}）`
+    // 只改善已拒绝请求的恢复提示；不续期令牌或自动重放任何写操作。
+    const message = response.status === 403 && ['缺少 CSRF Cookie', 'CSRF 令牌无效'].includes(detail)
+      ? '会话校验已失效，请先保留未提交内容并刷新页面；核对执行记录后再重新确认操作。系统不会自动重试。'
+      : detail
+    throw new APIError(response.status, message, payload)
   }
   if (payload === undefined) {
     throw new APIError(response.status, `服务返回了空响应（HTTP ${response.status}）`)
@@ -889,8 +894,9 @@ export class OpsAPI {
   }
 
   async approveKubernetesPlan(plan: KubernetesPlan, confirmation: string): Promise<KubernetesPlan> {
+    if (!plan.planDigest || !plan.preview) throw new Error('旧 Kubernetes 计划缺少完整预览，请重新创建')
     return this.mutate<KubernetesPlan>(`/api/kubernetes/plans/${encodeURIComponent(plan.id)}/approve`, {
-      digest: plan.manifestDigest,
+      digest: plan.planDigest,
       confirmation,
     })
   }

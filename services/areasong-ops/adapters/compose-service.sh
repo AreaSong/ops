@@ -156,9 +156,8 @@ lifecycle_identity() {
     fail "application image identity unavailable"
   status="$(docker inspect --format '{{.State.Status}}' "$app_container" 2>/dev/null)" ||
     fail "application container state unavailable"
-  version="${image##*:}"
-  version="${version%%@*}"
-  [[ -n "$version" ]] || version="$image_id"
+  version="$(docker image inspect "$image_id" | jq -er '.[0].Config.Labels["org.opencontainers.image.version"] | select(type == "string" and length > 0)')" ||
+    fail "application OCI version identity unavailable"
   identity_hash="$(printf '%s\n' "$image|$image_id|$version" | sha256sum | awk '{print "sha256:"$1}')"
   jq -cnS --arg currentVersion "$version" --arg currentImage "$image" \
     --arg currentImageId "$image_id" --arg runtimeIdentityHash "$identity_hash" \
@@ -172,7 +171,10 @@ case "$action:$phase" in
     delegate "$inspect_executable" "$action" "$phase" "$operation_dir" "$target" "$source_dir"
     ;;
   inspect:lifecycle)
-    verify_lifecycle_preflight
+    require_regular_file "$controlled_compose"
+    require_regular_file "$runtime_compose"
+    require_regular_file "$env_file"
+    cmp -s "$controlled_compose" "$runtime_compose" || fail "controlled and runtime Compose files differ"
     result "Compose 停止态运行身份检查完成" "$(lifecycle_identity)"
     ;;
   check:discover)

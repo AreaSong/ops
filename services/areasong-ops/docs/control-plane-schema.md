@@ -80,6 +80,14 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 
 `state` 的批准/执行顺序为 `pending_approval -> scheduled -> approved -> executing -> observing -> completed`（没有未来 `scheduleAt` 时批准直接进入 `approved`）。进入 `scheduled` 后，只有受控 cron/systemd 或人工补跑在 `scheduleAt` 到达后才能原子释放为 `approved`；执行接口不会提前绕过时间门禁。公开 API 只允许创建、批准和查看计划，不能直接写 desired state。
 
+### 单实例自动更新
+
+自动发现只生成普通发布计划，不自动批准或执行。`approvalSummary.autoUpdatePolicy` 绑定完整策略、维护窗口时区和实际 `observationSeconds`；批准、执行及任务启动事务均核对持久化策略。策略变更原子失效未执行的自动计划并允许重新评估；正在执行／观察的计划继续按原批准策略处理。旧自动计划没有策略绑定时必须重建。
+
+观察窗口允许 60–86400 秒，0 归一化为 300 秒；启用时必须保留人工批准、新鲜备份和告警回滚门禁。单实例 `canaryPercent/maxUnavailable` 必须为 0，百分比灰度和并发限制属于批量作业，不在此伪装为已实现的单实例能力。
+
+观察期内出现阻断告警时，协调器核验完整恢复点、独立运行身份与后续任务冲突，并取得服务锁和全局备份锁后，最多启动一次原批准范围内的版本回滚。停止 Runner 会取消并等待协调器收口。回滚结果以 `automatic-rollback-result.json` 原子发布；数据库终态提交失败只补交回执。生产启动入口先核验并补交有效回执，再分类其他中断任务，不能把已完成动作重新执行。
+
 ## 5. Compose 受控提案流
 
 控制面没有默认任意 Shell/文件写能力。Compose 变更必须遵循以下顺序：
@@ -95,7 +103,13 @@ Cloudflare Access 负责验证入口身份，Runner 负责授权。Web 将规范
 
 ## 6. 恢复边界
 
-`restore-drill` 只在隔离环境使用最近完整备份，验证恢复点角色、文件普通属性、时间、大小、SHA-256、expected-before 和健康结果。它不会切换生产数据。
+`restore-drill` 只在隔离环境消费明确选中的完整恢复点，验证角色、文件普通属性、时间、大小、SHA-256、expected-before 和健康结果。合同必须显式为 `mode: isolated`；默认生产校验不能自动降级为演练。它不会切换生产数据，也不重新选择 latest 或创建替代恢复点。
+
+AreaForge 必需角色为 `postgres-areaforge`、`volume-areaforge-uploads`、`volume-areaforge-ops-state`、`configs`、`runtime-snapshot`；Sub2API 为 `postgres-sub2api`、`redis`、`volume-sub2api-data`、`configs`、`runtime-snapshot`。普通备份和更新前备份都采集这五类证据。`configs` 仅包含该服务固定的受控 Compose、运行 Compose 和环境文件；快照固定应用与数据库／Redis 镜像 ID、数据库名及所需迁移基线，采集前后配置和身份必须一致。元数据文件使用 `configs/recovery-*`，不覆盖每日全量 `configs-*.tar.gz` 的 latest 索引。
+
+演练先复制制品并复验摘要、配置成员和权限，之后导入必须使用这些复制件、固定镜像和合同数据库名。Sub2API 派生参数会逐字段对照已批准恢复点；最终回执必须返回同一 `recoveryPointId/bindingDigest/evidenceDigest`。旧三角色恢复点不能补用当前配置或最新备份。生产 hook 还核对当前数据库镜像，不隐式恢复配置、切换数据库镜像或升级数据库。
+
+Go/Python 恢复证据摘要使用同一 canonical JSON（规范序列化）规则：顶层和制品字段按 Go 结构体顺序，空 `omitempty` 字段省略；计算未签入的绑定摘要时省略 `bindingDigest`。字符串按 Go JSON 处理 HTML 字符及 U+2028/U+2029，数值统一小数／指数表示及负零；不能直接用通用的递归 `sort_keys=True` 替代证据序列化。Runner→真实 Bash/Python 的串联测试覆盖选 A 而 latest 指向 B，以及特殊字符与浮点边界。
 
 生产恢复是单独的高风险操作：
 
@@ -132,6 +146,14 @@ Runner Fleet 自更新计划必须进一步绑定签名制品摘要、策略摘�
 ### Kubernetes
 
 顶层 `kubernetes` 只保存受控目标元数据：`cluster`、`context`、`namespace`、`allowlist` 和 `resourceKinds`。操作必须固定目标并记录 manifest digest；默认先 dry-run。Kubeconfig、token、证书和任意 manifest 文件不得进入 Git、浏览器 localStorage 或普通日志。真正 apply 需要独立计划、RBAC、告警门禁、namespace/kind/object allowlist 和回滚方案；禁止从请求拼接 `kubectl` 命令，也不执行 namespace/PV 等破坏性删除。
+
+创建计划会采集 `kubectl diff` 完整上下文、集群 server 指纹及对象 UID/resourceVersion。预览最多 100 个对象、256 KiB 输出、30 秒总时限，有效期 15 分钟；diff 的 0／1 分别表示无差异／有差异，其他退出码拒绝。公开差异按结构脱敏，完整差异摘要仍纳入绑定。
+
+`manifestDigest` 仅标识清单文本；批准请求的 `digest` 必须为 `planDigest`，后者同时绑定目标、完整预览、策略和回滚来源。批准和执行前重新采集并比较；集群、策略、差异、UID/RV 任一漂移或预览过期均需重建。SQLite 仅追加 `plan_digest/preview_json`，旧待执行计划缺少证据时拒绝，不按旧 manifest 摘要放行。
+
+已存在对象以 SSA（服务端应用）携带可信 UID/RV 前置条件；预览中不存在的对象使用 create-only，若并发出现则以 AlreadyExists 拒绝，不更新未获批准的新对象。执行锁覆盖 running 判定和恢复检查，同一执行幂等键在活跃请求期间仅返回已有状态，不误判中断；真实中断且写入未知时仍进入 `needs_attention`。
+
+回滚是独立新计划：从已成功来源，或有证据证明 apply 完成而 rollout 失败的来源，选择同对象集合的历史成功清单，重新预览、独立批准、执行和 rollout 验证。保留原失败记录并绑定来源操作 ID。apply 未知、对象集合不同、额外资源删除都不在此能力范围内；真实 Kubernetes 与多 Runner 环境验收仍须单独批准，本地模拟成功不能替代。
 
 ## 9. 分阶段上线与回滚
 

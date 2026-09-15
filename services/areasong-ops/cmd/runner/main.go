@@ -52,6 +52,11 @@ func run() error {
 	if err := enforceProductionStateRootMode(stateRoot); err != nil {
 		return err
 	}
+	if count, err := runner.RecoverAutomaticRollbackReceipts(context.Background(), catalog, database, stateRoot, alertmanager); err != nil {
+		return err
+	} else if count > 0 {
+		slog.Info("已补交观察期回滚回执，未重放底层动作", "count", count)
+	}
 	if count, err := database.RecoverInterrupted(context.Background(), interruptionClassifier(catalog)); err != nil {
 		return err
 	} else if count > 0 {
@@ -110,6 +115,7 @@ func run() error {
 	legacyStateRoot := envOr("OPS_LEGACY_STATE_ROOT", "/var/lib/ops/update-control")
 	go maintain(maintenanceContext, database, stateRoot, legacyStateRoot)
 	go monitorRunnerUpdates(maintenanceContext, database)
+	engine.StartAutoUpdateObservationMonitor(maintenanceContext)
 	serveBuffer := 1
 	if remoteServer != nil {
 		serveBuffer++

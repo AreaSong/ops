@@ -209,6 +209,7 @@ type ApprovalSummary struct {
 	ObservationSeconds          int                       `json:"observationSeconds,omitempty"`
 	TimeoutSeconds              int                       `json:"timeoutSeconds,omitempty"`
 	AlertPolicy                 AlertPolicyDefinition     `json:"alertPolicy,omitempty"`
+	AutoUpdatePolicy            *AutoUpdatePolicy         `json:"autoUpdatePolicy,omitempty"`
 	ConfirmationPhrase          string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore              map[string]any            `json:"expectedBefore"`
 	TargetEvidence              map[string]any            `json:"targetEvidence,omitempty"`
@@ -724,20 +725,21 @@ type AuditEntry struct {
 }
 
 type PreviewRequest struct {
-	Service                     string     `json:"service"`
-	Action                      string     `json:"action"`
-	Target                      string     `json:"target,omitempty"`
-	IdempotencyKey              string     `json:"idempotencyKey,omitempty"`
-	RequestDigest               string     `json:"-"`
-	ScheduleAt                  *time.Time `json:"scheduleAt,omitempty"`
-	RestoreMode                 string     `json:"-"`
-	RecoveryPointID             string     `json:"-"`
-	RequiresDualApproval        bool       `json:"-"`
-	RestoreTenantID             string     `json:"-"`
-	RestoreServerID             string     `json:"-"`
-	RestoreExpectedBeforeDigest string     `json:"-"`
-	RestoreContractDigest       string     `json:"-"`
-	RestoreEvidenceDigest       string     `json:"-"`
+	Service                     string            `json:"service"`
+	Action                      string            `json:"action"`
+	Target                      string            `json:"target,omitempty"`
+	IdempotencyKey              string            `json:"idempotencyKey,omitempty"`
+	RequestDigest               string            `json:"-"`
+	AutoUpdatePolicy            *AutoUpdatePolicy `json:"-"`
+	ScheduleAt                  *time.Time        `json:"scheduleAt,omitempty"`
+	RestoreMode                 string            `json:"-"`
+	RecoveryPointID             string            `json:"-"`
+	RequiresDualApproval        bool              `json:"-"`
+	RestoreTenantID             string            `json:"-"`
+	RestoreServerID             string            `json:"-"`
+	RestoreExpectedBeforeDigest string            `json:"-"`
+	RestoreContractDigest       string            `json:"-"`
+	RestoreEvidenceDigest       string            `json:"-"`
 }
 
 type StartTaskRequest struct {

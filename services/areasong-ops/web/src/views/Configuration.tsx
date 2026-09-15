@@ -894,8 +894,9 @@ export function Configuration({
                       const confirmation = kubeConfirmations[plan.id] ?? "";
                       const approvalPending =
                         plan.state === "pending_approval";
+                      const previewReady = Boolean(plan.planDigest && plan.preview && Date.parse(plan.preview.expiresAt) > Date.now());
                       const approvable =
-                        approvalPending &&
+                        approvalPending && previewReady &&
                         canCurrentActorApprove(plan, currentActorHash);
                       const rollbackTargets = (kubernetes.plans ?? []).filter(
                         (candidate) =>
@@ -928,7 +929,15 @@ export function Configuration({
                                 : `${plan.approvedByHash ? "第一批准已完成" : "等待第一批准"} · ${plan.secondApprovedByHash ? "第二批准已完成" : "等待第二批准"}`}
                             </small>
                           </span>
-                          <code>{shortHash(plan.manifestDigest)}</code>
+                          <code title={plan.planDigest || plan.manifestDigest}>{shortHash(plan.planDigest || plan.manifestDigest)}</code>
+                          {plan.preview ? (
+                            <details className="kube-preview">
+                              <summary>{plan.preview.hasChanges ? "查看实际差异" : "当前无配置差异"} · {plan.preview.resources.length} 个对象</summary>
+                              <small>预览有效至 {new Date(plan.preview.expiresAt).toLocaleString()}。文本值显示摘要，审批仍绑定完整差异。</small>
+                              <pre>{plan.preview.diff || "无差异"}</pre>
+                              {plan.preview.resources.map((resource) => <small key={`${resource.kind}/${resource.name}`}>{resource.namespace}/{resource.kind}/{resource.name} · {resource.exists ? `UID ${resource.uid} · RV ${resource.resourceVersion}` : "待创建"}</small>)}
+                            </details>
+                          ) : <small role="status">旧计划缺少完整预览证据，请重新创建。</small>}
                           {approvable && (
                             <label className="inline-confirm kube-confirm">
                               <span>精确确认</span>
@@ -968,7 +977,8 @@ export function Configuration({
                                     : "第一人批准"}
                             </button>
                           )}
-                          {approvalPending && !approvable && (
+                          {plan.preview && !previewReady && (plan.state === "pending_approval" || plan.state === "approved") && <small role="status">预览已过期，请重新创建计划。</small>}
+                          {approvalPending && !approvable && previewReady && (
                             <small>等待独立批准账号处理。</small>
                           )}
                           {plan.state === "approved" && (
@@ -976,7 +986,7 @@ export function Configuration({
                               className="button danger"
                               type="button"
                               disabled={
-                                busy === `kubernetes-execute:${plan.id}` ||
+                                !previewReady || busy === `kubernetes-execute:${plan.id}` ||
                                 !canCurrentActorExecute(
                                   plan,
                                   currentActorHash,
@@ -993,7 +1003,7 @@ export function Configuration({
                                   : "由独立执行人执行"}
                             </button>
                           )}
-                          {plan.state === "succeeded" &&
+                          {(plan.state === "succeeded" || plan.rollbackEligible) &&
                             plan.action === "apply" &&
                             rollbackTargets.length > 0 && (
                               <label className="inline-confirm kube-confirm">
@@ -1020,7 +1030,7 @@ export function Configuration({
                                 </select>
                               </label>
                             )}
-                          {plan.state === "succeeded" &&
+                          {(plan.state === "succeeded" || plan.rollbackEligible) &&
                             plan.action === "apply" &&
                             rollbackTargets.length > 0 && (
                               <button

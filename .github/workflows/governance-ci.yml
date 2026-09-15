@@ -50,6 +50,7 @@ jobs:
         working-directory: services/areasong-ops/web
         run: |
           npm ci
+          npm test
           npm run lint
           npm run typecheck
           npm run build

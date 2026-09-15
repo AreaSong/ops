@@ -12,7 +12,7 @@ interface AutoUpdatesProps {
   error: string
   busy: string
   onRefresh: () => void
-  onSave: (service: string, input: AutoUpdatePolicyInput) => Promise<void>
+  onSave: (service: string, input: AutoUpdatePolicyInput) => Promise<AutoUpdatePolicyView>
   onEvaluate: () => Promise<void>
 }
 
@@ -31,8 +31,9 @@ function draftFromPolicy(policy: AutoUpdatePolicyView): AutoUpdatePolicyInput {
     channel,
     maintenanceWindow: policy.maintenanceWindow ?? '',
     maintenanceTimezone: policy.maintenanceTimezone || 'UTC',
-    canaryPercent: policy.canaryPercent ?? 0,
-    maxUnavailable: policy.maxUnavailable ?? 0,
+    // 单实例不具备百分比灰度语义；保存时明确迁出旧的无效批次参数。
+    canaryPercent: 0,
+    maxUnavailable: 0,
     requireBackup: policy.requireBackup,
     requireApproval: policy.requireApproval,
     rollbackOnAlert: policy.rollbackOnAlert,
@@ -50,6 +51,7 @@ export function AutoUpdates({
   policies, evaluations, loading, available, error, busy, onRefresh, onSave, onEvaluate,
 }: AutoUpdatesProps) {
   const [drafts, setDrafts] = useState<Record<string, AutoUpdatePolicyInput>>({})
+  const [feedback, setFeedback] = useState<Record<string, { message: string; failed: boolean }>>({})
 
   useEffect(() => {
     setDrafts((current) => {
@@ -60,6 +62,7 @@ export function AutoUpdates({
   }, [policies])
 
   function updateDraft(service: string, patch: Partial<AutoUpdatePolicyInput>) {
+    setFeedback((current) => ({ ...current, [service]: { message: '', failed: false } }))
     setDrafts((current) => ({
       ...current,
       [service]: { ...(current[service] ?? draftFromPolicy(policies.find((item) => item.service === service) as AutoUpdatePolicyView)), ...patch },
@@ -69,10 +72,14 @@ export function AutoUpdates({
   async function save(service: string) {
     const input = drafts[service]
     if (!input) return
+    setFeedback((current) => ({ ...current, [service]: { message: '', failed: false } }))
     try {
-      await onSave(service, input)
-    } catch {
-      // The parent owns the visible API error; retain the draft for correction.
+      const saved = await onSave(service, input)
+      // 使用持久化结果回显默认值，避免草稿与实际审批策略不一致。
+      setDrafts((current) => ({ ...current, [service]: draftFromPolicy(saved) }))
+      setFeedback((current) => ({ ...current, [service]: { message: `策略已保存，观察窗口为 ${saved.observationSeconds} 秒。`, failed: false } }))
+    } catch (reason) {
+      setFeedback((current) => ({ ...current, [service]: { message: reason instanceof Error ? reason.message : '策略保存失败，请检查输入后重试。', failed: true } }))
     }
   }
 
@@ -89,7 +96,7 @@ export function AutoUpdates({
       <header className="page-header">
         <div><span className="eyebrow">自动发现只生成计划</span><h1>自动更新</h1></div>
         <div className="page-header-actions">
-          <button className="button secondary" type="button" onClick={() => runAction(evaluate())} disabled={busy === 'auto-updates-evaluate'}>
+          <button className="button secondary" type="button" onClick={() => runAction(evaluate())} disabled={!available || loading || busy === 'auto-updates-evaluate'}>
             {busy === 'auto-updates-evaluate' ? <LoaderCircle className="spin" size={15} /> : <PlayCircle size={15} />}评估现在的策略
           </button>
           <button className="icon-button bordered" type="button" onClick={onRefresh} title="刷新自动更新策略" disabled={loading}>
@@ -104,6 +111,7 @@ export function AutoUpdates({
 
       {available && policies.length > 0 && <section className="page-section no-top-gap">
         <div className="section-heading"><h2>服务策略</h2><span>{policies.length} 项</span></div>
+        <p className="recovery-warning"><ShieldCheck size={15} aria-hidden="true" />本页为单实例更新，观察窗口及安全策略会绑定审批摘要。多目标灰度与并发限制请在“批量作业”中设置；不会把单实例更新标记为百分比灰度。</p>
         <div className="automatic-task-list">
           {policies.map((policy) => {
             const draft = drafts[policy.service] ?? draftFromPolicy(policy)
@@ -114,17 +122,16 @@ export function AutoUpdates({
                 <span><strong>{policy.service}</strong><small>{policy.objectId} · {policy.tenantId}</small></span>
               </div>
               <div className="extension-policy-grid">
-                <label><span>通道</span><select value={draft.channel} onChange={(event) => updateDraft(policy.service, { channel: event.target.value as AutoUpdateChannel })}>{channels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}</select></label>
-                <label><span>维护窗口</span><input value={draft.maintenanceWindow ?? ''} placeholder="02:00-04:00" onChange={(event) => updateDraft(policy.service, { maintenanceWindow: event.target.value })} /></label>
-                <label><span>窗口时区</span><input list="auto-update-timezones" value={draft.maintenanceTimezone} placeholder="UTC" onChange={(event) => updateDraft(policy.service, { maintenanceTimezone: event.target.value })} /></label>
-                <label><span>观察秒数</span><input type="number" min={60} max={86400} value={draft.observationSeconds} onChange={(event) => updateDraft(policy.service, { observationSeconds: Number(event.target.value) || 0 })} /></label>
-                <label><span>Canary %</span><input type="number" min={0} max={100} value={draft.canaryPercent} onChange={(event) => updateDraft(policy.service, { canaryPercent: Number(event.target.value) || 0 })} /></label>
-                <label><span>最大不可用 %</span><input type="number" min={0} max={100} value={draft.maxUnavailable} onChange={(event) => updateDraft(policy.service, { maxUnavailable: Number(event.target.value) || 0 })} /></label>
-                <label className="toggle-field"><input type="checkbox" checked={draft.enabled} onChange={(event) => updateDraft(policy.service, { enabled: event.target.checked })} /><span>启用自动发现</span></label>
-                <label className="toggle-field"><input type="checkbox" checked={draft.requireApproval} onChange={(event) => updateDraft(policy.service, { requireApproval: event.target.checked })} /><span>保留人工批准</span></label>
-                <label className="toggle-field"><input type="checkbox" checked={draft.requireBackup} onChange={(event) => updateDraft(policy.service, { requireBackup: event.target.checked })} /><span>要求新鲜备份</span></label>
-                <label className="toggle-field"><input type="checkbox" checked={draft.rollbackOnAlert} onChange={(event) => updateDraft(policy.service, { rollbackOnAlert: event.target.checked })} /><span>告警时回滚</span></label>
+                <label><span>通道</span><select disabled={saveBusy} value={draft.channel} onChange={(event) => updateDraft(policy.service, { channel: event.target.value as AutoUpdateChannel })}>{channels.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}</select></label>
+                <label><span>维护窗口</span><input disabled={saveBusy} value={draft.maintenanceWindow ?? ''} placeholder="02:00-04:00" onChange={(event) => updateDraft(policy.service, { maintenanceWindow: event.target.value })} /></label>
+                <label><span>窗口时区</span><input disabled={saveBusy} list="auto-update-timezones" value={draft.maintenanceTimezone} placeholder="UTC" onChange={(event) => updateDraft(policy.service, { maintenanceTimezone: event.target.value })} /></label>
+                <label><span>观察秒数</span><input disabled={saveBusy} type="number" min={0} max={86400} aria-describedby={`observation-hint-${policy.service}`} value={draft.observationSeconds} onChange={(event) => updateDraft(policy.service, { observationSeconds: Number(event.target.value) || 0 })} /><small id={`observation-hint-${policy.service}`}>60–86400 秒；0 使用默认 300 秒。</small></label>
+                <label className="toggle-field"><input disabled={saveBusy} type="checkbox" checked={draft.enabled} onChange={(event) => updateDraft(policy.service, { enabled: event.target.checked })} /><span>启用自动发现</span></label>
+                <label className="toggle-field"><input disabled={saveBusy} type="checkbox" checked={draft.requireApproval} onChange={(event) => updateDraft(policy.service, { requireApproval: event.target.checked })} /><span>保留人工批准</span></label>
+                <label className="toggle-field"><input disabled={saveBusy} type="checkbox" checked={draft.requireBackup} onChange={(event) => updateDraft(policy.service, { requireBackup: event.target.checked })} /><span>要求新鲜备份</span></label>
+                <label className="toggle-field"><input disabled={saveBusy} type="checkbox" checked={draft.rollbackOnAlert} onChange={(event) => updateDraft(policy.service, { rollbackOnAlert: event.target.checked })} /><span>告警时回滚</span></label>
               </div>
+              {Boolean(policy.canaryPercent || policy.maxUnavailable) && <p className="inline-error" role="status">旧策略含不适用于单实例的批次参数。保存后将清除这些参数；多目标灰度仍由批量作业配置。</p>}
               <div className="automatic-task-facts">
                 <div><dt>下次评估</dt><dd>{formatTime(policy.nextEvaluationAt)}</dd></div>
                 <div><dt>最近计划</dt><dd><code>{shortHash(policy.lastPlanId)}</code></dd></div>
@@ -133,6 +140,7 @@ export function AutoUpdates({
               <button className="button secondary automatic-task-action" type="button" disabled={saveBusy} onClick={() => runAction(save(policy.service))}>
                 {saveBusy ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}保存策略
               </button>
+              {feedback[policy.service]?.message && <p className={feedback[policy.service].failed ? 'inline-error' : 'auto-update-policy-feedback'} role={feedback[policy.service].failed ? 'alert' : 'status'}>{feedback[policy.service].message}</p>}
             </article>
           })}
         </div>

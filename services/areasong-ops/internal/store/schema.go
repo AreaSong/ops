@@ -935,4 +935,6 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 ALTER TABLE extension_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE kubernetes_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE runner_fleet_update_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE kubernetes_plans ADD COLUMN plan_digest TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE kubernetes_plans ADD COLUMN preview_json TEXT NOT NULL DEFAULT 'null';`,
 }

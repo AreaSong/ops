@@ -132,7 +132,7 @@ esac
             "SUB2API_OPS_UPDATE_ADAPTER": str(legacy),
         })
         result = subprocess.run(
-            [str(ADAPTER), "update", "backup", str(self.operation), "v0.1.173", ""],
+            [str(ADAPTER), "update", "migration", str(self.operation), "v0.1.173", ""],
             text=True,
             capture_output=True,
             env=environment,

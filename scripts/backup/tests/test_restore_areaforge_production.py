@@ -74,6 +74,7 @@ class RestoreAreaForgeProductionTests(unittest.TestCase):
                     print("ERROR: recovery contract rejected", file=sys.stderr)
                     raise SystemExit(1)
                 print(json.dumps({
+                    "runtimeSnapshot": {"containers": {"postgres": {"image_id": "sha256:" + "b" * 64}}},
                     "artifacts": {
                         "postgres-areaforge": {"path": os.environ["FAKE_POSTGRES_ARTIFACT"]},
                         "volume-areaforge-uploads": {"path": os.environ["FAKE_UPLOADS_ARTIFACT"]},
@@ -216,6 +217,8 @@ class RestoreAreaForgeProductionTests(unittest.TestCase):
                     fmt = args[args.index("--format") + 1]
                     if "Config.Image" in fmt:
                         print("postgres:16-alpine@sha256:" + "b" * 64)
+                    elif fmt == "{{.Image}}":
+                        print("sha256:" + "b" * 64)
                     elif "State.Health.Status" in fmt:
                         print("healthy" if state.get(name) == "running" else "unhealthy")
                     elif "State.Status" in fmt:

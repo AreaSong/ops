@@ -20,6 +20,7 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 没有默认的任意 Shell、任意路径文件写入、动态可执行路径或任意 Compose/Kubernetes 目标；所有可执行能力必须来自 root-owned 适配器、声明的路径和固定 allowlist。
 - Compose 编辑只允许提交候选内容或执行离线 validate；只有 expected digest 未漂移、校验通过、计划摘要已批准且满足备份/观察门禁时，受控适配器才可 apply 到声明的 Compose 副本。
 - Kubernetes 目标只接受 `config/services.example.json` 中登记的 cluster/context/namespace、资源 kind 和对象 allowlist；网页输入不能扩大目标范围，默认只做 dry-run/检查。
+- Kubernetes 批准使用 `planDigest`，绑定清单、完整差异摘要、集群指纹、对象 UID/resourceVersion、策略和 15 分钟预览期限；`manifestDigest` 不能代替批准摘要。旧计划缺少预览时必须重建。
 - 扩展默认关闭；启用时必须使用受信发布者、用途隔离签名和 `wasm` 沙箱，扩展权限不能越过对象和租户边界。
 - Runner 对每个服务加锁，备份/更新/恢复演练再加全局备份锁。
 - 变更先形成持久化发布计划；批准绑定不可变 SHA-256 摘要，执行前重新核对运行身份、目标和动作声明，任何变化都会使批准失效。
@@ -30,8 +31,11 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 - 任务失败时提前解除维护静默；任务成功时保留到观察期结束。收口先解除静默，再复核包括被其他静默覆盖的活动阻断告警和运行身份。
 - `ops.areasong.top` 是控制面自身域名，永远不能出现在任何 `trafficPolicy.hostname`，避免控制面被自己的流量开关切断。
 - 自动更新维护窗口使用显式 IANA `maintenanceTimezone`（缺省为 `UTC`），启用时强制 `requireApproval`、`requireBackup` 和 `rollbackOnAlert` 同时为真；扩展、终端、文件、Runner 更新等能力继续默认关闭。
+- 单实例自动更新把完整策略及实际观察秒数绑定到发布计划，批准、执行和任务启动事务均复验；修改策略会失效尚未执行的自动计划，不改写正在执行或观察中的批准。`canaryPercent`、`maxUnavailable` 必须为 0，多目标灰度由批量作业管理。
+- 已批准自动更新在观察期检测到阻断告警时，先核验原恢复点、更新后的独立运行身份和后续任务冲突，再启动一次受控版本回滚；动作结果先原子保存为回执，数据库收口失败及 Runner 重启只补交有效回执，不重放回滚动作。
 - 任务持久化阶段、心跳、生产变更事实与恢复能力；Runner 重启后，未触碰生产的任务可重新计划，生产可能已改变的任务只允许人工核对。
 - AreaForge 与 Sub2API 的备份阶段必须返回服务专属恢复点。Runner 校验声明的全部必需产物角色、路径、大小、时间和 SHA-256，并把恢复点绑定到批准时的变更前身份；每个变更阶段执行前都会重新核验。
+- 两服务恢复点均为原三个数据角色加 `configs`、`runtime-snapshot`。恢复严格消费选中的恢复点及其配置、固定镜像身份；旧的不完整恢复点拒绝执行，不替换为 latest 或临时新备份。生产恢复不会因此隐式恢复配置或升级数据库镜像。
 - 有效恢复点和仍可回滚任务的操作目录不会被定期清理；恢复点按服务声明的 1 小时至 7 天窗口过期，过期后才重新进入普通产物留存清理范围。
 - 服务页从 SQLite 恢复最近一次成功的发布发现结果；准备发布完成后同步恢复 prepared 门禁状态。
 - 任务、审计和任务事件支持分页读取，前端不会把首批 100/200 条误当成完整保留记录。
@@ -77,12 +81,14 @@ Cloudflare Access -> Nginx -> 非 root Web 容器 -> Unix Socket -> root Runner
 ```bash
 cd /opt/ops/services/areasong-ops
 CGO_ENABLED=0 go test ./...
+go test -race ./... -count=1 -timeout 20m
 python3 -m unittest discover -s adapters/tests -v
 bash -n adapters/*.sh
 shellcheck adapters/*.sh
 
 cd web
 npm ci
+npm test
 npm run lint
 npm run typecheck
 npm run build
@@ -90,12 +96,15 @@ npm run build
 OPS_PLAYWRIGHT_URL=http://127.0.0.1:4173 npm run smoke:playwright
 ```
 
+竞态检测需要 CGO 和本机 C 工具链，不能与 `CGO_ENABLED=0` 同用。Go 1.22 在较新 macOS 上出现 `missing LC_UUID` 时，可在本地检查中加 `-ldflags=-linkmode=external`；Linux 发布架构仍需单独验证。SQLite 的竞态检测开销显著高于普通测试，包级超时不能记为通过。
+
 本地要逐页验收默认关闭的终端、受管文件、扩展、Runner 单机/Fleet 更新，可在开发 Runner
 启动时显式设置 `OPS_DEV_ENABLE_FEATURES=all`。该开关只存在于 `cmd/dev-runner`
 的开发入口，会把文件根目录和 Runner 制品目录重映射到临时目录，并保留只读终端
 和人工批准门禁；扩展上传仍强制签名，并额外信任 RFC 8032 的公开测试向量发布者
 `AreaSong Development`；Fleet 页面使用开发态 v2 Runner 身份，不会建立生产 mTLS 通道或执行
 真实 Runner 更新。生产 Runner 不识别此开关，生产 `services.json` 的默认关闭策略不变。
+开发 Kubernetes 由 `dev-runner --development-kubectl` 状态型模拟器提供 get/diff/create/apply 和资源版本冲突，不调用真实 kubectl，也不作为真实集群验收证明。
 如需在本地演练 Break-glass Shell，再额外设置 `OPS_DEV_ENABLE_BREAK_GLASS=1`；该
 开关不会被 `OPS_DEV_ENABLE_FEATURES=all` 隐式打开。
 需要验收平台级写能力时，必须再显式设置 `OPS_DEV_ADMIN_EMAIL=<开发邮箱>`；该变量
@@ -153,7 +162,8 @@ sudo /opt/ops/services/areasong-ops/deploy/preflight.sh runtime
 - Nginx：恢复上一站点文件，`nginx -t` 后 reload。
 - Access：删除或禁用本 Application 前先确认不会留下公开源站；源站仍由 Cloudflare CIDR allowlist 保护。
 - 保留 SQLite、任务产物与审计；不自动恢复 SQLite 或任何业务数据库。
-- Compose 候选内容或 Kubernetes manifest 只保留带摘要的提案/验证记录；apply 失败时恢复上一受控 revision，不接受直接覆盖运行文件。
+- Compose 候选内容只保留带摘要的提案/验证记录；apply 失败时按声明恢复上一受控 revision，不接受直接覆盖运行文件。
+- Kubernetes 已成功计划，或能够证明 apply 已完成且仅 rollout 失败的计划，可以基于同一对象集合的历史成功清单创建独立回滚计划，必须重新预览和批准。apply 写入结果未知时停止，不重试、不自动回滚、不删除额外资源。
 - 生产恢复回滚不是普通版本回滚：停止变更、保留证据并重新走双确认和恢复点核对，不能用旧二进制或批量任务代替。
 
 详细分阶段检查见 [deploy/deploy-checklist.md](deploy/deploy-checklist.md)，schema/生命周期/fleet/Compose/Kubernetes 见 [docs/control-plane-schema.md](docs/control-plane-schema.md)，Access 见 [deploy/cloudflare-access.md](deploy/cloudflare-access.md)。

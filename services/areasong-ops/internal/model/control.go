@@ -414,32 +414,35 @@ type KubernetesOperation struct {
 // returned by API views; all approval and execution decisions bind to its
 // immutable digest.
 type KubernetesPlan struct {
-	ID                    string           `json:"id"`
-	IdempotencyKey        string           `json:"idempotencyKey,omitempty"`
-	RequestDigest         string           `json:"requestDigest,omitempty"`
-	ActorHash             string           `json:"actorHash"`
-	TenantID              string           `json:"tenantId,omitempty"`
-	Target                KubernetesTarget `json:"target"`
-	ManifestDigest        string           `json:"manifestDigest"`
-	Action                string           `json:"action"`
-	State                 string           `json:"state"`
-	RollbackOfPlanID      string           `json:"rollbackOfPlanId,omitempty"`
-	RollbackTargetPlanID  string           `json:"rollbackTargetPlanId,omitempty"`
-	SourceManifestDigest  string           `json:"sourceManifestDigest,omitempty"`
-	ConfirmationPhrase    string           `json:"confirmationPhrase,omitempty"`
-	ApprovedByHash        string           `json:"approvedByHash,omitempty"`
-	SecondApprovedByHash  string           `json:"secondApprovedByHash,omitempty"`
-	RequiresDualApproval  bool             `json:"requiresDualApproval"`
-	ApprovalPolicy        string           `json:"approvalPolicy,omitempty"`
-	OperationID           string           `json:"operationId,omitempty"`
-	ExecuteIdempotencyKey string           `json:"executeIdempotencyKey,omitempty"`
-	ExecutedByHash        string           `json:"executedByHash,omitempty"`
-	Error                 string           `json:"error,omitempty"`
-	CreatedAt             time.Time        `json:"createdAt"`
-	ApprovedAt            *time.Time       `json:"approvedAt,omitempty"`
-	SecondApprovedAt      *time.Time       `json:"secondApprovedAt,omitempty"`
-	StartedAt             *time.Time       `json:"startedAt,omitempty"`
-	FinishedAt            *time.Time       `json:"finishedAt,omitempty"`
+	ID                    string             `json:"id"`
+	IdempotencyKey        string             `json:"idempotencyKey,omitempty"`
+	RequestDigest         string             `json:"requestDigest,omitempty"`
+	ActorHash             string             `json:"actorHash"`
+	TenantID              string             `json:"tenantId,omitempty"`
+	Target                KubernetesTarget   `json:"target"`
+	ManifestDigest        string             `json:"manifestDigest"`
+	PlanDigest            string             `json:"planDigest,omitempty"`
+	Preview               *KubernetesPreview `json:"preview,omitempty"`
+	RollbackEligible      bool               `json:"rollbackEligible,omitempty"`
+	Action                string             `json:"action"`
+	State                 string             `json:"state"`
+	RollbackOfPlanID      string             `json:"rollbackOfPlanId,omitempty"`
+	RollbackTargetPlanID  string             `json:"rollbackTargetPlanId,omitempty"`
+	SourceManifestDigest  string             `json:"sourceManifestDigest,omitempty"`
+	ConfirmationPhrase    string             `json:"confirmationPhrase,omitempty"`
+	ApprovedByHash        string             `json:"approvedByHash,omitempty"`
+	SecondApprovedByHash  string             `json:"secondApprovedByHash,omitempty"`
+	RequiresDualApproval  bool               `json:"requiresDualApproval"`
+	ApprovalPolicy        string             `json:"approvalPolicy,omitempty"`
+	OperationID           string             `json:"operationId,omitempty"`
+	ExecuteIdempotencyKey string             `json:"executeIdempotencyKey,omitempty"`
+	ExecutedByHash        string             `json:"executedByHash,omitempty"`
+	Error                 string             `json:"error,omitempty"`
+	CreatedAt             time.Time          `json:"createdAt"`
+	ApprovedAt            *time.Time         `json:"approvedAt,omitempty"`
+	SecondApprovedAt      *time.Time         `json:"secondApprovedAt,omitempty"`
+	StartedAt             *time.Time         `json:"startedAt,omitempty"`
+	FinishedAt            *time.Time         `json:"finishedAt,omitempty"`
 }
 
 type KubernetesPlanRequest struct {
@@ -465,13 +468,14 @@ type KubernetesPlanExecuteRequest struct {
 }
 
 type KubernetesRequest struct {
-	Target           KubernetesTarget `json:"target"`
-	Action           string           `json:"action"`
-	Manifest         string           `json:"manifest"`
-	DryRun           bool             `json:"dryRun"`
-	Confirmation     string           `json:"confirmation,omitempty"`
-	IdempotencyKey   string           `json:"idempotencyKey"`
-	RollbackOfPlanID string           `json:"rollbackOfPlanId,omitempty"`
+	Target            KubernetesTarget             `json:"target"`
+	Action            string                       `json:"action"`
+	Manifest          string                       `json:"manifest"`
+	DryRun            bool                         `json:"dryRun"`
+	Confirmation      string                       `json:"confirmation,omitempty"`
+	IdempotencyKey    string                       `json:"idempotencyKey"`
+	RollbackOfPlanID  string                       `json:"rollbackOfPlanId,omitempty"`
+	ExpectedResources []KubernetesResourceIdentity `json:"-"`
 }
 
 type TerminalCommand struct {

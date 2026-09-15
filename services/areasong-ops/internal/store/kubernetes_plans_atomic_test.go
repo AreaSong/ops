@@ -31,28 +31,28 @@ func TestKubernetesPlanStateAndAuditAreAtomic(t *testing.T) {
 
 	installKubernetesAuditFailure(t, database)
 	if _, err := database.ApproveKubernetesPlan(
-		ctx, plan.ID, "actor-b", plan.ManifestDigest, plan.ConfirmationPhrase,
+		ctx, plan.ID, "actor-b", plan.PlanDigest, plan.ConfirmationPhrase,
 	); err == nil {
 		t.Fatal("Kubernetes first approval survived audit failure")
 	}
 	assertKubernetesPlanState(t, database, plan.ID, nil, "pending_approval")
 	dropKubernetesAuditFailure(t, database)
 	if _, err := database.ApproveKubernetesPlan(
-		ctx, plan.ID, "actor-b", plan.ManifestDigest, plan.ConfirmationPhrase,
+		ctx, plan.ID, "actor-b", plan.PlanDigest, plan.ConfirmationPhrase,
 	); err != nil {
 		t.Fatal(err)
 	}
 
 	installKubernetesAuditFailure(t, database)
 	if _, err := database.ApproveKubernetesPlan(
-		ctx, plan.ID, "actor-c", plan.ManifestDigest, plan.ConfirmationPhrase,
+		ctx, plan.ID, "actor-c", plan.PlanDigest, plan.ConfirmationPhrase,
 	); err == nil {
 		t.Fatal("Kubernetes second approval survived audit failure")
 	}
 	assertKubernetesPlanState(t, database, plan.ID, nil, "pending_approval")
 	dropKubernetesAuditFailure(t, database)
 	if _, err := database.ApproveKubernetesPlan(
-		ctx, plan.ID, "actor-c", plan.ManifestDigest, plan.ConfirmationPhrase,
+		ctx, plan.ID, "actor-c", plan.PlanDigest, plan.ConfirmationPhrase,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestKubernetesPlanStateAndAuditAreAtomic(t *testing.T) {
 	operation := atomicKubernetesOperation(plan)
 	installKubernetesAuditFailure(t, database)
 	if _, _, err := database.StartKubernetesPlan(
-		ctx, plan.ID, "actor-d", "execute-key", operation,
+		ctx, plan.ID, "actor-d", "execute-key", plan.PlanDigest, operation,
 	); err == nil {
 		t.Fatal("Kubernetes start survived audit failure")
 	}
@@ -70,7 +70,7 @@ func TestKubernetesPlanStateAndAuditAreAtomic(t *testing.T) {
 	}
 	dropKubernetesAuditFailure(t, database)
 	if _, started, err := database.StartKubernetesPlan(
-		ctx, plan.ID, "actor-d", "execute-key", operation,
+		ctx, plan.ID, "actor-d", "execute-key", plan.PlanDigest, operation,
 	); err != nil || !started {
 		t.Fatalf("started=%v err=%v", started, err)
 	}
@@ -100,14 +100,23 @@ func atomicKubernetesPlan(now time.Time) (model.KubernetesPlan, string) {
 		TenantID: "tenant-a", Allowlist: []string{"deployment/demo"},
 		ResourceKinds: []string{"Deployment"},
 	}
-	return model.KubernetesPlan{
+	plan := model.KubernetesPlan{
 		ID:             "11111111-1111-4111-8111-111111111111",
 		IdempotencyKey: "22222222-2222-4222-8222-222222222222",
 		RequestDigest:  "sha256:request", ActorHash: "actor-a", TenantID: "tenant-a",
 		Target: target, ManifestDigest: "sha256:manifest", Action: "apply",
 		State: "pending_approval", ConfirmationPhrase: "批准 Kubernetes 变更",
 		RequiresDualApproval: true, CreatedAt: now,
-	}, "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: demo\n"
+	}
+	attachKubernetesPreview(&plan)
+	return plan, "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: demo\n"
+}
+
+func attachKubernetesPreview(plan *model.KubernetesPlan) {
+	plan.Preview = &model.KubernetesPreview{Version: 1, PolicyDigest: "sha256:policy", ClusterFingerprint: "sha256:cluster",
+		DiffDigest: "sha256:diff", Resources: []model.KubernetesResourceIdentity{{APIVersion: "apps/v1", Kind: "Deployment", Name: "demo", Namespace: plan.Target.Namespace}},
+		ObservedAt: plan.CreatedAt, ExpiresAt: plan.CreatedAt.Add(15 * time.Minute)}
+	plan.PlanDigest, _ = plan.ApprovalDigest()
 }
 
 func atomicKubernetesOperation(plan model.KubernetesPlan) model.KubernetesOperation {

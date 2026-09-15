@@ -299,7 +299,7 @@ func (executor *demoExecutor) Execute(ctx context.Context, input runner.ExecuteI
 		executor.versions[input.Service.Name] = strings.TrimPrefix(input.Target, "v")
 	}
 	var recoveryPoint *model.RecoveryPointEvidence
-	if input.Phase == "backup" && input.Service.RecoveryPointPolicy != nil {
+	if input.Phase == "backup" && input.Action != "restore-drill" && input.Service.RecoveryPointPolicy != nil {
 		point, pointErr := executor.createRecoveryPoint(input)
 		if pointErr != nil {
 			return model.AdapterResult{}, pointErr
@@ -308,6 +308,17 @@ func (executor *demoExecutor) Execute(ctx context.Context, input runner.ExecuteI
 	}
 	executor.applyLifecycleState(input)
 	data := map[string]any{"service": input.Service.Name, "phase": input.Phase}
+	if input.Action == "restore-drill" && input.Phase == "verify" {
+		var contract map[string]any
+		if raw, err := os.ReadFile(filepath.Join(input.OperationDir, "recovery-point.json")); err == nil {
+			if err := json.Unmarshal(raw, &contract); err != nil {
+				return model.AdapterResult{}, err
+			}
+			for _, key := range []string{"recoveryPointId", "bindingDigest", "evidenceDigest"} {
+				data[key] = contract[key]
+			}
+		}
+	}
 	if input.AdapterKind == "traffic" {
 		data["trafficState"] = executor.trafficState(input.Service.Name)
 	}
@@ -401,6 +412,13 @@ func (executor *demoExecutor) applyLifecycleState(input runner.ExecuteInput) {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--development-kubectl" {
+		code, err := developmentKubectl(os.Args[2:], os.Stdin, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(code)
+	}
 	catalogPath := envOr("OPS_SERVICE_CATALOG", "config/services.example.json")
 	catalog, err := config.Load(catalogPath, false)
 	if err != nil {
@@ -455,6 +473,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	observationContext, stopObservation := context.WithCancel(context.Background())
+	defer stopObservation()
+	engine.StartAutoUpdateObservationMonitor(observationContext)
 	// 开发 Runner 没有独立心跳进程；持续续租用于本地验收 Fleet 门禁，生产 API 门禁不变。
 	if catalog.Fleet != nil && catalog.Fleet.Enabled {
 		lease := time.Duration(catalog.Fleet.HeartbeatTimeoutSeconds) * time.Second
@@ -512,7 +533,9 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	stopObservation()
 	_ = server.Shutdown(context.Background())
+	engine.Stop()
 	engine.Wait()
 }
 
@@ -898,7 +921,9 @@ func applyDevelopmentFeatureOverrides(catalog *config.Catalog) {
 	configureDevelopmentExtensions(catalog, features)
 	configureDevelopmentRunnerUpdate(catalog, features, runtimeRoot)
 	configureDevelopmentFleetRunnerUpdate(catalog, features)
-	configureDevelopmentKubernetes(features, runtimeRoot)
+	if err := configureDevelopmentKubernetes(features, runtimeRoot); err != nil {
+		log.Fatalf("development Kubernetes helper unavailable: %v", err)
+	}
 	configureDevelopmentTimings(catalog, features)
 }
 
@@ -1058,20 +1083,6 @@ func configureDevelopmentFleetRunnerUpdate(catalog *config.Catalog, features map
 			node.CertificateFingerprint = "sha256:" + strings.Repeat("c", 64)
 		}
 	}
-}
-
-func configureDevelopmentKubernetes(features map[string]bool, runtimeRoot string) {
-	if !features["kubernetes"] {
-		return
-	}
-	binDir := filepath.Join(runtimeRoot, "bin")
-	kubectl := filepath.Join(binDir, "kubectl")
-	content := []byte("#!/bin/sh\ncat >/dev/null\nprintf '{\"kind\":\"Status\",\"status\":\"Success\"}\\n'\n")
-	if err := ensureDevelopmentFile(kubectl, content, 0o700); err != nil {
-		log.Printf("development kubectl unavailable: %v", err)
-		return
-	}
-	_ = os.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func ensureDevelopmentFile(path string, content []byte, mode os.FileMode) error {

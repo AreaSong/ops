@@ -142,6 +142,17 @@ func (executor *fakeExecutor) Execute(_ context.Context, input ExecuteInput) (mo
 			"currentVersion": "1.0.0", "latestTag": "v1.1.0", "prepared": true,
 		}}, nil
 	}
+	if input.Action == "restore-drill" && input.Phase == "verify" {
+		var contract map[string]any
+		if raw, err := os.ReadFile(filepath.Join(input.OperationDir, "recovery-point.json")); err == nil {
+			if err := json.Unmarshal(raw, &contract); err != nil {
+				return model.AdapterResult{}, err
+			}
+			return model.AdapterResult{OK: true, Summary: "isolated restore verified", Data: map[string]any{
+				"recoveryPointId": contract["recoveryPointId"], "bindingDigest": contract["bindingDigest"], "evidenceDigest": contract["evidenceDigest"],
+			}}, nil
+		}
+	}
 	return model.AdapterResult{OK: true, Summary: input.Phase + " ok", Data: map[string]any{"phase": input.Phase}}, nil
 }
 

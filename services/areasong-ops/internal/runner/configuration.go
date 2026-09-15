@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -589,15 +590,8 @@ func (engine *Engine) runKubernetesOperation(
 		return op, "", failure
 	}
 	op.State = "running"
-	args := []string{"--context", target.Context, "-n", target.Namespace, "apply", "--field-manager", "areasong-ops"}
-	if request.Action == "validate" {
-		args = append(args, "--dry-run=server")
-	}
-	args = append(args, "-f", "-")
-	command := exec.CommandContext(ctx, "kubectl", args...)
-	command.Stdin = strings.NewReader(request.Manifest)
-	output, runErr := command.CombinedOutput()
-	cleanOutput := redactText(string(output))
+	output, runErr := runKubernetesMutation(ctx, target, request)
+	cleanOutput := redactText(output)
 	if runErr != nil {
 		state := "failed"
 		if mutation {
@@ -799,8 +793,10 @@ func (engine *Engine) kubernetesTarget(target model.KubernetesTarget) (model.Kub
 }
 
 type kubernetesManifestMetadata struct {
-	Name      string `json:"name" yaml:"name"`
-	Namespace string `json:"namespace" yaml:"namespace"`
+	Name            string `json:"name" yaml:"name"`
+	Namespace       string `json:"namespace" yaml:"namespace"`
+	UID             string `json:"uid" yaml:"uid"`
+	ResourceVersion string `json:"resourceVersion" yaml:"resourceVersion"`
 }
 
 type kubernetesManifestObject struct {
@@ -881,6 +877,9 @@ func validateKubernetesManifest(manifest string, target model.KubernetesTarget) 
 		return nil, err
 	}
 	for _, object := range objects {
+		if object.Metadata.UID != "" || object.Metadata.ResourceVersion != "" {
+			return nil, errors.New("UID/resourceVersion 由可信预览绑定，请移除清单中的服务器身份字段")
+		}
 		kind := strings.TrimSpace(object.Kind)
 		if isDangerousKubernetesKind(kind) {
 			return nil, fmt.Errorf("Kubernetes kind 被禁止: %s", kind)
@@ -916,6 +915,10 @@ func kubernetesRequestDigest(request model.KubernetesRequest, target model.Kuber
 		request.Action, fmt.Sprintf("%t", request.DryRun), target.Cluster, target.Context,
 		target.Namespace, target.TenantID, strings.Join(kinds, ","), strings.Join(allowlist, ","),
 		request.RollbackOfPlanID, request.Manifest,
+	}
+	if len(request.ExpectedResources) > 0 {
+		bindings, _ := json.Marshal(request.ExpectedResources)
+		parts = append(parts, string(bindings))
 	}
 	return digestText(strings.Join(parts, "\x00"))
 }

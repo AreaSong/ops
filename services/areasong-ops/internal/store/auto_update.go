@@ -33,6 +33,7 @@ func (store *Store) upsertAutoUpdatePolicy(ctx context.Context, db accessExecer,
 		INSERT INTO auto_update_policies(service,object_id,tenant_id,policy_json,last_evaluation_at,next_evaluation_at,last_plan_id,last_error,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(service) DO UPDATE SET object_id=excluded.object_id,tenant_id=excluded.tenant_id,
+		 next_evaluation_at=CASE WHEN auto_update_policies.policy_json <> excluded.policy_json THEN NULL ELSE auto_update_policies.next_evaluation_at END,
 		 policy_json=excluded.policy_json,updated_at=excluded.updated_at`,
 		policy.Service, policy.ObjectID, policy.TenantID, raw, autoNullableTimeText(policy.LastEvaluationAt),
 		autoNullableTimeText(policy.NextEvaluationAt), policy.LastPlanID, policy.LastError, timeText(now))
@@ -84,6 +85,9 @@ func (store *Store) ApplyAutoUpdatePolicy(
 		return false, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if err := store.invalidateChangedAutoUpdatePlans(ctx, tx, actor, policy.Service, raw); err != nil {
 		return false, err
 	}
 	if err := store.upsertAutoUpdatePolicy(ctx, tx, policy, raw); err != nil {

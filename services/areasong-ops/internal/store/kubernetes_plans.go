@@ -48,6 +48,16 @@ func (store *Store) CreateKubernetesPlan(
 	if err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
+	previewJSON, err := encodeJSON(plan.Preview)
+	if err != nil {
+		return model.KubernetesPlan{}, false, err
+	}
+	if plan.Preview != nil {
+		calculated, err := plan.ApprovalDigest()
+		if err != nil || calculated != plan.PlanDigest {
+			return model.KubernetesPlan{}, false, errors.New("Kubernetes 预览摘要无效")
+		}
+	}
 	if plan.CreatedAt.IsZero() {
 		plan.CreatedAt = store.now()
 	}
@@ -55,14 +65,14 @@ func (store *Store) CreateKubernetesPlan(
 		id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,manifest_digest,manifest,
 		action,state,confirmation_hash,confirmation_phrase,approved_by_hash,approved_at,
 		second_approved_by_hash,second_approved_at,requires_dual_approval,approval_policy,operation_id,error,created_at,started_at,finished_at
-			,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash,plan_digest,preview_json
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		plan.ID, plan.IdempotencyKey, plan.RequestDigest, plan.ActorHash, plan.TenantID,
 		targetJSON, plan.ManifestDigest, manifest, plan.Action, plan.State, confirmationHash,
 		plan.ConfirmationPhrase, plan.ApprovedByHash, nullableTimeText(plan.ApprovedAt),
 		plan.SecondApprovedByHash, nullableTimeText(plan.SecondApprovedAt), plan.RequiresDualApproval, plan.ApprovalPolicy,
 		plan.OperationID, plan.Error, timeText(plan.CreatedAt), nullableTimeText(plan.StartedAt), nullableTimeText(plan.FinishedAt), plan.ExecuteIdempotencyKey,
-		plan.RollbackOfPlanID, plan.RollbackTargetPlanID, plan.SourceManifestDigest, plan.ExecutedByHash)
+		plan.RollbackOfPlanID, plan.RollbackTargetPlanID, plan.SourceManifestDigest, plan.ExecutedByHash, plan.PlanDigest, previewJSON)
 	if err != nil {
 		return model.KubernetesPlan{}, false, err
 	}
@@ -124,7 +134,8 @@ func (store *Store) ApproveKubernetesPlan(
 	if err != nil {
 		return model.KubernetesPlan{}, err
 	}
-	if plan.ManifestDigest != digest {
+	calculated, digestErr := plan.ApprovalDigest()
+	if digestErr != nil || plan.PlanDigest == "" || calculated != plan.PlanDigest || plan.PlanDigest != digest || !store.now().Before(plan.Preview.ExpiresAt) {
 		return model.KubernetesPlan{}, errors.New("Kubernetes 计划摘要已变化，批准失效")
 	}
 	var expectedConfirmationHash string
@@ -202,7 +213,7 @@ func (store *Store) ApproveKubernetesPlan(
 
 func (store *Store) StartKubernetesPlan(
 	ctx context.Context,
-	id, actorHash, idempotencyKey string,
+	id, actorHash, idempotencyKey, expectedDigest string,
 	operation model.KubernetesOperation,
 ) (model.KubernetesPlan, bool, error) {
 	tx, err := store.db.BeginTx(ctx, nil)
@@ -231,6 +242,13 @@ func (store *Store) StartKubernetesPlan(
 	}
 	if plan.State != "approved" {
 		return model.KubernetesPlan{}, false, errors.New("Kubernetes 计划尚未完成批准")
+	}
+	calculated, digestErr := plan.ApprovalDigest()
+	if digestErr != nil || plan.PlanDigest == "" || plan.PlanDigest != expectedDigest || calculated != expectedDigest || !store.now().Before(plan.Preview.ExpiresAt) {
+		return model.KubernetesPlan{}, false, errors.New("Kubernetes 预览证据已失效，不能启动")
+	}
+	if err := ensureKubernetesScopeIdle(ctx, tx, plan); err != nil {
+		return model.KubernetesPlan{}, false, err
 	}
 	if plan.RequiresDualApproval && model.UsesTwoPartyApproval(plan.ApprovalPolicy) {
 		if actorHash != plan.ActorHash || plan.ApprovedByHash == "" || plan.ApprovedByHash == actorHash {
@@ -342,6 +360,7 @@ func appendKubernetesPlanAudit(
 	detail := map[string]any{
 		"action": plan.Action, "tenantId": plan.TenantID, "cluster": plan.Target.Cluster,
 		"namespace": plan.Target.Namespace, "manifestDigest": plan.ManifestDigest,
+		"planDigest": plan.PlanDigest,
 	}
 	if plan.OperationID != "" {
 		detail["operationId"] = plan.OperationID
@@ -362,7 +381,7 @@ func appendKubernetesPlanAudit(
 const kubernetesPlanSelect = `SELECT id,idempotency_key,request_digest,actor_hash,tenant_id,target_json,
 		manifest_digest,manifest,action,state,confirmation_phrase,approved_by_hash,approved_at,
 	second_approved_by_hash,second_approved_at,requires_dual_approval,approval_policy,operation_id,error,
-		created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash FROM kubernetes_plans`
+		created_at,started_at,finished_at,execute_idempotency_key,rollback_of_plan_id,rollback_target_plan_id,source_manifest_digest,executed_by_hash,plan_digest,preview_json FROM kubernetes_plans`
 
 func (store *Store) getKubernetesPlan(ctx context.Context, id string) (model.KubernetesPlan, string, error) {
 	plan, manifest, err := scanKubernetesPlan(store.db.QueryRowContext(ctx, kubernetesPlanSelect+` WHERE id=?`, id))
@@ -376,7 +395,7 @@ type kubernetesPlanScanner interface{ Scan(...any) error }
 
 func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string, error) {
 	var plan model.KubernetesPlan
-	var targetJSON, manifest string
+	var targetJSON, manifest, previewJSON string
 	var approvedAt, secondApprovedAt, createdAt, startedAt, finishedAt sql.NullString
 	var rollbackOfPlanID, rollbackTargetPlanID, sourceManifestDigest, executedByHash string
 	var dual int
@@ -384,12 +403,15 @@ func scanKubernetesPlan(row kubernetesPlanScanner) (model.KubernetesPlan, string
 		&targetJSON, &plan.ManifestDigest, &manifest, &plan.Action, &plan.State, &plan.ConfirmationPhrase,
 		&plan.ApprovedByHash, &approvedAt, &plan.SecondApprovedByHash, &secondApprovedAt, &dual, &plan.ApprovalPolicy,
 		&plan.OperationID, &plan.Error, &createdAt, &startedAt, &finishedAt, &plan.ExecuteIdempotencyKey,
-		&rollbackOfPlanID, &rollbackTargetPlanID, &sourceManifestDigest, &executedByHash)
+		&rollbackOfPlanID, &rollbackTargetPlanID, &sourceManifestDigest, &executedByHash, &plan.PlanDigest, &previewJSON)
 	if err != nil {
 		return model.KubernetesPlan{}, "", err
 	}
 	if err := decodeJSON(targetJSON, &plan.Target); err != nil {
 		return model.KubernetesPlan{}, "", fmt.Errorf("解析 Kubernetes 目标失败: %w", err)
+	}
+	if err := decodeJSON(previewJSON, &plan.Preview); err != nil {
+		return model.KubernetesPlan{}, "", err
 	}
 	plan.RequiresDualApproval = dual != 0
 	plan.RollbackOfPlanID = rollbackOfPlanID

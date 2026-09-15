@@ -374,6 +374,19 @@ func verifyRestorePointContract(operationDir, expectedDigest string) error {
 	return nil
 }
 
+func verifyIsolatedRestoreResult(task model.Task, data map[string]any) error {
+	for key, expected := range map[string]string{
+		"recoveryPointId": task.RecoveryPointID,
+		"bindingDigest":   task.RestoreContractDigest,
+		"evidenceDigest":  task.RestoreEvidenceDigest,
+	} {
+		if expected == "" || data[key] != expected {
+			return fmt.Errorf("隔离演练结果未绑定选定恢复点: %s", key)
+		}
+	}
+	return nil
+}
+
 func canonicalRecoveryBindingDigest(
 	evidence model.RecoveryPointEvidence,
 	unsignedDigest string,

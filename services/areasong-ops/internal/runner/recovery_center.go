@@ -119,6 +119,9 @@ func (engine *Engine) CreateRestorePlan(ctx context.Context, actor string, reque
 	if point.RecoverableUntil != nil && !now.Before(*point.RecoverableUntil) {
 		return model.ReleasePlan{}, errors.New("恢复点已过期")
 	}
+	if service.RecoveryPointPolicy == nil || !sameStringSet(point.RequiredArtifactRoles, service.RecoveryPointPolicy.RequiredArtifactRoles) {
+		return model.ReleasePlan{}, errors.New("恢复点缺少当前完整证据，请创建包含配置和镜像身份的新恢复点")
+	}
 	if len(point.Evidence.Artifacts) == 0 {
 		return model.ReleasePlan{}, errors.New("恢复点没有可验证的制品证据")
 	}

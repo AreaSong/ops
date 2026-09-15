@@ -31,11 +31,11 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	}
 
 	postKubernetesJSON[map[string]any](t, handler, actors[0], "/v1/kubernetes/plans/"+created.ID+"/approve", model.KubernetesPlanApprovalRequest{
-		Digest: created.ManifestDigest, Confirmation: created.ConfirmationPhrase,
+		Digest: created.PlanDigest, Confirmation: created.ConfirmationPhrase,
 	}, http.StatusConflict)
 
 	first := postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+created.ID+"/approve", model.KubernetesPlanApprovalRequest{
-		Digest: created.ManifestDigest, Confirmation: created.ConfirmationPhrase,
+		Digest: created.PlanDigest, Confirmation: created.ConfirmationPhrase,
 	}, http.StatusOK)
 	if first.State != "approved" || first.ApprovedByHash != actors[1] || first.ApprovalPolicy != model.ApprovalPolicyTwoParty {
 		t.Fatalf("first approval=%+v", first)
@@ -73,8 +73,8 @@ func TestKubernetesPlanAPIDualApprovalAndIdempotentExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(invocations)), "\n")
-	if len(lines) != 2 || !strings.Contains(lines[0], "--context ctx-a -n ns-a apply --field-manager areasong-ops -f -") ||
+	lines := kubernetesMutationInvocations(string(invocations))
+	if len(lines) != 2 || !strings.Contains(lines[0], "--context ctx-a -n ns-a apply --field-manager areasong-ops --server-side -f -") ||
 		!strings.Contains(lines[1], "--context ctx-a -n ns-a rollout status deployment/app-a --timeout=5m") {
 		t.Fatalf("kubectl invocations=%q", string(invocations))
 	}
@@ -132,7 +132,7 @@ func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
 		t.Fatalf("rollback plan=%+v", rollback)
 	}
 	rollback = postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+rollback.ID+"/approve", model.KubernetesPlanApprovalRequest{
-		Digest: rollback.ManifestDigest, Confirmation: rollback.ConfirmationPhrase,
+		Digest: rollback.PlanDigest, Confirmation: rollback.ConfirmationPhrase,
 	}, http.StatusOK)
 	result := postKubernetesJSON[struct {
 		Operation model.KubernetesOperation `json:"operation"`
@@ -147,7 +147,7 @@ func TestKubernetesRollbackPlanBindsSourceAndRunsRollout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(invocations)), "\n")
+	lines := kubernetesMutationInvocations(string(invocations))
 	if len(lines) != 6 || !strings.Contains(lines[4], " apply ") ||
 		!strings.Contains(lines[5], "rollout status deployment/app-a") {
 		t.Fatalf("rollback kubectl invocations=%q", string(invocations))
@@ -205,7 +205,7 @@ func createApprovedKubernetesPlan(
 		Target: target, Manifest: manifest, IdempotencyKey: mustUUID(t),
 	}, http.StatusCreated)
 	plan = postKubernetesJSON[model.KubernetesPlan](t, handler, actors[1], "/v1/kubernetes/plans/"+plan.ID+"/approve", model.KubernetesPlanApprovalRequest{
-		Digest: plan.ManifestDigest, Confirmation: plan.ConfirmationPhrase,
+		Digest: plan.PlanDigest, Confirmation: plan.ConfirmationPhrase,
 	}, http.StatusOK)
 	return plan
 }
@@ -225,7 +225,7 @@ func kubernetesPlanTestEngine(t *testing.T) (*Engine, *store.Store, []string, st
 	}
 	invocationFile := filepath.Join(root, "kubectl-invocations")
 	kubectl := filepath.Join(binDir, "kubectl")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$KUBECTL_INVOCATIONS\"\ncat >/dev/null\nif [ \"$5\" = rollout ] && [ \"${KUBECTL_FAIL_ROLLOUT:-0}\" = 1 ]; then printf 'rollout failed\\n' >&2; exit 1; fi\nprintf 'ok\\n'\n"
+	script := kubernetesPreviewFake
 	if err := os.WriteFile(kubectl, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}

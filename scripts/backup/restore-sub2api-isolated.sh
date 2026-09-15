@@ -7,6 +7,12 @@ action="${1:-}"
 phase="${2:-}"
 operation_dir="${3:-}"
 target="${4:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RECOVERY_METADATA="${SUB2API_RESTORE_METADATA_TOOL:-$SCRIPT_DIR/restore_point_metadata.py}"
+selected_mode=false
+if [[ "$action" == restore-drill && ( -n "$target" || -e "$operation_dir/recovery-point.json" ) ]]; then
+  selected_mode=true
+fi
 
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ops}"
 PREPARED_DIR="${SUB2API_PREPARED_RELEASE_DIR:-/var/lib/areasong-ops/prepared-releases/sub2api}"
@@ -36,13 +42,24 @@ result() {
 for command_name in curl docker find gzip install jq mktemp python3 sha256sum; do
   command -v "$command_name" >/dev/null || fail "missing command: $command_name"
 done
-for path in "$ENV_FILE" "$BACKUP_POSTGRES" "$BACKUP_REDIS" "$BACKUP_VOLUMES"; do
-  [[ -f "$path" && ! -L "$path" ]] || fail "required path is missing or unsafe: $path"
-done
+if [[ "$selected_mode" == false ]]; then
+  for path in "$ENV_FILE" "$BACKUP_POSTGRES" "$BACKUP_REDIS" "$BACKUP_VOLUMES"; do
+    [[ -f "$path" && ! -L "$path" ]] || fail "required path is missing or unsafe: $path"
+  done
+else
+  [[ -f "$RECOVERY_METADATA" && ! -L "$RECOVERY_METADATA" ]] || fail "recovery metadata tool is unavailable"
+fi
 
 state_file="$operation_dir/sub2api-drill-state.json"
 backup_file="$operation_dir/sub2api-drill-backups.json"
 drill_result="$operation_dir/isolated-drill-result.txt"
+selected=""
+if [[ "$selected_mode" == true && "$phase" != preflight ]]; then
+  selected="$(python3 "$RECOVERY_METADATA" verify-staged --service sub2api --expected-mode isolated \
+    --contract "$operation_dir/recovery-point.json" --target "$target" --backup-root "$BACKUP_ROOT" \
+    --operation-dir "$operation_dir")"
+  ENV_FILE="$(jq -er .envFile <<<"$selected")"
+fi
 
 image_identity() {
   local reference="$1" inspected image_id version commit projection identity_hash
@@ -74,9 +91,43 @@ latest_fresh() {
     sort -nr | awk 'NR == 1 {sub(/^[^ ]+ /, ""); print}'
 }
 
+verify_selected_inputs() {
+  local expected actual
+  [[ -f "$backup_file" && ! -L "$backup_file" && -f "$state_file" && ! -L "$state_file" ]] || fail "selected drill inputs are missing"
+  expected="$(jq -cS '.stagedArtifacts as $paths | .artifacts as $evidence |
+    {schemaVersion:1,postgres:{path:$paths["postgres-sub2api"],sha256:$evidence["postgres-sub2api"].sha256},
+     redis:{path:$paths.redis,sha256:$evidence.redis.sha256},
+     data:{path:$paths["volume-sub2api-data"],sha256:$evidence["volume-sub2api-data"].sha256}}' <<<"$selected")"
+  actual="$(jq -cS . "$backup_file")"
+  [[ "$actual" == "$expected" ]] || fail "selected backup inputs differ from the approved recovery point"
+  expected="$(jq -cS --arg target "$target" '.runtime as $r |
+    ($r.containers.app | {version,image:.image_id,imageId:.image_id,gitCommit:.revision}) as $app |
+    {schemaVersion:1,action:"restore-drill",target:$target,baselineMigrations:$r.database.migrations,
+     current:$app,targetIdentity:$app,postgresImage:$r.containers.postgres.image_id,
+     redisImage:$r.containers.redis.image_id,productionDatabase:$r.database}' <<<"$selected")"
+  actual="$(jq -cS '{schemaVersion,action,target,baselineMigrations,current,targetIdentity,postgresImage,redisImage,productionDatabase}' "$state_file")"
+  [[ "$actual" == "$expected" ]] || fail "selected runtime inputs differ from the approved recovery point"
+}
+
 case "$phase" in
   preflight)
-    if [[ "$action" == prepare ]]; then
+    if [[ "$selected_mode" == true ]]; then
+      selected="$(python3 "$RECOVERY_METADATA" stage --service sub2api --expected-mode isolated \
+        --contract "$operation_dir/recovery-point.json" --target "$target" --backup-root "$BACKUP_ROOT" \
+        --operation-dir "$operation_dir")"
+      printf '%s\n' "$selected" >"$operation_dir/selected-point.json"
+      chmod 0600 "$operation_dir/selected-point.json"
+      jq --arg target "$target" --argjson startedAt "$(date +%s)" \
+        '.runtime as $r | ($r.containers.app | {version,image:.image_id,imageId:.image_id,gitCommit:.revision}) as $app |
+         {schemaVersion:1,action:"restore-drill",target:$target,startedAt:$startedAt,
+          baselineMigrations:$r.database.migrations,current:$app,targetIdentity:$app,
+          postgresImage:$r.containers.postgres.image_id,redisImage:$r.containers.redis.image_id,
+          productionDatabase:$r.database}' <<<"$selected" >"$state_file"
+      chmod 0600 "$state_file"
+      jq -e '.baselineMigrations | type == "number" and . >= 0' "$state_file" >/dev/null || fail "selected migration baseline missing"
+      result "指定恢复点、配置与镜像身份已锁定" "$(jq -c '{recoveryPointId,bindingDigest,evidenceDigest}' <<<"$selected")"
+      exit 0
+    elif [[ "$action" == prepare ]]; then
       [[ "$target" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || fail "target release tag is invalid"
       image_tag="${target#v}"
       target_reference="${IMAGE_REPOSITORY}:${image_tag}"
@@ -109,6 +160,16 @@ case "$phase" in
     ;;
   backup)
     [[ -f "$state_file" && ! -L "$state_file" ]] || fail "drill state is missing"
+    if [[ "$selected_mode" == true ]]; then
+      jq '.stagedArtifacts as $paths | .artifacts as $evidence |
+        {schemaVersion:1,postgres:{path:$paths["postgres-sub2api"],sha256:$evidence["postgres-sub2api"].sha256},
+         redis:{path:$paths.redis,sha256:$evidence.redis.sha256},
+         data:{path:$paths["volume-sub2api-data"],sha256:$evidence["volume-sub2api-data"].sha256}}' \
+        <<<"$selected" >"$backup_file"
+      chmod 0600 "$backup_file"
+      result "仅固定选中恢复点的制品，不生成新备份"
+      exit 0
+    fi
     "$BACKUP_POSTGRES" >/dev/null
     "$BACKUP_REDIS" >/dev/null
     "$BACKUP_VOLUMES" >/dev/null
@@ -129,6 +190,7 @@ case "$phase" in
     ;;
   drill)
     [[ -f "$state_file" && ! -L "$state_file" && -f "$backup_file" && ! -L "$backup_file" ]] || fail "drill inputs are missing"
+    if [[ "$selected_mode" == true ]]; then verify_selected_inputs; fi
     work_dir="$(mktemp -d "$operation_dir/sub2api-restore.XXXXXXXX")"
     chmod 0700 "$work_dir"
     project="ops-sub2api-$(printf '%s' "$operation_dir" | sha256sum | awk '{print substr($1, 1, 16)}')"
@@ -160,8 +222,8 @@ case "$phase" in
       [[ "sha256:$(sha256sum "$artifact" | awk '{print $1}')" == "$expected" ]] || fail "$key backup digest mismatch"
     done
     install -d -m 0700 "$work_dir/redis" "$work_dir/app"
-    python3 /opt/ops/scripts/backup/backup_manifest.py extract-tar --archive "$redis_backup" --destination "$work_dir/redis"
-    python3 /opt/ops/scripts/backup/backup_manifest.py extract-tar --archive "$data_backup" --destination "$work_dir/app"
+    python3 "$SCRIPT_DIR/backup_manifest.py" extract-tar --archive "$redis_backup" --destination "$work_dir/redis"
+    python3 "$SCRIPT_DIR/backup_manifest.py" extract-tar --archive "$data_backup" --destination "$work_dir/app"
     [[ -f "$work_dir/redis/redis_data/dump.rdb" && -d "$work_dir/app/data" ]] || fail "restored Redis or application data is incomplete"
     chown -R 999:1000 "$work_dir/redis/redis_data"
     chown -R 1000:1000 "$work_dir/app/data"
@@ -173,6 +235,7 @@ case "$phase" in
 services:
   postgres:
     image: ${DRILL_POSTGRES_IMAGE}
+    pull_policy: never
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
@@ -182,6 +245,7 @@ services:
     networks: [drill]
   redis:
     image: ${DRILL_REDIS_IMAGE}
+    pull_policy: never
     user: "999:1000"
     env_file: ${DRILL_ENV_FILE}
     command: ["sh", "-c", "exec redis-server --appendonly yes --aclfile /data/users.acl --requirepass \"$$REDISCLI_AUTH\""]
@@ -192,6 +256,7 @@ services:
     networks: [drill]
   app:
     image: ${DRILL_APP_IMAGE}
+    pull_policy: never
     user: "1000:1000"
     read_only: true
     env_file: ${DRILL_ENV_FILE}
@@ -287,9 +352,14 @@ YAML
     result "隔离恢复、目标迁移与旧镜像兼容演练完成" "$(jq -cn --argjson baseline "$baseline" --argjson targetMigrations "$target_migrations" '{baselineMigrations:$baseline,targetMigrations:$targetMigrations,oldImageOnNewSchema:"healthy"}')"
     ;;
   verify)
+    if [[ "$selected_mode" == true ]]; then verify_selected_inputs; fi
     [[ -f "$drill_result" && ! -L "$drill_result" ]] || fail "drill result is missing"
     grep -Fxq 'result=success' "$drill_result" || fail "drill did not succeed"
     grep -Fxq 'old_image_on_new_schema=healthy' "$drill_result" || fail "old image compatibility was not proven"
+    if [[ "$selected_mode" == true ]]; then
+      result "指定恢复点隔离演练证据已验证" "$(jq -c '{recoveryPointId,bindingDigest,evidenceDigest}' <<<"$selected")"
+      exit 0
+    fi
     completed="$(date +%s)"
     install -d -m 0755 "$(dirname "$METRIC_OUT")"
     temporary_metric="$(mktemp "$(dirname "$METRIC_OUT")/.sub2api-restore.XXXXXX")"

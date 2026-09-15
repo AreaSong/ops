@@ -268,7 +268,7 @@
         "drainTimeoutSeconds": 300
       },
       "recoveryPointPolicy": {
-        "requiredArtifactRoles": ["postgres-areaforge", "volume-areaforge-uploads", "volume-areaforge-ops-state"],
+        "requiredArtifactRoles": ["postgres-areaforge", "volume-areaforge-uploads", "volume-areaforge-ops-state", "configs", "runtime-snapshot"],
         "recoverableSeconds": 604800
       },
       "autoUpdate": {
@@ -276,8 +276,8 @@
         "channel": "stable",
         "maintenanceWindow": "02:00-04:00",
         "maintenanceTimezone": "UTC",
-        "canaryPercent": 10,
-        "maxUnavailable": 1,
+        "canaryPercent": 0,
+        "maxUnavailable": 0,
         "requireBackup": true,
         "requireApproval": true,
         "rollbackOnAlert": true,
@@ -459,7 +459,7 @@
         "drainTimeoutSeconds": 300
       },
       "recoveryPointPolicy": {
-        "requiredArtifactRoles": ["postgres-sub2api", "redis", "volume-sub2api-data"],
+        "requiredArtifactRoles": ["postgres-sub2api", "redis", "volume-sub2api-data", "configs", "runtime-snapshot"],
         "recoverableSeconds": 604800
       },
       "autoUpdate": {
@@ -467,8 +467,8 @@
         "channel": "stable",
         "maintenanceWindow": "03:00-05:00",
         "maintenanceTimezone": "UTC",
-        "canaryPercent": 10,
-        "maxUnavailable": 1,
+        "canaryPercent": 0,
+        "maxUnavailable": 0,
         "requireBackup": true,
         "requireApproval": true,
         "rollbackOnAlert": true,
