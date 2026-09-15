@@ -32,6 +32,35 @@ jobs:
         working-directory: services/areasong-ops
         run: CGO_ENABLED=0 go test ./cmd/... ./internal/...
 
+      - name: Test release isolation as root in an offline container
+        working-directory: services/areasong-ops
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_test_dir="$(mktemp -d "$RUNNER_TEMP/ops-release-tests.XXXXXX")"
+          go_image="$(sed -n 's/^ARG GO_IMAGE=//p' Dockerfile)"
+          [[ "$go_image" =~ ^golang:[^@]+@sha256:[0-9a-f]{64}$ ]]
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c \
+            -o "$release_test_dir/runner.test" ./cmd/runner
+          docker run --rm --network none --user 0:0 --platform linux/amd64 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --mount "type=bind,source=$release_test_dir,target=/checks,readonly" \
+            --workdir /repo/services/areasong-ops/cmd/runner \
+            --entrypoint /checks/runner.test "$go_image" \
+            -test.v -test.run '^Test(ActualRunnerMaintenance|Release|MissingFence|EmptyUntrusted)' \
+            | tee "$release_test_dir/runner.log"
+          if grep -Fq -- '--- SKIP:' "$release_test_dir/runner.log"; then
+            echo 'release isolation checks must not be skipped' >&2
+            exit 1
+          fi
+          for test_name in \
+            TestActualRunnerMaintenanceMigratesButNeverRecoversTasks \
+            TestReleaseFenceBindsBinaryCatalogBootAndOwner \
+            TestMissingFenceRequiresDurableActivation \
+            TestEmptyUntrustedReleaseDirectoryNeverEntersNormalMode; do
+            grep -Fq -- "--- PASS: $test_name " "$release_test_dir/runner.log"
+          done
+
       - name: Test service adapters
         run: python3 -m unittest discover -s services/areasong-ops/adapters/tests -v
 

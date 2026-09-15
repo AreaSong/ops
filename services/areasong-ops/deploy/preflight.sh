@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 mode="${1:-source}"
 case "$mode" in
-  source | installed | runtime) ;;
-  *) printf 'usage: %s [source|installed|runtime]\n' "$0" >&2; exit 2 ;;
+  source | installed | runtime | maintenance) ;;
+  *) printf 'usage: %s [source|installed|runtime|maintenance]\n' "$0" >&2; exit 2 ;;
 esac
 
 REPO_ROOT="${OPS_PREFLIGHT_REPO_ROOT:-/opt/ops}"
@@ -126,10 +126,19 @@ require_effective_read_write_path areasong-ops-runner.service /etc/nginx/snippet
 [ -S "$SOCKET_PATH" ] || fail "Runner socket is missing"
 [ "$(stat -c '%a %U:%G' "$SOCKET_PATH")" = "660 root:areasong-ops" ] ||
   fail "Runner socket owner or mode is invalid"
-curl -fsS --unix-socket "$SOCKET_PATH" http://runner/healthz >/dev/null || fail "Runner health failed"
+runner_health="$(curl -fsS --unix-socket "$SOCKET_PATH" http://runner/healthz)" || fail "Runner health failed"
+if [ "$mode" = maintenance ]; then
+  jq -e '.ok == true and .releaseMaintenance == true and .releaseProtocol == 1' <<<"$runner_health" >/dev/null ||
+    fail "Runner release maintenance fence is missing"
+  blocked_status="$(curl -sS -o /dev/null -w '%{http_code}' --unix-socket "$SOCKET_PATH" http://runner/v1/services)"
+  [ "$blocked_status" = 503 ] || fail "Runner API is not isolated during release"
+else
+  jq -e '.ok == true and (.releaseMaintenance // false) == false' <<<"$runner_health" >/dev/null ||
+    fail "Runner is still in release maintenance mode"
+fi
 # Credential profile is platform-admin scoped; validate it through the API only
 # when the caller explicitly supplies an authorized actor hash.
-if [ -n "${OPS_PREFLIGHT_CREDENTIAL_ACTOR_HASH:-}" ]; then
+if [ "$mode" != maintenance ] && [ -n "${OPS_PREFLIGHT_CREDENTIAL_ACTOR_HASH:-}" ]; then
   credential_json="$(curl -fsS --unix-socket "$SOCKET_PATH" \
     -H "X-AreaSong-Ops-Actor-Hash: $OPS_PREFLIGHT_CREDENTIAL_ACTOR_HASH" \
     http://runner/v1/credentials/github-alertmanager)" || fail "credential profile failed"

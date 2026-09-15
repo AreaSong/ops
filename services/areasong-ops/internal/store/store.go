@@ -30,6 +30,9 @@ type Store struct {
 	path string
 }
 
+// CurrentSchemaVersion 是发布验收协议的数据库版本，不打开或修改状态文件。
+func CurrentSchemaVersion() int { return len(migrations) }
+
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

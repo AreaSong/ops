@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := runCommand(os.Args[1:]); err != nil {
 		slog.Error("Runner 退出", "error", err)
 		os.Exit(1)
 	}
@@ -36,6 +36,10 @@ func run() error {
 	stateRoot := envOr("OPS_STATE_ROOT", "/var/lib/areasong-ops")
 	catalogPath := envOr("OPS_SERVICE_CATALOG", "/etc/areasong-ops/services.json")
 	socketPath := envOr("OPS_RUNNER_SOCKET", "/var/lib/areasong-ops/run/runner.sock")
+	fence, err := loadReleaseFence(stateRoot, catalogPath)
+	if err != nil {
+		return err
+	}
 	catalog, err := config.Load(catalogPath, true)
 	if err != nil {
 		return err
@@ -51,6 +55,10 @@ func run() error {
 	defer database.Close()
 	if err := enforceProductionStateRootMode(stateRoot); err != nil {
 		return err
+	}
+	// 必须先于所有恢复、Engine 构造器和维护循环；发布验收不允许执行业务动作。
+	if fence != nil {
+		return serveReleaseMaintenance(socketPath, fence)
 	}
 	if count, err := runner.RecoverAutomaticRollbackReceipts(context.Background(), catalog, database, stateRoot, alertmanager); err != nil {
 		return err

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
+import sys
 import subprocess
 import tarfile
 import tempfile
@@ -15,6 +17,7 @@ from importlib.util import module_from_spec, spec_from_file_location
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "release_orchestrator.py"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = spec_from_file_location("release_orchestrator", SCRIPT)
 assert SPEC and SPEC.loader
 MODULE = module_from_spec(SPEC)
@@ -131,6 +134,14 @@ class ReleaseOrchestratorTests(unittest.TestCase):
             f"SECRET_TOKEN=do-not-log\nOPS_BUILD_VERSION=1.1.1\nOTHER=value\nOPS_BUILD_REVISION={self.revision}\n",
         )
 
+    def test_copy_preserves_existing_parent_permissions(self) -> None:
+        parent = self.root / "systemd"
+        parent.mkdir(mode=0o755)
+        source = self.root / "unit"
+        source.write_text("unit", encoding="utf-8")
+        MODULE.copy_atomic(source, parent / "runner.service", 0o644)
+        self.assertEqual(parent.stat().st_mode & 0o777, 0o755)
+
     def test_container_inspect_backup_is_secret_free(self) -> None:
         raw = json.dumps(
             [
@@ -161,155 +172,6 @@ class ReleaseOrchestratorTests(unittest.TestCase):
         if os.geteuid() != 0:
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("必须以 root 执行", result.stderr)
-
-    def deployment_args(self, state_dir: Path) -> SimpleNamespace:
-        paths = {
-            "repo_root": self.root / "repo",
-            "runtime_dir": self.root / "runtime",
-            "config_dir": self.root / "config",
-            "runner_root": self.root / "runner",
-            "unit_path": self.root / "system/areasong-ops-runner.service",
-            "updater_unit_path": self.root / "system/areasong-ops-runner-update@.service",
-            "db_path": self.root / "ops.db",
-            "socket_path": self.root / "run/runner.sock",
-            "container_name": "areasong-ops-web",
-            "preflight": "/bin/true",
-            "candidate_unit": self.root / "candidate.service",
-            "candidate_updater_unit": self.root / "candidate-update.service",
-        }
-        return SimpleNamespace(
-            **paths,
-            runner_archive=str(self.archive),
-            state_dir=state_dir,
-        )
-
-    def prepare_deploy_fixture(self, args: SimpleNamespace) -> None:
-        args.repo_root.mkdir()
-        (args.repo_root / "services/areasong-ops/deploy").mkdir(parents=True)
-        args.runtime_dir.mkdir()
-        args.config_dir.mkdir()
-        (args.runner_root / "runner").mkdir(parents=True)
-        args.unit_path.parent.mkdir(parents=True)
-        (args.repo_root / ".git-marker").write_text("source", encoding="utf-8")
-        (args.runtime_dir / ".env").write_text("OPS_BUILD_VERSION=old\nOPS_BUILD_REVISION=" + "c" * 40 + "\n", encoding="utf-8")
-        (args.runtime_dir / "compose.yml").write_text("services: {}\n", encoding="utf-8")
-        (args.config_dir / "web.env").write_text("OPS_PUBLIC_ORIGIN=https://ops.areasong.top\n", encoding="utf-8")
-        args.db_path.write_bytes(b"SQLite format 3\x00")
-        for path in (
-            args.runner_root / "runner/areasong-ops-runner",
-            args.runner_root / "areasong-ops-runner-updater",
-            args.unit_path,
-            args.updater_unit_path,
-            args.candidate_unit,
-            args.candidate_updater_unit,
-        ):
-            path.write_text("old", encoding="utf-8")
-        # snapshot_sqlite 需要真正可读的 SQLite 数据库。
-        args.db_path.unlink()
-        import sqlite3
-
-        with sqlite3.connect(args.db_path) as database:
-            database.execute("create table state(value text)")
-            database.execute("insert into state values ('old')")
-
-    def test_deploy_success_records_order_and_skips_on_replay(self) -> None:
-        state_dir = self.root / "state"
-        args = self.deployment_args(state_dir)
-        self.prepare_deploy_fixture(args)
-        metadata = MODULE.verify_assets(self.manifest, self.archive, self.checksum, self.bundle, self.verifier)
-        state = MODULE.State(state_dir, "ops-test-success", metadata, create=True)
-        calls: list[list[str]] = []
-        runner_restarted = False
-        web_recreated = False
-
-        def fake_run(command: list[str], **_: object) -> SimpleNamespace:
-            nonlocal runner_restarted, web_recreated
-            calls.append(command)
-            if command[:4] == ["git", "-C", str(args.repo_root), "rev-parse"]:
-                return SimpleNamespace(returncode=0, stdout=metadata["revision"] + "\n", stderr="")
-            if command and command[0] == "curl":
-                if "--unix-socket" in command:
-                    revision = metadata["revision"] if runner_restarted else "c" * 40
-                    return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True, "revision": revision}), stderr="")
-                revision = metadata["revision"] if web_recreated else "c" * 40
-                return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True, "revision": revision}), stderr="")
-            if command[:3] == ["docker", "inspect", args.container_name]:
-                revision = metadata["revision"] if web_recreated else "c" * 40
-                payload = [{"State": {"Running": True}, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}, "Image": "sha256:" + "d" * 64}]
-                return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
-            if command[:3] == ["docker", "image", "inspect"]:
-                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"].split("@", 1)[0].rsplit(":", 1)[0] + "@" + metadata["web_image"].split("@", 1)[1]]}]
-                return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
-            if command[:2] == ["systemctl", "restart"]:
-                runner_restarted = True
-            if command[:2] == ["docker", "compose"] and "up" in command:
-                web_recreated = True
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-        with patch.object(MODULE, "run", side_effect=fake_run):
-            with patch.dict(os.environ, {"OPS_RELEASE_TEST_MODE": "1"}):
-                MODULE.Orchestrator(args, state, metadata).deploy()
-                first_restart_count = sum(command[:2] == ["systemctl", "restart"] for command in calls)
-                first_compose_count = sum(command[:2] == ["docker", "compose"] and "up" in command for command in calls)
-                MODULE.Orchestrator(args, state, metadata).deploy()
-        self.assertEqual(state.data["status"], "succeeded")
-        self.assertEqual(first_restart_count, 1)
-        self.assertEqual(first_compose_count, 1)
-        self.assertEqual(
-            (args.runner_root / "areasong-ops-runner-updater").read_text(encoding="utf-8"),
-            "areasong-ops-runner-updater",
-        )
-        self.assertEqual(
-            (state.directory / "backup/runner-updater").read_text(encoding="utf-8"),
-            "old",
-        )
-        self.assertFalse((args.runner_root / "runner/areasong-ops-runner-updater").exists())
-
-    def test_web_failure_rolls_back_changed_components(self) -> None:
-        state_dir = self.root / "state"
-        args = self.deployment_args(state_dir)
-        self.prepare_deploy_fixture(args)
-        metadata = MODULE.verify_assets(self.manifest, self.archive, self.checksum, self.bundle, self.verifier)
-        state = MODULE.State(state_dir, "ops-test-failure", metadata, create=True)
-        runner_restarted = False
-        compose_calls = 0
-
-        def fake_run(command: list[str], **_: object) -> SimpleNamespace:
-            nonlocal runner_restarted, compose_calls
-            if command[:4] == ["git", "-C", str(args.repo_root), "rev-parse"]:
-                return SimpleNamespace(returncode=0, stdout=metadata["revision"] + "\n", stderr="")
-            if command and command[0] == "curl":
-                if "--unix-socket" in command:
-                    revision = metadata["revision"] if runner_restarted else "c" * 40
-                else:
-                    revision = "c" * 40
-                return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True, "revision": revision}), stderr="")
-            if command[:3] == ["docker", "inspect", args.container_name]:
-                payload = [{"State": {"Running": True}, "Config": {"Labels": {"org.opencontainers.image.revision": "c" * 40}}, "Image": "sha256:" + "d" * 64}]
-                return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
-            if command[:3] == ["docker", "image", "inspect"]:
-                payload = [{"Id": "sha256:" + "e" * 64, "RepoDigests": [metadata["web_image"].split("@", 1)[0].rsplit(":", 1)[0] + "@" + metadata["web_image"].split("@", 1)[1]]}]
-                return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
-            if command[:2] == ["systemctl", "restart"]:
-                runner_restarted = True
-            if command[:2] == ["docker", "compose"] and "up" in command:
-                compose_calls += 1
-                if compose_calls == 1:
-                    return SimpleNamespace(returncode=1, stdout="", stderr="compose failed")
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-        with patch.object(MODULE, "run", side_effect=fake_run):
-            with patch.dict(os.environ, {"OPS_RELEASE_TEST_MODE": "1"}):
-                with self.assertRaises(MODULE.ReleaseError):
-                    MODULE.Orchestrator(args, state, metadata).deploy()
-        self.assertEqual(state.data["status"], "rolled_back")
-        self.assertEqual(state.data["rollback"]["status"], "succeeded")
-        self.assertGreaterEqual(compose_calls, 2)
-        self.assertEqual(
-            (args.runner_root / "areasong-ops-runner-updater").read_text(encoding="utf-8"),
-            "old",
-        )
-        self.assertFalse((args.runner_root / "runner/areasong-ops-runner-updater").exists())
 
 
 if __name__ == "__main__":

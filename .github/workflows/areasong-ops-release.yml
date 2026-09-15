@@ -137,6 +137,11 @@ jobs:
             .
           test -x "$output/areasong-ops-runner"
           test -x "$output/areasong-ops-runner-updater"
+          "$output/areasong-ops-runner" --release-info | jq -e \
+            --arg version "$BUILD_VERSION" --arg revision "$REVISION" \
+            '.component == "runner" and .releaseProtocol == 1 and
+             .version == $version and .revision == $revision and
+             (.schemaVersion | type == "number" and . >= 45)' >/dev/null
           archive_name="areasong-ops-runner-$REVISION-linux-amd64.tar.gz"
           archive="$GITHUB_WORKSPACE/$archive_name"
           tar -C "$output" -czf "$archive" areasong-ops-runner areasong-ops-runner-updater

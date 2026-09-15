@@ -36,6 +36,9 @@ func run(arguments []string) error {
 	if !filepath.IsAbs(*stateRoot) || filepath.Clean(*stateRoot) != *stateRoot || strings.ContainsRune(*stateRoot, '\x00') {
 		return errors.New("Runner updater state root 无效")
 	}
+	if err := rejectReleaseWindow(*stateRoot); err != nil {
+		return err
+	}
 	database, err := store.OpenExisting(filepath.Join(*stateRoot, "ops.db"))
 	if err != nil {
 		return err
@@ -52,6 +55,16 @@ func run(arguments []string) error {
 		return fmt.Errorf("Runner 更新以 %s 收口: %w", outcome, err)
 	}
 	slog.Info("Runner 更新执行完成", "state", outcome, "update_id", *updateID)
+	return nil
+}
+
+func rejectReleaseWindow(stateRoot string) error {
+	for _, name := range []string{"active.json", "maintenance.json"} {
+		path := filepath.Join(stateRoot, "release-orchestrator", name)
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			return errors.New("控制面发布窗口尚未收口，禁止独立 Updater 访问状态库")
+		}
+	}
 	return nil
 }
 

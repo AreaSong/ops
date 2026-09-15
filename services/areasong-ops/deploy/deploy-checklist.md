@@ -38,13 +38,19 @@
 ## 控制面统一发布入口（C0）
 
 - [ ] 发布参数通过 `deploy/release-orchestrator.sh` 进入；禁止临时拼接 Runner/Web 部署命令。
+- [ ] 候选 Runner 的 `--release-info` 返回 `releaseProtocol: 1`、正确版本/revision/schema；不支持此协议的旧制品在停止服务前拒绝，不降级为旧入口。
 - [ ] manifest、Sigstore bundle、Runner checksum、Web digest 和完整 revision 已互相绑定并验证。
 - [ ] 生产 `/opt/ops` 已在批准 revision，工作树干净；入口不会隐式 checkout/pull。
 - [ ] deployment ID 唯一且可重放；同 ID 制品摘要漂移、已回滚或 `needs_attention` 均拒绝继续。
-- [ ] 备份 Runner/updater/unit、Web env、Compose、image inspect 和 SQLite snapshot；备份目录已有残留时拒绝覆盖。
-- [ ] Runner 先于 Web 安装和健康验证；Web 只按 immutable digest 拉取并 `--force-recreate --no-deps`。
+- [ ] 先检查活动任务/观察期/批次/assignment/恢复回执；停止 Web 与 Runner 后再次检查。独立 Updater unit、systemd 排队作业与 cgroup 子进程必须全部静止，远程 Runner 不由本机空库证明安全。
+- [ ] 备份 Runner/updater/unit、服务目录配置、受控适配器、Web env、Compose、image inspect 和自包含 SQLite snapshot；保存 SHA-256、schema、UID/GID/mode，已有残留拒绝覆盖，禁止改变既有父目录权限。
+- [ ] 持久化 root-only 发布占用和维护标记，绑定 deployment/revision、程序/配置摘要和主机 boot ID；候选 Runner 只迁移数据库并提供 Unix health/metrics，不构造业务 Engine、运行恢复/清理循环或提供业务 API。
+- [ ] Runner 先于 Web 安装和维护模式健康验证；Web 只按 immutable digest 拉取并 `--force-recreate --no-deps`。`preflight.sh maintenance` 必须证明业务 API 返回 503，不能把维护模式当成正式运行态完成。
 - [ ] 每个阶段状态与脱敏审计原子落盘；不记录环境文件、Token、密码或命令输出。
-- [ ] 任一步失败立即停止后续阶段，仅按实际已改变组件逆序回滚；回滚验证失败进入 `needs_attention` 并保留证据。
+- [ ] 正式开放前先持久化 `activationStarted`，再解除维护标记并重启正式 Runner；只有正常 health 与 `preflight.sh runtime` 通过才能完成。
+- [ ] 激活前失败仅在隔离、当前程序/unit、完整备份与空闲状态均可证明时回退：停尽连接，保留失败数据库及 WAL/SHM，先恢复并验证原 schema/配置，再切换旧程序；切旧入口前持久化回退激活边界。
+- [ ] 已越过任一激活边界、发生重启/身份漂移或回退验收失败时，分别尝试停住 Web/Runner，进入 `needs_attention`，不重试未知写入、不用旧快照覆盖后续审批/审计/业务状态。
+- [ ] 手动回退与部署共用全局锁；锁内重读状态。旧状态记录缺少隔离证据、已有未收口发布或成功发布后的历史快照均不能直接用于自动回退。
 - [ ] 生产入口固定 root-only 路径；测试必须设置 `OPS_RELEASE_TEST_MODE=1` 并使用临时隔离目录。
 
 ## 阶段 1：离线构建与静态门禁
