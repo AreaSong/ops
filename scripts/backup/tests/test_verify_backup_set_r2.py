@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import gzip
+import json
 import os
 import shutil
 import subprocess
@@ -133,10 +134,13 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
         upload_env: str = "/run/r2-upload.env",
     ) -> subprocess.CompletedProcess[str]:
         metric_path = self.output_root / "backup-set-r2-verify.prom"
+        state_path = self.output_root / "backup-set-r2-verify.state"
+        previous = {p: p.read_bytes() if p.exists() else None for p in (metric_path, state_path)}
         command = [
             "docker",
             "run",
             "--rm",
+            "--network=none",
             "-e",
             "PATH=/fake-bin:/usr/local/bin:/usr/bin:/bin",
             "-e",
@@ -179,9 +183,42 @@ cp "$FAKE_R2_ROOT/$relative" "$destination"
             "chown -R \"$HOST_UID:$HOST_GID\" /output; exit \"$status\"",
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
-        if result.returncode != 0 and metric_path.exists():
-            self.fail("failed R2 verification must not leave a success metric")
+        if result.returncode != 0:
+            for path, content in previous.items():
+                self.assertEqual(path.read_bytes() if path.exists() else None, content,
+                                 "失败校验不能刷新成功指标或回执")
         return result
+
+    def _replace_manifest(self, payload: dict) -> None:
+        self.manifest.write_text(json.dumps(payload), encoding="utf-8")
+        digest = backup_manifest.sha256_file(self.manifest)
+        self.manifest.with_suffix(".json.sha256").write_text(
+            f"{digest}  {self.manifest.name}\n", encoding="utf-8",
+        )
+        shutil.copytree(self.backup_root, self.remote_data_root, dirs_exist_ok=True)
+
+    def test_stale_matching_manifest_does_not_refresh_success(self) -> None:
+        payload = backup_manifest.load_manifest(self.manifest)
+        payload["created_at"] = (self.now - dt.timedelta(days=2)).isoformat()
+        for artifact in payload["artifacts"]:
+            stamp = dt.datetime.fromisoformat(artifact["modified_at"])
+            artifact["modified_at"] = (stamp - dt.timedelta(days=2)).isoformat()
+        self._replace_manifest(payload)
+        for name in ("backup-set-r2-verify.prom", "backup-set-r2-verify.state"):
+            (self.output_root / name).write_text("previous-success\n", encoding="utf-8")
+        result = self._run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("freshness", result.stderr)
+
+    def test_new_manifest_cannot_hide_stale_artifacts(self) -> None:
+        payload = backup_manifest.load_manifest(self.manifest)
+        for artifact in payload["artifacts"]:
+            stamp = dt.datetime.fromisoformat(artifact["modified_at"])
+            artifact["modified_at"] = (stamp - dt.timedelta(days=2)).isoformat()
+        self._replace_manifest(payload)
+        result = self._run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("freshness", result.stderr)
 
     def test_complete_remote_set_is_downloaded_and_verified(self) -> None:
         result = self._run_verifier()

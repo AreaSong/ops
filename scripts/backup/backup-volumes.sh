@@ -123,64 +123,13 @@ backup_areasong_ops_state() {
   work_dir="$(mktemp -d "${TMPDIR:-/var/tmp}/areasong-ops-backup.XXXXXX")"
   staged="$work_dir/areasong-ops-state"
   install -d -m 0700 "$staged"
-  cleanup_areasong_ops_backup() { rm -rf -- "$work_dir"; }
-  trap cleanup_areasong_ops_backup EXIT
+  cleanup_areasong_ops_backup() { rm -rf -- "$1"; }
+  # EXIT 可能在函数局部作用域已退出后执行，必须固定本次 mktemp 路径。
+  # shellcheck disable=SC2064
+  trap "$(printf 'cleanup_areasong_ops_backup %q' "$work_dir")" EXIT
 
-  /usr/bin/python3 - "$snapshot" "$staged/ops.db" "$AREASONG_OPS_SNAPSHOT_MAX_AGE_SECONDS" <<'PY'
-import os
-import shutil
-import sqlite3
-import sys
-import time
-
-source, destination, max_age_raw = sys.argv[1:]
-max_age = int(max_age_raw)
-if max_age <= 0:
-    raise SystemExit("snapshot maximum age must be positive")
-stat = os.lstat(source)
-if not os.path.isfile(source) or os.path.islink(source):
-    raise SystemExit("snapshot must be a regular non-symlink file")
-age = time.time() - stat.st_mtime
-if age < -60 or age > max_age:
-    raise SystemExit(f"AreaSong Ops snapshot age is outside the allowed window: {int(age)}s")
-connection = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-try:
-    schema_version = connection.execute("PRAGMA user_version").fetchone()
-    if schema_version != (5,):
-        raise SystemExit(f"AreaSong Ops snapshot schema version is not current: {schema_version}")
-    result = connection.execute("PRAGMA integrity_check").fetchone()
-    if result != ("ok",):
-        raise SystemExit("AreaSong Ops snapshot integrity_check failed")
-    if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-        raise SystemExit("AreaSong Ops snapshot foreign_key_check failed")
-    required_columns = {
-        "previews": {"id", "actor_hash", "service", "action", "confirmation_hash", "created_at", "expires_at"},
-        "tasks": {"id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"},
-        "events": {"sequence", "task_id", "occurred_at", "level", "message", "data_json"},
-        "audit_entries": {"sequence", "occurred_at", "actor_hash", "event", "resource", "outcome", "detail_json"},
-        "credential_rotations": {"id", "actor_hash", "credential_type", "target", "state", "fingerprint", "expires_at", "created_at"},
-        "metadata": {"key", "value"},
-    }
-    tables = {row[0] for row in connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table'"
-    )}
-    if not required_columns.keys() <= tables:
-        raise SystemExit("AreaSong Ops snapshot is missing required tables")
-    for table, required in required_columns.items():
-        columns = {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
-        missing = required - columns
-        if missing:
-            raise SystemExit(
-                f"AreaSong Ops snapshot table {table} is missing required columns: {', '.join(sorted(missing))}"
-            )
-        count = connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()
-        if count is None or len(count) != 1 or not isinstance(count[0], int) or count[0] < 0:
-            raise SystemExit(f"AreaSong Ops snapshot table {table} row count is invalid")
-finally:
-    connection.close()
-shutil.copyfile(source, destination)
-os.chmod(destination, 0o600)
-PY
+  /usr/bin/python3 -B "$SCRIPT_DIR/areasong_ops_snapshot.py" copy \
+    "$snapshot" "$staged/ops.db" "$AREASONG_OPS_SNAPSHOT_MAX_AGE_SECONDS"
 
   if [ -e "$source_dir/operations" ]; then
     if [ ! -d "$source_dir/operations" ] || [ -L "$source_dir/operations" ]; then
@@ -201,7 +150,7 @@ PY
   echo "$out"
   made=$((made + 1))
   trap - EXIT
-  cleanup_areasong_ops_backup
+  cleanup_areasong_ops_backup "$work_dir"
 }
 
 if [ -d "$SUB2API_DATA_DIR" ]; then

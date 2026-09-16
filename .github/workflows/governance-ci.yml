@@ -134,6 +134,12 @@ jobs:
       - name: Test volume backup controls
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_volumes.py'
 
+      - name: Test backup freshness controls
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_backup_freshness.py'
+
+      - name: Test AreaSong Ops snapshot schema contract
+        run: python3 -m unittest discover -s scripts/backup/tests -p 'test_areasong_ops_snapshot.py'
+
       - name: Test compliance archive build and part verification
         run: >-
           python3 -m unittest
@@ -209,6 +215,14 @@ jobs:
         run: >-
           python3 -m unittest
           scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_complete_remote_set_is_downloaded_and_verified
+
+      - name: Test R2 verifier freshness and preserved success receipts
+        env:
+          R2_VERIFY_TEST_IMAGE: python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+        run: >-
+          python3 -m unittest
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_stale_matching_manifest_does_not_refresh_success
+          scripts.backup.tests.test_verify_backup_set_r2.R2VerifierIntegrationTests.test_new_manifest_cannot_hide_stale_artifacts
 
       - name: Test R2 verifier artifact corruption
         env:

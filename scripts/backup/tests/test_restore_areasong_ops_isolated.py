@@ -19,6 +19,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import backup_manifest
+from areasong_ops_fixtures import create_database
 
 
 UTC = dt.timezone.utc
@@ -87,7 +88,7 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
                 info.size = len(payload)
                 archive.addfile(info, io.BytesIO(payload))
 
-    def _create_backup_set(self) -> Path:
+    def _create_backup_set(self, database_members: dict[str, bytes] | None = None) -> Path:
         now = dt.datetime.now(UTC)
         timestamp = now.timestamp() - 60
         for index, (role, pattern, archive_type) in enumerate(backup_manifest.ARTIFACT_SPECS):
@@ -100,6 +101,7 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
                 self._write_tar(path, {
                     "areasong-ops-state/ops.db": self.database.read_bytes(),
                     "areasong-ops-state/operations/task/contract.json": b"{}\n",
+                    **(database_members or {}),
                 })
             else:
                 self._write_tar(path, {f"fixture/file-{index}.txt": b"fixture\n"})
@@ -159,6 +161,65 @@ class RestoreAreaSongOpsIsolatedTests(unittest.TestCase):
         result = self._run()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("schema 版本不受支持", result.stderr)
+
+    def _check_real_schema(self, version: int) -> None:
+        create_database(self.database, version)
+        original = self.database.read_bytes()
+        self.manifest = self._create_backup_set()
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.database.read_bytes(), original)
+        self.assertEqual(list(self.work_root.glob("areasong-ops-restore-*")), [])
+
+    def test_restores_real_schema_45(self) -> None:
+        self._check_real_schema(45)
+
+    def test_restores_real_schema_47(self) -> None:
+        self._check_real_schema(47)
+
+    def _assert_sidecar_rejected(self, members: dict[str, bytes]) -> None:
+        self.manifest = self._create_backup_set(members)
+        payload = json.loads(self.manifest.read_text(encoding="utf-8"))
+        record = next(item for item in payload["artifacts"] if item["role"] == "volume-areasong-ops-state")
+        archive = self.backup_root / record["path"]
+        before = hashlib.sha256(archive.read_bytes()).hexdigest()
+        self.metric_out.parent.mkdir(parents=True, exist_ok=True)
+        self.metric_out.write_text("previous-success\n", encoding="utf-8")
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("非自包含", result.stderr)
+        self.assertEqual(self.metric_out.read_text(encoding="utf-8"), "previous-success\n")
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), before)
+        self.assertEqual(list(self.work_root.glob("areasong-ops-restore-*")), [])
+
+    def test_rejects_database_sidecars_before_selective_extraction(self) -> None:
+        for name in (
+            "areasong-ops-state/ops.db-wal",
+            "./areasong-ops-state/ops.db-shm",
+            "areasong-ops-state/ops.db-journal",
+            "areasong-ops-state/ops.db-wal/child",
+        ):
+            with self.subTest(member=name):
+                self._assert_sidecar_rejected({name: b"sidecar"})
+
+    def test_rejects_committed_wal_from_real_schemas(self) -> None:
+        for version in (45, 47):
+            with self.subTest(schema=version):
+                create_database(self.database, version)
+                connection = sqlite3.connect(self.database)
+                try:
+                    connection.execute("PRAGMA journal_mode=WAL")
+                    connection.execute("PRAGMA wal_autocheckpoint=0")
+                    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    before = connection.execute("SELECT COUNT(*) FROM metadata").fetchone()[0]
+                    connection.execute("INSERT INTO metadata(key,value) VALUES('wal-only-proof','committed')")
+                    connection.commit()
+                    self.assertEqual(connection.execute("SELECT COUNT(*) FROM metadata").fetchone()[0], before + 1)
+                    wal = self.database.with_name("ops.db-wal")
+                    self.assertGreater(wal.stat().st_size, 0)
+                    self._assert_sidecar_rejected({"areasong-ops-state/ops.db-wal": wal.read_bytes()})
+                finally:
+                    connection.close()
 
     def test_incomplete_manifest_is_rejected_and_workdir_is_not_created(self) -> None:
         payload = json.loads(self.manifest.read_text(encoding="utf-8"))

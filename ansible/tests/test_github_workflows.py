@@ -28,6 +28,10 @@ class GitHubWorkflowTests(unittest.TestCase):
         for gate in (
             "services/areasong-ops",
             "test_backup_volumes.py",
+            "test_backup_freshness.py",
+            "test_areasong_ops_snapshot.py",
+            "test_stale_matching_manifest_does_not_refresh_success",
+            "test_new_manifest_cannot_hide_stale_artifacts",
             "test_restore_areasong_ops_isolated.py",
             "test_areasong_ops_rules.sh",
             "scripts/deploy/tests",

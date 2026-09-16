@@ -134,6 +134,9 @@ LOCAL_MANIFEST="$BACKUP_ROOT/$MANIFEST_RELATIVE"
   fail "R2 manifest does not match the local complete set"
 MANIFEST_SHA256="$(sha256sum "$LOCAL_MANIFEST" | awk '{print $1}')"
 
+# 下载成功不等于恢复点新鲜，不能用重复验证旧清单刷新成功时间。
+python3 -B "$SCRIPT_DIR/backup_freshness.py" --manifest "$MANIFEST_PATH"
+
 mapfile -t ARTIFACTS < <(
   python3 "$SCRIPT_DIR/backup_manifest.py" list-artifacts --manifest "$MANIFEST_PATH"
 )
@@ -146,6 +149,13 @@ done
 python3 "$SCRIPT_DIR/backup_manifest.py" verify \
   --backup-root "$RESTORE_ROOT" \
   --manifest "$MANIFEST_PATH"
+
+# 下载可能跨越 RPO 边界，发布指标前再验证时效和本机清单绑定。
+python3 -B "$SCRIPT_DIR/backup_freshness.py" --manifest "$MANIFEST_PATH"
+[ "$(tr -d '\r\n' < "$LOCAL_POINTER")" = "$MANIFEST_RELATIVE" ] || \
+  fail "local complete set changed during R2 verification"
+[ "$(sha256sum "$LOCAL_MANIFEST" | awk '{print $1}')" = "$MANIFEST_SHA256" ] || \
+  fail "local manifest changed during R2 verification"
 
 DURATION_SECONDS="$(( $(date +%s) - STARTED_AT ))"
 VERIFIED_AT="$(date +%s)"

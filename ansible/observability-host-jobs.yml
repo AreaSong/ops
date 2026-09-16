@@ -70,6 +70,9 @@
       - { name: backup-configs.sh, mode: "0755" }
       - { name: backup-volumes.sh, mode: "0755" }
       - { name: backup_manifest.py, mode: "0755" }
+      - { name: areasong_ops_snapshot.py, mode: "0644" }
+      - { name: backup_freshness.py, mode: "0644" }
+      - { name: restore_env.py, mode: "0755" }
       - { name: create-backup-manifest.sh, mode: "0755" }
       - { name: sync-r2.sh, mode: "0755" }
       - { name: verify-backup-set-r2.sh, mode: "0755" }
@@ -254,6 +257,22 @@
           - --help
       environment:
         PYTHONDONTWRITEBYTECODE: "1"
+      changed_when: false
+      when:
+        - not host_jobs_generation_already_active | bool
+        - not ansible_check_mode
+
+    - name: Validate staged backup snapshot and freshness dependencies
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -B
+          - "{{ host_jobs_generation }}/scripts/backup/{{ item }}"
+          - --help
+      loop:
+        - areasong_ops_snapshot.py
+        - backup_freshness.py
+        - restore_env.py
       changed_when: false
       when:
         - not host_jobs_generation_already_active | bool

@@ -9,6 +9,8 @@ import time
 import unittest
 from pathlib import Path
 
+from areasong_ops_fixtures import create_database
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "backup" / "backup-volumes.sh"
@@ -36,6 +38,7 @@ class BackupVolumesTests(unittest.TestCase):
         self._create_database(self.snapshot)
         self.fake_bin = self.root / "bin"
         self.fake_bin.mkdir()
+        (self.root / "tmp").mkdir()
         docker = self.fake_bin / "docker"
         docker.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
         docker.chmod(0o755)
@@ -78,6 +81,7 @@ class BackupVolumesTests(unittest.TestCase):
                 "BACKUP_VOLUME_LOG_DIR": str(self.root / "logs"),
                 "BACKUP_AREASONG_OPS_STATE_ROOT": str(self.state),
                 "BACKUP_AREASONG_OPS_SNAPSHOT_MAX_AGE_SECONDS": str(max_age),
+                "TMPDIR": str(self.root / "tmp"),
                 "PATH": f"{self.fake_bin}:{environment['PATH']}",
             }
         )
@@ -110,6 +114,32 @@ class BackupVolumesTests(unittest.TestCase):
         self.assertIn("outside the allowed window", result.stderr)
         self.assertEqual(list((self.root / "backups").glob("areasong-ops-state-*.tar.gz")), [])
 
+    def _check_real_schema(self, version: int) -> None:
+        create_database(self.snapshot, version)
+        original = self.snapshot.read_bytes()
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        archive_path = next((self.root / "backups").glob("areasong-ops-state-*.tar.gz"))
+        with tarfile.open(archive_path, "r:gz") as archive:
+            self.assertEqual(archive.extractfile("areasong-ops-state/ops.db").read(), original)
+        self.assertEqual(self.snapshot.read_bytes(), original)
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_archives_real_schema_45(self) -> None:
+        self._check_real_schema(45)
+
+    def test_archives_real_schema_47(self) -> None:
+        self._check_real_schema(47)
+
+    def test_failure_cleans_private_staging_without_masking_error(self) -> None:
+        with sqlite3.connect(self.snapshot) as connection:
+            connection.execute("PRAGMA user_version=999")
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("schema 版本不受支持", result.stderr)
+        self.assertNotIn("unbound variable", result.stderr)
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
     def test_rejects_symlink_in_operation_evidence(self) -> None:
         (self.operations / "unsafe").symlink_to(self.root / "outside")
         result = self._run()
@@ -120,7 +150,7 @@ class BackupVolumesTests(unittest.TestCase):
         self._create_database(self.snapshot, omitted=("metadata", "value"))
         result = self._run()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("metadata is missing required columns: value", result.stderr)
+        self.assertIn("metadata 缺少关键列: value", result.stderr)
         self.assertEqual(list((self.root / "backups").glob("areasong-ops-state-*.tar.gz")), [])
 
     def test_rejects_pre_stage6_snapshot_as_new_backup(self) -> None:
@@ -132,13 +162,13 @@ class BackupVolumesTests(unittest.TestCase):
             connection.close()
         result = self._run()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("schema version is not current", result.stderr)
+        self.assertIn("schema 版本不受支持", result.stderr)
 
     def test_rejects_snapshot_with_foreign_key_violation(self) -> None:
         self._add_foreign_key_violation(self.snapshot)
         result = self._run()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("foreign_key_check failed", result.stderr)
+        self.assertIn("foreign_key_check", result.stderr)
         self.assertEqual(list((self.root / "backups").glob("areasong-ops-state-*.tar.gz")), [])
 
 

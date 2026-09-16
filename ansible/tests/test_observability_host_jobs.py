@@ -2,6 +2,10 @@ from __future__ import annotations
 
 
 import unittest
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -90,6 +94,24 @@ class ObservabilityHostJobsTests(unittest.TestCase):
         for cron_name in self.play["vars"]["backup_cron_files"] + self.play["vars"]["compliance_archive_cron_files"]:
             source = REPO_ROOT / "scripts" / "backup" / "cron" / cron_name
             self.assertTrue(source.is_file(), source)
+
+    def test_backup_validator_dependencies_are_packaged_and_importable(self) -> None:
+        files = self.play["vars"]["backup_files"]
+        names = {item["name"] for item in files}
+        validators = {"areasong_ops_snapshot.py", "backup_freshness.py", "restore_env.py"}
+        self.assertLessEqual(validators | {"backup_manifest.py"}, names)
+        tasks = [item.get("name") for item in self.play["tasks"]]
+        gate = "Validate staged backup snapshot and freshness dependencies"
+        self.assertLess(tasks.index("Stage core backup generation"), tasks.index(gate))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for item in files:
+                shutil.copyfile(REPO_ROOT / "scripts/backup" / item["name"], root / item["name"])
+            for name in validators:
+                result = subprocess.run([sys.executable, "-B", str(root / name), "--help"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "__pycache__").exists())
 
 
     def test_minute_collectors_prevent_overlapping_runs(self) -> None:

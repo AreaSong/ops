@@ -8,22 +8,17 @@ import os
 import shutil
 import sqlite3
 import sys
+import tarfile
 import tempfile
 import time
 from pathlib import Path
 
 import backup_manifest
+import areasong_ops_snapshot
 
 
 ROLE = "volume-areasong-ops-state"
 DATABASE_MEMBER = "areasong-ops-state/ops.db"
-REQUIRED_COLUMNS = {
-    "previews": {"id", "actor_hash", "service", "action", "confirmation_hash", "created_at", "expires_at"},
-    "tasks": {"id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"},
-    "events": {"sequence", "task_id", "occurred_at", "level", "message", "data_json"},
-    "audit_entries": {"sequence", "occurred_at", "actor_hash", "event", "resource", "outcome", "detail_json"},
-    "metadata": {"key", "value"},
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -76,51 +71,22 @@ def acquire_lock(path: Path):
 
 
 def inspect_database(path: Path) -> dict[str, int]:
-    if not path.is_file() or path.is_symlink():
-        raise ValueError("恢复出的 ops.db 不是安全的普通文件")
-    connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
-    try:
-        connection.execute("PRAGMA query_only = ON")
-        schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-        if schema_version not in {4, 5}:
-            raise ValueError(f"AreaSong Ops 备份 schema 版本不受支持: {schema_version}")
-        integrity = connection.execute("PRAGMA integrity_check").fetchall()
-        if integrity != [("ok",)]:
-            raise ValueError("AreaSong Ops 恢复数据库 integrity_check 失败")
-        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-            raise ValueError("AreaSong Ops 恢复数据库存在外键不一致")
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'",
-            )
-        }
-        required_columns = dict(REQUIRED_COLUMNS)
-        if schema_version >= 5:
-            required_columns["credential_rotations"] = {
-                "id", "actor_hash", "credential_type", "target", "state",
-                "fingerprint", "expires_at", "created_at",
-            }
-        missing = set(required_columns) - tables
-        if missing:
-            raise ValueError(f"AreaSong Ops 恢复数据库缺少关键表: {', '.join(sorted(missing))}")
-        for table, required in required_columns.items():
-            columns = {
-                row[1]
-                for row in connection.execute(f'PRAGMA table_info("{table}")')
-            }
-            missing_columns = required - columns
-            if missing_columns:
-                raise ValueError(
-                    f"AreaSong Ops 恢复数据库表 {table} 缺少关键列: "
-                    f"{', '.join(sorted(missing_columns))}",
-                )
-        return {
-            table: int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
-            for table in required_columns
-        }
-    finally:
-        connection.close()
+    return areasong_ops_snapshot.inspect_database(path, allow_legacy=True)
+
+
+def require_self_contained_archive(path: Path) -> None:
+    sidecars = {
+        backup_manifest.validate_relative_path(DATABASE_MEMBER + suffix)
+        for suffix in ("-wal", "-shm", "-journal")
+    }
+    # 选择性解压会隐藏日志文件，必须在提取主库前拒绝，不能把旧主库误报为恢复成功。
+    with tarfile.open(path, "r|gz") as archive:
+        for member in archive:
+            member_path = backup_manifest.validate_tar_member_name(member.name)
+            if member_path is not None and (
+                member_path in sidecars or any(parent in sidecars for parent in member_path.parents)
+            ):
+                raise ValueError("AreaSong Ops 归档非自包含：包含数据库 WAL/SHM/journal")
 
 
 def write_metrics(path: Path, started_at: float, database_path: Path, counts: dict[str, int]) -> None:
@@ -166,6 +132,7 @@ def run(args: argparse.Namespace) -> dict[str, int]:
     records = backup_manifest.verify_manifest(backup_root, manifest_path, {ROLE})
     record = records[0]
     archive_path = backup_manifest.safe_relative_path(backup_root, record.path)
+    require_self_contained_archive(archive_path)
 
     work_root = Path(args.work_root)
     work_root.mkdir(parents=True, exist_ok=True, mode=0o700)
