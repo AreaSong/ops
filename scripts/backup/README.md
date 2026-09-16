@@ -22,7 +22,11 @@ Scheduling:
 - Secret escrow paths listed as `external-secret-required` in the coverage manifest are deliberately excluded from the ordinary config archive and must be restored from the independent credential store.
 
 Retention:
-- Local backup files older than 7 days are deleted by each local backup script.
+
+- The four backup jobs do not perform age-based deletion of existing backup artifacts. This applies to scheduled runs, manual reruns, update adapters and restore preparation.
+- Seven-day age may identify cleanup candidates; it is not deletion approval. Cleanup requires a separately approved, frozen artifact list and checks for manifest references, rollback rights and unexpired recovery points. This change does not introduce a cleanup executor.
+- Artifact paths and contents, stdout path lists, job locks, timeouts and result metrics are unchanged. Each job still cleans up its own temporary working files.
+- Retained files will accumulate. Recheck free space before deploying this revision and keep disk-capacity alerts enabled; do not silently restore age-based deletion to relieve disk pressure.
 - R2 sync uses copy semantics and does not delete remote objects. Configure Cloudflare R2 lifecycle rules separately when a remote retention window is decided.
 
 Complete backup sets:

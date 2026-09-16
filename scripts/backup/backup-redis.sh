@@ -123,5 +123,5 @@ META
 tar -czf "$OUT" -C "$TMP_DIR" metadata.txt redis_data
 chmod 0600 "$OUT"
 tar -tzf "$OUT" >/dev/null
-find "$BACKUP_ROOT" -type f -name "redis-*.tar.gz" -mtime +7 -delete
+# 清理需校验跨作业引用并单独批准，不能在备份结束时按年龄重新扫描删除。
 printf "%s\n" "$OUT"

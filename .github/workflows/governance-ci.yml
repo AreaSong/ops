@@ -140,6 +140,21 @@ jobs:
       - name: Test AreaSong Ops snapshot schema contract
         run: python3 -m unittest discover -s scripts/backup/tests -p 'test_areasong_ops_snapshot.py'
 
+      - name: Test backup retention isolation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --network none --user 0:0 --platform linux/amd64 \
+            --tmpfs /var/backups/ops:rw,mode=700 \
+            --tmpfs /var/log/backup:rw,mode=700 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/repo,readonly" \
+            --workdir /repo \
+            -e OPS_BACKUP_RETENTION_TEST=1 \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -e PYTHONPATH=/repo/scripts/backup/tests \
+            python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de \
+            /bin/bash -c 'set -e; if [ ! -x /usr/bin/python3 ]; then ln -s /usr/local/bin/python3 /usr/bin/python3; fi; exec python3 -m unittest test_backup_retention -v'
+
       - name: Test compliance archive build and part verification
         run: >-
           python3 -m unittest

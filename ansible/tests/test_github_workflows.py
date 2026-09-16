@@ -30,6 +30,7 @@ class GitHubWorkflowTests(unittest.TestCase):
             "test_backup_volumes.py",
             "test_backup_freshness.py",
             "test_areasong_ops_snapshot.py",
+            "test_backup_retention",
             "test_stale_matching_manifest_does_not_refresh_success",
             "test_new_manifest_cannot_hide_stale_artifacts",
             "test_restore_areasong_ops_isolated.py",
@@ -51,6 +52,23 @@ class GitHubWorkflowTests(unittest.TestCase):
             "gitleaks",
         ):
             self.assertIn(gate, content)
+
+    def test_backup_retention_gate_is_isolated_and_explicitly_enabled(self) -> None:
+        workflow = yaml.safe_load((WORKFLOW_ROOT / "governance-ci.yml").read_text())
+        steps = workflow["jobs"]["governance"]["steps"]
+        step = next(item for item in steps if item["name"] == "Test backup retention isolation")
+        command = step["run"]
+        for required in (
+            "--network none", "--user 0:0", "--platform linux/amd64",
+            "--tmpfs /var/backups/ops:rw,mode=700",
+            "--tmpfs /var/log/backup:rw,mode=700",
+            "target=/repo,readonly", "OPS_BACKUP_RETENTION_TEST=1",
+            "PYTHONDONTWRITEBYTECODE=1", "PYTHONPATH=/repo/scripts/backup/tests",
+            "python3 -m unittest test_backup_retention -v",
+        ):
+            self.assertIn(required, command)
+        self.assertRegex(command, r"python:3\.12-slim@sha256:[0-9a-f]{64}")
+        self.assertNotIn("docker.sock", command)
 
     def test_image_cve_scan_is_read_only_scheduled_and_covers_all_compose_files(self) -> None:
         content = (WORKFLOW_ROOT / "image-cve-scan.yml").read_text(encoding="utf-8")

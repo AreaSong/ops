@@ -175,5 +175,5 @@ tar --exclude="/opt/ops/.git" \
 
 tar -tzf "$OUT" >/dev/null
 chmod 0600 "$OUT"
-find "$BACKUP_ROOT" -type f -name "configs-*.tar.gz" -mtime +7 -delete
+# 清理需校验跨作业引用并单独批准，不能在备份结束时按年龄重新扫描删除。
 printf "%s\n" "$OUT"

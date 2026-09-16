@@ -32,4 +32,4 @@ if [ "$made" -eq 0 ]; then
   echo "no postgres containers backed up" >&2
   exit 1
 fi
-find "$BACKUP_ROOT" -type f -name "*.sql.gz" -mtime +7 -delete
+# 清理需校验跨作业引用并单独批准，不能在备份结束时按年龄重新扫描删除。
