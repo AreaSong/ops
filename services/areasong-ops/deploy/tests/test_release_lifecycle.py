@@ -127,6 +127,24 @@ class ReleaseLifecycleTests(ReleaseFixture):
         self.assertTrue(self.web_running)
         self.assertEqual(self.schema(), 45)
 
+    def test_unrelated_systemd_job_does_not_prevent_release(self):
+        self.jobs = [{"unit": "areaforge-update-agent.service", "type": "start", "state": "running"}]
+        self.deploy()
+        self.assertEqual(self.state.data["status"], "succeeded")
+
+    def test_malformed_systemd_output_stops_before_service_mutations(self):
+        def malformed_jobs(command):
+            if command[:2] == ["systemctl", "list-jobs"]:
+                return self.result("JOB UNIT TYPE STATE\n")
+
+        self.on_command = malformed_jobs
+        with self.assertRaises(MODULE.ReleaseError):
+            self.deploy()
+        self.assertTrue(self.runner_running)
+        self.assertTrue(self.web_running)
+        self.assertEqual(self.schema(), 45)
+        self.assertFalse(any(command[:2] == ["systemctl", "stop"] for command in self.commands))
+
     def test_unknown_stop_result_never_installs_candidate(self):
         self.fail_stop = True
         with self.assertRaises(MODULE.ReleaseError):

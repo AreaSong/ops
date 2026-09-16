@@ -149,7 +149,11 @@ class ReleaseFixture(unittest.TestCase):
         if action == "list-units":
             return self.result(json.dumps(self.updater_units))
         if action == "list-jobs":
-            return self.result(json.dumps(self.jobs))
+            self.assertEqual(command, ["systemctl", "list-jobs", "--no-legend", "--plain", "--full", "--no-pager"])
+            return self.result("".join(
+                f"{index} {job['unit']} {job.get('type', 'start')} {job.get('state', 'waiting')}\n"
+                for index, job in enumerate(self.jobs, 1)
+            ))
         if action == "show":
             environment = shlex.join([
                 f"OPS_STATE_ROOT={self.args.db_path.parent}", f"OPS_SERVICE_CATALOG={self.args.config_dir / 'services.json'}",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import time
 from pathlib import Path
@@ -13,6 +14,25 @@ from release_common import IsolationError, copy_atomic, fail, sanitized_containe
 
 RUNNER_UNIT = "areasong-ops-runner.service"
 UPDATER_PREFIX = "areasong-ops-runner-update@"
+UNIT_NAME = re.compile(r"[A-Za-z0-9:_.@\\-]+\.(?:service|socket|target|device|mount|automount|swap|timer|path|slice|scope)")
+
+
+def systemd_job_units(output: str) -> list[str]:
+    if len(output) > 256 * 1024:
+        fail("systemd 作业列表超过读取上限")
+    units = []
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) != 4:
+            fail("systemd 作业列表不是完整的四列输出")
+        job_id, unit, job_type, state = fields
+        if (not re.fullmatch(r"[1-9][0-9]*", job_id) or not UNIT_NAME.fullmatch(unit)
+                or not re.fullmatch(r"[a-z]+(?:-[a-z]+)*", job_type) or state not in {"waiting", "running"}):
+            fail("systemd 作业列表包含无效或截断字段")
+        units.append(unit)
+    return units
 
 
 class Runtime:
@@ -44,11 +64,12 @@ class Runtime:
         return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
 
     def assert_no_jobs(self) -> None:
-        jobs = json.loads(self.checked(["systemctl", "list-jobs", "--output=json", "--no-pager"], "读取 systemd 作业"))
-        if not isinstance(jobs, list):
-            fail("systemd 作业列表无效")
-        for job in jobs:
-            unit = job.get("unit", "")
+        # systemd 255 的 list-jobs 不支持 JSON；固定无表头、无截断的文本合同。
+        environment = {**os.environ, "LC_ALL": "C", "SYSTEMD_COLORS": "0", "SYSTEMD_URLIFY": "0"}
+        output = self.checked([
+            "systemctl", "list-jobs", "--no-legend", "--plain", "--full", "--no-pager",
+        ], "读取 systemd 作业", env=environment)
+        for unit in systemd_job_units(output):
             if unit == RUNNER_UNIT or unit.startswith(UPDATER_PREFIX):
                 fail("Runner/Updater 仍有排队的 systemd 作业")
 
