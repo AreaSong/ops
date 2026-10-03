@@ -1,8 +1,10 @@
 # 04 服务部署规范
 
+本规范的安装、配置写入、服务启动、Nginx reload 和 Git 提交命令均为流程示例，不构成授权；先完成五要素变更计划并按批准的变更单元执行。
+
 ## 标准部署方式
 
-新服务默认使用 **Docker Compose**，目录 `/opt/compose/<项目名>/`。
+新服务默认使用 **Docker Compose**；`/opt/compose/<项目名>/` 仅是通用示例，实际路径必须以 inventory 的 `compose_path` 和服务器当前运行态为准。
 
 ### Compose 模板要求
 
@@ -85,7 +87,7 @@ WantedBy=multi-user.target
 
 新服务部署完成后逐项确认：
 
-- [ ] 目录结构符合规范（/opt/compose 或 /opt/apps）
+- [ ] 目录结构符合规范，且实际路径已登记在 inventory（/opt/compose、/opt/services 或 /opt/apps 仅作示例）
 - [ ] 容器/服务命名规范
 - [ ] restart 策略配置
 - [ ] 数据卷挂载到 /data/

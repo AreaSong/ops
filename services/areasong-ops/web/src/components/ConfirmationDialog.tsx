@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react'
 import { formatTime, phaseLabel } from '../labels'
 import { canCurrentActorApproveReleasePlan, canCurrentActorExecuteReleasePlan } from '../approval'
 import type { ReleasePlan } from '../types'
+import { formatSchedule, isScheduleDue } from '../schedule'
+import { usePlanDialog } from '../usePlanDialog'
 import { StatusBadge } from './StatusBadge'
 
 interface ConfirmationDialogProps {
+  error?: string
   plan: ReleasePlan
   pending: boolean
   onCancel: () => void
@@ -13,15 +16,26 @@ interface ConfirmationDialogProps {
   onClosePlan: () => void
   currentActorHash: string
 }
-export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClosePlan, currentActorHash }: ConfirmationDialogProps) {
+export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClosePlan, currentActorHash, error }: ConfirmationDialogProps) {
+  const dialogRef = usePlanDialog<HTMLElement>(pending, onCancel)
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
   const [value, setValue] = useState('')
   useEffect(() => setValue(''), [plan.id, plan.state])
   const phrase = plan.confirmationPhrase ?? ''
   const approving = plan.state === 'pending_approval'
   const scheduled = plan.state === 'scheduled'
+  const waiting = scheduled && !isScheduleDue(plan.scheduleAt, now)
   const observing = plan.state === 'observing'
   const summary = plan.approvalSummary
-  const canApprove = canCurrentActorApproveReleasePlan({
+  // 非高风险首批仍归创建人；保留已有双审批下一步的独立身份例外。
+  const approvalIdentityAllowed = plan.risk === 'high' ||
+    ((currentActorHash === plan.actorHash || Boolean(plan.requiresDualApproval && plan.approvedByHash)) &&
+      currentActorHash !== plan.approvedByHash && currentActorHash !== plan.secondApprovedByHash)
+  const canApprove = approvalIdentityAllowed && canCurrentActorApproveReleasePlan({
     actorHash: plan.actorHash,
     approvedByHash: plan.approvedByHash,
     secondApprovedByHash: plan.secondApprovedByHash,
@@ -41,19 +55,21 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
     service: plan.service,
     action: plan.action,
   }, currentActorHash)
-  const canClose = Boolean(plan.observationEndsAt && Date.now() >= new Date(plan.observationEndsAt).getTime())
+  const canClose = Boolean(plan.observationEndsAt && now >= new Date(plan.observationEndsAt).getTime())
   const matches = !plan.requiresConfirmation || value === phrase
+  const enabled = !pending && (approving ? matches && canApprove : observing ? canExecute :
+    (plan.state === 'approved' || scheduled) && !waiting && canExecute)
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.currentTarget === event.target && !pending) onCancel()
     }}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <section ref={dialogRef} tabIndex={-1} className="modal plan-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
         <header className="modal-header">
           <div className="modal-title-group">
             <span className="warning-icon"><AlertTriangle size={20} aria-hidden="true" /></span>
             <div>
-              <h2 id="confirm-title">{observing ? '收口观察计划' : approving ? '批准发布计划' : scheduled ? '等待调度时间' : '执行已批准计划'}</h2>
+              <h2 id="confirm-title">{observing ? '收口观察计划' : approving ? '批准发布计划' : waiting ? '等待执行时间' : '执行已批准计划'}</h2>
               <span>{plan.service} · {plan.action}</span>
             </div>
           </div>
@@ -81,8 +97,10 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
               <div><dt>阻断告警</dt><dd>{plan.blockingAlertFingerprints.length} 项仍在触发</dd></div>
             )}
             {plan.closureReason && <div><dt>收口阻断</dt><dd>{plan.closureReason}</dd></div>}
-            {plan.scheduleAt && <div><dt>计划执行时间</dt><dd>{formatTime(plan.scheduleAt)}</dd></div>}
+            {plan.scheduleAt && <div><dt>计划执行时间</dt><dd>{formatSchedule(plan.scheduleAt)}</dd></div>}
           </dl>
+          {scheduled && <p role="status">{waiting ? '尚未到达执行时间。' : '已到执行时间，请有权用户手动执行。'}以服务端时间校验为准；不会自动执行，也不代表维护窗口授权。</p>}
+          {error && <p className="inline-error" role="alert">{error}</p>}
           <div className="step-line" aria-label="执行阶段">
             {summary.steps.map((step, index) => (
               <span key={step}>
@@ -95,7 +113,6 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
               <span>输入确认短语</span>
               <code>{phrase}</code>
               <input
-                autoFocus
                 type="text"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
@@ -110,14 +127,14 @@ export function ConfirmationDialog({ plan, pending, onCancel, onConfirm, onClose
           <button
             type="button"
             className={observing ? 'button secondary' : 'button danger'}
-            disabled={scheduled || (approving && (!matches || !canApprove)) || (plan.state === 'approved' && !canExecute) || (observing && !canExecute) || pending}
-            onClick={() => observing ? onClosePlan() : onConfirm(value)}
+            disabled={!enabled}
+            onClick={() => { if (enabled) { if (observing) onClosePlan(); else onConfirm(value) } }}
           >
             <Check size={17} aria-hidden="true" />
-            {pending ? '提交中' : scheduled ? '等待调度' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? canApprove ? '批准计划' : '当前身份不能批准' : canExecute ? '执行计划' : '当前身份不能执行'}
+            {pending ? '提交中' : waiting ? '等待执行时间' : observing ? canClose ? '确认收口' : '观察期未结束' : approving ? canApprove ? '批准计划' : '当前身份不能批准' : canExecute ? '执行计划' : '当前身份不能执行'}
           </button>
-          {approving && !canApprove && <small className="inline-error">当前身份不能批准此计划，请使用独立批准账号。</small>}
-          {plan.state === 'approved' && !canExecute && <small className="inline-error">当前身份不能执行此计划，请由创建人执行。</small>}
+          {approving && !canApprove && <small className="inline-error">当前身份不满足此计划的批准身份要求。</small>}
+          {(plan.state === 'approved' || scheduled) && !canExecute && <small className="inline-error">当前身份不满足此计划的审批与执行身份要求。</small>}
         </footer>
       </section>
     </div>

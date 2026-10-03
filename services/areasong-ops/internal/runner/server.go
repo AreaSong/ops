@@ -106,6 +106,7 @@ func NewServer(engine *Engine, database *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/access", server.accessControl)
 	mux.HandleFunc("PUT /v1/access", server.updateAccess)
 	mux.HandleFunc("GET /v1/access/changes", server.accessChanges)
+	mux.HandleFunc("GET /v1/access/changes/{id}/detail", server.accessChangeDetail)
 	mux.HandleFunc("POST /v1/access/changes", server.createAccessChange)
 	mux.HandleFunc("POST /v1/access/changes/{id}/approve", server.approveAccessChange)
 	mux.HandleFunc("POST /v1/access/changes/{id}/apply", server.applyAccessChange)

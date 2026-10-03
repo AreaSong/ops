@@ -10,7 +10,7 @@ ops/
 ├── CLAUDE.md / CODEX.md / GEMINI.md   # 各 AI 工具薄壳入口（路由表内联，指向 AGENTS.md）
 ├── .cursor/rules/         # Cursor 薄壳入口（ops-routing.mdc）
 ├── warp/                  # Warp Profile + allowlist/denylist 配置
-├── standards/             # 八大域运维规范
+├── standards/             # 十个域运维规范
 ├── inventory/             # 结构化台账（YAML + Markdown）
 ├── ansible/               # 基线剧本 + 合规巡检
 ├── observability/         # Prometheus + Grafana + Loki + Alertmanager

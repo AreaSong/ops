@@ -1,6 +1,8 @@
+import { applyReviewedAccessChange } from './accessChangeApply';
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isFeatureUnavailable, OpsAPI } from "./api";
+import { PlanScheduleDialog } from "./components/PlanScheduleDialog";
 import { ConfirmationDialog } from "./components/ConfirmationDialog";
 import { Shell, type ViewName } from "./components/Shell";
 import { TaskDrawer } from "./components/TaskDrawer";
@@ -150,6 +152,8 @@ export default function App() {
   const [taskEventsLoading, setTaskEventsLoading] = useState(false);
   const [taskEventsHasMore, setTaskEventsHasMore] = useState(false);
   const [taskEventsLoadingMore, setTaskEventsLoadingMore] = useState(false);
+  const [planDraft, setPlanDraft] = useState<{ service: ManagedObjectView; action: ActionDefinition; target: string } | null>(null);
+  const planWritePending = useRef(false);
   const [selectedPlan, setSelectedPlan] = useState<ReleasePlan | null>(null);
   const [serviceStates, setServiceStates] = useState<ServiceState[]>([]);
   const [statesLoading, setStatesLoading] = useState(false);
@@ -685,37 +689,34 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [fleetRunnerUpdate?.plans, refreshFleetRunnerUpdate, view]);
 
-  async function beginAction(
-    service: ManagedObjectView,
-    action: ActionDefinition,
-    target = "",
-  ) {
-    const key = `${service.name}/${action.name}`;
-    setBusyAction(key);
+  async function beginAction(service: ManagedObjectView, action: ActionDefinition, target = "") {
+    setError("");
+    setPlanDraft({ service, action, target });
+  }
+
+  async function createDraftPlan(scheduleAt?: string) {
+    if (!planDraft || planWritePending.current) return;
+    planWritePending.current = true;
+    const { service, action, target } = planDraft;
+    setBusyAction(`${service.name}/${action.name}`);
     setError("");
     try {
-      const plan = await api.createPlan(service.name, action.name, target);
-      setPlans((current) => [
-        plan,
-        ...current.filter((item) => item.id !== plan.id),
-      ]);
-      if (plan.requiresConfirmation) {
-        setSelectedPlan(plan);
-      } else {
-        const approved = await api.approvePlan(plan);
-        const task = await api.executePlan(approved.id);
-        registerTask(task);
-        void openTask(task);
-      }
+      const plan = await api.createPlan(service.name, action.name, target, scheduleAt);
+      setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
+      setPlanDraft(null);
+      setSelectedPlan(plan);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "发布计划创建失败");
     } finally {
+      planWritePending.current = false;
       setBusyAction("");
     }
   }
 
   async function confirmAction(value: string) {
-    if (!selectedPlan) return;
+    if (!selectedPlan || planWritePending.current) return;
+    planWritePending.current = true;
+    setError("");
     setPending(true);
     try {
       if (selectedPlan.state === "pending_approval") {
@@ -724,7 +725,7 @@ export default function App() {
         setPlans((current) =>
           current.map((item) => (item.id === approved.id ? approved : item)),
         );
-      } else if (selectedPlan.state === "approved") {
+      } else if (selectedPlan.state === "approved" || selectedPlan.state === "scheduled") {
         const task = await api.executePlan(selectedPlan.id);
         registerTask(task);
         setSelectedPlan(null);
@@ -733,6 +734,7 @@ export default function App() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "执行提交失败");
     } finally {
+      planWritePending.current = false;
       setPending(false);
     }
   }
@@ -1485,11 +1487,12 @@ export default function App() {
     setBusyAction("access-change-create");
     setError("");
     try {
-      await api.createAccessChange({
+      const change = await api.createAccessChange({
         ...body,
-        expectedVersion: access?.version,
+        expectedVersion: body.expectedVersion ?? access?.version,
       });
       await refreshAccess();
+      return change;
     } catch (reasonValue) {
       setError(errorMessage(reasonValue, "访问策略审批变更创建失败"));
       throw reasonValue;
@@ -1519,8 +1522,10 @@ export default function App() {
     setBusyAction(`access-change-apply:${change.id}`);
     setError("");
     try {
-      await api.applyAccessChange(change);
+      if (!access) throw new Error("请先读取访问策略");
+      const target = await applyReviewedAccessChange(api, access, change);
       await refreshAccess();
+      return target;
     } catch (reasonValue) {
       setError(errorMessage(reasonValue, "访问策略变更执行失败"));
       await refreshAccess().catch(() => undefined);
@@ -1977,6 +1982,8 @@ export default function App() {
           busy={busyAction}
           onRefresh={() => void refreshAccess()}
           onCreateChange={createAccessChange}
+          onVerifyActor={() => api.access()}
+          onReadDetail={(id, actor, signal) => api.accessChangeDetail(id, actor, signal)}
           onApproveChange={approveAccessChange}
           onApplyChange={applyAccessChange}
           onRejectChange={rejectAccessChange}
@@ -2043,9 +2050,21 @@ export default function App() {
           onLoadMore={() => void loadMoreAudit()}
         />
       )}
+      {planDraft && (
+        <PlanScheduleDialog
+          service={planDraft.service.name}
+          action={planDraft.action.name}
+          target={planDraft.target}
+          pending={Boolean(busyAction)}
+          error={error}
+          onCancel={() => setPlanDraft(null)}
+          onCreate={createDraftPlan}
+        />
+      )}
       {selectedPlan && (
         <ConfirmationDialog
           plan={selectedPlan}
+          error={error}
           pending={pending}
           currentActorHash={currentActorHash}
           onCancel={() => setSelectedPlan(null)}

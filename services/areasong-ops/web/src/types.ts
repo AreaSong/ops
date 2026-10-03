@@ -201,6 +201,13 @@ export interface ApprovalSummary {
   targetEvidence?: ReleaseDiscovery
 }
 
+export interface CreatePlanInput {
+  service: string
+  action: string
+  target?: string
+  scheduleAt?: string
+}
+
 export interface ReleasePlan {
   id: string
   actorHash: string
@@ -215,6 +222,7 @@ export interface ReleasePlan {
   digest: string
   approvalSummary: ApprovalSummary
   confirmationPhrase?: string
+  requiresDualApproval?: boolean
   requiresConfirmation: boolean
   approvedByHash?: string
   secondApprovedByHash?: string
@@ -1244,6 +1252,9 @@ export interface AccessBinding {
   approvalState?: string
   approvedByHash?: string
   secondApprovedByHash?: string
+  approvedAt?: string
+  secondApprovedAt?: string
+  updatedAt?: string
   createdAt?: string
   createdBy?: string
 }
@@ -1278,6 +1289,7 @@ export interface AccessChange {
   approvedAt?: string
   secondApprovedAt?: string
   appliedAt?: string
+  appliedPolicyVersion?: number
 }
 
 export interface AccessControlView {
@@ -1297,9 +1309,10 @@ export interface AccessControlView {
 }
 
 export interface AccessControlUpdate {
+  idempotencyKey?: string
   enforced?: boolean
   tenants?: AccessTenant[]
-  roles?: AccessRole[]
+  roles?: Pick<AccessRole, 'id' | 'displayName' | 'permissions'>[]
   principals?: AccessPrincipal[]
   bindings?: AccessBinding[]
   removeTenantIds?: string[]
@@ -1314,4 +1327,43 @@ export interface FeatureResult<T> {
   available: boolean
   data?: T
   error?: string
+}
+
+export interface AccessChangeDetail {
+  reviewerHash: string
+  id: string
+  requestDigest: string
+  state: AccessChange['state']
+  expectedVersion: number
+  currentVersion: number
+  kind: 'tenant' | 'role' | 'role_deletion' | 'binding' | 'other' | 'unsupported'
+  availability: 'ready' | 'stale' | 'unsupported' | 'unavailable'
+  operation?: 'create' | 'rename' | 'edit' | 'delete' | 'revoke'
+  reason?: string
+  binding?: { before: BindingReviewValue | null; after: BindingReviewValue | null; changedFields: string[] }
+  // 删除使用独立投影；旧 role.after 的必填合同不变。
+  roleDeletion?: {
+    before: Pick<AccessRole, 'id' | 'displayName' | 'permissions'>
+    references: { bindings: 'none'; directPrincipals: 'none' }
+  }
+  role?: {
+    before?: Pick<AccessRole, 'id' | 'displayName' | 'permissions'>
+    after: Pick<AccessRole, 'id' | 'displayName' | 'permissions'>
+    permissionDiff: { added: string[]; removed: string[]; unchanged: string[] }
+    impact: { bindingCount: number; tenantCount: number; affectsExistingBindings: boolean }
+  }
+  before?: Pick<AccessTenant, 'id' | 'displayName' | 'status'>
+  after?: Pick<AccessTenant, 'id' | 'displayName' | 'status'>
+}
+
+export interface BindingReviewValue {
+  id: string
+  subject: string
+  tenantId: string
+  roleId: string
+  permissions: string[]
+  objectIds: string[]
+  expiresAt: string | null
+  jit: false
+  bindingApproval: 'default'
 }

@@ -1,5 +1,7 @@
 # LosAngeles 标准应用部署流程
 
+本流程的安装、凭据写入、Compose 启动、Nginx 接入、台账提交和推送均是示例步骤，不构成授权。先完成目标/端口/备份/回滚/验证五要素，批准一个明确的部署变更单元后再执行；只读的配置渲染和检查可先行。
+
 更新时间：2026-07-06
 服务器：`LosAngeles`
 模板目录：`/opt/ops/templates/app-deploy`
@@ -124,6 +126,8 @@ curl -fsS https://<domain><health-path>
 如新增备份、监控、Nginx 配置副本，也要同步到 `/opt/ops` 对应目录。
 
 ## 9. Git 提交
+
+Git commit/push 是部署后的独立治理动作；除非批准范围明确包含它们，否则只报告待提交文件，不自动提交或推送。
 
 ```bash
 sudo git -C /opt/ops status --short

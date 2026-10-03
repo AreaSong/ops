@@ -16,6 +16,8 @@
 - 导入 `allowlist.txt` 中的正则到 **Command allowlist**
 - 导入 `denylist.txt` 中的正则到 **Command denylist**
 - denylist 优先级高于 allowlist 和 Autonomy 设置
+- Profile/allowlist 是执行层控制，不代替 `AGENTS.md` 的变更批准；命中 allowlist 不表示生产写入已获授权。未能读取当前 Profile 时保留未知状态，只读任务可继续，生产写入先核验目标。
+- 本文件是配置建议，不是当前 Warp 已生效状态的证明；导入后用无副作用命令验证实际提示行为，不假定 `Always ask` 与 allowlist 的实现细节。
 
 ### Test（测试环境）
 
@@ -27,7 +29,7 @@
 | Calling MCP servers | Agent decides | |
 
 - 同样导入 denylist（红线不可放松）
-- allowlist 可适当放宽（如 ansible-playbook --check）
+- allowlist 只能增加已核验的只读形态，不能覆盖 denylist；`ansible-playbook --check` 仍需命令层人工批准
 
 ## 配置步骤
 
@@ -46,6 +48,7 @@
 ## 设计说明（为什么这样写）
 
 - `journalctl` 整体放行，但 `journalctl --vacuum`（删日志）在 denylist——denylist 优先，自动拦下
+- 挂载、网络修改、Git 分支写入不使用宽泛前缀放行；`git pull` 会改变工作树，须批准。常见只读形态由 `scripts/tests/test_warp_command_policy.py` 验证。
 - `ansible-playbook` 整体进 denylist：`--check` 预演也需要点一次批准，换取"永不误跑真实剧本"的确定性
 - `bash -c` / `sh -c` 进 denylist：防止用字符串包装命令绕过其他规则
 - 云 CLI 只放行 `Describe/List/Get/Query`，所有 `Delete/Release/Destroy` 和放行 `0.0.0.0/0` 的操作强制确认

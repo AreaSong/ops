@@ -16,7 +16,7 @@
 ## 2. 系统基线
 
 - [ ] P0 时区 UTC + NTP 同步正常(`timedatectl` 确认 synchronized: yes)
-- [ ] P0 数据、日志、应用三分离(/data、/var/log/<服务>、/opt/compose 或 /opt/apps)
+- [ ] P0 数据、日志、应用三分离(/data、/var/log/<服务>、inventory 登记的 compose_path 或 /opt/apps)
 - [ ] P1 有独立数据盘的机器,/data 单独挂载;没有的在台账注明
 - [ ] P1 journald 留存有上限(SystemMaxUse=500M),不无限膨胀
 - [ ] P1 内核参数基线已应用(/etc/sysctl.d/99-ops-baseline.conf)
@@ -42,7 +42,7 @@
 
 ## 5. 服务部署
 
-- [ ] P0 所有服务位置可预测(/opt/compose/<项目>/ 或 /opt/apps/<服务>/,无散落 /root、/home 的服务)
+- [ ] P0 所有服务位置可预测（以 inventory 登记的 compose_path 或 /opt/apps/<服务>/ 为准，无散落 /root、/home 的服务）
 - [ ] P0 所有服务开机自启(restart: unless-stopped 或 systemctl enabled)
 - [ ] P0 镜像用固定版本 tag,禁止 latest
 - [ ] P1 每个服务有健康检查(compose healthcheck 或探活端点)

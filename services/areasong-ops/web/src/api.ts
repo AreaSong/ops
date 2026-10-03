@@ -1,8 +1,8 @@
 import type {
   ActiveAlert, AuditEntry, AutomaticTaskView, CredentialProfile, CredentialRotation, ManagedObjectView, OpsEvent, Page,
-  AccessChange, AccessControlUpdate, AccessControlView, AutoUpdateEvaluation, AutoUpdatePolicyInput, AutoUpdatePolicyView,
+  AccessChangeDetail, AccessChange, AccessControlUpdate, AccessControlView, AutoUpdateEvaluation, AutoUpdatePolicyInput, AutoUpdatePolicyView,
   BatchOperation, BatchTask, ComposeRevision, ComposeServiceView, ExtensionManifest, ExtensionPlan, ExtensionPolicyView, ExtensionUploadResult, ExtensionView, Fleet, KubernetesConfigView, KubernetesOperation, KubernetesPlan,
-  ManagedFileProposal, ManagedFileView, RecoveryCenterView, RecoveryPoint, ReleasePlan, RunnerNode, RunnerUpdate, RunnerUpdatePrepareInput, RunnerUpdateResolutionEvidence, RunnerUpdateStatus, FleetRunnerUpdatePlan, FleetRunnerUpdatePlanInput, FleetRunnerUpdateStatus,
+  ManagedFileProposal, ManagedFileView, RecoveryCenterView, RecoveryPoint, ReleasePlan, CreatePlanInput, RunnerNode, RunnerUpdate, RunnerUpdatePrepareInput, RunnerUpdateResolutionEvidence, RunnerUpdateStatus, FleetRunnerUpdatePlan, FleetRunnerUpdatePlanInput, FleetRunnerUpdateStatus,
   TerminalCommand, TerminalOutput, TerminalShellPlan,
   ServiceState, ServerNode, ServiceView, SessionResponse, Task,
 } from './types'
@@ -329,11 +329,12 @@ export class OpsAPI {
     return { items: payload.plans ?? [], hasMore: payload.hasMore }
   }
 
-  async createPlan(service: string, action: string, target = ''): Promise<ReleasePlan> {
-    const requestKey = `${service}\u0000${action}\u0000${target}`
+  async createPlan(service: string, action: string, target = '', scheduleAt?: string): Promise<ReleasePlan> {
+    const body: CreatePlanInput = { service, action, target, ...(scheduleAt ? { scheduleAt } : {}) }
+    const requestKey = JSON.stringify(body)
     const idempotencyKey = this.planKeys.get(requestKey) ?? crypto.randomUUID()
     this.planKeys.set(requestKey, idempotencyKey)
-    const plan = await this.mutate<ReleasePlan>('/api/plans', { service, action, target, idempotencyKey })
+    const plan = await this.mutate<ReleasePlan>('/api/plans', { ...body, idempotencyKey })
     // 服务端确认创建后，后续有意发起同一动作必须使用新键；失败重试才保留旧键。
     this.planKeys.delete(requestKey)
     return plan
@@ -914,11 +915,18 @@ export class OpsAPI {
     return parseResponse<AccessControlView>(response)
   }
 
+  async accessChangeDetail(id: string, actor: string, signal?: AbortSignal): Promise<AccessChangeDetail> {
+    const response = await fetch(`/api/access/changes/${encodeURIComponent(id)}/detail`, { cache: 'no-store', signal })
+    const detail = await parseResponse<AccessChangeDetail>(response)
+    if (detail.reviewerHash !== actor) throw new Error('会话身份已变化，请刷新访问策略后重新审阅。')
+    return detail
+  }
+
   async createAccessChange(body: AccessControlUpdate): Promise<AccessChange> {
     return this.mutate<AccessChange>('/api/access/changes', {
       ...body,
       requiresDualApproval: true,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: body.idempotencyKey ?? crypto.randomUUID(),
     })
   }
 

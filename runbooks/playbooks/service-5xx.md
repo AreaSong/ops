@@ -1,5 +1,7 @@
 # RB-01 服务返回 5xx
 
+本手册中的 `docker compose` 路径是变量示例，不构成授权。先按 `inventory/services.yaml` 和服务器当前状态解析 `COMPOSE_FILE`；AreaForge 使用 `/opt/areaforge/docker-compose.prod.yml`，受控副本不得当作运行文件。止血写操作（down/up、重启、回滚或摘流量）必须先完成五要素批准。
+
 ## 症状
 
 - 用户报告页面/API 报错
@@ -10,13 +12,13 @@
 
 ```bash
 # 1. 确认哪个服务在报错
-docker compose -f /opt/compose/<service>/docker-compose.yml ps
-docker compose -f /opt/compose/<service>/docker-compose.yml logs --tail 50
+docker compose -f "$COMPOSE_FILE" ps
+docker compose -f "$COMPOSE_FILE" logs --tail 50
 
 # 2. 如果是最近变更导致，回滚
-docker compose -f /opt/compose/<service>/docker-compose.yml down
+docker compose -f "$COMPOSE_FILE" down
 # 恢复上一个版本的 compose 或镜像 tag
-docker compose -f /opt/compose/<service>/docker-compose.yml up -d
+docker compose -f "$COMPOSE_FILE" up -d
 
 # 3. 验证恢复
 curl -s -o /dev/null -w "%{http_code}" http://localhost:<port>/health
@@ -31,7 +33,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:<port>/health
 tail -100 /var/log/nginx/error.log
 
 # 应用日志
-docker compose -f /opt/compose/<service>/docker-compose.yml logs --tail 200 --since 30m
+docker compose -f "$COMPOSE_FILE" logs --tail 200 --since 30m
 
 # Grafana: 查看 5xx 率和响应时间趋势
 ```
@@ -39,9 +41,9 @@ docker compose -f /opt/compose/<service>/docker-compose.yml logs --tail 200 --si
 ### 2. 检查依赖服务
 
 ```bash
-# MySQL 连接
-docker compose -f /opt/compose/mysql/docker-compose.yml ps
-mysql -h <host> -u ops_ro -p -e "SELECT 1"
+# 数据库连接：仅对 inventory 中登记的数据库类型执行；当前 LosAngeles 主要使用 PostgreSQL
+docker compose -f "$COMPOSE_FILE" ps
+# 使用对应服务的只读客户端和凭据，不要在命令行写入密码
 
 # Redis 连接
 redis-cli -h <host> ping
@@ -55,7 +57,7 @@ free -h
 
 ```bash
 cd /opt/ops && git log --oneline -10
-docker compose -f /opt/compose/<service>/docker-compose.yml images
+docker compose -f "$COMPOSE_FILE" images
 ```
 
 ### 4. 常见原因
@@ -77,5 +79,5 @@ docker compose -f /opt/compose/<service>/docker-compose.yml images
 
 ## 后续
 
-- 填写 postmortem-template.md
+- 仅对确认有生产影响的 P0/P1 故障填写 postmortem-template.md
 - 如缺少 5xx 率告警，添加到 observability/prometheus/rules/

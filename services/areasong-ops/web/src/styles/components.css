@@ -207,3 +207,9 @@ button.data-table-row:hover { background: var(--surface-soft); }
 .credential-confirmation { grid-column: 1 / -1; }
 .credential-boundary { grid-column: 1 / -1; padding: 9px 10px; border-left: 3px solid var(--amber); color: #5f4a24; background: var(--amber-soft); font-size: 10px; line-height: 1.55; }
 .credential-form > .button { grid-column: 2; justify-self: end; min-width: 120px; }
+
+/* 计划时间长文本与本地日期控件在窄屏内保持可读。 */
+.plan-dialog .modal-body { overflow-wrap: anywhere; }
+.plan-dialog .confirmation-field input, .plan-dialog .confirmation-field select { width: 100%; min-width: 0; min-height: 38px; }
+.plan-dialog .modal-footer { flex-wrap: wrap; }
+.plan-dialog .modal-footer small { flex-basis: 100%; }

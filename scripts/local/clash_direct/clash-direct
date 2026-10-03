@@ -1,0 +1,7 @@
+#!/bin/sh
+# 使用已核对的 macOS Python；不更改 PATH 或安装环境。
+tool_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -x "$tool_dir/.venv/bin/python" ]; then
+  exec "$tool_dir/.venv/bin/python" "$tool_dir/clash_direct.py" "$@"
+fi
+exec /usr/bin/python3 "$tool_dir/clash_direct.py" "$@"

@@ -1,5 +1,7 @@
 # RB-02 磁盘空间不足
 
+本手册先做只读定位；清理日志、包缓存或 Docker 镜像属于写/删除动作，必须列出目标、影响、回滚和验证并获得批准后执行。路径以 inventory 和服务器当前状态为准，不要把示例路径当作目标。
+
 ## 症状
 
 - 告警：DiskUsageHigh / DiskUsageCritical
@@ -12,7 +14,7 @@
 # 1. 确认哪个分区满了
 df -h
 
-# 2. 快速释放空间（安全操作）
+# 2. 快速释放空间（需批准的受控操作）
 # 清理 journald 旧日志
 journalctl --vacuum-size=100M
 
@@ -66,8 +68,8 @@ logrotate -f /etc/logrotate.d/<service>
 # 查看容器日志大小
 docker inspect --format='{{.LogPath}}' <container> | xargs ls -lh
 
-# 确认 Compose 有 logging 限制
-grep -A3 logging /opt/compose/*/docker-compose.yml
+# 确认 Compose 有 logging 限制；按 inventory 检查 /opt/services/* 和 AreaForge 的实际运行文件
+grep -A3 logging /opt/services/*/docker-compose.yml /opt/areaforge/docker-compose*.yml
 ```
 
 ## 恢复验证
@@ -78,6 +80,6 @@ grep -A3 logging /opt/compose/*/docker-compose.yml
 
 ## 后续
 
-- 填写 postmortem-template.md
+- 仅对确认有生产影响的 P0/P1 故障填写 postmortem-template.md
 - 检查 observability 磁盘告警阈值是否需要调整
 - 考虑扩容数据盘或迁移数据

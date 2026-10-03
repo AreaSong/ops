@@ -11,6 +11,9 @@ DELETE\s+FROM\s+\w+\s*;
 mysql\s+.*(-e|--execute).*(DROP|DELETE|TRUNCATE|UPDATE)
 redis-cli\s+.*FLUSH(ALL|DB)
 journalctl\s+.*--vacuum
+journalctl\s+.*(-f|--follow)\b
+docker\s+logs\s+.*(-f|--follow)\b
+kubectl\s+logs\s+.*(-f|--follow)\b
 docker\s+system\s+prune
 docker\s+(rm|rmi)\s
 docker\s+volume\s+rm
@@ -30,6 +33,9 @@ chmod\s+(-R\s+)?777
 chown\s+-R\s
 visudo\b
 git\s+push\s+.*--force
+git\s+push\b
+git\s+pull\b
+git\s+branch\s+.*(-D|-d|--delete|--move|-m)\b
 git\s+reset\s+--hard
 git\s+clean\s+-[a-zA-Z]*f
 terraform\s+(apply|destroy|import|taint|untaint)
@@ -48,6 +54,9 @@ tccli\s+\S+\s+(Delete|Release|Remove|Destroy)\w*
 (aliyun|tccli)\s+.*0\.0\.0\.0/0
 curl\s+.*\|\s*(ba)?sh
 wget\s+.*\|\s*(ba)?sh
+curl\s+.*(-X\s*(POST|PUT|PATCH|DELETE)|(--data|--data-raw|--data-binary|-d\s))\b
+\$\(
+(;|&&|\|\||\|)
 bash\s+-c\s
 sh\s+-c\s
 xargs\s+.*(rm|kill|shutdown)

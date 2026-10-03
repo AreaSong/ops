@@ -2,6 +2,8 @@
 
 > Ubuntu/Debian 与 CentOS/RHEL 双系兼容。Ansible 基线剧本见 `ansible/baseline.yml`。
 
+路径表是规范示例；生产实际服务路径以 inventory 和服务器当前状态为准，执行系统级命令前先确认发行版。
+
 ## 目录结构
 
 代码/配置、数据、日志三分离：
@@ -9,7 +11,7 @@
 | 路径 | 用途 |
 |------|------|
 | /opt/apps/\<服务名\>/ | 应用部署（二进制、代码、配置） |
-| /opt/compose/\<项目名\>/ | Docker Compose 项目 |
+| inventory 登记的 `compose_path` | Docker Compose 项目 |
 | /opt/ops/ | 本仓库（规范、脚本、台账） |
 | /data/\<服务名\>/ | 持久化数据 |
 | /var/log/\<服务名\>/ | 应用日志 |

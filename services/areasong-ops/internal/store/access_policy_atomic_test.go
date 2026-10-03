@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func TestApplyAccessChangeMutationRollsBackEveryRecordOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	change := approvedStoreAccessChange(t, database, "rollback-change", "rollback-key", "sha256:rollback-change")
+	change := approvedStoreAccessChange(t, database, "rollback-change", "rollback-key")
 	proposedPolicy := `{"enforced":true,"roles":{"platform-admin":{"permissions":["*"]}},"principals":{"admin":{"roles":["platform-admin"]}},"tenants":{"transient":{"id":"transient"}},"bindings":[]}`
 	mutation := AccessPolicyMutation{
 		Actor: "executor", IdempotencyKey: change.IdempotencyKey,
@@ -54,8 +55,8 @@ func TestApplyAccessChangeMutationRollsBackEveryRecordOnFailure(t *testing.T) {
 			ActorHash: "executor", Event: "access.policy.updated", Resource: "access", Outcome: "accepted",
 		},
 	}
-	if _, err := database.ApplyAccessChangeMutation(ctx, change.ID, "executor", mutation); err == nil {
-		t.Fatal("mutation unexpectedly succeeded while deleting a referenced role")
+	if _, err := database.ApplyAccessChangeMutation(ctx, change.ID, "executor", mutation); err == nil || err.Error() != "角色仍被绑定，不能删除" {
+		t.Fatalf("expected referenced-role rejection, got %v", err)
 	}
 
 	tenants, err := database.ListTenants(ctx)
@@ -114,7 +115,7 @@ func TestApplyAccessChangeMutationRollsBackWhenClosureAuditFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	change := approvedStoreAccessChange(
-		t, database, "closure-audit-change", "closure-audit-key", "sha256:closure-audit-change",
+		t, database, "closure-audit-change", "closure-audit-key",
 	)
 	proposedPolicy := "{\"enforced\":true,\"roles\":{\"platform-admin\":{\"permissions\":[\"*\"]}},\"principals\":{\"admin\":{\"roles\":[\"platform-admin\"]}},\"bindings\":[],\"revision\":\"closure-audit\"}"
 	mutation := AccessPolicyMutation{
@@ -133,8 +134,8 @@ func TestApplyAccessChangeMutationRollsBackWhenClosureAuditFails(t *testing.T) {
 		"BEGIN SELECT RAISE(ABORT, 'closure audit failure'); END"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.ApplyAccessChangeMutation(ctx, change.ID, "executor", mutation); err == nil {
-		t.Fatal("mutation unexpectedly committed while closure audit failed")
+	if _, err := database.ApplyAccessChangeMutation(ctx, change.ID, "executor", mutation); err == nil || !strings.Contains(err.Error(), "closure audit failure") {
+		t.Fatalf("expected closure audit failure, got %v", err)
 	}
 	after, found, err := database.GetAccessPolicySnapshot(ctx)
 	if err != nil || !found || after.Version != baseline.Version || after.Digest != baseline.Digest {
@@ -168,7 +169,7 @@ func TestApplyAccessChangeMutationRecoversExistingReceiptIdempotently(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	change := approvedStoreAccessChange(t, database, "recovery-change", "recovery-key", "sha256:recovery-change")
+	change := approvedStoreAccessChange(t, database, "recovery-change", "recovery-key")
 	proposedPolicy := `{"enforced":true,"defaultTenant":"default","roles":{"platform-admin":{"permissions":["*"]}},"principals":{"remaining-admin":{"roles":["platform-admin"]}},"bindings":[]}`
 	mutation := AccessPolicyMutation{
 		Actor: "executor", IdempotencyKey: change.IdempotencyKey,
@@ -223,9 +224,10 @@ func TestApplyAccessChangeMutationRecoversExistingReceiptIdempotently(t *testing
 	assertStoreAtomicAuditCounts(t, database, change.ID, 1, 1)
 }
 
-func approvedStoreAccessChange(t *testing.T, database *Store, id, key, digest string) model.AccessChange {
+func approvedStoreAccessChange(t *testing.T, database *Store, id, key string) model.AccessChange {
 	t.Helper()
 	ctx := context.Background()
+	digest := digestPolicyJSON(`{}`)
 	change := model.AccessChange{
 		ID: id, IdempotencyKey: key, RequestDigest: digest, ActorHash: "creator",
 		State: model.AccessChangePendingApproval, RequiresDualApproval: true,

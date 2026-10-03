@@ -76,7 +76,7 @@ func (store *Store) ApplyAccessChangeMutation(
 		return model.AccessChange{}, err
 	}
 	defer tx.Rollback()
-	change, _, err := scanAccessChange(tx.QueryRowContext(ctx, accessChangeSelect+` WHERE id=?`, changeID), false)
+	change, payload, err := scanAccessChange(tx.QueryRowContext(ctx, accessChangeSelectWithPayload+` WHERE id=?`, changeID), true)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.AccessChange{}, ErrNotFound
 	}
@@ -111,6 +111,11 @@ func (store *Store) ApplyAccessChangeMutation(
 		}
 	} else if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
 		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
+	}
+	// 上方 AccessChangeDigest 绑定 Runner 已验证的摘要；这里验证事务内原始载荷，
+	// 两者共同拒绝读取后载荷单独变化或载荷与摘要一起变化。成功重放不重新验载荷。
+	if digestPolicyJSON(payload) != change.RequestDigest {
+		return model.AccessChange{}, ErrIdempotency
 	}
 	snapshot, _, err := store.applyAccessPolicyMutationTx(ctx, tx, mutation)
 	if err != nil {

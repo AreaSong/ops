@@ -1,5 +1,7 @@
 # LosAngeles 合规日志异地归档
 
+本手册的 bucket/Worker/token 创建、凭据文件写入、cron 启用、上传和控制面操作都需要明确批准。先完成只读检查和计划；示例命令不构成授权，且回滚不得删除已写入的归档对象。
+
 ## 目标与边界
 
 每日 `00:35 UTC` 归档前一完整 UTC 日的 auditd、SSH/sudo 登录日志、Nginx

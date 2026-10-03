@@ -1,6 +1,6 @@
 # 服务器运维规范（索引）
 
-> 规范已拆分为八大域，详见 [standards/](standards/) 目录。
+> 规范已拆分为十个域，详见 [standards/](standards/) 目录。
 > 新建/变更前读取对应域文档。
 
 ## 快速索引
@@ -17,9 +17,10 @@
 | 补丁更新 | [07-patching.md](standards/07-patching.md) |
 | 监控告警 | [08-observability.md](standards/08-observability.md) |
 | 全生命周期总纲（自包含大全） | [09-server-ops-handbook.md](standards/09-server-ops-handbook.md) |
+| 观测与控制面职责边界 | [10-operations-control-plane.md](standards/10-operations-control-plane.md) |
 
 ---
 
 修订记录：
 
-- 2026-07-02 拆分为八大域规范体系，本文件改为索引
+- 2026-07-02 拆分为十个域规范体系，本文件改为索引

@@ -1,5 +1,7 @@
 # Alertmanager 邮件投递与独立通知出口
 
+诊断和配置检查可先只读执行。凭据轮换、容器重建、Prometheus reload、合成告警 POST 及 Ansible 正式执行均属于变更或外部写入，必须列入已批准的变更单元；check/plan 只提供证据，不替代批准。
+
 ## 目标与边界
 
 恢复 Alertmanager 到 QQ SMTP 的中文邮件投递，同时保留 GitHub Issue 作为独立

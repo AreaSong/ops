@@ -105,38 +105,31 @@ func (engine *Engine) updateAccess(
 	if request.RequiresDualApproval {
 		return model.AccessControlView{}, errors.New("访问策略高风险变更必须通过独立审批流程")
 	}
+	if err := validateAccessRolePermissions(request.Roles); err != nil {
+		return model.AccessControlView{}, err
+	}
+	if err := validateBindingRemovalIDs(request.RemoveBindingIDs); err != nil {
+		return model.AccessControlView{}, err
+	}
 
 	// Validate against the proposed in-memory view so a newly-created custom
 	// role or tenant can be used by a binding in the same atomic request.
 	proposed := cloneAccessPolicy(policy)
 	normalizedTenants := make([]model.Tenant, 0, len(request.Tenants))
 	for _, rawTenant := range request.Tenants {
-		tenant := rawTenant
-		tenant.ID = strings.ToLower(strings.TrimSpace(tenant.ID))
-		tenant.DisplayName = strings.TrimSpace(tenant.DisplayName)
-		if tenant.ID == "" || tenant.DisplayName == "" || tenant.Status == "disabled" {
-			return model.AccessControlView{}, errors.New("租户定义无效或已禁用")
+		tenant, err := normalizeAccessTenant(rawTenant, actor)
+		if err != nil {
+			return model.AccessControlView{}, err
 		}
-		if tenant.Status == "" {
-			tenant.Status = "active"
-		}
-		tenant.CreatedBy = actor
 		proposed.Tenants[tenant.ID] = tenant
 		normalizedTenants = append(normalizedTenants, tenant)
 	}
 	normalizedRoles := make([]model.Role, 0, len(request.Roles))
 	for _, rawRole := range request.Roles {
-		role := rawRole
-		role.ID = strings.ToLower(strings.TrimSpace(role.ID))
-		role.DisplayName = strings.TrimSpace(role.DisplayName)
-		if role.ID == "" || role.DisplayName == "" || role.BuiltIn {
-			return model.AccessControlView{}, errors.New("自定义角色定义无效")
+		role, err := normalizeAccessRole(rawRole, actor)
+		if err != nil {
+			return model.AccessControlView{}, err
 		}
-		if len(role.Permissions) == 0 {
-			return model.AccessControlView{}, errors.New("自定义角色必须至少包含一个权限")
-		}
-		role.CreatedBy = actor
-		role.Permissions = append([]model.Permission(nil), role.Permissions...)
 		proposed.Roles[role.ID] = role
 		normalizedRoles = append(normalizedRoles, role)
 	}
@@ -196,12 +189,7 @@ func (engine *Engine) updateAccess(
 	}
 	normalizedBindings := make([]model.RoleBinding, 0, len(request.Bindings))
 	for _, rawBinding := range request.Bindings {
-		binding := rawBinding
-		binding.ID = strings.TrimSpace(binding.ID)
-		binding.Subject = canonicalAccessSubject(binding.Subject)
-		binding.TenantID = strings.ToLower(strings.TrimSpace(binding.TenantID))
-		binding.RoleID = strings.ToLower(strings.TrimSpace(binding.RoleID))
-		binding.CreatedBy = actor
+		binding := normalizeAccessBinding(rawBinding, actor)
 		if err := engine.validateBinding(proposed, binding); err != nil {
 			return model.AccessControlView{}, err
 		}
@@ -416,6 +404,17 @@ func canonicalAccessSubject(value string) string {
 	return value
 }
 
+// 必须在规范化前检查原始输入，避免撤销目标被转成另一条绑定的 ID。
+func validateBindingRemovalIDs(values []string) error {
+	for _, value := range values {
+		id := strings.TrimSpace(value)
+		if id != "" && strings.ToLower(id) != id {
+			return errors.New("绑定撤销 ID 不支持大小写规范化后改变目标")
+		}
+	}
+	return nil
+}
+
 func normalizeIDs(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
@@ -464,4 +463,29 @@ func hasPlatformAdmin(policy *config.AccessPolicy) bool {
 		}
 	}
 	return false
+}
+
+// 审阅与应用共用字段规范化，避免展示值和最终写入值分叉。
+func normalizeAccessTenant(tenant model.Tenant, actor string) (model.Tenant, error) {
+	tenant.ID = strings.ToLower(strings.TrimSpace(tenant.ID))
+	tenant.DisplayName = strings.TrimSpace(tenant.DisplayName)
+	if tenant.ID == "" || tenant.DisplayName == "" || tenant.Status == "disabled" {
+		return model.Tenant{}, errors.New("租户定义无效或已禁用")
+	}
+	if tenant.Status == "" {
+		tenant.Status = "active"
+	}
+	tenant.CreatedBy = actor
+	return tenant, nil
+}
+
+// 与实际应用共用同一完整替换规范化，不合并遗漏字段。
+func normalizeAccessBinding(rawBinding model.RoleBinding, actor string) model.RoleBinding {
+	binding := rawBinding
+	binding.ID = strings.TrimSpace(binding.ID)
+	binding.Subject = canonicalAccessSubject(binding.Subject)
+	binding.TenantID = strings.ToLower(strings.TrimSpace(binding.TenantID))
+	binding.RoleID = strings.ToLower(strings.TrimSpace(binding.RoleID))
+	binding.CreatedBy = actor
+	return binding
 }

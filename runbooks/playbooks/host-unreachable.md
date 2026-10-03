@@ -1,5 +1,7 @@
 # RB-04 机器失联
 
+先执行本手册中的只读网络、云状态和控制台检查。VNC 修复、sshd/实例重启、网络/安全组修改、故障转移、新实例和 DNS/负载均衡切换都是生产变更，必须先提交五要素并获得批准；命令示例不构成授权。
+
 ## 症状
 
 - SSH 连接超时或拒绝
@@ -106,7 +108,7 @@ dmesg | tail -30
 
 ## 后续
 
-- 填写 postmortem-template.md
+- 仅对确认有生产影响的 P0/P1 故障填写 postmortem-template.md
 - 确认 HostDown 告警是否及时触发
 - 检查是否有自动恢复机制（systemd Restart、Compose restart policy）
 - 考虑是否需要备用实例

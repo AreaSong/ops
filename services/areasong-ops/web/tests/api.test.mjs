@@ -60,3 +60,96 @@ test('手动获取会话后合法写请求仍带原 CSRF 头且只提交一次',
   assert.equal(calls[1].options.headers['X-AreaSong-Ops-CSRF'], 'test-csrf')
   assert.equal(calls[1].options.credentials, 'same-origin')
 })
+
+test('计划创建默认兼容；失败重试同键，改变时间换键，成功后新建换键', async (t) => {
+  const bodies = []
+  let fail = true
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    bodies.push(JSON.parse(options.body))
+    if (fail) throw new Error('网络中断')
+    return Response.json({ id: 'plan-local' })
+  })
+  const api = new OpsAPI()
+  const create = (time) => api.createPlan('demo', 'restart', '', time)
+  await assert.rejects(create(), /网络中断/)
+  await assert.rejects(create(), /网络中断/)
+  assert.equal('scheduleAt' in bodies[0], false)
+  assert.equal(bodies[0].idempotencyKey, bodies[1].idempotencyKey)
+  const at = '2030-01-02T01:30:00.000Z'
+  await assert.rejects(create(at), /网络中断/)
+  await assert.rejects(create(at), /网络中断/)
+  assert.equal(bodies[2].scheduleAt, at)
+  assert.equal(bodies[2].idempotencyKey, bodies[3].idempotencyKey)
+  assert.notEqual(bodies[1].idempotencyKey, bodies[2].idempotencyKey)
+  await assert.rejects(create('2030-01-02T02:30:00.000Z'), /网络中断/)
+  assert.notEqual(bodies[3].idempotencyKey, bodies[4].idempotencyKey)
+  fail = false
+  await create(at)
+  await create(at)
+  assert.equal(bodies[5].idempotencyKey, bodies[2].idempotencyKey)
+  assert.notEqual(bodies[6].idempotencyKey, bodies[5].idempotencyKey)
+  await create()
+  assert.equal('scheduleAt' in bodies[7], false)
+})
+
+test('显式执行失败不自动重试；同计划重试沿用键且不携带时间', async (t) => {
+  const calls = []
+  let status = 409
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) })
+    return Response.json(status === 200 ? { id: 'task-local' } : { error: '发布计划尚未到达调度时间' }, { status })
+  })
+  const api = new OpsAPI()
+  await assert.rejects(api.executePlan('p'), /尚未到达调度时间/)
+  assert.equal(calls.length, 1)
+  status = 200
+  await api.executePlan('p')
+  await api.executePlan('p')
+  assert.deepEqual(calls[0], calls[1])
+  assert.deepEqual(calls[1], calls[2])
+  assert.deepEqual(Object.keys(calls[0].body), ['idempotencyKey'])
+})
+
+for (const method of ['create', 'execute']) {
+  test(`计划${method}会话失效不自动写重试`, async (t) => {
+    let count = 0
+    t.mock.method(globalThis, 'fetch', async () => {
+      count++
+      return Response.json({ error: 'CSRF 令牌无效' }, { status: 403 })
+    })
+    const api = new OpsAPI()
+    await assert.rejects(method === 'create' ? api.createPlan('demo', 'restart') : api.executePlan('p'), /不会自动重试/)
+    assert.equal(count, 1)
+  })
+}
+
+test('租户提案保留显式版本与幂等键；错误不自动重试，应用只引用提案 ID', async (t) => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) })
+    return Response.json({ error: '访问策略版本已变化，请重新读取' }, { status: 409 })
+  })
+  const body = { tenants: [{ id: 'tenant-one', displayName: '新名称', status: 'active' }], expectedVersion: 7, idempotencyKey: 'local-key' }
+  const api = new OpsAPI()
+  await assert.rejects(api.createAccessChange(body), /版本已变化/)
+  await assert.rejects(api.createAccessChange(body), /版本已变化/)
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0].body, { ...body, requiresDualApproval: true })
+  assert.deepEqual(calls[1].body, calls[0].body)
+  await assert.rejects(api.applyAccessChange({ id: 'proposal' }), /版本已变化/)
+  assert.deepEqual(calls[2], { url: '/api/access/changes/proposal/apply', body: {} })
+})
+
+test('提案详情 GET 不缓存、绑定响应身份且不重试', async (t) => {
+  const calls = []
+  const controller = new AbortController()
+  t.mock.method(globalThis, 'fetch', async (url, options) => { calls.push({ url, options }); return Response.json({ reviewerHash: 'approver', id: 'proposal' }) })
+  const api = new OpsAPI()
+  assert.equal((await api.accessChangeDetail('a/b', 'approver', controller.signal)).id, 'proposal')
+  assert.equal(calls[0].url, '/api/access/changes/a%2Fb/detail')
+  assert.equal(calls[0].options.cache, 'no-store')
+  assert.equal(calls[0].options.signal, controller.signal)
+  assert.equal(calls[0].options.body, undefined)
+  await assert.rejects(api.accessChangeDetail('proposal', 'creator'), /会话身份已变化/)
+  assert.equal(calls.length, 2)
+})

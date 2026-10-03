@@ -1,5 +1,7 @@
 # RB-03 MySQL 慢查询
 
+本手册仅适用于 inventory 中登记的 MySQL 服务；当前 LosAngeles 台账未登记 MySQL。查询和 EXPLAIN 可只读执行，KILL、索引和配置变更必须先获得批准；命令示例不构成授权。
+
 ## 症状
 
 - 应用响应变慢
@@ -80,7 +82,7 @@ cd /opt/ops && git log --oneline -10
 
 ## 后续
 
-- 填写 postmortem-template.md
+- 仅对确认有生产影响的 P0/P1 故障填写 postmortem-template.md
 - 确认慢查询日志已开启（long_query_time = 1）
 - 考虑添加 MySQL 连接数和慢查询告警
 - 对发现的缺索引 SQL 提交优化变更

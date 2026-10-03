@@ -37,6 +37,12 @@ func (engine *Engine) CreateAccessChange(
 	if request.Enforced != nil && !*request.Enforced && engine.catalog.SchemaVersion >= 4 {
 		return model.AccessChange{}, false, errors.New("生产 schema 4 不允许关闭访问策略")
 	}
+	if err := validateAccessRolePermissions(request.Roles); err != nil {
+		return model.AccessChange{}, false, err
+	}
+	if err := validateBindingRemovalIDs(request.RemoveBindingIDs); err != nil {
+		return model.AccessChange{}, false, err
+	}
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return model.AccessChange{}, false, err
@@ -107,6 +113,10 @@ func (engine *Engine) ApplyAccessChange(ctx context.Context, actor, id string) (
 		}
 	} else if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
 		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
+	}
+	// 审批绑定原始存储字节；执行期转换必须在验摘要之后。
+	if digestText(payload) != change.RequestDigest {
+		return model.AccessChange{}, errors.New("访问策略审批载荷损坏")
 	}
 	var request model.AccessControlUpdateRequest
 	if err := json.Unmarshal([]byte(payload), &request); err != nil {
