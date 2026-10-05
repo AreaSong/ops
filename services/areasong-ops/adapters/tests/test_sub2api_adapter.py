@@ -16,7 +16,7 @@ class Sub2APIAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.operation = self.root / "operation"
         self.operation.mkdir()
         self.source = self.root / "source"
@@ -81,6 +81,11 @@ esac
         environment.update({
             "PATH": f"{self.fake_bin}:{environment['PATH']}",
             "SUB2API_OPS_RELEASES": str(RELEASES),
+            "SUB2API_OPS_PREPARED_RELEASE_DIR": str(self.root / "missing-prepared"),
+            "SUB2API_OPS_CONTROLLED_COMPOSE": str(self.root / "missing-controlled"),
+            "SUB2API_OPS_RUNTIME_COMPOSE": str(self.root / "missing-runtime"),
+            "SUB2API_OPS_ENV_FILE": str(self.root / "missing.env"),
+            "SUB2API_OPS_UPDATE_ADAPTER": str(self.root / "missing-legacy"),
         })
         return subprocess.run(
             [str(ADAPTER), action, phase, str(self.operation), target, source],
@@ -128,6 +133,11 @@ esac
         environment.update({
             "PATH": f"{self.fake_bin}:{environment['PATH']}",
             "SUB2API_OPS_RELEASES": str(RELEASES),
+            "SUB2API_OPS_PREPARED_RELEASE_DIR": str(self.root / "missing-prepared"),
+            "SUB2API_OPS_CONTROLLED_COMPOSE": str(self.root / "missing-controlled"),
+            "SUB2API_OPS_RUNTIME_COMPOSE": str(self.root / "missing-runtime"),
+            "SUB2API_OPS_ENV_FILE": str(self.root / "missing.env"),
+            "SUB2API_OPS_UPDATE_ADAPTER": str(self.root / "missing-legacy"),
             "SUB2API_OPS_PREPARED_RELEASE_DIR": str(prepared_dir),
             "SUB2API_OPS_UPDATE_ADAPTER": str(legacy),
         })

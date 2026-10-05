@@ -14,7 +14,7 @@ export function usePlanDialog<T extends HTMLElement>(pending: boolean, onCancel:
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pending) { event.preventDefault(); onCancel() }
       if (event.key !== 'Tab') return
-      const elements = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]'))
+      const elements = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]:not(:disabled)'))
       const first = elements[0], last = elements.at(-1)
       if (!first) { event.preventDefault(); dialog.focus(); return }
       if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {

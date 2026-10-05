@@ -36,13 +36,13 @@ func TestListRecoveryPointsClosesOuterRowsBeforeLoadingPoint(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(context.Background(), "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, context.Background(), "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "recovery-list",
 	}, "task-recovery-list")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunning(context.Background(), task.ID, "backup"); err != nil {
+	if err := seedHistoricalRunning(t, database, context.Background(), task.ID, "backup", ""); err != nil {
 		t.Fatal(err)
 	}
 	point := model.RecoveryPoint{

@@ -57,7 +57,7 @@ func (engine *Engine) captureAutomaticObservation(ctx context.Context, task mode
 
 // 独立于 GET 请求运行；只消费已批准、已执行且仍在观察窗口内的计划。
 func (engine *Engine) StartAutoUpdateObservationMonitor(ctx context.Context) {
-	engine.startAutoUpdateObservationMonitor(ctx, 5*time.Second)
+	// B-P 普通观察回滚未接入，不启动空转的协调器。
 }
 
 func (engine *Engine) startAutoUpdateObservationMonitor(ctx context.Context, interval time.Duration) {
@@ -87,11 +87,20 @@ func (engine *Engine) monitorAutoUpdateObservations(ctx context.Context, interva
 	}
 }
 
+// 自动观察回滚属于普通发布新执行，B-P 不接管已有 observing 工作。
 func (engine *Engine) ReconcileAutoUpdateObservations(ctx context.Context) error {
+	return model.ErrReleaseNotIntegrated
+}
+
+func (engine *Engine) reconcileLegacyAutoUpdateObservations(ctx context.Context) error {
 	return engine.reconcileAutoUpdateObservations(ctx, false)
 }
 
 func (engine *Engine) reconcileAutoUpdateObservations(ctx context.Context, asynchronous bool) error {
+	return model.ErrReleaseNotIntegrated
+}
+
+func (engine *Engine) reconcileLegacyObservationWork(ctx context.Context, asynchronous bool) error {
 	if err := engine.reconcileAutomaticRollbackReceipts(ctx); err != nil {
 		return err
 	}

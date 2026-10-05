@@ -89,6 +89,10 @@ type AutomaticRollbackInput struct {
 
 // 已成功任务只能通过这个受审批计划约束的事务进入观察期回滚。
 func (store *Store) StartAutomaticRollback(ctx context.Context, input AutomaticRollbackInput) (model.Task, bool, error) {
+	return model.Task{}, false, model.ErrReleaseNotIntegrated
+}
+
+func (store *Store) startLegacyAutomaticRollback(ctx context.Context, input AutomaticRollbackInput) (model.Task, bool, error) {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Task{}, false, err

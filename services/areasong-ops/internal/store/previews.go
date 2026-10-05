@@ -146,6 +146,33 @@ func (store *Store) startTask(
 	if store.now().After(preview.ExpiresAt) {
 		return TaskStartResult{}, ErrPreviewExpired
 	}
+	if subtle.ConstantTimeCompare([]byte(confirmationHash), []byte(HashConfirmation(request.Confirmation))) != 1 {
+		return TaskStartResult{}, ErrConfirmation
+	}
+	return TaskStartResult{}, model.ErrReleaseNotIntegrated
+}
+
+// 保留原预览事务供后续获批接线参考，B-P 公共入口不可达。
+func (store *Store) startLegacyTask(ctx context.Context, actorHash string, request model.StartTaskRequest, taskID string) (TaskStartResult, error) {
+	requestHash := hashTaskRequest(request.PreviewID, request.Confirmation)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	defer tx.Rollback()
+	preview, confirmationHash, consumed, err := previewForUpdate(ctx, tx, request.PreviewID)
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	if preview.ActorHash != actorHash {
+		return TaskStartResult{}, ErrActorMismatch
+	}
+	if consumed.Valid {
+		return TaskStartResult{}, ErrPreviewConsumed
+	}
+	if store.now().After(preview.ExpiresAt) {
+		return TaskStartResult{}, ErrPreviewExpired
+	}
 	actualHash := HashConfirmation(request.Confirmation)
 	if subtle.ConstantTimeCompare([]byte(actualHash), []byte(confirmationHash)) != 1 {
 		return TaskStartResult{}, ErrConfirmation

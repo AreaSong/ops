@@ -715,6 +715,14 @@ func (catalog *Catalog) validateObject(
 		return fmt.Errorf("受管对象 %s 与 %s 使用了重复对象标识", key, owner)
 	}
 	objectIDs[service.ObjectID] = key
+	if service.ReleaseScope != nil {
+		if expectedType != "service" {
+			return fmt.Errorf("只有服务对象可声明发布检查作用域")
+		}
+		if err := service.ReleaseScope.Validate(); err != nil {
+			return err
+		}
+	}
 	if expectedType == "service" && service.Template != "custom" && service.Template != "compose-service-v1" {
 		return fmt.Errorf("服务 %s 的模板无效", key)
 	}

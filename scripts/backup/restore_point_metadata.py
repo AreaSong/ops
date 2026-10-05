@@ -153,6 +153,127 @@ def capture(arguments: argparse.Namespace) -> dict:
     return {"artifacts": [artifact_record("configs", archive), artifact_record("runtime-snapshot", runtime_path)]}
 
 
+def capture_scoped_configs(manifest: dict, destination: Path) -> None:
+    """只生成 configs；runtime 必须等四子回执完成后独立 finalize。"""
+    from sub2api_backup import source_bytes
+    from sub2api_backup_archive import BackupError, tar_bytes
+    contents = {key: source_bytes(manifest, key) for key in CONFIG_MEMBERS["sub2api"]}
+    validate_scoped_baseline(manifest["runtime"])
+    tar_bytes(destination, {CONFIG_MEMBERS["sub2api"][key]: value for key, value in contents.items()})
+    if any(source_bytes(manifest, key) != value for key, value in contents.items()):
+        raise BackupError("config_changed")
+
+
+def validate_scoped_baseline(value: dict) -> None:
+    from sub2api_backup_contract import exact, require_hex
+    from sub2api_backup_archive import BackupError
+    exact(value, {"containers", "database"})
+    exact(value["containers"], {"app", "postgres", "redis"})
+    for item in value["containers"].values():
+        exact(item, {"name", "configured_image", "image_id", "container_id", "version", "revision"})
+        if not SAFE_NAME.fullmatch(item["name"]) or not IMAGE_ID.fullmatch(item["image_id"]):
+            raise BackupError("runtime_identity")
+        require_hex(item["container_id"])
+        if not re.fullmatch(r"[A-Za-z0-9_./:@+-]{1,256}", item["configured_image"]) or not SAFE_NAME.fullmatch(item["version"]) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", item["revision"]):
+            raise BackupError("runtime_identity")
+    exact(value["database"], {"user", "database", "migrations"})
+    for key in ("user", "database"):
+        if not re.fullmatch(r"[A-Za-z0-9_]{1,63}", value["database"][key]):
+            raise BackupError("runtime_database")
+    if type(value["database"]["migrations"]) is not int or value["database"]["migrations"] < 0:
+        raise BackupError("runtime_migrations")
+
+
+def finalize_scoped_runtime(request, manifest, checksum, destination, items, children, proof):
+    from sub2api_backup import validate_subreceipt
+    from sub2api_backup_archive import BackupError, read_regular
+    from sub2api_backup_contract import ARTIFACTS, JOBS, binding
+    if len(items) != 4 or len(children) != 4:
+        raise BackupError("runtime_inputs")
+    for job, item, child in zip(JOBS, items, children):
+        path = destination / (job + ".receipt.json")
+        actual = validate_subreceipt(read_regular(path), request, checksum, job, item)
+        if child != {"job": job, "path": path.name, "sha256": "sha256:" + actual}:
+            raise BackupError("runtime_receipts")
+    baseline = manifest["runtime"]
+    validate_scoped_baseline(baseline)
+    if any(baseline["containers"][key]["container_id"] != value["id"] for key, value in manifest["containers"].items()):
+        raise BackupError("runtime_source_identity")
+    value = {"schemaVersion": 2, "service": "sub2api", **baseline,
+             "backup": {"protocolVersion": 1, **binding(request), "requestDigest": checksum,
+                        "artifacts": items, "subreceipts": children, "proof": proof,
+                        "consistency": "synthetic-coordinated" if manifest["materialKind"] == "synthetic" else "coordinated"}}
+    validate_scoped_runtime(value, items, expected_binding={**binding(request), "requestDigest": checksum})
+    return value
+
+
+def validate_scoped_runtime(snapshot, artifacts, *, expected_binding=None):
+    """只校验 v2 格式/来源绑定；不授予恢复目标或演练成功。"""
+    from sub2api_backup_archive import BackupError
+    from sub2api_backup_contract import ARTIFACTS, BINDINGS, JOBS, UUID, exact, require_hex
+    exact(snapshot, {"schemaVersion", "service", "containers", "database", "backup"})
+    if type(snapshot["schemaVersion"]) is not int or snapshot["schemaVersion"] != 2 or snapshot["service"] != "sub2api":
+        raise BackupError("runtime_version")
+    validate_scoped_baseline({key: snapshot[key] for key in ("containers", "database")})
+    b = exact(snapshot["backup"], {"protocolVersion", *BINDINGS, "requestDigest", "artifacts", "subreceipts", "proof", "consistency"})
+    if type(b["protocolVersion"]) is not int or b["protocolVersion"] != 1 or b["consistency"] not in {"synthetic-coordinated", "coordinated"}:
+        raise BackupError("runtime_protocol")
+    for key in BINDINGS[:5]:
+        if not isinstance(b[key], str) or not UUID.fullmatch(b[key]):
+            raise BackupError("runtime_binding")
+    for key in (*BINDINGS[7:], "requestDigest", "proof"):
+        require_hex(b[key])
+    if expected_binding is not None and any(b[k] != v for k, v in expected_binding.items()):
+        raise BackupError("runtime_call")
+    if len(b["artifacts"]) != 4 or len(b["subreceipts"]) != 4:
+        raise BackupError("runtime_set")
+    outer = {a["role"]: a for a in artifacts}
+    if len(outer) != len(artifacts) or set(outer) not in ({ARTIFACTS[j][0] for j in JOBS}, {v[0] for v in ARTIFACTS.values()}):
+        raise BackupError("runtime_outer_roles")
+    for job, item, child in zip(JOBS, b["artifacts"], b["subreceipts"]):
+        exact(item, {"role", "path", "format", "sizeBytes", "sha256"})
+        role, name, fmt = ARTIFACTS[job]
+        if (item["role"], item["path"], item["format"]) != (role, name, fmt) or type(item["sizeBytes"]) is not int or item["sizeBytes"] <= 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", item["sha256"]):
+            raise BackupError("runtime_artifact")
+        actual = outer[role]
+        if Path(actual["path"]).name != name or any(actual[k] != item[k] for k in ("sizeBytes", "sha256")):
+            raise BackupError("runtime_artifact_binding")
+        if Path(actual["path"]).is_absolute() and Path(actual["path"]).parts[-3:-1] != (b["taskId"], b["callId"]):
+            raise BackupError("runtime_artifact_call_path")
+        exact(child, {"job", "path", "sha256"})
+        if child["job"] != job or child["path"] != job + ".receipt.json" or not re.fullmatch(r"sha256:[0-9a-f]{64}", child["sha256"]):
+            raise BackupError("runtime_subreceipt")
+    return snapshot
+
+
+def require_scoped_restore_target(arguments, result):
+    # 公共恢复审批没有可信目标资源映射；CLI 不接受文件/环境自报 target proof。
+    verifier = getattr(arguments, "_target_verifier", None)
+    if verifier is None:
+        raise ContractError("v2_restore_target_unproven")
+    from sub2api_backup_contract import exact, require_hex
+    from sub2api_backup_archive import absolute, digest, encode
+    evidence = verifier(arguments, result)
+    exact(evidence, {"taskId", "planId", "sourceDigest", "mapping", "configuration", "bootstrap", "proof"})
+    if evidence["taskId"] != result["taskId"] or evidence["planId"] != result["planId"] or evidence["sourceDigest"] != result["runtimeSnapshot"]["backup"]["resourceDigest"] or evidence["configuration"] != "matched" or evidence["bootstrap"] != "compatible":
+        raise ContractError("v2_restore_target_mismatch")
+    require_hex(evidence["proof"])
+    mapping = exact(evidence["mapping"], {"daemonId", "endpoint", "project", "containers", "mounts"})
+    if not mapping["endpoint"].startswith("unix:///") or not SAFE_NAME.fullmatch(mapping["daemonId"]) or not SAFE_NAME.fullmatch(mapping["project"]):
+        raise ContractError("v2_restore_target_identity")
+    absolute(mapping["endpoint"][7:])
+    exact(mapping["containers"], {"app", "postgres", "redis"})
+    exact(mapping["mounts"], {"app", "postgres", "redis"})
+    for role, value in mapping["containers"].items():
+        exact(value, {"id", "generation"})
+        require_hex(value["id"])
+        if not SAFE_NAME.fullmatch(value["generation"]):
+            raise ContractError("v2_restore_target_generation")
+        absolute(mapping["mounts"][role])
+    # 该回调持有本次恢复批准及旧→新转换的核验责任；文件／环境不能装配它。
+    result["restoreTargetDigest"] = digest(encode(evidence))
+
+
 def validated_point(arguments: argparse.Namespace) -> dict:
     contract = load_contract(arguments.contract)
     roles = DATA_ROLES[arguments.service] + ["configs", "runtime-snapshot"]
@@ -161,8 +282,12 @@ def validated_point(arguments: argparse.Namespace) -> dict:
         expected_mode=arguments.expected_mode,
     )
     snapshot = result["runtimeSnapshot"]
-    if snapshot.get("schemaVersion") != 1 or snapshot.get("service") != arguments.service:
+    if snapshot.get("schemaVersion") not in (1, 2) or snapshot.get("service") != arguments.service:
         raise ContractError("runtime snapshot service or schema mismatch")
+    if snapshot.get("schemaVersion") == 2:
+        from sub2api_backup_archive import validate_scoped_archives
+        validate_scoped_archives(list(result["artifacts"].values()), CONFIG_MEMBERS["sub2api"].values())
+        require_scoped_restore_target(arguments, result)
     expected_roles = {"app", "postgres"} | ({"redis"} if arguments.service == "sub2api" else set())
     if set(snapshot.get("containers", {})) != expected_roles:
         raise ContractError("runtime snapshot container roles are incomplete")
@@ -178,8 +303,42 @@ def validated_point(arguments: argparse.Namespace) -> dict:
     return result
 
 
+def stage_scoped(arguments, result):
+    from sub2api_backup_archive import (BackupError, copy_private, private_dir,
+        private_parents, read_regular, write_new, verify_private_tree)
+    parent = arguments.operation_dir
+    destination = private_dir(parent / "selected-recovery-point")
+    paths = {}
+    for role, item in result["artifacts"].items():
+        target = destination / Path(item["path"]).name
+        observed = copy_private(item["path"], target)
+        if observed != {k: item[k] for k in ("sizeBytes", "sha256")}:
+            raise BackupError("staged_artifact_changed")
+        paths[role] = target
+    configs = private_dir(parent / "selected-configs")
+    with tarfile.open(paths["configs"], "r:gz") as bundle:
+        expected = set(CONFIG_MEMBERS["sub2api"].values())
+        if set(bundle.getnames()) != expected or len(bundle.getnames()) != len(expected):
+            raise BackupError("config_members")
+        for name in sorted(expected):
+            entry = bundle.getmember(name)
+            if not entry.isfile() or entry.mode != 0o600 or entry.size <= 0 or entry.size > 8*1024*1024:
+                raise BackupError("config_member_type")
+            target_parent = private_parents(configs, str(Path(name).parent))
+            write_new(target_parent / Path(name).name, bundle.extractfile(entry).read())
+    verify_private_tree(destination)
+    verify_private_tree(configs)
+    result.update({"stagedRoot": str(destination),
+                   "relativeArtifacts": {role: path.name for role, path in paths.items()},
+                   "stagedArtifacts": {role: str(path) for role, path in paths.items()},
+                   "envFile": str(configs / CONFIG_MEMBERS["sub2api"]["env"])})
+    return result
+
+
 def stage(arguments: argparse.Namespace) -> dict:
     result = validated_point(arguments)
+    if result["runtime"]["schemaVersion"] == 2:
+        return stage_scoped(arguments, result)
     if arguments.operation_dir.is_symlink():
         raise ContractError("operation directory is a symlink")
     parent = arguments.operation_dir.resolve(strict=True)
@@ -230,6 +389,13 @@ def verify_staged(arguments: argparse.Namespace) -> dict:
     current = validated_point(arguments)
     operation = arguments.operation_dir.resolve(strict=True)
     saved = json.loads(private_regular(operation / "selected-point.json"))
+    if current["runtime"]["schemaVersion"] == 2:
+        from sub2api_backup_archive import read_regular, verify_private_tree
+        read_regular(operation / "selected-point.json")
+        verify_private_tree(operation / "selected-recovery-point")
+        verify_private_tree(operation / "selected-configs")
+        if saved.get("restoreTargetDigest") != current.get("restoreTargetDigest"):
+            raise ContractError("v2_restore_target_changed")
     for key in ("recoveryPointId", "bindingDigest", "evidenceDigest", "service", "mode", "runtime", "artifacts"):
         if saved.get(key) != current.get(key):
             raise ContractError("staged recovery point identity changed")
@@ -251,6 +417,13 @@ def verify_staged(arguments: argparse.Namespace) -> dict:
         member = bundle.extractfile(CONFIG_MEMBERS[arguments.service]["env"])
         if member is None or private_regular(expected_env) != member.read():
             raise ContractError("staged environment file changed")
+    if current["runtime"]["schemaVersion"] == 2:
+        from sub2api_backup_archive import read_regular
+        with tarfile.open(saved["stagedArtifacts"]["configs"], "r:gz") as bundle:
+            for name in CONFIG_MEMBERS["sub2api"].values():
+                item = bundle.extractfile(name)
+                if item is None or read_regular(operation / "selected-configs" / name, limit=8*1024*1024) != item.read():
+                    raise ContractError("staged_configuration_changed")
     return saved
 
 
@@ -292,6 +465,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (ContractError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        print(f"ERROR: {error}", file=os.sys.stderr)
+    except (ContractError, OSError, ValueError, KeyError, TypeError, tarfile.TarError, subprocess.SubprocessError) as error:
+        print("ERROR: metadata_contract_rejected", file=os.sys.stderr)
         raise SystemExit(1)

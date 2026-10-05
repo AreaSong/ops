@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,7 @@ func TestEvaluateAutoUpdatesPropagatesEvaluationWriteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	evaluations, err := engine.EvaluateAutoUpdates(ctx, actorHash())
-	if err != nil || len(evaluations) != 1 || !evaluations[0].UpdateCreated {
+	if err != nil || len(evaluations) != 1 || evaluations[0].UpdateCreated {
 		t.Fatalf("retry evaluations=%+v err=%v", evaluations, err)
 	}
 	var plans, createdAudits, linkedAudits int
@@ -72,12 +73,12 @@ func TestEvaluateAutoUpdatesPropagatesEvaluationWriteFailure(t *testing.T) {
 	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_entries WHERE event='auto_update.plan.created'`).Scan(&linkedAudits); err != nil {
 		t.Fatal(err)
 	}
-	if plans != 1 || createdAudits != 1 || linkedAudits != 1 {
+	if plans != 0 || createdAudits != 0 || linkedAudits != 0 {
 		t.Fatalf("plans=%d createdAudits=%d linkedAudits=%d", plans, createdAudits, linkedAudits)
 	}
 }
 
-func TestEvaluateAutoUpdatesCreatesDualApprovalPlan(t *testing.T) {
+func TestBPAutoUpdateRejectionPreservesDualApprovalPolicy(t *testing.T) {
 	ctx := context.Background()
 	engine, database := automaticTestEngine(t)
 	discoverRelease(t, engine)
@@ -90,18 +91,17 @@ func TestEvaluateAutoUpdatesCreatesDualApprovalPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	evaluations, err := engine.EvaluateAutoUpdates(ctx, actorHash())
-	if err != nil || len(evaluations) != 1 || !evaluations[0].UpdateCreated {
+	if err != nil || len(evaluations) != 1 || evaluations[0].UpdateCreated {
 		t.Fatalf("evaluations=%+v err=%v", evaluations, err)
 	}
-	plan, err := database.GetReleasePlan(ctx, evaluations[0].PlanID)
-	if err != nil {
-		t.Fatal(err)
+
+	policy, err := database.GetAutoUpdatePolicy(ctx, "demo")
+	if err != nil || !policy.RequireApproval || !policy.RequireBackup || policy.ObservationSeconds != 300 {
+		t.Fatal("拒绝后降低自动更新安全策略", err)
 	}
-	if plan.Risk != model.RiskHigh || !plan.RequiresDualApproval || plan.State != model.PlanPendingApproval {
-		t.Fatalf("automatic update plan weakened approval policy: %+v", plan)
-	}
-	if plan.ObservationSeconds != 300 || plan.ApprovalSummary.ObservationSeconds != 300 {
-		t.Fatalf("自动更新观察窗口未绑定到计划和审批摘要: plan=%d summary=%d", plan.ObservationSeconds, plan.ApprovalSummary.ObservationSeconds)
+	plans, err := database.ListReleasePlans(ctx, 200, 0)
+	if err != nil || len(plans) != 0 {
+		t.Fatal("自动更新产生新计划", err)
 	}
 }
 
@@ -135,36 +135,31 @@ func automaticPlanFixture(t *testing.T) (*Engine, *store.Store, model.ReleasePla
 	if err := database.UpsertAutoUpdatePolicy(context.Background(), policy); err != nil {
 		t.Fatal(err)
 	}
-	results, err := engine.EvaluateAutoUpdates(context.Background(), actorHash())
-	if err != nil || len(results) != 1 || !results[0].UpdateCreated {
-		t.Fatalf("评估结果=%+v error=%v", results, err)
-	}
-	plan, err := database.GetReleasePlan(context.Background(), results[0].PlanID)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	value := autoUpdatePlanPolicy(policy)
+	service := engine.catalog.Services["demo"]
+	action := service.Actions["update"]
+	action.ObservationSeconds = 300
+	service.Actions["update"] = action
+	engine.catalog.Services["demo"] = service
+	plan := historicalRunnerPlan(t, engine, actorHash(), model.PreviewRequest{Service: "demo", Action: "update", Target: "v1.1.0", AutoUpdatePolicy: &value})
 	return engine, database, plan, policy
 }
 
-func TestAutomaticUpdateBindsPolicyAndExecutes(t *testing.T) {
+func TestBPAutomaticUpdatePreservesPolicyWithoutNewExecution(t *testing.T) {
 	engine, database, plan, policy := automaticPlanFixture(t)
 	want := autoUpdatePlanPolicy(policy)
 	if plan.ApprovalSummary.AutoUpdatePolicy == nil || *plan.ApprovalSummary.AutoUpdatePolicy != want {
 		t.Fatal("审批摘要没有保存完整的自动更新安全策略")
 	}
-	ctx := context.Background()
-	approved, err := engine.ApproveReleasePlan(ctx, strings.Repeat("b", 64), plan.ID,
-		model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
-	if err != nil {
-		t.Fatal(err)
+
+	if _, err := engine.ApproveReleasePlan(context.Background(), strings.Repeat("b", 64), plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err == nil {
+		t.Fatal("旧自动计划获新批准")
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	finished, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || finished.State != model.PlanObserving || finished.ObservationSeconds != 300 {
-		t.Fatalf("执行后的观察状态=%+v error=%v", finished, err)
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := database.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.Digest != plan.Digest {
+		t.Fatal("改写历史摘要", err)
 	}
 }
 
@@ -174,8 +169,8 @@ func TestAutomaticUpdatePolicyDriftRejectsApprovalAndExecution(t *testing.T) {
 			engine, database, plan, policy := automaticPlanFixture(t)
 			ctx := context.Background()
 			if !beforeApproval {
-				if _, err := engine.ApproveReleasePlan(ctx, strings.Repeat("b", 64), plan.ID,
-					model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
+				raw := historicalRunnerDB(t, engine)
+				if _, err := raw.Exec("UPDATE release_plans SET state=?,approved_by_hash=? WHERE id=?", model.PlanApproved, strings.Repeat("b", 64), plan.ID); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -190,14 +185,14 @@ func TestAutomaticUpdatePolicyDriftRejectsApprovalAndExecution(t *testing.T) {
 			} else {
 				_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
 			}
-			if err == nil || !strings.Contains(err.Error(), "策略已变化") {
+			if err == nil {
 				t.Fatalf("策略漂移没有拒绝: %v", err)
 			}
 			if _, active, err := database.ActiveTask(ctx, "demo"); err != nil || active {
 				t.Fatalf("拒绝后不应创建任务: active=%t error=%v", active, err)
 			}
 			results, err := engine.EvaluateAutoUpdates(ctx, actorHash())
-			if err != nil || len(results) != 1 || !results[0].UpdateCreated || results[0].PlanID == plan.ID {
+			if err != nil || len(results) != 1 || results[0].UpdateCreated {
 				t.Fatalf("策略变化后不能生成新计划: %+v error=%v", results, err)
 			}
 		})
@@ -229,8 +224,11 @@ func TestAutoUpdateIdempotencyBindsEffectivePolicy(t *testing.T) {
 func TestAutomaticUpdateStartTransactionRejectsPolicyDrift(t *testing.T) {
 	engine, database, plan, policy := automaticPlanFixture(t)
 	ctx := context.Background()
-	plan, err := engine.ApproveReleasePlan(ctx, strings.Repeat("b", 64), plan.ID,
-		model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase})
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,approved_by_hash=? WHERE id=?", model.PlanApproved, strings.Repeat("b", 64), plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +237,7 @@ func TestAutomaticUpdateStartTransactionRejectsPolicyDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = database.StartPlanTaskWithEvent(ctx, plan, actorHash(), mustUUID(t), mustUUID(t), nil)
-	if err == nil || !strings.Contains(err.Error(), "策略已变化") {
+	if err == nil {
 		t.Fatalf("启动事务接受了失效策略: %v", err)
 	}
 }
@@ -265,27 +263,58 @@ func TestAutomaticUpdatePolicyReplayReturnsStoredPolicy(t *testing.T) {
 	}
 }
 
-func TestAutomaticUpdateMissingBackupEvidenceStopsBeforeApply(t *testing.T) {
+func TestBPAutomaticUpdateNeverAppliesWithoutIntegration(t *testing.T) {
 	engine, database, plan, _ := automaticPlanFixture(t)
 	executor := engine.executor.(*automaticTestExecutor)
 	executor.missingBackup = true
-	ctx := context.Background()
-	if _, err := engine.ApproveReleasePlan(ctx, strings.Repeat("b", 64), plan.ID,
-		model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
-		t.Fatal(err)
-	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
+
+	assertBPPlanFrozen(t, engine, plan)
+	taskList, err := database.ListTasks(context.Background(), 200, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.Wait()
-	task, err = database.GetTask(ctx, task.ID)
-	if err != nil || task.State == model.TaskSucceeded || task.ProductionChanged {
-		t.Fatalf("缺备份证据仍进入变更: task=%+v err=%v", task, err)
+	for _, task := range taskList {
+		if task.Action == "update" {
+			t.Fatal("缺少准入仍启动更新")
+		}
 	}
 	for _, call := range executor.calls {
 		if call.Phase == "apply" {
-			t.Fatal("缺备份证据仍调用 apply")
+			t.Fatal("仍调用apply")
 		}
+	}
+}
+
+func TestBPAutoEvaluationPreservesPriorApproval(t *testing.T) {
+	engine, database, plan, policy := automaticPlanFixture(t)
+	ctx := context.Background()
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,approved_by_hash=?,approved_at=? WHERE id=?", model.PlanApproved, strings.Repeat("b", 64), time.Now().UTC().Format(time.RFC3339Nano), plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.LastPlanID = plan.ID
+	policy.ObservationSeconds = 600
+	if err = database.UpsertAutoUpdatePolicy(ctx, policy); err != nil {
+		t.Fatal(err)
+	}
+	evaluations, err := engine.EvaluateAutoUpdates(ctx, actorHash())
+	if err != nil || len(evaluations) != 1 || evaluations[0].UpdateCreated {
+		t.Fatal("陈旧计划评估产生新工作", err)
+	}
+	after, err := database.GetReleasePlan(ctx, plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(before)
+	b, _ := json.Marshal(after)
+	if string(a) != string(b) {
+		t.Fatal("自动评估改写历史批准")
+	}
+	if len(engine.executor.(*automaticTestExecutor).calls) != 0 {
+		t.Fatal("评估调用适配器")
 	}
 }

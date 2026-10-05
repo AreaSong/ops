@@ -18,13 +18,13 @@ func TestCompleteTaskWithDesiredCommitsLifecycleAndDesiredStateTogether(t *testi
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-success",
 	}, "task-atomic-success")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.SetDesiredState(ctx, DesiredStateInput{
@@ -79,13 +79,13 @@ func TestCompleteTaskWithDesiredOnlyWritesDesiredForSucceeded(t *testing.T) {
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-failed",
 	}, "task-atomic-failed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = database.CompleteTaskWithDesired(ctx, task.ID, model.TaskFailedRecoverable, "失败", "错误", "failed",
@@ -116,13 +116,13 @@ func TestCompleteTaskWithDesiredRollsBackOnDesiredStateError(t *testing.T) {
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-rollback",
 	}, "task-atomic-rollback")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = database.CompleteTaskWithDesired(ctx, task.ID, model.TaskSucceeded, "完成", "", "",
@@ -157,13 +157,13 @@ func TestCompleteTaskWithDesiredRollsBackAfterDesiredWriteFailure(t *testing.T) 
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-event-encode",
 	}, "task-atomic-event-encode")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = database.CompleteTaskWithDesired(ctx, task.ID, model.TaskSucceeded, "完成", "", "",
@@ -192,7 +192,7 @@ func TestCompleteTaskAssignmentWithDesiredUsesControlPlaneInput(t *testing.T) {
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-assignment",
 	}, "task-atomic-assignment")
 	if err != nil {
@@ -201,7 +201,7 @@ func TestCompleteTaskAssignmentWithDesiredUsesControlPlaneInput(t *testing.T) {
 	const runnerID = "runner-atomic"
 	const claimToken = "claim-token-atomic"
 	owner := assignmentOwner(runnerID, 1)
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", owner); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", owner); err != nil {
 		t.Fatal(err)
 	}
 	contractJSON, err := json.Marshal(model.NewTaskDispatch(task))
@@ -242,7 +242,7 @@ func TestCompleteTaskAssignmentWithDesiredRollsBackOnDesiredStateError(t *testin
 	if err := database.CreatePreview(ctx, PreviewInput{Preview: preview, ConfirmationHash: HashConfirmation("重启 demo")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "atomic-assignment-rollback",
 	}, "task-atomic-assignment-rollback")
 	if err != nil {
@@ -250,7 +250,7 @@ func TestCompleteTaskAssignmentWithDesiredRollsBackOnDesiredStateError(t *testin
 	}
 	const runnerID = "runner-atomic-rollback"
 	const claimToken = "claim-token-atomic-rollback"
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", assignmentOwner(runnerID, 1)); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", assignmentOwner(runnerID, 1)); err != nil {
 		t.Fatal(err)
 	}
 	contractJSON, err := json.Marshal(model.NewTaskDispatch(task))

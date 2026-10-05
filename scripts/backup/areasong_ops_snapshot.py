@@ -13,8 +13,9 @@ from pathlib import Path
 
 
 # 仅纳入已用真实迁移库验证的版本；新增迁移必须同步兼容性测试。
-BACKUP_SCHEMAS = frozenset({5, 45, 47})
-RESTORE_SCHEMAS = BACKUP_SCHEMAS | {4}
+BACKUP_SCHEMAS = frozenset({5, 45, 47, 48, 49, 50})
+# schema48/49/50 的恢复链尚未验收，不能随备份集合自动扩大。
+RESTORE_SCHEMAS = frozenset({4, 5, 45, 47})
 BASE_COLUMNS = {
     "previews": {"id", "actor_hash", "service", "action", "confirmation_hash", "created_at", "expires_at"},
     "tasks": {"id", "idempotency_key", "request_hash", "actor_hash", "service", "action", "state", "preview_id", "snapshot_json", "created_at"},
@@ -57,12 +58,20 @@ def inspect_database(path: Path, *, allow_legacy: bool = False) -> dict[str, int
         required = {name: set(columns) for name, columns in BASE_COLUMNS.items()}
         if version >= 5:
             required["credential_rotations"] = CREDENTIAL_COLUMNS
-        if version in {45, 47}:
+        if version in {45, 47, 48, 49, 50}:
             for name, columns in MODERN_COLUMNS.items():
                 required.setdefault(name, set()).update(columns)
-        if version == 47:
+        if version in {47, 48, 49, 50}:
             required["release_plans"].add("approval_policy")
             required["kubernetes_plans"] = {"id", "approval_policy", "plan_digest", "preview_json"}
+        if version in {48, 49, 50}:
+            required["tenants"] = {"id", "status", "lifecycle_generation"}
+        if version in {49, 50}:
+            required["work_admissions"] = {"id", "kind", "work_id", "idempotency_key", "approval_digest", "actor_hash", "request_digest", "request_json", "owner_token_hash", "state", "revision", "task_id", "created_at", "updated_at", "closed_at", "close_kind", "close_digest", "close_evidence_json"}
+            required["work_admission_targets"] = {"admission_id", "tenant_id", "expected_generation"}
+        if version == 50:
+            required["release_plan_preparations"] = {"id", "kind", "plan_id", "idempotency_key", "actor_hash", "authority_digest", "request_digest", "request_json", "owner_token_hash", "state", "revision", "result_json", "result_digest", "produced_plan_id", "created_at", "updated_at", "closed_at", "close_kind", "close_evidence_json", "close_digest"}
+            required["release_plan_preparation_targets"] = {"preparation_id", "tenant_id", "expected_generation"}
         return inspect_tables(connection, required)
     finally:
         connection.close()

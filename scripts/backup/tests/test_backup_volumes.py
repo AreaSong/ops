@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 import sqlite3
 import subprocess
 import tarfile
@@ -9,7 +11,7 @@ import time
 import unittest
 from pathlib import Path
 
-from areasong_ops_fixtures import create_database
+from scripts.backup.tests.areasong_ops_fixtures import create_database
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -27,7 +29,7 @@ TABLE_COLUMNS = {
 class BackupVolumesTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
+        self.root = Path(self.temp_dir.name).resolve()
         self.state = self.root / "state"
         self.snapshots = self.state / "snapshots"
         self.operations = self.state / "operations" / "task-safe"
@@ -42,6 +44,26 @@ class BackupVolumesTests(unittest.TestCase):
         docker = self.fake_bin / "docker"
         docker.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
         docker.chmod(0o755)
+        from scripts.backup.tests.recovery_fixture import backup_test_tools
+        backup_test_tools(self.fake_bin)
+        self.scripts = self.root / "scripts"
+        self.scripts.mkdir(mode=0o700)
+        for name in ("backup-volumes.sh", "run-backup-job.sh", "sub2api_backup_contract.py", "sub2api_backup_archive.py", "backup-control.json", "restore_env.py", "areasong_ops_snapshot.py"):
+            shutil.copy2(SCRIPT.parent / name, self.scripts / name)
+        # 仅临时副本改写真实默认根和对应前缀；生产规则没有测试绕过开关。
+        content = (self.scripts / "backup-volumes.sh").read_text()
+        replacements = {
+            "/var/lib/sub2api": str(self.root / "sub2api"),
+            "/opt/areaforge": str(self.root / "areaforge"),
+            "/opt/services/sub2api/.env": str(self.root / "missing-sub2api.env"),
+            "/usr/bin/python3": sys.executable,
+        }
+        for before, after in replacements.items():
+            assert before in content, before
+            content = content.replace(before, after)
+        assert "/opt/services/sub2api" not in content and "/opt/areaforge" not in content
+        (self.scripts / "backup-volumes.sh").write_text(content)
+
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -76,7 +98,8 @@ class BackupVolumesTests(unittest.TestCase):
         environment = os.environ.copy()
         environment.update(
             {
-                "OPS_BACKUP_JOB_WRAPPED": "1",
+                "BACKUP_JOB_LOCK_DIR": str(self.root / "locks"),
+                "BACKUP_JOB_METRIC_DIR": str(self.root / "metrics"),
                 "BACKUP_VOLUME_BACKUP_ROOT": str(self.root / "backups"),
                 "BACKUP_VOLUME_LOG_DIR": str(self.root / "logs"),
                 "BACKUP_AREASONG_OPS_STATE_ROOT": str(self.state),
@@ -86,7 +109,7 @@ class BackupVolumesTests(unittest.TestCase):
             }
         )
         return subprocess.run(
-            [str(SCRIPT)], env=environment, text=True, capture_output=True,
+            [str(self.scripts / "backup-volumes.sh")], env=environment, text=True, capture_output=True,
             check=False, timeout=20,
         )
 

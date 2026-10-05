@@ -15,12 +15,7 @@ import (
 func TestRejectedTaskAuditFailureIsReturned(t *testing.T) {
 	ctx := context.Background()
 	engine, _ := testEngine(t, &fakeExecutor{})
-	preview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "restart",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	preview := historicalRunnerPreview(t, engine, actorHash(), model.PreviewRequest{Service: "demo", Action: "restart"})
 	raw, err := sql.Open("sqlite", filepath.Join(engine.stateRoot, "ops.db"))
 	if err != nil {
 		t.Fatal(err)

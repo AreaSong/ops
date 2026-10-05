@@ -1,6 +1,8 @@
 import type { AccessChange, AccessChangeDetail, AccessControlView } from './types'
 import { deletionUnavailableMessage, reviewAllowsApproval } from './accessChangeReview'
 
+export type AccessApplyResult = string | { bindingID: string; operation: 'edit' | 'revoke' } | undefined
+
 interface ApplyAPI {
   access: () => Promise<AccessControlView>
   accessChangeDetail: (id: string, actor: string) => Promise<AccessChangeDetail>
@@ -15,6 +17,15 @@ function currentChange(view: AccessControlView, expected: AccessControlView, cha
   return current
 }
 
+// 只在已经收到或恢复到确切 applied 事实后使用；读回缺失不能抹掉已应用事实。
+function appliedChange(view: AccessControlView, expected: AccessControlView, change: AccessChange) {
+  try {
+    const current = currentChange(view, expected, change)
+    if (current.state === 'applied') return current
+  } catch { /* 以下统一保留应用事实，同时不把不完整或错位读回当成功。 */ }
+  throw new Error('提案已应用，当前结果待核对；当前会话身份、管理权限或提案读回不完整，请由有权身份只读核验。')
+}
+
 function confirmDeletion(view: AccessControlView, target: string) {
   if (!view.roles) throw new Error('提案已应用，但角色列表未读取完整，请刷新核对')
   const roles = Array.isArray(view.roles) ? view.roles : Object.values(view.roles)
@@ -22,37 +33,49 @@ function confirmDeletion(view: AccessControlView, target: string) {
 }
 
 // 所有网页应用入口共用此检查；GET/POST 非原子，最终保护仍由 Runner/Store 提供。
-export async function applyReviewedAccessChange(api: ApplyAPI, expected: AccessControlView, change: AccessChange): Promise<string | undefined> {
+export async function applyReviewedAccessChange(api: ApplyAPI, expected: AccessControlView, change: AccessChange, isCurrent: () => boolean = () => true): Promise<AccessApplyResult> {
+  const active = () => { if (!isCurrent()) throw new Error('会话已切换，请在当前身份下只读核对提案') }
   const view = await api.access(), actor = expected.currentSubject?.subject ?? ''
+  active()
   const current = currentChange(view, expected, change)
   if (current.state === 'applied') return // 终态无需重新取得已经不可用的 before，也不重发写入。
   if (current.state !== 'approved') throw new Error('提案尚未完成独立批准，请刷新后重新核对')
   const detail = await api.accessChangeDetail(change.id, actor)
+  active()
   if (detail.reviewerHash !== actor || !reviewAllowsApproval(detail, current, view.version)) throw new Error(detail.kind === 'role_deletion' ? deletionUnavailableMessage(detail) : '提案详情已失效或不支持，请刷新后重新审阅')
+  const confirmedBinding = detail.kind === 'binding' && (detail.operation === 'edit' || detail.operation === 'revoke') ? { bindingID: (detail.binding!.after ?? detail.binding!.before)!.id, operation: detail.operation } : undefined
   const target = detail.kind === 'role_deletion' ? detail.roleDeletion!.before.id : undefined
   if ((target || detail.kind === 'binding') && (current.actorHash !== actor || !current.approvedByHash || current.approvedByHash === actor)) throw new Error('提案须独立批准后由创建人应用')
   const latest = await api.access()
+  active()
   const latestChange = currentChange(latest, expected, current)
-  if (latestChange.state === 'applied') { if (target) confirmDeletion(latest, target); if (detail.binding) confirmBinding(latest, detail, latestChange); return target }
+  if (latestChange.state === 'applied') { if (target) confirmDeletion(latest, target); if (detail.binding) confirmBinding(latest, detail, latestChange); return confirmedBinding ?? target }
   if (latestChange.state !== current.state || latest.version !== view.version) throw new Error('策略或提案状态已变化，请刷新后重新核对')
   try {
     const result = await api.applyAccessChange(current)
-    if (result.id !== current.id || result.requestDigest !== current.requestDigest || result.state !== 'applied') throw new Error('应用结果尚未确认，请刷新提案状态')
+    if (result.id !== current.id || result.requestDigest !== current.requestDigest || result.actorHash !== current.actorHash || result.state !== 'applied') throw new Error('应用结果尚未确认，请刷新提案状态')
   } catch (reason) {
     // 响应可能丢失；只读恢复状态，绝不自动重发 apply 或另建提案。
     const recovered = await api.access().catch(() => { throw new Error('应用结果未知，请只读刷新提案状态；不要重复提交') })
-    if (currentChange(recovered, expected, current).state !== 'applied') throw reason
+    active()
+    const recoveredChange = recovered.pendingChanges?.find(c => c.id === current.id && c.requestDigest === current.requestDigest && c.actorHash === current.actorHash)
+    if (recoveredChange?.state !== 'applied') {
+      if (!recovered.canManage) throw new Error('应用结果未知，当前会话无权读取提案；等待有权身份只读核验，不要重复提交')
+      throw reason
+    }
+    const verified = appliedChange(recovered, expected, current)
     if (target) confirmDeletion(recovered, target)
-    if (detail.binding) confirmBinding(recovered, detail, currentChange(recovered, expected, current))
-    return target
+    if (detail.binding) confirmBinding(recovered, detail, verified)
+    return confirmedBinding ?? target
   }
   if (target || detail.binding) {
-    const refreshed = await api.access().catch(() => { throw new Error('提案已应用，当前结果待核对，请刷新访问策略') })
-    if (currentChange(refreshed, expected, current).state !== 'applied') throw new Error('应用状态尚未确认，请刷新核对')
+    const refreshed = await api.access().catch(() => { throw new Error('提案已应用，当前结果待核对；当前会话无法完成读回（可能已失去权限）。请由有权身份只读核验。') })
+    active()
+    const verified = appliedChange(refreshed, expected, current)
     if (target) confirmDeletion(refreshed, target)
-    if (detail.binding) confirmBinding(refreshed, detail, currentChange(refreshed, expected, current))
+    if (detail.binding) confirmBinding(refreshed, detail, verified)
   }
-  return target
+  return confirmedBinding ?? target
 }
 
 // 核对授权字段，不比较快照和表行已知不同的创建元数据。
@@ -76,11 +99,16 @@ function confirmBinding(view: AccessControlView, detail: AccessChangeDetail, cha
 }
 
 // Date.parse 仅用于无小数的秒与时区；小数独立转为纳秒，避免亚毫秒误判。
-function bindingInstant(value: string | null | undefined): bigint | null | undefined {
+export function bindingInstant(value: string | null | undefined): bigint | null | undefined {
   if (value == null) return null
   if (typeof value !== 'string') return undefined
   const parts = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?(Z|[+-]\d\d:\d\d)$/.exec(value)
   if (!parts) return undefined
+  const [year, month, day, hour, minute, second] = parts[1].split(/[-T:]/).map(Number)
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) return undefined
+  if (parts[3] !== 'Z' && (Number(parts[3].slice(1, 3)) > 23 || Number(parts[3].slice(4)) > 59)) return undefined
   const seconds = Date.parse(parts[1] + parts[3])
   return Number.isFinite(seconds) ? BigInt(seconds) * 1000000n + BigInt((parts[2] ?? '').padEnd(9, '0')) : undefined
 }

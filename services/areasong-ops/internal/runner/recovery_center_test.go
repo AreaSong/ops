@@ -55,13 +55,10 @@ func createVerifiedRecoveryPoint(t *testing.T, engine *Engine, database *store.S
 	if err := database.CreatePreview(ctx, store.PreviewInput{Preview: preview, ConfirmationHash: store.HashConfirmation("backup")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, actorHash(), model.StartTaskRequest{
+	task, _, err := seedRunnerPreviewTask(t, engine, ctx, actorHash(), model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "backup", IdempotencyKey: mustUUID(t),
 	}, "task-recovery-center")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "backup", engine.owner); err != nil {
 		t.Fatal(err)
 	}
 	point, err := engine.persistRecoveryPoint(ctx, task, service, &model.RecoveryPointEvidence{
@@ -78,7 +75,7 @@ func createVerifiedRecoveryPoint(t *testing.T, engine *Engine, database *store.S
 	return point
 }
 
-func TestProductionRestoreRequiresFreshDrillAndIndependentDualApproval(t *testing.T) {
+func TestBPRestoreRetainsDrillAndIdentityGates(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	engine.backupRoot = t.TempDir()
@@ -94,44 +91,19 @@ func TestProductionRestoreRequiresFreshDrillAndIndependentDualApproval(t *testin
 		t.Fatalf("production restore without drill err=%v", err)
 	}
 
-	drill, err := engine.CreateRestorePlan(ctx, creator, model.RestoreRequest{
-		Service: service.Name, RecoveryPointID: point.ID, Mode: "isolated",
-		Confirmation: "创建隔离恢复演练计划 demo", IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
+	if _, err := engine.CreateRestorePlan(ctx, creator, model.RestoreRequest{Service: service.Name, RecoveryPointID: point.ID, Mode: "isolated", Confirmation: "创建隔离恢复演练计划 demo", IdempotencyKey: mustUUID(t)}); !errors.Is(err, model.ErrReleaseNotIntegrated) {
+		t.Fatal("隔离恢复绕过B-P", err)
 	}
-	drill, err = engine.ApproveReleasePlan(ctx, creator, drill.ID, model.ApprovePlanRequest{
-		Digest: drill.Digest, Confirmation: drill.ConfirmationPhrase,
-	})
-	if err != nil {
-		t.Fatal(err)
+	// 原恢复审批身份语义独立保留，关闭普通链不降低双人边界。
+	historical := model.ReleasePlan{Risk: model.RiskHigh, ActorHash: creator, ApprovedByHash: approver, RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty}
+	if !historical.AllowsExecutor(creator) || historical.AllowsExecutor(approver) {
+		t.Fatal("恢复执行身份规则退化")
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, drill.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
-		t.Fatal(err)
+	saved, err := database.GetRecoveryPoint(ctx, point.ID)
+	if err != nil || saved.EvidenceDigest != point.EvidenceDigest {
+		t.Fatal("拒绝改写恢复点", err)
 	}
-	engine.Wait()
-
-	plan, err := engine.CreateRestorePlan(ctx, creator, productionRequest)
-	if err != nil || !plan.RequiresDualApproval {
-		t.Fatalf("plan=%+v err=%v", plan, err)
+	if len(engine.executor.(*fakeExecutor).calls) != 0 {
+		t.Fatal("拒绝后调用恢复适配器")
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err == nil {
-		t.Fatal("unapproved production restore executed")
-	}
-	if _, err := engine.ApproveReleasePlan(ctx, creator, plan.ID, model.ApprovePlanRequest{
-		Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase,
-	}); !errors.Is(err, store.ErrActorMismatch) {
-		t.Fatalf("creator approval err=%v, want actor mismatch", err)
-	}
-	plan, err = engine.ApproveReleasePlan(ctx, approver, plan.ID, model.ApprovePlanRequest{
-		Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase,
-	})
-	if err != nil || plan.State != model.PlanApproved || plan.ApprovedByHash != approver {
-		t.Fatalf("independent approval plan=%+v err=%v", plan, err)
-	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
 }

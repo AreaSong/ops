@@ -412,3 +412,17 @@ select:focus-visible, textarea:focus-visible {
 .role-deletion-action { min-width: 0; }
 .role-deletion-action small { overflow-wrap: anywhere; }
 .role-row > span { min-width: 0; overflow-wrap: anywhere; }
+
+/* 绑定编辑保留完整授权字段，窄屏也允许核对长标识和数组。 */
+.binding-edit-dialog { width: min(720px, calc(100vw - 24px)); }
+.binding-edit-dialog .modal-body, .binding-edit-dialog dd, .binding-edit-dialog p, .binding-edit-dialog code { overflow-wrap: anywhere; min-width: 0; }
+.binding-edit-dialog fieldset { min-width: 0; border: 0; padding: 0; }
+.binding-edit-dialog textarea { width: 100%; box-sizing: border-box; font: inherit; resize: vertical; }
+.binding-edit-dialog select { max-width: 100%; }
+.binding-identity dd { margin: 4px 0 12px; }
+.binding-edit-action { display: flex; align-items: flex-start; gap: 8px; flex-direction: column; grid-column: 1 / -1; }
+
+/* 撤销确认长内容独立滚动，取消与提交按钮始终完整可见。 */
+.binding-revoke-dialog { display: flex; flex-direction: column; overflow: hidden; }
+.binding-revoke-dialog .modal-header, .binding-revoke-dialog .modal-footer { flex-shrink: 0; }
+.binding-revoke-dialog .modal-body { min-height: 0; overflow-y: auto; }

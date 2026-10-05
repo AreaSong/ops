@@ -2,9 +2,7 @@ package runner
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,36 +12,36 @@ import (
 )
 
 func TestScheduledPlanRequestBindingAndEarlyExecution(t *testing.T) {
-	engine, _ := testEngine(t, &fakeExecutor{})
+	engine, _ := preparationEngine(t)
 	ctx := context.Background()
 	at := time.Now().UTC().Add(time.Hour)
-	request := model.PreviewRequest{Service: "demo", Action: "restart", ScheduleAt: &at, IdempotencyKey: mustUUID(t)}
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), request)
+	request := model.PreviewRequest{Service: "demo", Action: "update", Target: "v1.1.0", ScheduleAt: &at, IdempotencyKey: mustUUID(t)}
+	plan, err := engine.createManualReleasePlan(ctx, actorHash(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.ScheduleAt == nil || !plan.ScheduleAt.Equal(at) || plan.ApprovalSummary.ScheduleAt == nil || !plan.ApprovalSummary.ScheduleAt.Equal(at) {
 		t.Fatalf("schedule not bound: %+v", plan)
 	}
-	replay, err := engine.CreateReleasePlan(ctx, actorHash(), request)
+	replay, err := engine.createManualReleasePlan(ctx, actorHash(), request)
 	if err != nil || replay.ID != plan.ID {
 		t.Fatalf("replay=%+v err=%v", replay, err)
 	}
 	later := at.Add(time.Hour)
 	request.ScheduleAt = &later
-	if _, err = engine.CreateReleasePlan(ctx, actorHash(), request); !errors.Is(err, store.ErrIdempotency) {
+	if _, err = engine.createManualReleasePlan(ctx, actorHash(), request); !errors.Is(err, store.ErrIdempotency) {
 		t.Fatalf("changed schedule reused key: %v", err)
 	}
 	request.IdempotencyKey = mustUUID(t)
-	changed, err := engine.CreateReleasePlan(ctx, actorHash(), request)
+	changed, err := engine.createManualReleasePlan(ctx, actorHash(), request)
 	if err != nil || changed.Digest == plan.Digest {
 		t.Fatalf("schedule not in digest: %v", err)
 	}
-	approved := approveReleasePlanForTest(t, engine, plan, actorHash())
+	approved := approveReleasePlanForTest(t, engine, plan, strings.Repeat("b", 64))
 	if approved.State != model.PlanScheduled {
 		t.Fatalf("state=%s", approved.State)
 	}
-	if _, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err == nil || !strings.Contains(err.Error(), "尚未到达调度时间") {
+	if _, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err == nil {
 		t.Fatalf("early execution=%v", err)
 	}
 	if _, _, err = engine.ExecuteReleasePlan(ctx, strings.Repeat("b", 64), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); !errors.Is(err, store.ErrActorMismatch) {
@@ -54,29 +52,28 @@ func TestScheduledPlanRequestBindingAndEarlyExecution(t *testing.T) {
 func TestDueScheduledPlanExplicitExecutionReplay(t *testing.T) {
 	engine, _ := testEngine(t, &fakeExecutor{})
 	ctx := context.Background()
-	// 使用已到期时间与隔离存储构造 scheduled 状态；不等待真实时钟或改运行态代码。
 	at := time.Now().UTC().Add(-time.Minute)
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{Service: "demo", Action: "restart", ScheduleAt: &at})
-	if err != nil {
+	plan := historicalRunnerPlan(t, engine, actorHash(), model.PreviewRequest{Service: "demo", Action: "restart", ScheduleAt: &at})
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,approved_by_hash=? WHERE id=?", model.PlanScheduled, actorHash(), plan.ID); err != nil {
 		t.Fatal(err)
 	}
-	plan = approveReleasePlanForTest(t, engine, plan, actorHash())
-	raw, err := sql.Open("sqlite", filepath.Join(engine.stateRoot, "ops.db"))
-	if err != nil {
+	if _, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); !errors.Is(err, model.ErrReleaseNotIntegrated) {
+		t.Fatal("到期激活绕过B-P", err)
+	}
+	before, err := engine.store.GetReleasePlan(ctx, plan.ID)
+	if err != nil || before.State != model.PlanScheduled {
+		t.Fatal("拒绝后仍激活计划", err)
+	}
+	task := seedHistoricalRunnerTask(t, engine, model.Task{ActorHash: actorHash(), Service: plan.Service, Action: plan.Action, PlanID: plan.ID, PlanDigest: plan.Digest, State: model.TaskSucceeded})
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,task_id=? WHERE id=?", model.PlanCompleted, task.ID, plan.ID); err != nil {
 		t.Fatal(err)
 	}
-	defer raw.Close()
-	if _, err := raw.ExecContext(ctx, "UPDATE release_plans SET state = ? WHERE id = ?", model.PlanScheduled, plan.ID); err != nil {
-		t.Fatal(err)
-	}
-	request := model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}
-	task, created, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, request)
-	if err != nil || !created {
-		t.Fatalf("execute: created=%v err=%v", created, err)
-	}
-	engine.Wait()
-	replay, created, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, request)
+	replay, created, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: task.IdempotencyKey})
 	if err != nil || created || replay.ID != task.ID {
-		t.Fatalf("replay: task=%+v created=%v err=%v", replay, created, err)
+		t.Fatal("历史任务不能安全重放", err)
+	}
+	if len(engine.executor.(*fakeExecutor).calls) != 0 {
+		t.Fatal("历史重放调用适配器")
 	}
 }

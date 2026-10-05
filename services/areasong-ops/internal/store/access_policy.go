@@ -76,76 +76,26 @@ func (store *Store) ApplyAccessChangeMutation(
 		return model.AccessChange{}, err
 	}
 	defer tx.Rollback()
-	change, payload, err := scanAccessChange(tx.QueryRowContext(ctx, accessChangeSelectWithPayload+` WHERE id=?`, changeID), true)
-	if errors.Is(err, sql.ErrNoRows) {
-		return model.AccessChange{}, ErrNotFound
-	}
+	execution := accessChangeExecution{ChangeID: changeID, Actor: actor, RequestDigest: mutation.AccessChangeDigest, IdempotencyKey: mutation.IdempotencyKey}
+	change, payload, err := accessChangeForApplyTx(ctx, tx, execution)
 	if err != nil {
 		return model.AccessChange{}, err
 	}
-	if change.IdempotencyKey != mutation.IdempotencyKey {
-		return model.AccessChange{}, ErrIdempotency
-	}
-	if mutation.AccessChangeDigest == "" || change.RequestDigest != mutation.AccessChangeDigest {
-		return model.AccessChange{}, ErrIdempotency
-	}
 	if change.State == model.AccessChangeApplied {
-		if change.AppliedByHash != actor {
-			return model.AccessChange{}, ErrActorMismatch
-		}
-		// The durable change envelope is the idempotency authority once the
-		// change is applied. Do not rebuild or compare the policy digest here:
-		// an unrelated policy update between two retries must not turn a
-		// successful execution into a false conflict.
-		if err := tx.Commit(); err != nil {
-			return model.AccessChange{}, err
-		}
-		return change, nil
+		return change, tx.Commit()
 	}
-	if change.State != model.AccessChangeApproved {
-		return model.AccessChange{}, errors.New("访问策略变更尚未完成双人批准")
-	}
-	if model.UsesTwoPartyApproval(change.ApprovalPolicy) {
-		if actor != change.ActorHash || change.ApprovedByHash == "" || change.ApprovedByHash == actor {
-			return model.AccessChange{}, errors.New("访问策略变更需要由创建人执行，且批准人必须独立")
-		}
-	} else if actor == change.ActorHash || actor == change.ApprovedByHash || actor == change.SecondApprovedByHash {
-		return model.AccessChange{}, errors.New("访问策略变更执行人必须独立于创建人与批准人")
-	}
-	// 上方 AccessChangeDigest 绑定 Runner 已验证的摘要；这里验证事务内原始载荷，
-	// 两者共同拒绝读取后载荷单独变化或载荷与摘要一起变化。成功重放不重新验载荷。
-	if digestPolicyJSON(payload) != change.RequestDigest {
-		return model.AccessChange{}, ErrIdempotency
+	if err := model.RejectTenantLifecyclePayload(payload); err != nil {
+		return model.AccessChange{}, err
 	}
 	snapshot, _, err := store.applyAccessPolicyMutationTx(ctx, tx, mutation)
 	if err != nil {
 		return model.AccessChange{}, err
 	}
-	now := store.now()
-	result, err := tx.ExecContext(ctx, `UPDATE access_changes
-		SET state=?,applied_by_hash=?,applied_policy_digest=?,applied_policy_version=?,applied_at=?,error=''
-		WHERE id=? AND state=?`, model.AccessChangeApplied, actor, snapshot.Digest, snapshot.Version,
-		timeText(now), changeID, model.AccessChangeApproved)
-	if err := requireOne(result, err, "访问策略变更收口失败"); err != nil {
+	change, err = store.finishAccessChangeTx(ctx, tx, change, actor, snapshot)
+	if err != nil {
 		return model.AccessChange{}, err
 	}
-	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
-		ActorHash: actor, Event: "access.change.applied", Resource: "access/" + changeID,
-		Outcome: "accepted", Detail: map[string]any{
-			"changeId": changeID, "policyDigest": snapshot.Digest, "policyVersion": snapshot.Version,
-		},
-	}, now); err != nil {
-		return model.AccessChange{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return model.AccessChange{}, err
-	}
-	change.State = model.AccessChangeApplied
-	change.AppliedByHash = actor
-	change.AppliedPolicyDigest = snapshot.Digest
-	change.AppliedPolicyVersion = snapshot.Version
-	change.AppliedAt = &now
-	return change, nil
+	return change, tx.Commit()
 }
 
 func (store *Store) applyAccessPolicyMutationTx(
@@ -297,9 +247,17 @@ func (store *Store) applyAccessPolicyMutationTx(
 		}
 	}
 
+	if err := guardOrdinaryTenantSnapshotTx(ctx, tx, mutation.Snapshot); err != nil {
+		return model.AccessPolicySnapshot{}, false, err
+	}
 	if err := ensurePolicyHasPlatformAdmin(mutation.Snapshot.PolicyJSON); err != nil {
 		return model.AccessPolicySnapshot{}, false, err
 	}
+	return store.writeAccessPolicySnapshotTx(ctx, tx, mutation, currentVersion)
+}
+
+// 仅共用提交内容；调用路径分别负责普通更新或生命周期合同的最终检查。
+func (store *Store) writeAccessPolicySnapshotTx(ctx context.Context, tx *sql.Tx, mutation AccessPolicyMutation, currentVersion int64) (model.AccessPolicySnapshot, bool, error) {
 	mutation.Snapshot.Version = currentVersion + 1
 	if mutation.Snapshot.CreatedAt.IsZero() {
 		mutation.Snapshot.CreatedAt = store.now()
@@ -482,6 +440,9 @@ func (store *Store) SaveAccessPolicySnapshot(
 	}
 	if expectedVersion >= 0 && current != expectedVersion {
 		return model.AccessPolicySnapshot{}, ErrAccessVersion
+	}
+	if err := guardOrdinaryTenantSnapshotTx(ctx, tx, snapshot); err != nil {
+		return model.AccessPolicySnapshot{}, err
 	}
 	if snapshot.CreatedAt.IsZero() {
 		snapshot.CreatedAt = store.now()

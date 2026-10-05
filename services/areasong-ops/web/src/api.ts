@@ -10,6 +10,7 @@ import type {
 class APIError extends Error {
   status: number
   payload: unknown
+  newClosureAttemptAllowed = false
 
   constructor(status: number, message: string, payload?: unknown) {
     super(message)
@@ -358,7 +359,20 @@ export class OpsAPI {
   async closePlan(planID: string): Promise<ReleasePlan> {
     const idempotencyKey = this.closureKeys.get(planID) ?? crypto.randomUUID()
     this.closureKeys.set(planID, idempotencyKey)
-    return this.mutate<ReleasePlan>(`/api/plans/${encodeURIComponent(planID)}/close`, { idempotencyKey })
+    try {
+      return await this.mutate<ReleasePlan>(`/api/plans/${encodeURIComponent(planID)}/close`, { idempotencyKey })
+    } catch (error) {
+      if (error instanceof APIError && error.status === 409 && error.payload && typeof error.payload === 'object') {
+        const result = error.payload as Record<string, unknown>
+        if (result.code === 'plan_closure_blocked' && result.attemptId === idempotencyKey &&
+            result.attemptState === 'finished' && result.newAttemptAllowed === true &&
+            this.closureKeys.get(planID) === idempotencyKey) {
+          this.closureKeys.delete(planID)
+          error.newClosureAttemptAllowed = true
+        }
+      }
+      throw error
+    }
   }
 
   async recoverTask(taskID: string, action: string): Promise<ReleasePlan> {

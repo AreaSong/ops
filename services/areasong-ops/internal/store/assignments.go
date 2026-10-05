@@ -150,6 +150,17 @@ func (store *Store) CreateTaskAssignment(
 	if !errors.Is(err, sql.ErrNoRows) {
 		return model.TaskAssignment{}, err
 	}
+	return model.TaskAssignment{}, model.ErrReleaseNotIntegrated
+}
+
+func (store *Store) createLegacyTaskAssignment(ctx context.Context, task model.Task, serverID, runnerID string, executionDeadline, timeNow time.Time) (model.TaskAssignment, error) {
+	taskID := task.ID
+	now := timeNow
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.TaskAssignment{}, err
+	}
+	defer tx.Rollback()
 	contract := model.NewTaskDispatch(task)
 	contractJSON, err := json.Marshal(contract)
 	if err != nil {
@@ -233,6 +244,16 @@ func (store *Store) ClaimTaskAssignment(
 	if row.assignment.ServerID != runnerServerID {
 		return model.TaskAssignment{}, model.Task{}, false, ErrAssignmentFence
 	}
+	return model.TaskAssignment{}, model.Task{}, false, model.ErrReleaseNotIntegrated
+}
+
+func (store *Store) claimLegacyTaskAssignment(ctx context.Context, row assignmentRow, runnerID string, lease time.Duration) (model.TaskAssignment, model.Task, bool, error) {
+	now := store.now()
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.TaskAssignment{}, model.Task{}, false, err
+	}
+	defer tx.Rollback()
 	deadline := row.assignment.ExecutionDeadlineAt
 	leaseExpires := assignmentLease(now, now.Add(lease), deadline)
 	token, err := newLeaseToken()

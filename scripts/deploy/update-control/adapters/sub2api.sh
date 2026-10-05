@@ -1,8 +1,24 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 umask 077
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 仅私有协调器传递此显式 backup 请求；没有继承环境选择或共享回退。
+if [[ "$#" -gt 5 ]]; then
+  [[ "$#" -eq 11 && "$1" == update && "$2" == backup && -z "$5" ]] || { printf 'ERROR: scoped_route_rejected\n' >&2; exit 2; }
+  for variable in $(compgen -e); do
+    case "$variable" in PATH|LANG|LC_ALL|TZ|HOME|TMPDIR|SHLVL|_|PWD) ;;
+      *) printf 'ERROR: environment_override\n' >&2; exit 2 ;;
+    esac
+  done
+  scoped_dir="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd -P)"
+  scoped_python="$scoped_dir/../../../../tools/python3"
+  [[ -x "$scoped_python" && ! -L "$scoped_python" ]] || { printf 'ERROR: controlled_interpreter_required\n' >&2; exit 2; }
+  "$scoped_python" -I -B "$scoped_dir/../../../backup/sub2api_backup_contract.py" route "$@" || exit 2
+  shift 5
+  exec "$scoped_dir/../../../backup/run-backup-job.sh" sub2api-set "$@"
+fi
+SCRIPT_DIR="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd -P)"
 CATALOG="${SUB2API_UPDATE_CONTROL_RELEASES:-$SCRIPT_DIR/../releases/sub2api.json}"
 CONTROLLED_COMPOSE="${SUB2API_UPDATE_CONTROL_CONTROLLED_COMPOSE:-/opt/ops/services/sub2api/compose.yml}"
 RUNTIME_COMPOSE="${SUB2API_UPDATE_CONTROL_RUNTIME_COMPOSE:-/opt/services/sub2api/compose.yml}"

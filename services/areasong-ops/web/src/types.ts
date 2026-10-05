@@ -175,6 +175,16 @@ export interface Preview {
 
 export interface ApprovalSummary {
   schemaVersion: number
+  lifecycle?: {
+    version: 1
+    source: 'manual_single'
+    executionMode: 'local'
+    preparationId: string
+    creatorTenantId: string
+    targetObjects: { objectId: string; tenantId: string; serverId: string }[]
+    targets: { tenantId: string; expectedGeneration: string }[]
+    scopeDigest: string
+  }
   approvalPolicy?: string
   approvalException?: string
   service: string
@@ -209,6 +219,8 @@ export interface CreatePlanInput {
 }
 
 export interface ReleasePlan {
+  executionAvailable?: boolean
+  closureAvailable?: boolean
   id: string
   actorHash: string
   service: string

@@ -270,8 +270,22 @@ def validate_contract(
     }
     if "runtime-snapshot" in artifacts:
         snapshot = load_contract(Path(artifacts["runtime-snapshot"]["path"]))
-        if snapshot.get("schemaVersion") != 1 or snapshot.get("service") != service:
+        if snapshot.get("schemaVersion") not in (1, 2) or snapshot.get("service") != service:
             raise ContractError("runtime snapshot identity is invalid")
+        if snapshot.get("schemaVersion") == 2:
+            from restore_point_metadata import validate_scoped_runtime
+            from sub2api_backup_archive import BackupError, file_record, read_regular
+            from sub2api_backup_contract import strict_json
+            try:
+                snapshot = strict_json(read_regular(Path(artifacts["runtime-snapshot"]["path"])))
+                validate_scoped_runtime(snapshot, list(artifacts.values()))
+                if snapshot["backup"]["taskId"] != evidence["taskId"]:
+                    raise BackupError("runtime_task")
+                for artifact in artifacts.values():
+                    if file_record(Path(artifact["path"])) != {k: artifact[k] for k in ("sizeBytes", "sha256")}:
+                        raise BackupError("runtime_artifact_changed")
+            except (BackupError, OSError, KeyError, TypeError, ValueError) as error:
+                raise ContractError("runtime_v2_contract_rejected") from error
         containers = require_object(snapshot.get("containers"), "runtimeSnapshot.containers")
         expected_roles = {"app", "postgres"} | ({"redis"} if service == "sub2api" else set())
         if set(containers) != expected_roles:

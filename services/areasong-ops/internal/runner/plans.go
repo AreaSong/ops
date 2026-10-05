@@ -3,8 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,7 +90,8 @@ func hasRuntimeIdentity(snapshot map[string]any) bool {
 	return true
 }
 
-func (engine *Engine) CreateReleasePlan(
+// 保留原实现供后续获批接线参考；B-P 公共入口不可达。
+func (engine *Engine) createLegacyReleasePlan(
 	ctx context.Context,
 	actorHash string,
 	request model.PreviewRequest,
@@ -263,7 +262,8 @@ func scheduleText(value *time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }
 
-func (engine *Engine) ApproveReleasePlan(
+// 保留原实现供后续获批接线参考；B-P 公共入口不可达。
+func (engine *Engine) approveLegacyReleasePlan(
 	ctx context.Context,
 	actorHash, id string,
 	request model.ApprovePlanRequest,
@@ -314,7 +314,8 @@ func (engine *Engine) ApproveReleasePlan(
 	return plan, nil
 }
 
-func (engine *Engine) ExecuteReleasePlan(
+// 保留原实现供后续获批接线参考；B-P 公共入口不可达。
+func (engine *Engine) executeLegacyReleasePlan(
 	ctx context.Context,
 	actorHash, id string,
 	request model.ExecutePlanRequest,
@@ -573,7 +574,8 @@ func resolvedPhaseSemantics(action model.ActionDefinition) map[string]model.Phas
 	return result
 }
 
-func (engine *Engine) CloseReleasePlan(
+// 保留原实现供后续获批接线参考；B-P 公共入口不可达。
+func (engine *Engine) closeLegacyReleasePlan(
 	ctx context.Context,
 	actorHash, id string,
 	request model.ClosePlanRequest,
@@ -776,12 +778,7 @@ func (engine *Engine) validateRollbackSource(service, sourceID string, snapshot 
 }
 
 func approvalDigest(summary model.ApprovalSummary) (string, error) {
-	data, err := json.Marshal(summary)
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(data)
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+	return model.ReleaseApprovalDigest(summary)
 }
 
 func (engine *Engine) CreateRecoveryPlan(

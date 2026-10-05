@@ -58,6 +58,7 @@ if [[ "$selected_mode" == true && "$phase" != preflight ]]; then
   selected="$(python3 "$RECOVERY_METADATA" verify-staged --service sub2api --expected-mode isolated \
     --contract "$operation_dir/recovery-point.json" --target "$target" --backup-root "$BACKUP_ROOT" \
     --operation-dir "$operation_dir")"
+  [[ "$(jq -r '.runtime.schemaVersion' <<<"$selected")" != 2 ]] || fail "v2_restore_target_unproven"
   ENV_FILE="$(jq -er .envFile <<<"$selected")"
 fi
 

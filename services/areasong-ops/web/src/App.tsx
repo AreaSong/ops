@@ -1,7 +1,7 @@
 import { applyReviewedAccessChange } from './accessChangeApply';
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isFeatureUnavailable, OpsAPI } from "./api";
+import { APIError, isFeatureUnavailable, OpsAPI } from "./api";
 import { PlanScheduleDialog } from "./components/PlanScheduleDialog";
 import { ConfirmationDialog } from "./components/ConfirmationDialog";
 import { Shell, type ViewName } from "./components/Shell";
@@ -452,18 +452,27 @@ export default function App() {
     [api],
   );
 
-  const refreshAccess = useCallback(
-    () =>
-      loadFeature(
-        () => api.access(),
-        setAccess,
-        setAccessLoading,
-        setAccessAvailable,
-        setAccessError,
-        "访问控制策略读取失败",
-      ),
-    [api],
-  );
+  const accessGeneration = useRef(0);
+  const accessReadGeneration = useRef(0);
+  useEffect(() => {
+    const generation = accessGeneration, reads = accessReadGeneration;
+    generation.current++;
+    setBusyAction(value => value.startsWith("access-change-") ? "" : value);
+    return () => { generation.current++; reads.current++; };
+  }, [access?.currentSubject?.subject, access?.currentSubject?.tenantId, view]);
+
+  const refreshAccess = useCallback(() => {
+    const read = ++accessReadGeneration.current;
+    const current = () => read === accessReadGeneration.current;
+    return loadFeature(
+      () => api.access(),
+      value => { if (current()) setAccess(value); },
+      value => { if (current()) setAccessLoading(value); },
+      value => { if (current()) setAccessAvailable(value); },
+      value => { if (current()) setAccessError(value); },
+      "访问控制策略读取失败",
+    );
+  }, [api]);
 
   const refreshAutoUpdates = useCallback(
     () =>
@@ -740,7 +749,8 @@ export default function App() {
   }
 
   async function closePlan() {
-    if (!selectedPlan || selectedPlan.state !== "observing") return;
+    if (!selectedPlan || selectedPlan.state !== "observing" || planWritePending.current) return;
+    planWritePending.current = true;
     setPending(true);
     setError("");
     try {
@@ -750,9 +760,12 @@ export default function App() {
       );
       setSelectedPlan(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "计划收口失败");
+      setError(reason instanceof APIError && reason.newClosureAttemptAllowed
+        ? `${reason.message}。本次尝试已结束，处理阻断后可再次人工收口。`
+        : reason instanceof Error ? reason.message : "计划收口失败");
       await refresh().catch(() => undefined);
     } finally {
+      planWritePending.current = false;
       setPending(false);
     }
   }
@@ -1484,6 +1497,8 @@ export default function App() {
   }
 
   async function createAccessChange(body: AccessControlUpdate) {
+    const generation = accessGeneration.current;
+    const current = () => generation === accessGeneration.current;
     setBusyAction("access-change-create");
     setError("");
     try {
@@ -1491,13 +1506,13 @@ export default function App() {
         ...body,
         expectedVersion: body.expectedVersion ?? access?.version,
       });
-      await refreshAccess();
+      if (current()) await refreshAccess();
       return change;
     } catch (reasonValue) {
-      setError(errorMessage(reasonValue, "访问策略审批变更创建失败"));
+      if (current()) setError(errorMessage(reasonValue, "访问策略审批变更创建失败"));
       throw reasonValue;
     } finally {
-      setBusyAction("");
+      if (current()) setBusyAction("");
     }
   }
 
@@ -1505,47 +1520,53 @@ export default function App() {
     change: AccessChange,
     confirmation: string,
   ) {
+    const generation = accessGeneration.current;
+    const current = () => generation === accessGeneration.current;
     setBusyAction(`access-change-approve:${change.id}`);
     setError("");
     try {
       await api.approveAccessChange(change, confirmation);
-      await refreshAccess();
+      if (current()) await refreshAccess();
     } catch (reasonValue) {
-      setError(errorMessage(reasonValue, "访问策略变更批准失败"));
+      if (current()) setError(errorMessage(reasonValue, "访问策略变更批准失败"));
       throw reasonValue;
     } finally {
-      setBusyAction("");
+      if (current()) setBusyAction("");
     }
   }
 
   async function applyAccessChange(change: AccessChange) {
+    const generation = accessGeneration.current;
+    const current = () => generation === accessGeneration.current;
     setBusyAction(`access-change-apply:${change.id}`);
     setError("");
     try {
       if (!access) throw new Error("请先读取访问策略");
-      const target = await applyReviewedAccessChange(api, access, change);
-      await refreshAccess();
+      const target = await applyReviewedAccessChange(api, access, change, current);
+      if (current()) await refreshAccess();
       return target;
     } catch (reasonValue) {
-      setError(errorMessage(reasonValue, "访问策略变更执行失败"));
-      await refreshAccess().catch(() => undefined);
+      if (current()) setError(errorMessage(reasonValue, "访问策略变更执行失败"));
+      if (current()) await refreshAccess().catch(() => undefined);
       throw reasonValue;
     } finally {
-      setBusyAction("");
+      if (current()) setBusyAction("");
     }
   }
 
   async function rejectAccessChange(change: AccessChange, reason: string) {
+    const generation = accessGeneration.current;
+    const current = () => generation === accessGeneration.current;
     setBusyAction(`access-change-reject:${change.id}`);
     setError("");
     try {
       await api.rejectAccessChange(change, reason);
-      await refreshAccess();
+      if (current()) await refreshAccess();
     } catch (reasonValue) {
-      setError(errorMessage(reasonValue, "访问策略变更拒绝失败"));
+      if (current()) setError(errorMessage(reasonValue, "访问策略变更拒绝失败"));
       throw reasonValue;
     } finally {
-      setBusyAction("");
+      if (current()) setBusyAction("");
     }
   }
 

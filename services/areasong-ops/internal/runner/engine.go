@@ -24,25 +24,29 @@ var (
 )
 
 type Engine struct {
-	catalog         *config.Catalog
-	store           *store.Store
-	executor        Executor
-	broker          *Broker
-	stateRoot       string
-	lockMu          sync.Mutex
-	locks           map[string]string
-	credentialMu    sync.Mutex
-	wait            sync.WaitGroup
-	owner           string
-	backupRoot      string
-	alertmanager    Alertmanager
-	credentials     CredentialRotator
-	runnerUpdater   RunnerUpdateLauncher
-	extensionRunner ExtensionRuntime
-	composeRunner   ComposeCommandRunner
-	terminalMu      sync.Mutex
-	terminals       map[string]model.TerminalSession
-	remoteDispatch  bool
+	releaseMu         sync.Mutex
+	releases          map[string]*releaseExecutionLease
+	releaseNow        func() time.Time
+	inspectionCleanup func(string) error
+	catalog           *config.Catalog
+	store             *store.Store
+	executor          Executor
+	broker            *Broker
+	stateRoot         string
+	lockMu            sync.Mutex
+	locks             map[string]string
+	credentialMu      sync.Mutex
+	wait              sync.WaitGroup
+	owner             string
+	backupRoot        string
+	alertmanager      Alertmanager
+	credentials       CredentialRotator
+	runnerUpdater     RunnerUpdateLauncher
+	extensionRunner   ExtensionRuntime
+	composeRunner     ComposeCommandRunner
+	terminalMu        sync.Mutex
+	terminals         map[string]model.TerminalSession
+	remoteDispatch    bool
 	// lifecycleObservationSeconds is negative in production, preserving the
 	// fixed 300-second lifecycle observation window. It is injectable only for
 	// disposable local acceptance runners.
@@ -271,7 +275,7 @@ func (engine *Engine) Broker() *Broker {
 	return engine.broker
 }
 
-func (engine *Engine) CreatePreview(
+func (engine *Engine) createLegacyPreview(
 	ctx context.Context,
 	actorHash string,
 	request model.PreviewRequest,

@@ -47,6 +47,12 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	store := &Store{db: db, now: func() time.Time { return time.Now().UTC() }, path: path}
+	// 在任何 schema 写入前拒绝未来版本；这不能约束已发布的旧二进制。
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > len(migrations) {
+		db.Close()
+		return nil, fmt.Errorf("SQLite schema 版本无法打开: %d (%v)", version, err)
+	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("初始化 SQLite 失败: %w", err)
@@ -182,6 +188,9 @@ func (store *Store) migrate(ctx context.Context) error {
 	if err := store.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
+	if version > len(migrations) {
+		return fmt.Errorf("SQLite schema 版本过新: %d", version)
+	}
 	for index := version; index < len(migrations); index++ {
 		tx, err := store.db.BeginTx(ctx, nil)
 		if err != nil {
@@ -190,6 +199,12 @@ func (store *Store) migrate(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, migrations[index]); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("执行迁移 %d 失败: %w", index+1, err)
+		}
+		if index+1 == 48 {
+			if err := initializeTenantLifecycleTx(ctx, tx); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("初始化租户生命周期失败: %w", err)
+			}
 		}
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, index+1)); err != nil {
 			tx.Rollback()

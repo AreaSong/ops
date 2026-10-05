@@ -19,7 +19,7 @@ class SnapshotContractTests(unittest.TestCase):
         create_database(self.source, 47)
 
     def test_known_real_schemas(self):
-        for version in (5, 45, 47):
+        for version in (5, 45, 47, 48, 49, 50):
             create_database(self.source, version)
             with self.subTest(version=version):
                 module.inspect_database(self.source)
@@ -31,7 +31,7 @@ class SnapshotContractTests(unittest.TestCase):
             module.inspect_database(self.source)
 
     def test_unknown_schema_and_mislabeled_latest_are_rejected(self):
-        for version in (3, 46, 48, 999):
+        for version in (3, 46, 51, 999):
             with sqlite3.connect(self.source) as connection:
                 connection.execute(f"PRAGMA user_version={version}")
             with self.subTest(version=version), self.assertRaisesRegex(ValueError, "schema"):
@@ -39,6 +39,60 @@ class SnapshotContractTests(unittest.TestCase):
         create_database(self.source, 45)
         with sqlite3.connect(self.source) as connection:
             connection.execute("PRAGMA user_version=47")
+        with self.assertRaisesRegex(ValueError, "关键列"):
+            module.inspect_database(self.source)
+
+    def test_schema48_backup_does_not_expand_restore_support(self):
+        create_database(self.source, 48)
+        before = self.source.read_bytes()
+        module.inspect_database(self.source)
+        self.assertEqual(module.RESTORE_SCHEMAS, frozenset({4, 5, 45, 47}))
+        with self.assertRaisesRegex(ValueError, "schema"):
+            module.inspect_database(self.source, allow_legacy=True)
+        self.assertEqual(self.source.read_bytes(), before)
+        create_database(self.source, 47)
+        with sqlite3.connect(self.source) as connection:
+            connection.execute("PRAGMA user_version=48")
+        with self.assertRaisesRegex(ValueError, "关键列"):
+            module.inspect_database(self.source)
+
+    def test_schema49_requires_admission_tables_and_preserves_restore_boundary(self):
+        create_database(self.source, 49)
+        before = self.source.read_bytes()
+        module.inspect_database(self.source)
+        with self.assertRaisesRegex(ValueError, "schema"):
+            module.inspect_database(self.source, allow_legacy=True)
+        self.assertEqual(module.RESTORE_SCHEMAS, frozenset({4, 5, 45, 47}))
+        self.assertEqual(self.source.read_bytes(), before)
+        for table in ("work_admissions", "work_admission_targets"):
+            create_database(self.source, 49)
+            with sqlite3.connect(self.source) as connection:
+                connection.execute(f"DROP TABLE {table}")
+            with self.subTest(table=table), self.assertRaisesRegex(ValueError, "关键表"):
+                module.inspect_database(self.source)
+        create_database(self.source, 49)
+        with sqlite3.connect(self.source) as connection:
+            connection.execute("ALTER TABLE work_admissions DROP COLUMN request_json")
+        with self.assertRaisesRegex(ValueError, "关键列"):
+            module.inspect_database(self.source)
+
+    def test_schema50_requires_preparation_and_preserves_restore_boundary(self):
+        create_database(self.source, 50)
+        before = self.source.read_bytes()
+        module.inspect_database(self.source)
+        with self.assertRaisesRegex(ValueError, "schema"):
+            module.inspect_database(self.source, allow_legacy=True)
+        self.assertEqual(self.source.read_bytes(), before)
+        self.assertEqual(module.RESTORE_SCHEMAS, frozenset({4, 5, 45, 47}))
+        for table in ("release_plan_preparations", "release_plan_preparation_targets"):
+            create_database(self.source, 50)
+            with sqlite3.connect(self.source) as connection:
+                connection.execute(f"DROP TABLE {table}")
+            with self.subTest(table=table), self.assertRaisesRegex(ValueError, "关键表"):
+                module.inspect_database(self.source)
+        create_database(self.source, 50)
+        with sqlite3.connect(self.source) as connection:
+            connection.execute("ALTER TABLE release_plan_preparations DROP COLUMN authority_digest")
         with self.assertRaisesRegex(ValueError, "关键列"):
             module.inspect_database(self.source)
 

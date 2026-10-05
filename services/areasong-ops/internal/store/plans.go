@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
@@ -31,6 +30,10 @@ const planSelect = `
 		FROM release_plans`
 
 func (store *Store) CreateReleasePlan(ctx context.Context, input ReleasePlanInput) error {
+	if input.Plan.ApprovalSummary.SchemaVersion != 1 || input.Plan.ApprovalSummary.Lifecycle != nil {
+		return model.ErrReleaseLifecycle
+	}
+
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -101,6 +104,10 @@ func releasePlanCreatedAudit(plan model.ReleasePlan) model.AuditEntry {
 func (store *Store) CreateReleasePlanIdempotent(
 	ctx context.Context, input ReleasePlanInput, actor, idempotencyKey, requestDigest string,
 ) (model.ReleasePlan, bool, error) {
+	if input.Plan.ApprovalSummary.SchemaVersion != 1 || input.Plan.ApprovalSummary.Lifecycle != nil {
+		return model.ReleasePlan{}, false, model.ErrReleaseLifecycle
+	}
+
 	if idempotencyKey == "" || requestDigest == "" {
 		return model.ReleasePlan{}, false, errors.New("发布计划幂等信息不完整")
 	}
@@ -228,6 +235,17 @@ func (store *Store) ActivateScheduledPlan(
 	id, actorHash string,
 	now time.Time,
 ) (bool, error) {
+	plan, err := store.GetReleasePlan(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if plan.State != model.PlanScheduled {
+		return false, nil
+	}
+	return false, model.ErrReleaseNotIntegrated
+}
+
+func (store *Store) activateLegacyScheduledPlan(ctx context.Context, id, actorHash string, now time.Time) (bool, error) {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -330,15 +348,17 @@ func (store *Store) ListReleasePlans(ctx context.Context, limit, offset int) ([]
 	return plans, rows.Err()
 }
 
-func (store *Store) ApproveReleasePlan(
+func (store *Store) approveReleasePlan(
 	ctx context.Context,
 	id, actorHash, digest, confirmation string,
+	authority *model.ReleaseAuthority,
 ) (model.ReleasePlan, error) {
-	tx, err := store.db.BeginTx(ctx, nil)
+	registered, err := store.beginRegisteredWorkTx(ctx)
 	if err != nil {
 		return model.ReleasePlan{}, err
 	}
-	defer tx.Rollback()
+	defer registered.Rollback()
+	tx := registered.Tx
 	plan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.ReleasePlan{}, ErrNotFound
@@ -370,6 +390,19 @@ func (store *Store) ApproveReleasePlan(
 	if subtle.ConstantTimeCompare([]byte(expectedHash), []byte(HashConfirmation(confirmation))) != 1 {
 		return model.ReleasePlan{}, ErrConfirmation
 	}
+	if authority == nil {
+		return model.ReleasePlan{}, model.ErrReleaseNotIntegrated
+	}
+	if err := validateReleaseAuthorityTx(ctx, tx, *authority); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := validatePreparedPlanTx(ctx, tx, plan); err != nil {
+		return model.ReleasePlan{}, err
+	}
+	if err := validateReleaseObjectPermissionsTx(ctx, tx, *authority, plan.ApprovalSummary.Lifecycle.TargetObjects); err != nil {
+		return model.ReleasePlan{}, err
+	}
+
 	now := store.now()
 	targetState := model.PlanApproved
 	if plan.ScheduleAt != nil && now.Before(*plan.ScheduleAt) {
@@ -378,7 +411,7 @@ func (store *Store) ApproveReleasePlan(
 	if model.UsesTwoPartyApproval(plan.ApprovalPolicy) && plan.RequiresDualApproval {
 		if plan.State != model.PlanPendingApproval {
 			if plan.ApprovedByHash == actorHash && (plan.State == model.PlanApproved || plan.State == model.PlanScheduled) {
-				if err := tx.Commit(); err != nil {
+				if err := registered.Commit(); err != nil {
 					return model.ReleasePlan{}, err
 				}
 				return plan, nil
@@ -399,7 +432,7 @@ func (store *Store) ApproveReleasePlan(
 		if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
 			return model.ReleasePlan{}, err
 		}
-		if err := tx.Commit(); err != nil {
+		if err := registered.Commit(); err != nil {
 			return model.ReleasePlan{}, err
 		}
 		return plan, nil
@@ -423,7 +456,7 @@ func (store *Store) ApproveReleasePlan(
 			if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
 				return model.ReleasePlan{}, err
 			}
-			if err := tx.Commit(); err != nil {
+			if err := registered.Commit(); err != nil {
 				return model.ReleasePlan{}, err
 			}
 			return plan, nil
@@ -442,7 +475,7 @@ func (store *Store) ApproveReleasePlan(
 		if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
 			return model.ReleasePlan{}, err
 		}
-		if err := tx.Commit(); err != nil {
+		if err := registered.Commit(); err != nil {
 			return model.ReleasePlan{}, err
 		}
 		return plan, nil
@@ -462,7 +495,7 @@ func (store *Store) ApproveReleasePlan(
 	if err := appendPlanApprovalAudit(ctx, tx, plan, actorHash, now); err != nil {
 		return model.ReleasePlan{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := registered.Commit(); err != nil {
 		return model.ReleasePlan{}, err
 	}
 	return plan, nil
@@ -625,6 +658,20 @@ func (store *Store) CloseReleasePlan(
 		}
 		return model.ReleasePlan{}, ErrIdempotency
 	}
+	return model.ReleasePlan{}, model.ErrReleaseNotIntegrated
+}
+
+// 保留原收口事务供后续获批接线参考，B-P 公共入口不可达。
+func (store *Store) closeLegacyReleasePlan(ctx context.Context, id, actorHash, idempotencyKey string, audit model.AuditEntry) (model.ReleasePlan, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.ReleasePlan{}, err
+	}
+	defer tx.Rollback()
+	plan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+" WHERE id=?", id))
+	if err != nil {
+		return plan, err
+	}
 	if plan.State != model.PlanObserving || plan.ObservationEndsAt == nil {
 		return model.ReleasePlan{}, errors.New("计划当前不能收口")
 	}
@@ -716,11 +763,28 @@ func (store *Store) startPlanTask(
 	if task, found, err := taskByIdempotency(ctx, tx, idempotencyKey); err != nil {
 		return TaskStartResult{}, err
 	} else if found {
-		if task.ActorHash != actorHash || task.RequestHash != requestHash {
+		if task.ActorHash != actorHash || task.RequestHash != requestHash || task.PlanID != plan.ID || task.PlanDigest != plan.Digest {
 			return TaskStartResult{}, ErrIdempotency
 		}
 		return TaskStartResult{Task: task}, nil
 	}
+	stored, err := scanPlan(tx.QueryRowContext(ctx, planSelect+" WHERE id=?", plan.ID))
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	if !stored.AllowsExecutor(actorHash) {
+		return TaskStartResult{}, ErrActorMismatch
+	}
+	return TaskStartResult{}, model.ErrReleaseNotIntegrated
+}
+
+// 未接入的原子写入逻辑保留，不可从公共入口调用。
+func (store *Store) startLegacyPlanTask(ctx context.Context, plan model.ReleasePlan, actorHash, idempotencyKey, taskID string, silence *model.MaintenanceSilence) (TaskStartResult, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return TaskStartResult{}, err
+	}
+	defer tx.Rollback()
 	storedPlan, err := scanPlan(tx.QueryRowContext(ctx, planSelect+` WHERE id=?`, plan.ID))
 	if err != nil {
 		return TaskStartResult{}, err
@@ -735,101 +799,12 @@ func (store *Store) startPlanTask(
 	if err := verifyAutomaticPlanPolicy(ctx, tx, plan); err != nil {
 		return TaskStartResult{}, err
 	}
-	var activeID string
-	err = tx.QueryRowContext(ctx, `
-		SELECT id FROM tasks WHERE service = ? AND state IN (?, ?, ?, ?) LIMIT 1
-	`, plan.Service, model.TaskWaitingConfirmation, model.TaskQueued, model.TaskRunning,
-		model.TaskRollingBack).Scan(&activeID)
-	if err == nil {
-		return TaskStartResult{}, fmt.Errorf("服务已有活动任务: %s", activeID)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return TaskStartResult{}, err
-	}
-	stages := make([]model.TaskStage, 0, len(plan.ApprovalSummary.Steps))
-	for _, step := range plan.ApprovalSummary.Steps {
-		stages = append(stages, model.TaskStage{Name: step, State: model.StagePending})
-	}
-	stagesJSON, err := encodeJSON(stages)
+	started, err := store.insertPlanTaskTx(ctx, tx, plan, actorHash, idempotencyKey, taskID, silence)
 	if err != nil {
 		return TaskStartResult{}, err
 	}
-	snapshotJSON, err := encodeJSON(plan.ApprovalSummary.ExpectedBefore)
-	if err != nil {
+	if err = tx.Commit(); err != nil {
 		return TaskStartResult{}, err
 	}
-	now := store.now()
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO tasks (
-			id, idempotency_key, request_hash, actor_hash, service, action, target, risk,
-			state, preview_id, plan_id, plan_digest, snapshot_json, stages_json, created_at,
-			recovery_point_id,
-			restore_mode, restore_tenant_id, restore_server_id, restore_expected_before_digest,
-			restore_contract_digest, restore_revalidated_at, restore_outcome, restore_evidence_digest
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, taskID, idempotencyKey, requestHash, actorHash, plan.Service, plan.Action,
-		plan.Target, plan.Risk, model.TaskQueued, plan.ID, plan.Digest, snapshotJSON,
-		stagesJSON, timeText(now), plan.RecoveryPointID, plan.RestoreMode, plan.RestoreTenantID, plan.RestoreServerID,
-		plan.RestoreExpectedBeforeDigest, plan.RestoreContractDigest,
-		nullableTimeValue(plan.RestoreRevalidatedAt), plan.RestoreOutcome, plan.RestoreEvidenceDigest)
-	if err != nil {
-		return TaskStartResult{}, err
-	}
-	var silenceID string
-	var silenceEndsAt any
-	if silence != nil {
-		silenceID = silence.ID
-		silenceEndsAt = timeText(silence.EndsAt)
-	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE release_plans SET state = ?, task_id = ?, executed_by_hash = ?, maintenance_silence_id = ?,
-			maintenance_silence_ends_at = ?, maintenance_silence_released_at = NULL, updated_at = ?
-		WHERE id = ? AND state = ? AND digest = ?
-		  AND (restore_mode = '' OR (restore_revalidation_digest = restore_contract_digest AND restore_revalidated_at IS NOT NULL))
-	`, model.PlanExecuting, taskID, actorHash, silenceID, silenceEndsAt, timeText(now),
-		plan.ID, model.PlanApproved, plan.Digest)
-	if err = requireOne(result, err, "发布计划无法进入执行状态"); err != nil {
-		return TaskStartResult{}, err
-	}
-	if silence != nil {
-		if err := appendPlanAudit(ctx, tx, model.AuditEntry{
-			ActorHash: actorHash, Event: "plan.maintenance_silence_created",
-			Resource: plan.ID, Outcome: "created",
-			Detail: map[string]any{"silenceId": silence.ID, "endsAt": silence.EndsAt},
-		}, now); err != nil {
-			return TaskStartResult{}, err
-		}
-	}
-	task := model.Task{
-		ID: taskID, IdempotencyKey: idempotencyKey, RequestHash: requestHash,
-		ActorHash: actorHash, Service: plan.Service, Action: plan.Action, Target: plan.Target,
-		Risk: plan.Risk, State: model.TaskQueued, PlanID: plan.ID, PlanDigest: plan.Digest,
-		TrafficPolicyDigest: plan.ApprovalSummary.TrafficPolicyDigest,
-		Snapshot:            plan.ApprovalSummary.ExpectedBefore, Stages: stages, CreatedAt: now,
-		RecoveryPointID: plan.RecoveryPointID,
-		RestoreMode:     plan.RestoreMode, RestoreTenantID: plan.RestoreTenantID,
-		RestoreServerID:             plan.RestoreServerID,
-		RestoreExpectedBeforeDigest: plan.RestoreExpectedBeforeDigest,
-		RestoreContractDigest:       plan.RestoreContractDigest,
-		RestoreRevalidatedAt:        plan.RestoreRevalidatedAt,
-		RestoreOutcome:              plan.RestoreOutcome, RestoreEvidenceDigest: plan.RestoreEvidenceDigest,
-	}
-	queued, err := appendEventRecord(ctx, tx, model.Event{
-		TaskID: task.ID, Level: "info", Phase: "queued", Message: "任务已进入执行队列",
-	}, now)
-	if err != nil {
-		return TaskStartResult{}, err
-	}
-	if err := appendPlanAudit(ctx, tx, model.AuditEntry{
-		ActorHash: task.ActorHash, Event: "task.accepted", Resource: task.ID,
-		Outcome: "accepted", Detail: map[string]any{
-			"service": task.Service, "action": task.Action, "target": task.Target, "planId": plan.ID,
-		},
-	}, now); err != nil {
-		return TaskStartResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return TaskStartResult{}, err
-	}
-	return TaskStartResult{Task: task, QueuedEvent: queued, Created: true}, nil
+	return started, nil
 }

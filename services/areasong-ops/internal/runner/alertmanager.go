@@ -226,3 +226,38 @@ func safeHTTPSURL(raw string) string {
 	}
 	return parsed.String()
 }
+
+// SilenceExpired只读取指定ID，DELETE成功、EndsAt或无告警均不能替代此事实。
+func (client *AlertmanagerClient) SilenceExpired(ctx context.Context, id string) (bool, error) {
+	if id == "" || strings.ContainsAny(id, "/?#") {
+		return false, errors.New("Alertmanager 静默标识无效")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.resolve("/api/v2/silence/"+url.PathEscape(id)).String(), nil)
+	if err != nil {
+		return false, err
+	}
+	response, err := client.client.Do(request)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return true, nil
+	}
+	if response.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("静默确认失败: HTTP %d", response.StatusCode)
+	}
+	var value struct {
+		ID     string `json:"id"`
+		Status struct {
+			State string `json:"state"`
+		} `json:"status"`
+	}
+	if err = decodeAlertmanagerJSON(response.Body, &value); err != nil {
+		return false, err
+	}
+	if value.ID != id {
+		return false, errors.New("静默确认ID不匹配")
+	}
+	return value.Status.State == "expired", nil
+}

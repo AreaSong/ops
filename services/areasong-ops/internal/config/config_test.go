@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -764,5 +765,47 @@ func TestSecureDirectoryTreeLooseRejectsWritableAllowlistRoot(t *testing.T) {
 	}
 	if err := verifySecureDirectoryTreeLoose(root); err == nil {
 		t.Fatal("writable allowlist root was accepted")
+	}
+}
+
+func TestReleaseScopeDeclarationRequiresLocalServiceContract(t *testing.T) {
+	for _, scenario := range []string{"valid_declaration_only", "remote", "missing_digest", "automatic_task"} {
+		t.Run(scenario, func(t *testing.T) {
+			_, file, _, _ := runtime.Caller(0)
+			data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "config", "services.example.json"))
+			catalog := new(Catalog)
+			if err == nil {
+				err = json.Unmarshal(data, catalog)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := &model.ReleaseScopeDefinition{Version: 1, Mode: "local", ProfileID: "declaration-is-not-proof", Resources: []model.ReleaseScopeResource{{Kind: "application", Selector: "synthetic", ObjectID: "service:areaforge"}}, ImplementationDigests: map[string]string{"synthetic-profile": model.WorkDigest("synthetic")}}
+			if scenario == "remote" {
+				scope.Mode = "remote"
+			}
+			if scenario == "missing_digest" {
+				scope.ImplementationDigests = nil
+			}
+			if scenario == "automatic_task" {
+				for name, task := range catalog.AutomaticTasks {
+					task.ReleaseScope = scope
+					catalog.AutomaticTasks[name] = task
+					break
+				}
+			} else {
+				service := catalog.Services["areaforge"]
+				service.ReleaseScope = scope
+				catalog.Services["areaforge"] = service
+			}
+			err = catalog.Validate(false)
+			if scenario == "valid_declaration_only" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil {
+				t.Fatal("无效声明通过结构校验")
+			}
+		})
 	}
 }

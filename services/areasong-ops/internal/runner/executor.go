@@ -17,12 +17,14 @@ import (
 const adapterOutputLimit = 1 << 20
 
 type ExecuteInput struct {
-	Service      model.ServiceDefinition
-	Action       string
-	Phase        string
-	OperationDir string
-	Target       string
-	SourceDir    string
+	// 仅由已登记的创建检查或执行 lease 注入，不序列化、不接收 HTTP 输入。
+	releaseContext *releaseCallContext
+	Service        model.ServiceDefinition
+	Action         string
+	Phase          string
+	OperationDir   string
+	Target         string
+	SourceDir      string
 	// AdapterKind is an internal routing decision. It is never accepted from
 	// an HTTP request or task target, because selecting an executable is a
 	// control-plane trust boundary.

@@ -1882,7 +1882,12 @@ func (server *Server) closePlan(response http.ResponseWriter, request *http.Requ
 	}
 	plan, err := server.engine.CloseReleasePlan(request.Context(), actor, request.PathValue("id"), input)
 	if err != nil {
-		writeAuthorizationOrError(response, err, http.StatusConflict)
+		var blocked *planClosureBlocked
+		if errors.As(err, &blocked) && blocked.AttemptID == input.IdempotencyKey {
+			writeJSON(response, http.StatusConflict, map[string]any{"error": blocked.Error(), "code": "plan_closure_blocked", "attemptId": blocked.AttemptID, "attemptState": "finished", "newAttemptAllowed": true})
+		} else {
+			writeAuthorizationOrError(response, err, http.StatusConflict)
+		}
 		return
 	}
 	writeJSON(response, http.StatusOK, plan)
@@ -2017,12 +2022,12 @@ func (server *Server) createPlan(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusBadRequest, "发布计划必须携带有效幂等键")
 		return
 	}
-	plan, err := server.engine.CreateReleasePlan(request.Context(), actor, input)
+	plan, err := server.engine.createManualReleasePlan(request.Context(), actor, input)
 	if err != nil {
 		writeError(response, http.StatusConflict, err.Error())
 		return
 	}
-	writeJSON(response, http.StatusCreated, plan)
+	writeJSON(response, http.StatusCreated, server.engine.releasePlanView(request.Context(), plan))
 }
 
 func (server *Server) plans(response http.ResponseWriter, request *http.Request) {
@@ -2040,7 +2045,11 @@ func (server *Server) plans(response http.ResponseWriter, request *http.Request)
 		writeError(response, http.StatusInternalServerError, "读取发布计划失败")
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"plans": plans, "hasMore": hasMore})
+	views := make([]releasePlanView, 0, len(plans))
+	for _, plan := range plans {
+		views = append(views, server.engine.releasePlanView(request.Context(), plan))
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"plans": views, "hasMore": hasMore})
 }
 
 func (server *Server) plan(response http.ResponseWriter, request *http.Request) {
@@ -2061,7 +2070,7 @@ func (server *Server) plan(response http.ResponseWriter, request *http.Request) 
 		writeError(response, http.StatusForbidden, err.Error())
 		return
 	}
-	writeJSON(response, http.StatusOK, plan)
+	writeJSON(response, http.StatusOK, server.engine.releasePlanView(request.Context(), plan))
 }
 
 func (server *Server) approvePlan(response http.ResponseWriter, request *http.Request) {
@@ -2079,7 +2088,7 @@ func (server *Server) approvePlan(response http.ResponseWriter, request *http.Re
 		writeAuthorizationOrError(response, err, http.StatusConflict)
 		return
 	}
-	writeJSON(response, http.StatusOK, plan)
+	writeJSON(response, http.StatusOK, server.engine.releasePlanView(request.Context(), plan))
 }
 
 func (server *Server) executePlan(response http.ResponseWriter, request *http.Request) {

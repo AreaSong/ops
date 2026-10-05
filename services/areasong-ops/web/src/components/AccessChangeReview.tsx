@@ -82,7 +82,8 @@ export function AccessChangeReview({ change, actor, version, canApprove, busy, o
         <p>基准版本未发现绑定及主体直接引用。此结论不保证后续不会产生引用；应用时仍需通过服务端检查。</p>
       </>}
       {detail.kind === 'other' && allowed && <p>此提案不属于租户或角色详情支持范围，请沿原有流程审阅其完整内容。</p>}
-      {!allowed && !(detail.kind === 'role_deletion' && change.state === 'applied') && <p role="alert" className="inline-error">{detail.kind === 'role_deletion' ? deletionUnavailableMessage(detail) : detail.availability === 'stale' || detail.availability === 'ready' ? '差异已过期，请刷新策略并重新创建提案。' : detail.availability === 'unsupported' ? '不支持此提案的完整差异，不能据此批准。' : '差异基准不可用，不能据此批准。'}</p>}
+      {!allowed && !(['role_deletion', 'binding'].includes(detail.kind) && change.state === 'applied') && <p role="alert" className="inline-error">{detail.kind === 'role_deletion' ? deletionUnavailableMessage(detail) : detail.availability === 'stale' || detail.availability === 'ready' ? '差异已过期，请刷新策略并重新创建提案。' : detail.availability === 'unsupported' ? '不支持此提案的完整差异，不能据此批准。' : '差异基准不可用，不能据此批准。'}</p>}
+      {detail.kind === 'binding' && change.state === 'applied' && <p role="status">该绑定提案已应用；历史差异可能已失效，请只读核对生效策略。不要重新应用或重建提案。</p>}
       {detail.kind === 'role_deletion' && change.state === 'applied' && <p role="status">该提案已应用，请以刷新后的生效策略核对结果。</p>}
     </>}
     {canApprove && allowed && !loading && <div className="runner-update-actions attention"><label><span>批准确认</span><code>{change.confirmationPhrase}</code><input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><button className="button secondary" type="button" disabled={confirmation !== change.confirmationPhrase || Boolean(busy)} onClick={() => void read(true)}><ShieldCheck size={14} />{change.approvalPolicy === 'two_party_v1' ? '独立批准' : change.approvedByHash ? '第二人批准' : '第一人批准'}</button></div>}

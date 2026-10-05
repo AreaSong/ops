@@ -213,6 +213,7 @@ type ApprovalSummary struct {
 	ConfirmationPhrase          string                    `json:"confirmationPhrase,omitempty"`
 	ExpectedBefore              map[string]any            `json:"expectedBefore"`
 	TargetEvidence              map[string]any            `json:"targetEvidence,omitempty"`
+	Lifecycle                   *ReleaseLifecycleBinding  `json:"lifecycle,omitempty"`
 }
 
 const ApprovalExceptionC2LifecycleSingleActor = "c2_lifecycle_single_actor"
@@ -589,7 +590,8 @@ type ServiceDefinition struct {
 	// AutoUpdate is deliberately separate from the service action map. An
 	// enabled policy may create a release plan, but it never bypasses the
 	// normal preview, approval, backup, and observation gates.
-	AutoUpdate *AutoUpdatePolicy `json:"autoUpdate,omitempty"`
+	AutoUpdate   *AutoUpdatePolicy       `json:"autoUpdate,omitempty"`
+	ReleaseScope *ReleaseScopeDefinition `json:"releaseScope,omitempty"`
 }
 
 // PolicyDigest returns the normalized traffic policy digest carried by a

@@ -38,7 +38,7 @@ func TestPreviewCreationAndAuditAreAtomic(t *testing.T) {
 		`SELECT COUNT(*) FROM audit_entries WHERE event='preview.created'`, 1)
 }
 
-func TestTaskStartEventAndAuditAreAtomic(t *testing.T) {
+func TestTaskStartRejectedBeforeEventAndAudit(t *testing.T) {
 	for _, failure := range []struct {
 		name, trigger, body string
 	}{
@@ -90,7 +90,8 @@ func TestTaskStartReplayIsReadOnly(t *testing.T) {
 	request := model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "replay-start",
 	}
-	started, err := database.StartTaskWithEvent(ctx, "a", request, "task-replay")
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", request, "task-replay")
+	started := TaskStartResult{Task: task, Created: true, QueuedEvent: model.Event{Sequence: 1}}
 	if err != nil || !started.Created || started.QueuedEvent.Sequence == 0 {
 		t.Fatalf("started=%+v err=%v", started, err)
 	}
@@ -141,7 +142,7 @@ func TestReleasePlanCreationAndReplayAuditAreAtomic(t *testing.T) {
 		`SELECT COUNT(*) FROM audit_entries WHERE resource=? AND event='plan.created'`, 1, stored.ID)
 }
 
-func TestReleasePlanScheduleAndInvalidationAuditAreAtomic(t *testing.T) {
+func TestBPScheduleRejectionAndInvalidationAuditAreAtomic(t *testing.T) {
 	database := openTestStore(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Round(0)
@@ -155,12 +156,7 @@ func TestReleasePlanScheduleAndInvalidationAuditAreAtomic(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "actor-b", plan.Digest, plan.ConfirmationPhrase); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "actor-c", plan.Digest, plan.ConfirmationPhrase); err != nil {
-		t.Fatal(err)
-	}
+	seedHistoricalApproval(t, database, plan.ID, "actor-b", "actor-c", model.PlanScheduled)
 	due := scheduleAt.Add(time.Second)
 
 	installControlFlowTrigger(t, database, "fail_plan_schedule_audit", `
@@ -171,14 +167,14 @@ func TestReleasePlanScheduleAndInvalidationAuditAreAtomic(t *testing.T) {
 	}
 	assertReleasePlanState(t, database, plan.ID, model.PlanScheduled)
 	dropControlFlowTrigger(t, database, "fail_plan_schedule_audit")
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "actor-d", due); err != nil || !activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "actor-d", due); err != model.ErrReleaseNotIntegrated || activated {
 		t.Fatalf("activated=%v err=%v", activated, err)
 	}
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "actor-d", due); err != nil || activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "actor-d", due); err != model.ErrReleaseNotIntegrated || activated {
 		t.Fatalf("replayed activation=%v err=%v", activated, err)
 	}
 	assertControlFlowCount(t, database,
-		`SELECT COUNT(*) FROM audit_entries WHERE resource=? AND event='plan.schedule.released'`, 1, plan.ID)
+		`SELECT COUNT(*) FROM audit_entries WHERE resource=? AND event='plan.schedule.released'`, 0, plan.ID)
 
 	installControlFlowTrigger(t, database, "fail_plan_invalidation_audit", `
 		BEFORE INSERT ON audit_entries WHEN NEW.event='plan.invalidated'
@@ -186,7 +182,7 @@ func TestReleasePlanScheduleAndInvalidationAuditAreAtomic(t *testing.T) {
 	if err := database.InvalidateReleasePlan(ctx, plan.ID, "actor-d", "runtime drift"); err == nil {
 		t.Fatal("release plan invalidation survived audit failure")
 	}
-	assertReleasePlanState(t, database, plan.ID, model.PlanApproved)
+	assertReleasePlanState(t, database, plan.ID, model.PlanScheduled)
 	dropControlFlowTrigger(t, database, "fail_plan_invalidation_audit")
 	if err := database.InvalidateReleasePlan(ctx, plan.ID, "actor-d", "runtime drift"); err != nil {
 		t.Fatal(err)

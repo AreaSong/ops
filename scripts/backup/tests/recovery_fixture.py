@@ -93,10 +93,10 @@ def write_fixture(root: Path, label: str = "A", service: str = "sub2api", before
     return {"artifacts": artifacts, "before": before, "runtime": runtime}
 
 
-def make_contract(fixture: dict, service: str = "sub2api", *, mode: str = "isolated") -> dict:
+def make_contract(fixture: dict, service: str = "sub2api", *, mode: str = "isolated", backup_task_id: str | None = None) -> dict:
     now = datetime.now(timezone.utc)
     point_id = "11111111-1111-4111-8111-111111111111"
-    task_id = "55555555-5555-4555-8555-555555555555"
+    task_id = backup_task_id or "55555555-5555-4555-8555-555555555555"
     before = digest(fixture["before"], sorted_keys=True)
     roles = sorted(item["role"] for item in fixture["artifacts"])
     evidence = {
@@ -134,3 +134,23 @@ if __name__ == "__main__":
     parser.add_argument("--service", default="sub2api", choices=("sub2api", "areaforge"))
     args = parser.parse_args()
     print(json.dumps(write_fixture(args.root, args.label, args.service)))
+
+
+def backup_test_tools(directory: Path) -> None:
+    """Darwin 合成测试使用真实 fcntl 互斥，timeout 替身显式保留 FD9。"""
+    import sys
+    scripts = {
+        'flock': 'import fcntl,sys\nfcntl.flock(int(sys.argv[-1]),fcntl.LOCK_EX|fcntl.LOCK_NB)\n',
+        'timeout': '''import subprocess,sys
+args=sys.argv[1:]
+while args and args[0].startswith('--'):args.pop(0)
+seconds=int(args.pop(0).removesuffix('s'))
+try: result=subprocess.run(args,timeout=seconds,check=False,pass_fds=(9,))
+except subprocess.TimeoutExpired: raise SystemExit(124)
+raise SystemExit(result.returncode)
+''',
+    }
+    for name, source in scripts.items():
+        path=directory/name
+        path.write_text('#!'+sys.executable+'\n'+source)
+        path.chmod(0o700)

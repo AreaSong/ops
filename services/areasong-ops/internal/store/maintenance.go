@@ -50,7 +50,12 @@ type interruptedTask struct {
 	rollbackAvailable          bool
 }
 
+// B-P 没有旧执行 owner；保留事实，不把重启当成终态证明。
 func (store *Store) RecoverInterrupted(ctx context.Context, classify InterruptionClassifier) (int64, error) {
+	return 0, nil
+}
+
+func (store *Store) recoverLegacyInterrupted(ctx context.Context, classify InterruptionClassifier) (int64, error) {
 	if classify == nil {
 		classify = func(string, string, string, bool) (bool, bool) { return true, false }
 	}

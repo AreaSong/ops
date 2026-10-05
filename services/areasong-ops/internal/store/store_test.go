@@ -132,13 +132,13 @@ func TestRecoveryPointExpiryControlsOperationProtection(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "recovery-protection",
 	}, "task-recovery-protection")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunning(ctx, task.ID, "backup"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "backup", ""); err != nil {
 		t.Fatal(err)
 	}
 	verifiedAt := now
@@ -228,7 +228,7 @@ func TestLatestSucceededRestoreDrillRequiresExactArtifactEvidence(t *testing.T) 
 	}
 }
 
-func TestStartTaskIsIdempotentAndConsumesPreview(t *testing.T) {
+func TestBPPreviewTaskHistoryReplayAndNewWorkRejection(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
 	now := time.Now().UTC()
@@ -242,7 +242,11 @@ func TestStartTaskIsIdempotentAndConsumesPreview(t *testing.T) {
 	request := model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-1",
 	}
-	first, created, err := store.StartTask(ctx, "a", request, "task-1")
+	if _, created, err := store.StartTask(ctx, "a", request, "rejected-new"); err != model.ErrReleaseNotIntegrated || created {
+		t.Fatal("旧计划获得新执行权", err)
+	}
+	// 合成迁移前的首次执行事实，之后仍调用真实公共重放入口。
+	first, created, err := seedHistoricalPreviewTask(t, store, ctx, "a", request, "task-1")
 	if err != nil || !created {
 		t.Fatalf("first start: created=%v err=%v", created, err)
 	}
@@ -345,7 +349,7 @@ func testBatchOperation(now time.Time, id string) model.BatchOperation {
 	}
 }
 
-func TestRecoverInterruptedFailsClosed(t *testing.T) {
+func TestBPReopenPreservesQueuedWorkWithoutOwner(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)
 	now := time.Now().UTC()
@@ -357,22 +361,22 @@ func TestRecoverInterruptedFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := model.StartTaskRequest{PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-3"}
-	if _, _, err := store.StartTask(ctx, "a", request, "task-3"); err != nil {
+	if _, _, err := seedHistoricalPreviewTask(t, store, ctx, "a", request, "task-3"); err != nil {
 		t.Fatal(err)
 	}
 	count, err := store.RecoverInterrupted(ctx, func(string, string, string, bool) (bool, bool) {
 		return true, false
 	})
-	if err != nil || count != 1 {
+	if err != nil || count != 0 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	task, err := store.GetTask(ctx, "task-3")
-	if err != nil || task.State != model.TaskFailedRecoverable || !task.Retryable {
+	if err != nil || task.State != model.TaskQueued || task.FinishedAt != nil {
 		t.Fatalf("task=%+v err=%v", task, err)
 	}
 }
 
-func TestRecoverInterruptedAfterMutationNeedsAttention(t *testing.T) {
+func TestBPReopenPreservesRunningMutationEvidence(t *testing.T) {
 	ctx := context.Background()
 	database := openTestStore(t)
 	now := time.Now().UTC()
@@ -383,13 +387,13 @@ func TestRecoverInterruptedAfterMutationNeedsAttention(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+	task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-mutated",
 	}, "task-mutated")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner-old"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner-old"); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.MarkProductionChanged(ctx, task.ID, false, "restart"); err != nil {
@@ -401,12 +405,12 @@ func TestRecoverInterruptedAfterMutationNeedsAttention(t *testing.T) {
 		t.Fatal(err)
 	}
 	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskNeedsAttention || finished.Retryable {
+	if err != nil || finished.State != model.TaskRunning || finished.FinishedAt != nil || !finished.ProductionChanged {
 		t.Fatalf("task=%+v err=%v", finished, err)
 	}
 }
 
-func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
+func TestBPLegacyPlanDigestIdentityAndHistoricalReplay(t *testing.T) {
 	ctx := context.Background()
 	database := openTestStore(t)
 	now := time.Now().UTC()
@@ -433,17 +437,25 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "更新 demo"); err != ErrActorMismatch {
 		t.Fatalf("creator self-approval err=%v, want ErrActorMismatch", err)
 	}
-	first, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, "更新 demo")
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, "更新 demo"); err != model.ErrReleaseNotIntegrated {
+		t.Fatal(err)
+	}
+	seedHistoricalApproval(t, database, plan.ID, "b", "", model.PlanPendingApproval)
+	first, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || first.State != model.PlanPendingApproval || first.ApprovedAt == nil || first.ApprovedByHash != "b" {
 		t.Fatalf("first approval=%+v err=%v", first, err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "c", plan.Digest, "更新 demo")
+	seedHistoricalApproval(t, database, plan.ID, "b", "c", model.PlanApproved)
+	approved, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || approved.State != model.PlanApproved || approved.SecondApprovedByHash != "c" {
 		t.Fatalf("second approval=%+v err=%v", approved, err)
 	}
 	silenceEndsAt := now.Add(20 * time.Minute)
 	silence := &model.MaintenanceSilence{ID: "silence-1", EndsAt: silenceEndsAt}
-	task, created, err := database.StartPlanTask(ctx, approved, "d", "plan-idem", "plan-task", silence)
+	if _, created, err := database.StartPlanTask(ctx, approved, "d", "plan-idem", "rejected-task", silence); err != model.ErrReleaseNotIntegrated || created {
+		t.Fatal(err)
+	}
+	task, created, err := seedHistoricalPlanTask(t, database, ctx, approved, "d", "plan-idem", "plan-task", silence)
 	if err != nil || !created || task.PlanID != plan.ID || len(task.Stages) != 2 {
 		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
 	}
@@ -455,7 +467,7 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 	if err != nil || created || again.ID != task.ID {
 		t.Fatalf("again=%+v created=%v err=%v", again, created, err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "preflight", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "preflight", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	event, err := database.CompleteTask(ctx, task.ID, model.TaskSucceeded, "完成", "", "", false, false, "",
@@ -480,6 +492,10 @@ func TestReleasePlanApprovalIsDigestBoundAndStartsOnce(t *testing.T) {
 		t.Fatal("observation closed before deadline")
 	}
 	now = now.Add(301 * time.Second)
+	if _, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit); err != model.ErrReleaseNotIntegrated {
+		t.Fatal(err)
+	}
+	seedHistoricalPlanClosed(t, database, plan.ID, "close-idem", "a")
 	closed, err := database.CloseReleasePlan(ctx, plan.ID, "a", "close-idem", closeAudit)
 	if err != nil || closed.State != model.PlanCompleted || closed.ClosedAt == nil {
 		t.Fatalf("closed=%+v err=%v", closed, err)
@@ -570,7 +586,11 @@ func TestC2LifecycleSingleActorApprovalIsStrictlyScoped(t *testing.T) {
 	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
 		t.Fatal(err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, actor, plan.Digest, plan.ConfirmationPhrase)
+	if _, err := database.ApproveReleasePlan(ctx, plan.ID, actor, plan.Digest, plan.ConfirmationPhrase); err != model.ErrReleaseNotIntegrated {
+		t.Fatal(err)
+	}
+	seedHistoricalApproval(t, database, plan.ID, actor, "", model.PlanApproved)
+	approved, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || approved.State != model.PlanApproved {
 		t.Fatalf("C2 self approval failed: plan=%+v err=%v", approved, err)
 	}
@@ -598,7 +618,7 @@ func TestC2LifecycleSingleActorApprovalIsStrictlyScoped(t *testing.T) {
 	}
 }
 
-func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
+func TestBPScheduledPlanIsNotActivatedAtAnyTime(t *testing.T) {
 	ctx := context.Background()
 	database := openTestStore(t)
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -616,23 +636,25 @@ func TestScheduledReleasePlanActivatesOnlyAtScheduleTime(t *testing.T) {
 	if err := database.CreateReleasePlan(ctx, ReleasePlanInput{Plan: plan, ConfirmationHash: HashConfirmation(plan.ConfirmationPhrase)}); err != nil {
 		t.Fatal(err)
 	}
-	first, err := database.ApproveReleasePlan(ctx, plan.ID, "b", plan.Digest, plan.ConfirmationPhrase)
+	seedHistoricalApproval(t, database, plan.ID, "b", "", model.PlanPendingApproval)
+	first, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || first.State != model.PlanPendingApproval || first.ApprovedByHash != "b" {
 		t.Fatalf("first approval=%+v err=%v", first, err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "c", plan.Digest, plan.ConfirmationPhrase)
+	seedHistoricalApproval(t, database, plan.ID, "b", "c", model.PlanScheduled)
+	approved, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil || approved.State != model.PlanScheduled || approved.SecondApprovedByHash != "c" {
 		t.Fatalf("second approval=%+v err=%v", approved, err)
 	}
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", now); err != nil || activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", now); err != model.ErrReleaseNotIntegrated || activated {
 		t.Fatalf("early activation=%v err=%v", activated, err)
 	}
 	due := scheduleAt.Add(time.Second)
-	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", due); err != nil || !activated {
+	if activated, err := database.ActivateScheduledPlan(ctx, plan.ID, "executor", due); err != model.ErrReleaseNotIntegrated || activated {
 		t.Fatalf("due activation=%v err=%v", activated, err)
 	}
 	stored, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || stored.State != model.PlanApproved || stored.TenantID != "tenant-a" || stored.ServerID != "server-a" || stored.ScheduleAt == nil {
+	if err != nil || stored.State != model.PlanScheduled || stored.TenantID != "tenant-a" || stored.ServerID != "server-a" || stored.ScheduleAt == nil {
 		t.Fatalf("stored=%+v err=%v", stored, err)
 	}
 }
@@ -656,15 +678,16 @@ func TestFailedPlanNeedsAttention(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	approved, err := database.ApproveReleasePlan(ctx, plan.ID, "a", plan.Digest, "重启 demo")
+	seedHistoricalApproval(t, database, plan.ID, "a", "", model.PlanApproved)
+	approved, err := database.GetReleasePlan(ctx, plan.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartPlanTask(ctx, approved, "a", "failed-idem", "failed-task", nil)
+	task, _, err := seedHistoricalPlanTask(t, database, ctx, approved, "a", "failed-idem", "failed-task", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "restart", "runner"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, task.ID, "restart", "runner"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = database.CompleteTask(ctx, task.ID, model.TaskFailedRecoverable, "执行失败", "检查失败",
@@ -707,10 +730,10 @@ func TestCollectMetricsIncludesTaskDimensionsAndFinishTime(t *testing.T) {
 	request := model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "metrics-task",
 	}
-	if _, _, err := store.StartTask(ctx, "a", request, "task-metrics"); err != nil {
+	if _, _, err := seedHistoricalPreviewTask(t, store, ctx, "a", request, "task-metrics"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.MarkRunning(ctx, "task-metrics", "restart"); err != nil {
+	if err := seedHistoricalRunning(t, store, ctx, "task-metrics", "restart", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.FinishTask(ctx, "task-metrics", model.TaskSucceeded, "完成", ""); err != nil {
@@ -783,10 +806,10 @@ func TestPruneRemovesExpiredPreviewDetailButRetainsTaskSummary(t *testing.T) {
 	request := model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "retention-task",
 	}
-	if _, _, err := database.StartTask(ctx, "a", request, "task-retention"); err != nil {
+	if _, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", request, "task-retention"); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunning(ctx, "task-retention", "restart"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, "task-retention", "restart", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.FinishTask(ctx, "task-retention", model.TaskSucceeded, "完成", ""); err != nil {
@@ -829,14 +852,14 @@ func TestDiscoveryRollbackSourceAndPagination(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		task, _, err := database.StartTask(ctx, "a", model.StartTaskRequest{
+		task, _, err := seedHistoricalPreviewTask(t, database, ctx, "a", model.StartTaskRequest{
 			PreviewID: preview.ID, Confirmation: "重启 demo", IdempotencyKey: "idem-" + id,
 		}, "task-"+id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if state != string(model.TaskQueued) {
-			if err := database.MarkRunning(ctx, task.ID, action); err != nil {
+			if err := seedHistoricalRunning(t, database, ctx, task.ID, action, ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := database.FinishTask(ctx, task.ID, model.TaskState(state), "完成", ""); err != nil {
@@ -904,7 +927,7 @@ func TestDiscoveryRollbackSourceAndPagination(t *testing.T) {
 	if err != nil || len(exhausted) != 0 {
 		t.Fatalf("exhausted=%+v err=%v", exhausted, err)
 	}
-	if err := database.MarkRunning(ctx, "task-queued", "inspect"); err != nil {
+	if err := seedHistoricalRunning(t, database, ctx, "task-queued", "inspect", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.FinishTask(ctx, "task-queued", model.TaskSucceeded, "完成", ""); err != nil {

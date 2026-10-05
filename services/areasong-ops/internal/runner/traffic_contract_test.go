@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,62 +51,26 @@ func testTrafficService() model.ServiceDefinition {
 }
 
 func TestLifecycleFailureRestoresMaintenanceBarrier(t *testing.T) {
-	cases := []struct {
-		name       string
-		action     string
-		failAction string
-		failPhase  string
-		failKind   string
-		failMatch  int
-	}{
-		{name: "stop drain failure", action: "stop", failAction: "drain", failPhase: "drain", failKind: adapterKindTraffic, failMatch: 1},
-		{name: "start final health failure", action: "start", failAction: "inspect", failPhase: "inspect", failKind: adapterKindService, failMatch: 3},
-	}
-	for _, test := range cases {
+	// B-P 关闭普通计划主链；此项仅保留既有流量补偿选择的合成单元断言。
+	for _, test := range []struct{ name, action, phase string }{{"stop drain failure", "stop", "drain"}, {"start final health failure", "start", "verify"}} {
 		t.Run(test.name, func(t *testing.T) {
-			executor := &lifecycleFaultExecutor{
-				failAction: test.failAction, failPhase: test.failPhase,
-				failKind: test.failKind, failMatch: test.failMatch,
-			}
+			executor := &lifecycleFaultExecutor{}
 			engine, database := testEngine(t, executor)
 			service := testTrafficService()
-			service.ServerID = ""
-			engine.catalog.Services[service.Name] = service
-			creator := actorHash()
-			plan, err := engine.CreateReleasePlan(context.Background(), creator, model.PreviewRequest{
-				Service: service.Name, Action: test.action, IdempotencyKey: mustUUID(t),
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			approver := creator
-			if plan.Risk == model.RiskHigh {
-				approver = strings.Repeat("b", 64)
-			}
-			approved, err := engine.ApproveReleasePlan(context.Background(), approver, plan.ID, model.ApprovePlanRequest{
-				Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			task, created, err := engine.ExecuteReleasePlan(context.Background(), releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
-				IdempotencyKey: mustUUID(t),
-			})
-			if err != nil || !created {
-				t.Fatalf("task=%+v created=%v err=%v", task, created, err)
-			}
-			engine.Wait()
-			finished, err := database.GetTask(context.Background(), task.ID)
-			if err != nil || finished.State != model.TaskNeedsAttention || !finished.ProductionChanged {
-				t.Fatalf("task=%+v err=%v", finished, err)
+			result, attempted, err := engine.protectLifecycleFailure(model.Task{Action: test.action}, service, test.phase, t.TempDir())
+			if err != nil || !attempted || !result.OK {
+				t.Fatal("流量屏障选择退化", err)
 			}
 			calls := executor.inputs()
-			last := calls[len(calls)-1]
-			if last.Action != "enter-maintenance" || last.Phase != "enter-maintenance" || last.AdapterKind != adapterKindTraffic {
-				t.Fatalf("last call=%+v, want maintenance traffic barrier; all=%+v", last, calls)
+			if len(calls) != 1 || calls[0].Action != "enter-maintenance" || calls[0].Phase != "enter-maintenance" || calls[0].AdapterKind != adapterKindTraffic {
+				t.Fatalf("calls=%+v", calls)
 			}
 			if _, found, err := database.GetServiceState(context.Background(), service.Name); err != nil || found {
-				t.Fatalf("failed lifecycle must not commit desired state: found=%v err=%v", found, err)
+				t.Fatal("失败单元写入desired state", err)
+			}
+			tasks, err := database.ListTasks(context.Background(), 200, 0)
+			if err != nil || len(tasks) != 0 {
+				t.Fatal("合成单元启动了普通任务", err)
 			}
 		})
 	}
@@ -179,7 +142,7 @@ func TestNewTaskDispatchCarriesTrafficPolicyDigest(t *testing.T) {
 	})
 }
 
-func TestRemoteWorkerRejectsTrafficPolicyContractMismatch(t *testing.T) {
+func TestBPRemoteWorkerDoesNotRewriteMismatchedContracts(t *testing.T) {
 	service := testTrafficService()
 	digest := service.PolicyDigest()
 	cases := []struct {
@@ -215,18 +178,20 @@ func TestRemoteWorkerRejectsTrafficPolicyContractMismatch(t *testing.T) {
 					ServerID: "server-demo", Generation: 1, ClaimToken: "claim",
 				},
 			})
-			got := receiveCompletion(t, completion)
-			if got.FailureCode != "dispatch_contract_invalid" || !got.Retryable {
-				t.Fatalf("completion=%+v", got)
+			select {
+			case got := <-completion:
+				t.Fatalf("B-P改写远端旧任务: %+v", got)
+			default:
 			}
-			if !strings.Contains(got.Error, test.wantError) {
-				t.Fatalf("error=%q, want %q", got.Error, test.wantError)
+			if len(worker.Executor.(*contractTestExecutor).inputs()) != 0 {
+				t.Fatal("拒绝后远端执行")
 			}
+
 		})
 	}
 }
 
-func TestRemoteWorkerExecutesWhenTrafficPolicyContractMatches(t *testing.T) {
+func TestBPRemoteWorkerRejectsEvenMatchingContracts(t *testing.T) {
 	service := testTrafficService()
 	digest := service.PolicyDigest()
 	completion := make(chan model.AssignmentCompletionRequest, 1)
@@ -250,12 +215,13 @@ func TestRemoteWorkerExecutesWhenTrafficPolicyContractMatches(t *testing.T) {
 			ExecutionDeadlineAt: time.Now().Add(time.Minute),
 		},
 	})
-	got := receiveCompletion(t, completion)
-	if got.State != model.TaskSucceeded || got.FailureCode != "" {
-		t.Fatalf("completion=%+v", got)
+	select {
+	case got := <-completion:
+		t.Fatalf("B-P补报远端终态: %+v", got)
+	default:
 	}
-	if len(executor.inputs()) != 1 {
-		t.Fatalf("executor calls=%d, want 1", len(executor.inputs()))
+	if len(executor.inputs()) != 0 {
+		t.Fatal("匹配合同也不得绕过B-P")
 	}
 }
 

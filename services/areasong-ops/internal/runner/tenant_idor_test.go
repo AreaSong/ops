@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -79,9 +80,9 @@ func seedTenantBPlan(t *testing.T, fixture securityEngineFixture) model.ReleaseP
 		// reach the legacy-policy invalidation write.
 		RequiresDualApproval: false,
 	}
-	if err := fixture.db.CreateReleasePlan(context.Background(), store.ReleasePlanInput{
-		Plan: plan, ConfirmationHash: store.HashConfirmation(plan.ConfirmationPhrase),
-	}); err != nil {
+	raw := historicalRunnerDB(t, fixture.engine)
+	summary, _ := json.Marshal(plan.ApprovalSummary)
+	if _, err := raw.Exec("INSERT INTO release_plans(id,actor_hash,service,action,target,tenant_id,server_id,risk,state,digest,approval_summary_json,confirmation_hash,confirmation_phrase,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", plan.ID, plan.ActorHash, plan.Service, plan.Action, plan.Target, plan.TenantID, plan.ServerID, plan.Risk, plan.State, plan.Digest, summary, store.HashConfirmation(plan.ConfirmationPhrase), plan.ConfirmationPhrase, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	seedForeignAudit(t, fixture, plan.ID)
@@ -101,12 +102,7 @@ func seedTenantBTask(t *testing.T, fixture securityEngineFixture) model.Task {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := fixture.db.StartTask(context.Background(), fixture.actorB, model.StartTaskRequest{
-		PreviewID: preview.ID, Confirmation: preview.ConfirmationPhrase, IdempotencyKey: mustUUID(t),
-	}, mustUUID(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	task := seedHistoricalRunnerTask(t, fixture.engine, model.Task{ActorHash: fixture.actorB, Service: preview.Service, Action: preview.Action, Risk: preview.Risk, State: model.TaskQueued, PreviewID: preview.ID, Snapshot: preview.Snapshot})
 	if _, err := fixture.db.AppendEvent(context.Background(), model.Event{
 		TaskID: task.ID, Level: "info", Message: "tenant-b-only",
 	}); err != nil {

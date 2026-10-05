@@ -16,7 +16,7 @@ BACKUP_SCRIPT = REPO_ROOT / "scripts" / "backup" / "backup-redis.sh"
 class RedisBackupTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
+        self.root = Path(self.temp_dir.name).resolve()
         self.bin_dir = self.root / "bin"
         self.data_dir = self.root / "redis-data"
         self.backup_root = self.root / "backups"
@@ -29,6 +29,8 @@ class RedisBackupTests(unittest.TestCase):
         os.utime(self.rdb, (old, old))
         self._write_fake_docker()
         self._write_fake_stat()
+        from scripts.backup.tests.recovery_fixture import backup_test_tools
+        backup_test_tools(self.bin_dir)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -88,7 +90,8 @@ print(value)
         environment.update(
             {
                 "PATH": f"{self.bin_dir}:{environment['PATH']}",
-                "OPS_BACKUP_JOB_WRAPPED": "1",
+                "BACKUP_JOB_LOCK_DIR": str(self.root / "locks"),
+                "BACKUP_JOB_METRIC_DIR": str(self.root / "metrics"),
                 "REDIS_BACKUP_ROOT": str(self.backup_root),
                 "REDIS_DATA_DIR": str(self.data_dir),
                 "BACKUP_LOG_DIR": str(self.root / "logs"),

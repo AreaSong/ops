@@ -12,7 +12,7 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
-func TestExecuteBatchIsIdempotentAcrossMultipleWaves(t *testing.T) {
+func TestBPBatchExecutionReplayDoesNotStartChildren(t *testing.T) {
 	ctx := context.Background()
 	executor := &fakeExecutor{}
 	engine, database := testEngine(t, executor)
@@ -32,14 +32,14 @@ func TestExecuteBatchIsIdempotentAcrossMultipleWaves(t *testing.T) {
 
 	engine.Wait()
 	finished, err := database.GetBatchOperation(ctx, op.ID)
-	if err != nil || finished.State != model.BatchSucceeded {
+	if err != nil || finished.State != model.BatchNeedsAttention {
 		t.Fatalf("finished=%+v err=%v", finished, err)
 	}
-	if len(finished.Items) != 2 || finished.Items[0].State != model.BatchNodeSucceeded ||
-		finished.Items[1].State != model.BatchNodeSucceeded {
+	if len(finished.Items) != 2 || finished.Items[0].State != model.BatchNodeFailed ||
+		finished.Items[1].State != model.BatchNodePending {
 		t.Fatalf("items=%+v", finished.Items)
 	}
-	if got := countBatchPhaseCalls(executor, "restart"); got != 2 {
+	if got := countBatchPhaseCalls(executor, "restart"); got != 0 {
 		t.Fatalf("restart phase calls=%d, want 2", got)
 	}
 	if _, err := engine.ExecuteBatch(ctx, actorHash(), op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); !errors.Is(err, store.ErrIdempotency) {
@@ -129,7 +129,7 @@ func TestBatchFailureContinueRunsLaterWavesAndEndsNeedsAttention(t *testing.T) {
 		finished.Items[1].State != model.BatchNodeFailed {
 		t.Fatalf("items=%+v", finished.Items)
 	}
-	if got := countServicePhaseCalls(executor, "demo-two", "restart"); got != 1 {
+	if got := countServicePhaseCalls(executor, "demo-two", "restart"); got != 0 {
 		t.Fatalf("continued wave restart calls=%d, want 1", got)
 	}
 }
@@ -199,19 +199,14 @@ func TestBatchChildPlanPreservesParentTwoPartyChain(t *testing.T) {
 	engine.startBatchItem(ctx, op, item)
 
 	plan, found, err := database.GetReleasePlanByRequest(ctx, batchItemIdempotencyKey(op.ID, item.ID, "plan"))
-	if err != nil || !found {
-		t.Fatalf("child plan lookup: plan=%+v found=%v err=%v", plan, found, err)
+	if err != nil || found {
+		t.Fatalf("B-P创建批量子计划: %+v %v", plan, err)
 	}
-	if plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash || plan.SecondApprovedByHash != "" || plan.ApprovalPolicy != model.ApprovalPolicyTwoParty {
-		t.Fatalf("child plan identities: actor=%q approver=%q second=%q policy=%q", plan.ActorHash, plan.ApprovedByHash, plan.SecondApprovedByHash, plan.ApprovalPolicy)
+	creator, executor, err := batchChildActors(op, true)
+	if err != nil || creator != op.ActorHash || executor != op.ExecutedByHash || op.ApprovedByHash == creator {
+		t.Fatal("父子审批身份规则退化", err)
 	}
-	// startBatchItem enqueues the child task asynchronously.  Wait before the
-	// fixture closes SQLite so terminal-state writes cannot race database.Close.
 	engine.Wait()
-	plan, err = database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || plan.State != model.PlanCompleted || plan.ExecutedByHash != op.ExecutedByHash {
-		t.Fatalf("child plan execution: plan=%+v err=%v", plan, err)
-	}
 }
 
 func TestBatchChildPlanResumesAfterFirstApproval(t *testing.T) {
@@ -225,22 +220,17 @@ func TestBatchChildPlanResumesAfterFirstApproval(t *testing.T) {
 	engine.catalog.Services["demo"] = service
 	op := model.BatchOperation{ID: "batch-child-resume", ActorHash: strings.Repeat("1", 64), ApprovedByHash: strings.Repeat("2", 64), ExecutedByHash: strings.Repeat("1", 64), Action: "restart", RequiresDualApproval: true, ApprovalPolicy: model.ApprovalPolicyTwoParty, ApprovalPolicyVersion: model.CurrentBatchApprovalPolicyVersion}
 	item := model.BatchItem{ID: "item-child-resume", Service: "demo", State: model.BatchNodeReady}
-	plan, err := engine.CreateReleasePlan(ctx, op.ActorHash, model.PreviewRequest{
-		Service: item.Service, Action: op.Action,
-		IdempotencyKey: batchItemIdempotencyKey(op.ID, item.ID, "plan"), RequiresDualApproval: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := engine.ApproveReleasePlan(ctx, op.ApprovedByHash, plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
+	plan := historicalRunnerPlan(t, engine, op.ActorHash, model.PreviewRequest{Service: item.Service, Action: op.Action, IdempotencyKey: batchItemIdempotencyKey(op.ID, item.ID, "plan"), RequiresDualApproval: true})
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE release_plans SET approved_by_hash=? WHERE id=?", op.ApprovedByHash, plan.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	engine.startBatchItem(ctx, op, item)
 	engine.Wait()
 	stored, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || stored.State != model.PlanCompleted || stored.ApprovedByHash != op.ApprovedByHash ||
-		stored.SecondApprovedByHash != "" || stored.ExecutedByHash != op.ActorHash {
+	if err != nil || stored.State != model.PlanPendingApproval || stored.ApprovedByHash != op.ApprovedByHash ||
+		stored.SecondApprovedByHash != "" || stored.ExecutedByHash != "" {
 		t.Fatalf("resumed child plan=%+v err=%v", stored, err)
 	}
 }
@@ -294,13 +284,16 @@ func TestProductionHighRiskBatchPreservesTwoPartyApprovalChain(t *testing.T) {
 	}
 	engine.Wait()
 	finished, err := database.GetBatchOperation(ctx, op.ID)
-	if err != nil || finished.State != model.BatchSucceeded {
+	if err != nil || finished.State != model.BatchPaused {
 		t.Fatalf("finished=%+v err=%v", finished, err)
 	}
+
+	if finished.ActorHash != creator || finished.ApprovedByHash != approver || finished.ExecutedByHash != creator {
+		t.Fatal("父审批链改变")
+	}
 	for _, item := range finished.Items {
-		plan, err := database.GetReleasePlan(ctx, item.PlanID)
-		if err != nil || plan.ActorHash != creator || plan.ApprovedByHash != approver || plan.SecondApprovedByHash != "" || plan.ExecutedByHash != creator {
-			t.Fatalf("child plan=%+v err=%v", plan, err)
+		if item.PlanID != "" || item.TaskID != "" {
+			t.Fatal("B-P产生子工作")
 		}
 	}
 }

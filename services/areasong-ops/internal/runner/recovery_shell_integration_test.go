@@ -48,7 +48,7 @@ func (executor *selectedRecoveryExecutor) Execute(ctx context.Context, input Exe
 	return result, nil
 }
 
-func TestRestorePlanRunsRealShellWithSelectedPointNotLatest(t *testing.T) {
+func TestBPRestoreKeepsSelectedEvidenceWithoutShellExecution(t *testing.T) {
 	_, filename, _, _ := runtime.Caller(0)
 	scripts := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../../scripts/backup"))
 	engine, database := testEngine(t, &fakeExecutor{})
@@ -106,26 +106,13 @@ func TestRestorePlanRunsRealShellWithSelectedPointNotLatest(t *testing.T) {
 	engine.catalog.Services["sub2api"] = service
 	point := selectedRecoveryPoint(t, engine, database, service, fixture.Before, fixture.Artifacts)
 	ctx := context.Background()
-	plan, err := engine.CreateRestorePlan(ctx, actorHash(), model.RestoreRequest{Service: "sub2api", RecoveryPointID: point.ID, Mode: "isolated",
+	_, err = engine.CreateRestorePlan(ctx, actorHash(), model.RestoreRequest{Service: "sub2api", RecoveryPointID: point.ID, Mode: "isolated",
 		Confirmation: "创建隔离恢复演练计划 sub2api", IdempotencyKey: mustUUID(t)})
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("B-P放行恢复普通链")
 	}
-	if _, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
-		t.Fatal(err)
-	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded {
-		t.Fatalf("real shell restore=%+v err=%v", finished, err)
-	}
-	data, err := os.ReadFile(imported)
-	if err != nil || !bytes.Contains(data, []byte("SELECT 'A'")) || bytes.Contains(data, []byte("SELECT 'B'")) {
-		t.Fatalf("wrong imported backup: %q %v", data, err)
+	if _, err := os.Stat(imported); !os.IsNotExist(err) {
+		t.Fatal("被拒绝恢复仍导入数据")
 	}
 	for _, artifact := range fixture.Artifacts {
 		digest, err := fileSHA256(artifact.Path)
@@ -143,11 +130,8 @@ func selectedRecoveryPoint(t *testing.T, engine *Engine, database *store.Store, 
 	if err := database.CreatePreview(ctx, store.PreviewInput{Preview: preview, ConfirmationHash: store.HashConfirmation("backup")}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, actorHash(), model.StartTaskRequest{PreviewID: preview.ID, Confirmation: "backup", IdempotencyKey: mustUUID(t)}, mustUUID(t))
+	task, _, err := seedRunnerPreviewTask(t, engine, ctx, actorHash(), model.StartTaskRequest{PreviewID: preview.ID, Confirmation: "backup", IdempotencyKey: mustUUID(t)}, mustUUID(t))
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "backup", engine.owner); err != nil {
 		t.Fatal(err)
 	}
 	point, err := engine.persistRecoveryPoint(ctx, task, service, &model.RecoveryPointEvidence{SchemaVersion: 1, Service: service.Name,

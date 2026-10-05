@@ -163,6 +163,8 @@ func (worker *RemoteWorker) claim(ctx context.Context) (*model.AssignmentClaimRe
 }
 
 func (worker *RemoteWorker) execute(parent context.Context, claim model.AssignmentClaimResponse) {
+	// B-P 无远端普通执行准入；不补报或改写旧任务终态。
+	return
 	task := claim.Task
 	assignment := claim.Assignment
 	fence := model.AssignmentFence{RunnerID: worker.RunnerID, Generation: assignment.Generation, ClaimToken: assignment.ClaimToken}

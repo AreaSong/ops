@@ -67,6 +67,9 @@ validate_contract() {
     --service sub2api --target "$target" --backup-root "$BACKUP_ROOT" \
     --required-role postgres-sub2api --required-role redis \
     --required-role volume-sub2api-data --required-role configs --required-role runtime-snapshot)" || fail "恢复合同校验失败"
+  if [[ "$(jq -r '.runtimeSnapshot.schemaVersion' <<<"$CONTRACT_JSON")" == 2 ]]; then
+    fail "v2_restore_target_unproven"
+  fi
   for role in postgres redis; do
     recorded_image="$(jq -er --arg role "$role" '.runtimeSnapshot.containers[$role].image_id' <<<"$CONTRACT_JSON")"
     container="$POSTGRES_CONTAINER"

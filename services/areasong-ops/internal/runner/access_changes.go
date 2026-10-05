@@ -118,6 +118,12 @@ func (engine *Engine) ApplyAccessChange(ctx context.Context, actor, id string) (
 	if digestText(payload) != change.RequestDigest {
 		return model.AccessChange{}, errors.New("访问策略审批载荷损坏")
 	}
+	if err := model.RejectTenantLifecyclePayload(payload); err != nil {
+		if errors.Is(err, model.ErrTenantLifecyclePayload) {
+			return model.AccessChange{}, err
+		}
+		return model.AccessChange{}, errors.New("访问策略审批载荷损坏")
+	}
 	var request model.AccessControlUpdateRequest
 	if err := json.Unmarshal([]byte(payload), &request); err != nil {
 		return model.AccessChange{}, errors.New("访问策略审批载荷损坏")

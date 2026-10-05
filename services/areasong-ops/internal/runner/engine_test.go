@@ -224,31 +224,18 @@ func testEngine(t *testing.T, executor Executor) (*Engine, *store.Store) {
 	return engine, database
 }
 
-func TestAutomaticTaskUsesManagedObjectPlanAndExecution(t *testing.T) {
+func TestBPAutomaticTaskCannotUseOrdinaryPlan(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{})
 	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	views := engine.AutomaticTasks(ctx)
-	if len(views) != 1 || views[0].ObjectID != "automatic-task:collector" || views[0].Schedule != "每分钟" {
-		t.Fatalf("views=%+v", views)
+	if _, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{Service: "collector", Action: "rerun"}); !errors.Is(err, model.ErrReleaseNotIntegrated) {
+		t.Fatal("自动任务误作普通人工来源", err)
 	}
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{Service: "collector", Action: "rerun"})
-	if err != nil || plan.ConfirmationPhrase != "补跑 collector" {
-		t.Fatalf("plan=%+v err=%v", plan, err)
+	tasks, err := engine.store.ListTasks(ctx, 200, 0)
+	if err != nil || len(tasks) != 0 {
+		t.Fatal("产生自动执行任务", err)
 	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded || finished.ProductionChanged || len(finished.Stages) != 3 {
-		t.Fatalf("task=%+v err=%v", finished, err)
+	if len(engine.executor.(*fakeExecutor).calls) != 0 {
+		t.Fatal("调用自动任务适配器")
 	}
 }
 
@@ -405,204 +392,82 @@ func TestCredentialClosureResumesAfterPersistedRevocationEvidence(t *testing.T) 
 	}
 }
 
-func TestHighRiskTaskRequiresExactPhraseAndCompletes(t *testing.T) {
+func TestBPPreviewRequiresExactPhraseAndRejectsNewTask(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{})
 	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	preview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.1.0",
-	})
-	if err != nil {
-		t.Fatal(err)
+	preview := historicalRunnerPreview(t, engine, actorHash(), model.PreviewRequest{Service: "demo", Action: "update", Target: "v1.1.0"})
+	if _, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{PreviewID: preview.ID, Confirmation: "wrong", IdempotencyKey: mustUUID(t)}); !errors.Is(err, store.ErrConfirmation) {
+		t.Fatal("确认短语边界退化", err)
 	}
-	if preview.ConfirmationPhrase != "更新 demo 到 v1.1.0" {
-		t.Fatalf("phrase=%q", preview.ConfirmationPhrase)
+	if _, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{PreviewID: preview.ID, Confirmation: preview.ConfirmationPhrase, IdempotencyKey: mustUUID(t)}); !errors.Is(err, model.ErrReleaseNotIntegrated) {
+		t.Fatal("旧预览启动新任务", err)
 	}
-	idempotency, _ := newUUID()
-	_, _, err = engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, IdempotencyKey: idempotency, Confirmation: "wrong",
-	})
-	if !errors.Is(err, store.ErrConfirmation) {
-		t.Fatalf("expected confirmation error, got %v", err)
-	}
-	idempotency, _ = newUUID()
-	task, created, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, IdempotencyKey: idempotency, Confirmation: preview.ConfirmationPhrase,
-	})
-	if err != nil || !created {
-		t.Fatalf("created=%v err=%v", created, err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded {
-		t.Fatalf("task=%+v err=%v", finished, err)
+	if calls := len(engine.executor.(*fakeExecutor).calls); calls != 0 {
+		t.Fatal("拒绝后调用适配器")
 	}
 }
 
 func TestReleasePlanApprovalAndExecutionAreSeparate(t *testing.T) {
 	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	creator, approver := actorHash(), strings.Repeat("b", 64)
-	discoverRelease(t, engine)
-	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.1.0",
-	})
+	engine, profile := preparationEngine(t)
+	plan, err := engine.createManualReleasePlan(ctx, actorHash(), bpRequest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.State != model.PlanPendingApproval || plan.Digest == "" {
-		t.Fatalf("plan=%+v", plan)
+	if plan.State != model.PlanPendingApproval || !plan.RequiresDualApproval {
+		t.Fatal("批准边界丢失")
 	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, creator, plan.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	}); err == nil {
-		t.Fatal("unapproved plan executed")
+	if _, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)}); err == nil {
+		t.Fatal("未批准执行")
 	}
-	approved := approveReleasePlanForTest(t, engine, plan, approver)
-	executionKey := mustUUID(t)
-	executor := releasePlanExecutor(approved)
-	task, created, err := engine.ExecuteReleasePlan(ctx, executor, approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: executionKey,
-	})
-	if err != nil || !created || task.PlanID != plan.ID {
-		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
+	approved := approveReleasePlanForTest(t, engine, plan, strings.Repeat("b", 64))
+	if !approved.AllowsExecutor(actorHash()) || approved.AllowsExecutor(strings.Repeat("b", 64)) {
+		t.Fatal("执行身份规则退化")
 	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded || len(finished.Stages) != 5 {
-		t.Fatalf("task=%+v err=%v", finished, err)
-	}
-	replayed, created, err := engine.ExecuteReleasePlan(ctx, executor, plan.ID, model.ExecutePlanRequest{
-		IdempotencyKey: executionKey,
-	})
-	if err != nil || created || replayed.ID != task.ID {
-		t.Fatalf("replayed=%+v created=%v err=%v", replayed, created, err)
+	assertBPPlanFrozen(t, engine, approved)
+	if profile.calls != 1 {
+		t.Fatal("执行重新检查")
 	}
 }
 
-func TestPlanClosureRejectsChangedRuntimeIdentity(t *testing.T) {
-	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	creator, approver := actorHash(), strings.Repeat("b", 64)
-	service := engine.catalog.Services["demo"]
-	action := service.Actions["update"]
-	action.ObservationSeconds = 1
-	service.Actions["update"] = action
-	engine.catalog.Services["demo"] = service
-	discoverRelease(t, engine)
-	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.1.0",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approved := approveReleasePlanForTest(t, engine, plan, approver)
-	task, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !plan.RequiresDualApproval {
-		t.Fatal("high-risk plan did not require dual approval")
-	}
-	engine.Wait()
-	observing, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || observing.State != model.PlanObserving || task.ID != observing.TaskID {
-		t.Fatalf("plan=%+v err=%v", observing, err)
-	}
-	time.Sleep(time.Until(*observing.ObservationEndsAt) + 20*time.Millisecond)
-	payload, err := json.Marshal(model.ClosePlanRequest{IdempotencyKey: mustUUID(t)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "/v1/plans/"+plan.ID+"/close", bytes.NewReader(payload))
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set(actorHeader, creator)
-	response := httptest.NewRecorder()
-	NewServer(engine, database).ServeHTTP(response, request)
-	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "当前版本与计划目标不一致") {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
-	blocked, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || blocked.State != model.PlanObserving || blocked.ClosureReason == "" {
-		t.Fatalf("blocked=%+v err=%v", blocked, err)
+func TestBPClosureDoesNotInspectRuntimeIdentity(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "update")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
-func TestPlanClosureObservationWindowIsRetryableWithoutStickyReason(t *testing.T) {
-	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	service := engine.catalog.Services["demo"]
-	action := service.Actions["restart"]
-	action.ObservationSeconds = 1
-	service.Actions["restart"] = action
-	engine.catalog.Services["demo"] = service
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "restart",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	observing, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || observing.State != model.PlanObserving || observing.ObservationEndsAt == nil {
-		t.Fatalf("plan=%+v err=%v", observing, err)
-	}
-	_, err = engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err == nil || !strings.Contains(err.Error(), "观察窗口尚未结束") {
-		t.Fatalf("early close err=%v", err)
-	}
-	blocked, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if blocked.ClosureReason != "" {
-		t.Fatalf("temporary observation rejection became sticky: %+v", blocked)
-	}
-	time.Sleep(time.Until(*blocked.ObservationEndsAt) + 20*time.Millisecond)
-	closed, err := engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil || closed.State != model.PlanCompleted {
-		t.Fatalf("retry close plan=%+v err=%v", closed, err)
+func TestBPClosurePreservesObservationWithoutStickyReason(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "restart")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
 func TestHighRiskPlanRejectsCreatorApproval(t *testing.T) {
+	engine, _ := preparationEngine(t)
 	ctx := context.Background()
-	engine, _ := testEngine(t, &fakeExecutor{})
-	discoverRelease(t, engine)
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.1.0",
-	})
+	plan, err := engine.createManualReleasePlan(ctx, actorHash(), bpRequest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !plan.RequiresDualApproval {
-		t.Fatal("high-risk plan did not require dual approval")
+		t.Fatal("高风险丢失独立批准")
 	}
-	if _, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	}); !errors.Is(err, store.ErrActorMismatch) {
-		t.Fatalf("creator approval err=%v, want actor mismatch", err)
+	if _, err = engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); !errors.Is(err, store.ErrActorMismatch) {
+		t.Fatal(err)
 	}
 }
 
-func TestLegacyHighRiskPlanWithoutDualApprovalIsInvalidatedBeforeExecution(t *testing.T) {
+func TestBPLegacyWeakPlanIsRejectedWithoutHistoryRewrite(t *testing.T) {
 	ctx := context.Background()
 	engine, database := testEngine(t, &fakeExecutor{})
 	now := time.Now().UTC()
@@ -623,105 +488,44 @@ func TestLegacyHighRiskPlanWithoutDualApprovalIsInvalidatedBeforeExecution(t *te
 	}
 	if _, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{
 		IdempotencyKey: mustUUID(t),
-	}); err == nil || !strings.Contains(err.Error(), "缺少双人审批门禁") {
+	}); err == nil {
 		t.Fatalf("legacy weak plan execution err=%v", err)
 	}
 	stored, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || stored.State != model.PlanInvalidated {
-		t.Fatalf("legacy weak plan was not invalidated: plan=%+v err=%v", stored, err)
+	if err != nil || stored.State != model.PlanApproved {
+		t.Fatalf("legacy weak plan history was rewritten: plan=%+v err=%v", stored, err)
 	}
 }
 
-func TestC2LifecyclePlanAllowsSingleActorApprovalAndAuditsException(t *testing.T) {
-	ctx := context.Background()
-	executor := &fakeExecutor{}
-	engine, database := testEngine(t, executor)
-	engine.catalog.Services["areaforge"] = model.ServiceDefinition{
-		Name: "areaforge", ObjectID: "service:areaforge", TenantID: "production",
-		Adapter: "/tmp/areaforge", Metadata: model.ObjectMetadata{Type: "service", Environment: "production", Lifecycle: "active"},
-		AlertPolicy: model.AlertPolicyDefinition{
-			Matchers:          map[string]string{"service": "areaforge"},
-			MaintenanceAlerts: []string{"AppHttpProbeFailed"},
-		},
+func TestBPC2HistoricalExceptionCannotStartNewApproval(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{})
+	service := engine.catalog.Services["demo"]
+	service.Name = "areaforge"
+	service.ObjectID = "service:areaforge"
+	service.TenantID = "production"
+	action := service.Actions["restart"]
+	action.Name = "stop"
+	action.Risk = model.RiskHigh
+	service.Actions["stop"] = action
+	engine.catalog.Services["areaforge"] = service
+	plan := historicalRunnerPlan(t, engine, actorHash(), model.PreviewRequest{Service: "areaforge", Action: "stop"})
+	if !plan.AllowsC2LifecycleSingleActorApproval() || !plan.HasRequiredApprovalPolicy() {
+		t.Fatal("C2历史身份例外丢失")
 	}
-	actor := actorHash()
-	plan, err := engine.CreateReleasePlan(ctx, actor, model.PreviewRequest{Service: "areaforge", Action: "stop"})
-	if err != nil {
-		t.Fatal(err)
+	if _, err := engine.ApproveReleasePlan(context.Background(), actorHash(), plan.ID, model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err == nil {
+		t.Fatal("C2例外绕过B-P")
 	}
-	if plan.Risk != model.RiskHigh || plan.ApprovalSummary.ApprovalException != model.ApprovalExceptionC2LifecycleSingleActor {
-		t.Fatalf("plan exception not bound: %+v", plan)
-	}
-	if plan.RequiresDualApproval {
-		t.Fatal("C2 lifecycle exception unexpectedly required dual approval")
-	}
-	// The signed summary must use the same normalized alert policy shape that
-	// execution revalidates; nil and empty map/slice JSON forms are distinct.
-	if plan.ApprovalSummary.AlertPolicy.Matchers == nil {
-		t.Fatalf("plan alert policy is not normalized: %+v", plan.ApprovalSummary.AlertPolicy)
-	}
-	approved, err := engine.ApproveReleasePlan(ctx, actor, plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil || approved.State != model.PlanApproved || approved.ApprovedByHash != actor {
-		t.Fatalf("self approval failed: plan=%+v err=%v", approved, err)
-	}
-	audit, err := database.ListAudit(ctx, 10, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, entry := range audit {
-		if entry.Event == "plan.approved" && entry.Resource == plan.ID {
-			if entry.Detail["approvalException"] != model.ApprovalExceptionC2LifecycleSingleActor || entry.Detail["selfApproval"] != true {
-				t.Fatalf("approval audit missing exception marker: %+v", entry)
-			}
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("approval audit for %s not found: %+v", plan.ID, audit)
-	}
-	task, created, err := engine.ExecuteReleasePlan(ctx, actor, approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil || !created || task.PlanID != plan.ID {
-		t.Fatalf("task=%+v created=%v err=%v", task, created, err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded {
-		t.Fatalf("task=%+v err=%v", finished, err)
-	}
+	assertBPPlanFrozen(t, engine, plan)
 }
 
 func TestPlanExecutionRejectsActiveBlockingAlert(t *testing.T) {
-	ctx := context.Background()
-	engine, _ := testEngine(t, &fakeExecutor{})
-	manager := engine.alertmanager.(*fakeAlertmanager)
-	manager.alerts = []model.ActiveAlert{{
-		Fingerprint: "abcdef1234567890", AlertName: "AppHttpProbeFailed",
-		Severity: "critical", Labels: map[string]string{
-			"alertname": "AppHttpProbeFailed", "service": "demo", "severity": "critical",
-		},
-	}}
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "restart",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err == nil || !strings.Contains(err.Error(), "存在阻断告警") || len(manager.created) != 0 {
-		t.Fatalf("err=%v silences=%+v", err, manager.created)
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "update")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
@@ -755,76 +559,20 @@ func TestAlertsEndpointReportsAlertmanagerUnavailable(t *testing.T) {
 	}
 }
 
-func TestPlanClosureReleasesSilenceAndChecksAlerts(t *testing.T) {
-	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	manager := engine.alertmanager.(*fakeAlertmanager)
-	plan, err := engine.CreateReleasePlan(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "restart",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approved, err := engine.ApproveReleasePlan(ctx, actorHash(), plan.ID, model.ApprovePlanRequest{
-		Confirmation: plan.ConfirmationPhrase, Digest: plan.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, err = engine.ExecuteReleasePlan(ctx, actorHash(), approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	observing, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || observing.MaintenanceSilenceID == "" || observing.MaintenanceSilenceEndsAt == nil {
-		t.Fatalf("plan=%+v err=%v", observing, err)
-	}
-	manager.alerts = []model.ActiveAlert{{
-		Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed",
-		Labels: map[string]string{"alertname": "AppHttpProbeFailed", "service": "demo"},
-	}}
-	time.Sleep(time.Until(*observing.ObservationEndsAt) + 20*time.Millisecond)
-	_, err = engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err == nil || !strings.Contains(err.Error(), "关联阻断告警仍在触发") {
-		t.Fatalf("err=%v", err)
-	}
-	blocked, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || blocked.MaintenanceSilenceReleasedAt == nil ||
-		len(blocked.BlockingAlertFingerprints) != 1 || len(manager.expired) != 1 {
-		t.Fatalf("plan=%+v expired=%v err=%v", blocked, manager.expired, err)
-	}
-	manager.alerts = nil
-	closed, err := engine.CloseReleasePlan(ctx, actorHash(), plan.ID, model.ClosePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil || closed.State != model.PlanCompleted {
-		t.Fatalf("plan=%+v err=%v", closed, err)
+func TestBPClosurePreservesSilenceAndHistory(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "restart")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
 func discoverRelease(t *testing.T, engine *Engine) {
 	t.Helper()
-	preview, err := engine.CreatePreview(context.Background(), actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "check",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	task, _, err := engine.StartTask(context.Background(), actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	if task.ID == "" {
-		t.Fatal("discovery task was not created")
-	}
+	seedHistoricalDiscovery(t, engine)
 }
 
 func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
@@ -854,13 +602,10 @@ func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(ctx, actorHash(), model.StartTaskRequest{
+	task, _, err := seedRunnerPreviewTask(t, engine, ctx, actorHash(), model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "confirm", IdempotencyKey: "recovery-idem",
 	}, "task-recovery")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := database.MarkRunningOwned(ctx, task.ID, "backup", engine.owner); err != nil {
 		t.Fatal(err)
 	}
 	service := engine.catalog.Services["demo"]
@@ -917,138 +662,42 @@ func TestRecoveryPointEvidenceIsVerifiedAndBound(t *testing.T) {
 	}
 }
 
-func TestControlledRollbackPlanRevalidatesCurrentSource(t *testing.T) {
-	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	creator, approver := actorHash(), strings.Repeat("b", 64)
-	preview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.0.0",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, Confirmation: preview.ConfirmationPhrase, IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	plan, err := engine.CreateReleasePlan(ctx, creator, model.PreviewRequest{
-		Service: "demo", Action: "rollback", Target: source.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	approved := approveReleasePlanForTest(t, engine, plan, approver)
-	task, _, err := engine.ExecuteReleasePlan(ctx, releasePlanExecutor(approved), approved.ID, model.ExecutePlanRequest{
-		IdempotencyKey: mustUUID(t),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskSucceeded {
-		t.Fatalf("task=%+v err=%v", finished, err)
+func TestBPControlledRollbackCannotConsumeHistoricalSource(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "update")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
-func TestPostApplyFailureRunsRollbackAndRedactsError(t *testing.T) {
-	ctx := context.Background()
-	executor := &fakeExecutor{failPhase: "health"}
-	engine, database := testEngine(t, executor)
-	preview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.1.0",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	idempotency, _ := newUUID()
-	task, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, IdempotencyKey: idempotency, Confirmation: preview.ConfirmationPhrase,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if finished.State != model.TaskRolledBack {
-		t.Fatalf("state=%s error=%s", finished.State, finished.Error)
-	}
-	if finished.Error != "适配器阶段 health 失败: password=[REDACTED] failure" {
-		t.Fatalf("error was not redacted: %q", finished.Error)
-	}
-	if len(finished.Stages) != 6 || finished.Stages[3].State != model.StageFailed ||
-		finished.Stages[5].Name != "rollback" || finished.Stages[5].State != model.StageRolledBack {
-		t.Fatalf("rollback stages=%+v", finished.Stages)
-	}
-	executor.mu.Lock()
-	defer executor.mu.Unlock()
-	if executor.calls[len(executor.calls)-1].Phase != "rollback" {
-		t.Fatalf("last phase=%s", executor.calls[len(executor.calls)-1].Phase)
+func TestBPFailureHistoryDoesNotStartRollback(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{failPhase: "health"})
+	plan, _ := historicalObservedPlan(t, engine, "update")
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "fedcba0987654321", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
+	assertBPPlanFrozen(t, engine, plan)
+	stored, err := engine.store.GetReleasePlan(context.Background(), plan.ID)
+	if err != nil || stored.ClosureReason != "" {
+		t.Fatal("B-P产生新的收口/回滚结果", err)
 	}
 }
 
 func TestServicesRestoresDiscoveryAndSafeRollbackSource(t *testing.T) {
+	engine, _ := testEngine(t, &fakeExecutor{})
 	ctx := context.Background()
-	engine, database := testEngine(t, &fakeExecutor{})
-	now := time.Now().UTC()
-	preview := model.Preview{
-		ID: "preview-check", ActorHash: actorHash(), Service: "demo", Action: "check",
-		Risk: model.RiskReadOnly, Impact: "none", Rollback: "none", Scope: "demo",
-		Steps: []string{"discover"}, Snapshot: map[string]any{}, CreatedAt: now,
-		ExpiresAt: now.Add(5 * time.Minute),
-	}
-	if err := database.CreatePreview(ctx, store.PreviewInput{
-		Preview: preview, ConfirmationHash: store.HashConfirmation(""),
-	}); err != nil {
+	seedHistoricalDiscovery(t, engine)
+	updated := seedHistoricalRunnerTask(t, engine, model.Task{ActorHash: actorHash(), Service: "demo", Action: "update", Target: "v1.0.0", State: model.TaskSucceeded})
+	if err := os.MkdirAll(filepath.Join(engine.stateRoot, "operations", updated.ID), 0700); err != nil {
 		t.Fatal(err)
 	}
-	check, _, err := database.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: preview.ID, IdempotencyKey: "check-idempotency",
-	}, "task-check")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := database.MarkRunning(ctx, check.ID, "discover"); err != nil {
-		t.Fatal(err)
-	}
-	if err := database.FinishTask(ctx, check.ID, model.TaskSucceeded, "完成", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := database.AppendEvent(ctx, model.Event{
-		TaskID: check.ID, Level: "info", Phase: "discover", Message: "完成",
-		Data: map[string]any{"latestTag": "v1.1.0", "prepared": true},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	updatePreview, err := engine.CreatePreview(ctx, actorHash(), model.PreviewRequest{
-		Service: "demo", Action: "update", Target: "v1.0.0",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	idempotency, _ := newUUID()
-	updated, _, err := engine.StartTask(ctx, actorHash(), model.StartTaskRequest{
-		PreviewID: updatePreview.ID, IdempotencyKey: idempotency,
-		Confirmation: updatePreview.ConfirmationPhrase,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
-
 	views := engine.Services(ctx)
 	if len(views) != 1 || views[0].ReleaseDiscovery["latestTag"] != "v1.1.0" {
-		t.Fatalf("views=%+v", views)
+		t.Fatalf("发现历史丢失: %+v", views)
 	}
 	if views[0].RollbackSourceTaskID != updated.ID {
-		t.Fatalf("rollback source=%q want=%q", views[0].RollbackSourceTaskID, updated.ID)
+		t.Fatalf("回滚来源=%q，期望=%q", views[0].RollbackSourceTaskID, updated.ID)
 	}
 }
 

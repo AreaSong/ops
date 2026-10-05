@@ -121,6 +121,9 @@ func (engine *Engine) updateAccess(
 		if err != nil {
 			return model.AccessControlView{}, err
 		}
+		if err := validateOrdinaryTenantUpdate(policy, tenant); err != nil {
+			return model.AccessControlView{}, err
+		}
 		proposed.Tenants[tenant.ID] = tenant
 		normalizedTenants = append(normalizedTenants, tenant)
 	}
@@ -229,23 +232,8 @@ func (engine *Engine) updateAccess(
 	}
 	proposed.Bindings = mergeBindings(policy.Bindings, normalizedBindings)
 	proposed.Bindings = removeBindings(proposed.Bindings, normalizedRemoveBindings)
-	for _, binding := range proposed.Bindings {
-		if _, ok := proposed.Roles[binding.RoleID]; !ok {
-			return model.AccessControlView{}, errors.New("现有绑定引用了已删除角色")
-		}
-		if binding.TenantID != "*" && !tenantIsActive(proposed, binding.TenantID) {
-			return model.AccessControlView{}, errors.New("现有绑定引用了已删除租户")
-		}
-	}
-	for _, principal := range proposed.Principals {
-		if !tenantIsActive(proposed, principal.TenantID) {
-			return model.AccessControlView{}, errors.New("现有访问主体引用了已删除租户")
-		}
-		for _, roleID := range principal.Roles {
-			if _, ok := proposed.Roles[roleID]; !ok {
-				return model.AccessControlView{}, errors.New("现有访问主体引用了已删除角色")
-			}
-		}
+	if err := engine.validateAccessTenantReferences(ctx, policy, proposed, snapshot.Version); err != nil {
+		return model.AccessControlView{}, err
 	}
 	if !hasPlatformAdmin(proposed) {
 		return model.AccessControlView{}, errors.New("不能撤销最后一个平台管理员")
@@ -469,7 +457,7 @@ func hasPlatformAdmin(policy *config.AccessPolicy) bool {
 func normalizeAccessTenant(tenant model.Tenant, actor string) (model.Tenant, error) {
 	tenant.ID = strings.ToLower(strings.TrimSpace(tenant.ID))
 	tenant.DisplayName = strings.TrimSpace(tenant.DisplayName)
-	if tenant.ID == "" || tenant.DisplayName == "" || tenant.Status == "disabled" {
+	if tenant.ID == "" || tenant.DisplayName == "" || (tenant.Status != "" && tenant.Status != "active") {
 		return model.Tenant{}, errors.New("租户定义无效或已禁用")
 	}
 	if tenant.Status == "" {

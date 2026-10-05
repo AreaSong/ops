@@ -131,6 +131,8 @@ printf '9999999999 %s\n' "$file"
                 "PATH": f"{self.bin_dir}:{environment['PATH']}",
                 "BACKUP_ROOT": str(self.backup_root),
                 "SUB2API_RESTORE_ENV_FILE": str(self.env_file),
+                "SUB2API_PREPARED_RELEASE_DIR": str(self.root / "prepared"),
+                "SUB2API_RESTORE_METRIC_OUT": str(self.root / "restore-metrics.prom"),
                 "SUB2API_RESTORE_BACKUP_POSTGRES": str(self.backup_scripts[0]),
                 "SUB2API_RESTORE_BACKUP_REDIS": str(self.backup_scripts[1]),
                 "SUB2API_RESTORE_BACKUP_VOLUMES": str(self.backup_scripts[2]),

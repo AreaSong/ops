@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,43 +18,34 @@ import (
 func observingAutomaticPlan(t *testing.T) (*Engine, *store.Store, model.ReleasePlan, model.Task) {
 	t.Helper()
 	engine, database, plan, _ := automaticPlanFixture(t)
-	ctx := context.Background()
-	if _, err := engine.ApproveReleasePlan(ctx, strings.Repeat("b", 64), plan.ID,
-		model.ApprovePlanRequest{Digest: plan.Digest, Confirmation: plan.ConfirmationPhrase}); err != nil {
+	engine.backupRoot = t.TempDir()
+	service := enableRecoveryActions(engine)
+	point := createVerifiedRecoveryPoint(t, engine, database, service)
+	task := seedHistoricalRunnerTask(t, engine, model.Task{ActorHash: actorHash(), Service: plan.Service, Action: plan.Action, Target: plan.Target, Risk: plan.Risk, State: model.TaskSucceeded, PlanID: plan.ID, PlanDigest: plan.Digest, RecoveryPointID: point.ID, Snapshot: plan.ApprovalSummary.ExpectedBefore})
+	raw := historicalRunnerDB(t, engine)
+	now := time.Now().UTC()
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,task_id=?,approved_by_hash=?,executed_by_hash=?,observation_started_at=?,observation_ends_at=? WHERE id=?", model.PlanObserving, task.ID, strings.Repeat("b", 64), actorHash(), now.Format(time.RFC3339Nano), now.Add(time.Hour).Format(time.RFC3339Nano), plan.ID); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := engine.ExecuteReleasePlan(ctx, actorHash(), plan.ID, model.ExecutePlanRequest{IdempotencyKey: mustUUID(t)})
+	plan, err := database.GetReleasePlan(context.Background(), plan.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.Wait()
-	task, err = database.GetTask(ctx, task.ID)
-	if err != nil || task.State != model.TaskSucceeded {
-		t.Fatalf("自动更新未成功: %+v error=%v", task, err)
-	}
-	plan, err = database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || plan.State != model.PlanObserving {
-		t.Fatalf("自动更新未进入观察: %+v error=%v", plan, err)
-	}
-	manager := engine.alertmanager.(*fakeAlertmanager)
-	manager.mu.Lock()
-	manager.alerts = []model.ActiveAlert{{Fingerprint: "alert-automatic-update", AlertName: "AppHttpProbeFailed",
-		Severity: "critical", Labels: map[string]string{"service": "demo"}}}
-	manager.mu.Unlock()
+	engine.alertmanager.(*fakeAlertmanager).alerts = []model.ActiveAlert{{Fingerprint: "alert-automatic-update", AlertName: "AppHttpProbeFailed", Labels: map[string]string{"service": "demo"}}}
 	return engine, database, plan, task
 }
 
-func TestAutomaticObservationAlertRollsBackExactlyOnce(t *testing.T) {
+func TestBPAutomaticObservationNeverStartsRollback(t *testing.T) {
 	engine, database, _, task := observingAutomaticPlan(t)
 	ctx := context.Background()
-	if err := engine.ReconcileAutoUpdateObservations(ctx); err != nil {
+	if err := engine.ReconcileAutoUpdateObservations(ctx); err == nil {
 		t.Fatal(err)
 	}
 	completed, err := database.GetTask(ctx, task.ID)
-	if err != nil || completed.State != model.TaskRolledBack {
+	if err != nil || completed.State != model.TaskSucceeded {
 		t.Fatalf("告警未触发回滚: %+v error=%v", completed, err)
 	}
-	if err := engine.ReconcileAutoUpdateObservations(ctx); err != nil {
+	if err := engine.ReconcileAutoUpdateObservations(ctx); err == nil {
 		t.Fatal(err)
 	}
 	executor := engine.executor.(*automaticTestExecutor)
@@ -62,12 +55,12 @@ func TestAutomaticObservationAlertRollsBackExactlyOnce(t *testing.T) {
 			count++
 		}
 	}
-	if count != 1 {
+	if count != 0 {
 		t.Fatalf("回滚执行次数=%d，期望1", count)
 	}
 }
 
-func TestAutomaticObservationRollbackFailureDoesNotRetry(t *testing.T) {
+func TestBPAutomaticObservationCannotRetryHistoricalWork(t *testing.T) {
 	engine, database, plan, task := observingAutomaticPlan(t)
 	executor := engine.executor.(*automaticTestExecutor)
 	executor.failPhase = "rollback"
@@ -76,15 +69,15 @@ func TestAutomaticObservationRollbackFailureDoesNotRetry(t *testing.T) {
 		t.Fatal("回滚失败被隐藏")
 	}
 	completed, err := database.GetTask(ctx, task.ID)
-	if err != nil || completed.State != model.TaskNeedsAttention {
+	if err != nil || completed.State != model.TaskSucceeded {
 		t.Fatalf("回滚失败状态=%+v error=%v", completed, err)
 	}
 	failed, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || failed.State != model.PlanNeedsAttention {
+	if err != nil || failed.State != model.PlanObserving {
 		t.Fatalf("计划未进入人工关注: %+v error=%v", failed, err)
 	}
 	before := len(executor.calls)
-	if err := engine.ReconcileAutoUpdateObservations(ctx); err != nil || len(executor.calls) != before {
+	if err := engine.ReconcileAutoUpdateObservations(ctx); err == nil || len(executor.calls) != before {
 		t.Fatalf("失败后重新调用了适配器: %v", err)
 	}
 }
@@ -110,11 +103,11 @@ func TestAutomaticObservationRefusesChangedEvidenceOrRuntime(t *testing.T) {
 			} else {
 				executor.updated = false
 			}
-			if err := engine.ReconcileAutoUpdateObservations(ctx); err != nil {
+			if err := engine.ReconcileAutoUpdateObservations(ctx); err == nil {
 				t.Fatal(err)
 			}
 			blocked, err := database.GetReleasePlan(ctx, plan.ID)
-			if err != nil || blocked.State != model.PlanNeedsAttention {
+			if err != nil || blocked.State != model.PlanObserving {
 				t.Fatalf("证据变化未阻断: %+v error=%v", blocked, err)
 			}
 			for _, call := range executor.calls {
@@ -126,45 +119,31 @@ func TestAutomaticObservationRefusesChangedEvidenceOrRuntime(t *testing.T) {
 	}
 }
 
-func TestAutomaticObservationUsesIdentityWithoutHealthyApplication(t *testing.T) {
+func TestBPAutomaticObservationDoesNotProbeUnhealthyApplication(t *testing.T) {
 	engine, database, _, task := observingAutomaticPlan(t)
 	executor := engine.executor.(*automaticTestExecutor)
 	executor.healthFailed = true
-	if err := engine.ReconcileAutoUpdateObservations(context.Background()); err != nil {
+	if err := engine.ReconcileAutoUpdateObservations(context.Background()); err == nil {
 		t.Fatal(err)
 	}
 	finished, err := database.GetTask(context.Background(), task.ID)
-	if err != nil || finished.State != model.TaskRolledBack {
+	if err != nil || finished.State != model.TaskSucceeded {
 		t.Fatalf("应用不健康但身份明确时未完成回滚: %+v error=%v", finished, err)
 	}
 }
 
-func TestAutomaticObservationStopWaitsForRollbackTerminal(t *testing.T) {
+func TestBPAutomaticObservationMonitorDoesNotStart(t *testing.T) {
 	engine, database, _, task := observingAutomaticPlan(t)
-	executor := engine.executor.(*automaticTestExecutor)
-	executor.rollbackEntered = make(chan struct{})
-	engine.startAutoUpdateObservationMonitor(context.Background(), time.Millisecond)
-	select {
-	case <-executor.rollbackEntered:
-	case <-time.After(3 * time.Second):
-		engine.Stop()
-		t.Fatal("观察期回滚未启动")
-	}
+	engine.StartAutoUpdateObservationMonitor(context.Background())
 	engine.Stop()
-	done := make(chan struct{})
-	go func() { engine.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("停止后观察器/回滚未收口")
-	}
+	engine.Wait()
 	finished, err := database.GetTask(context.Background(), task.ID)
-	if err != nil || finished.State != model.TaskNeedsAttention {
-		t.Fatalf("中断回滚未标人工关注: %+v error=%v", finished, err)
+	if err != nil || finished.State != model.TaskSucceeded || len(engine.executor.(*automaticTestExecutor).calls) != 0 {
+		t.Fatal("B-P启动了自动观察回滚", err)
 	}
 }
 
-func TestAutomaticObservationPersistsResultWithoutRepeatingRollback(t *testing.T) {
+func TestBPAutomaticObservationDoesNotWriteTerminalEvenWithFaults(t *testing.T) {
 	engine, database, _, task := observingAutomaticPlan(t)
 	raw, err := sql.Open("sqlite", filepath.Join(engine.stateRoot, "ops.db"))
 	if err != nil {
@@ -185,76 +164,82 @@ func TestAutomaticObservationPersistsResultWithoutRepeatingRollback(t *testing.T
 	if _, err := raw.Exec(`DROP TRIGGER reject_automatic_rollback_terminal`); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.ReconcileAutoUpdateObservations(context.Background()); err != nil {
+	if err := engine.ReconcileAutoUpdateObservations(context.Background()); err == nil {
 		t.Fatal(err)
 	}
 	finished, err := database.GetTask(context.Background(), task.ID)
-	if err != nil || finished.State != model.TaskRolledBack || len(executor.calls) != before {
+	if err != nil || finished.State != model.TaskSucceeded || len(executor.calls) != before {
 		t.Fatalf("回执收口失败或重放了回滚: %+v error=%v", finished, err)
 	}
 }
 
-func TestAutomaticObservationClaimsBeforeWaitingForGlobalBackupLock(t *testing.T) {
+func TestBPAutomaticObservationDoesNotClaimWhileBackupLocked(t *testing.T) {
 	engine, database, plan, task := observingAutomaticPlan(t)
 	if !engine.acquire([]string{"backup:global"}, "another-service") {
 		t.Fatal("无法设置并发夹具")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := engine.reconcileAutoUpdateObservations(ctx, true); err != nil {
+	if err := engine.reconcileAutoUpdateObservations(ctx, true); err == nil {
 		engine.release([]string{"backup:global"}, "another-service")
 		t.Fatal(err)
 	}
 	queued, err := database.GetReleasePlan(ctx, plan.ID)
-	if err != nil || queued.State != model.PlanExecuting {
+	if err != nil || queued.State != model.PlanObserving {
 		engine.release([]string{"backup:global"}, "another-service")
 		t.Fatalf("等待其他服务时没有及时固定回滚请求: %+v error=%v", queued, err)
 	}
 	engine.release([]string{"backup:global"}, "another-service")
 	engine.Wait()
 	finished, err := database.GetTask(ctx, task.ID)
-	if err != nil || finished.State != model.TaskRolledBack {
+	if err != nil || finished.State != model.TaskSucceeded {
 		t.Fatalf("等待锁后回滚未完成: %+v error=%v", finished, err)
 	}
 }
 
 func TestAutomaticRollbackReceiptSurvivesRunnerRestart(t *testing.T) {
-	engine, database, _, task := observingAutomaticPlan(t)
+	engine, database, plan, task := observingAutomaticPlan(t)
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE tasks SET state=? WHERE id=?", model.TaskRollingBack, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec("UPDATE release_plans SET state=? WHERE id=?", model.PlanExecuting, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(engine.stateRoot, "operations", task.ID)
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	receipt := automaticRollbackReceipt{Version: 1, TaskID: task.ID, PlanID: plan.ID, PlanDigest: plan.Digest, State: model.TaskRolledBack, Summary: "历史回执", CompletedAt: time.Now().UTC()}
+	before, _ := json.Marshal(receipt)
+	file := filepath.Join(directory, automaticRollbackReceiptName)
+	if err := os.WriteFile(file, before, 0600); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(engine.stateRoot, "ops.db")
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = raw.Exec(`CREATE TRIGGER reject_restart_receipt BEFORE INSERT ON audit_entries
-		WHEN NEW.event='task.terminal' AND NEW.outcome='rolled_back'
-		BEGIN SELECT RAISE(ABORT,'injected failure'); END;`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := engine.ReconcileAutoUpdateObservations(context.Background()); err == nil {
-		t.Fatal("终态故障未上报")
-	}
-	if _, err := raw.Exec(`DROP TRIGGER reject_restart_receipt`); err != nil {
-		t.Fatal(err)
-	}
 	raw.Close()
-	if err := database.Close(); err != nil {
-		t.Fatal(err)
-	}
+	database.Close()
 	reopened, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
 	count, err := RecoverAutomaticRollbackReceipts(context.Background(), engine.catalog, reopened, engine.stateRoot, engine.alertmanager)
-	if err != nil || count != 1 {
-		t.Fatalf("重启补交count=%d err=%v", count, err)
+	if err != nil || count != 0 {
+		t.Fatal("重启接管旧回执", err)
 	}
-	if _, err := reopened.RecoverInterrupted(context.Background(), nil); err != nil {
+	if _, err = reopened.RecoverInterrupted(context.Background(), nil); err != nil {
 		t.Fatal(err)
 	}
-	finished, err := reopened.GetTask(context.Background(), task.ID)
-	if err != nil || finished.State != model.TaskRolledBack {
-		t.Fatalf("有效回执被中断分类覆盖: %+v err=%v", finished, err)
+	after, err := os.ReadFile(file)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("历史回执改写", err)
+	}
+	current, err := reopened.GetTask(context.Background(), task.ID)
+	if err != nil || current.State != model.TaskRollingBack {
+		t.Fatal("B-P伪造旧任务终态", err)
+	}
+	if len(engine.alertmanager.(*fakeAlertmanager).expired) != 0 {
+		t.Fatal("接管静默清理")
 	}
 }

@@ -152,6 +152,10 @@ func (store *Store) MarkRunning(ctx context.Context, id, phase string) error {
 }
 
 func (store *Store) MarkRunningOwned(ctx context.Context, id, phase, owner string) error {
+	return model.ErrReleaseNotIntegrated
+}
+
+func (store *Store) markLegacyRunningOwned(ctx context.Context, id, phase, owner string) error {
 	now := timeText(store.now())
 	result, err := store.db.ExecContext(ctx, `
 	    UPDATE tasks SET state = ?, current_phase = ?, started_at = ?, heartbeat_at = ?, runner_owner = ?
@@ -288,11 +292,26 @@ func (store *Store) CompleteTaskWithDesired(
 	if !state.Terminal() {
 		return model.Event{}, fmt.Errorf("任务终态无效: %s", state)
 	}
-	tx, err := store.db.BeginTx(ctx, nil)
+	tx, err := store.beginRegisteredWorkTx(ctx)
 	if err != nil {
 		return model.Event{}, err
 	}
 	defer tx.Rollback()
+	var registered int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM work_admissions WHERE task_id=?`, id).Scan(&registered); err != nil {
+		return model.Event{}, err
+	}
+	if registered != 0 {
+		return model.Event{}, model.ErrReleaseNotIntegrated
+	}
+	result, err := store.completeTaskTx(ctx, tx.Tx, false, id, state, summary, errorMessage, failureCode, retryable, rollbackAvailable, rollbackReason, event, audit, desired)
+	if err != nil {
+		return model.Event{}, err
+	}
+	return result, tx.Commit()
+}
+
+func (store *Store) completeTaskTx(ctx context.Context, tx *sql.Tx, registered bool, id string, state model.TaskState, summary, errorMessage, failureCode string, retryable, rollbackAvailable bool, rollbackReason string, event model.Event, audit model.AuditEntry, desired *DesiredStateInput) (model.Event, error) {
 	task, err := scanTask(tx.QueryRowContext(ctx, taskSelect+` WHERE id = ?`, id))
 	if err != nil {
 		return model.Event{}, err
@@ -350,7 +369,7 @@ func (store *Store) CompleteTaskWithDesired(
 		planState := model.PlanNeedsAttention
 		closureReason := planClosureReason(state, errorMessage)
 		var observationStartedAt, observationEndsAt, closedAt any
-		if state == model.TaskSucceeded && observationSeconds > 0 {
+		if state == model.TaskSucceeded && (observationSeconds > 0 || registered) {
 			planState = model.PlanObserving
 			closureReason = ""
 			observationStartedAt = timeText(now)
@@ -418,7 +437,7 @@ func (store *Store) CompleteTaskWithDesired(
 		audit.Outcome, detailJSON); err != nil {
 		return model.Event{}, err
 	}
-	return event, tx.Commit()
+	return event, nil
 }
 
 func planClosureReason(state model.TaskState, errorMessage string) string {

@@ -14,7 +14,7 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/store"
 )
 
-func TestBatchHTTPFourActorTwoTargetCanaryEndToEnd(t *testing.T) {
+func TestBPBatchHTTPApprovalReplayAndChildRejection(t *testing.T) {
 	ctx := context.Background()
 	executor := &fakeExecutor{}
 	engine, database := testEngine(t, executor)
@@ -66,25 +66,16 @@ func TestBatchHTTPFourActorTwoTargetCanaryEndToEnd(t *testing.T) {
 
 	engine.Wait()
 	client.as(actors[0]).request(http.MethodGet, "/v1/batches/"+operation.ID, nil, http.StatusOK, &operation)
-	if operation.State != model.BatchSucceeded || operation.CanaryObservedAt == nil || operation.ExecutedByHash != actors[0] {
+	if operation.State != model.BatchPaused || operation.CanaryObservedAt != nil || operation.ExecutedByHash != actors[0] {
 		t.Fatalf("finished batch=%+v", operation)
 	}
 	for _, item := range operation.Items {
-		if item.State != model.BatchNodeSucceeded || item.PlanID == "" || item.TaskID == "" {
-			t.Fatalf("finished item=%+v", item)
-		}
-		plan, err := database.GetReleasePlan(ctx, item.PlanID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if plan.ActorHash != actors[0] || plan.ApprovedByHash != actors[1] ||
-			plan.SecondApprovedByHash != "" || plan.ExecutedByHash != actors[0] ||
-			!plan.RequiresDualApproval {
-			t.Fatalf("child plan identity=%+v", plan)
+		if item.PlanID != "" || item.TaskID != "" {
+			t.Fatal("B-P创建了普通子工作")
 		}
 	}
-	if got := countBatchPhaseCalls(executor, "restart"); got != 2 {
-		t.Fatalf("restart phase calls=%d, want 2", got)
+	if got := countBatchPhaseCalls(executor, "restart"); got != 0 {
+		t.Fatal("B-P执行了批量重启", got)
 	}
 
 	audit, err := database.ListAudit(ctx, 100, 0)
@@ -161,22 +152,12 @@ func TestBatchChildBindingRejectsPreoccupiedIdempotencyKeys(t *testing.T) {
 	first := op.Items[0]
 	planKey := batchItemIdempotencyKey(op.ID, first.ID, "plan")
 	taskKey := batchItemIdempotencyKey(op.ID, first.ID, "execute")
-	foreign, err := engine.CreateReleasePlan(ctx, actors[4], model.PreviewRequest{
-		Service: first.Service, Action: "inspect", IdempotencyKey: planKey,
-	})
-	if err != nil {
+	foreign := historicalRunnerPlan(t, engine, actors[4], model.PreviewRequest{Service: first.Service, Action: "inspect", IdempotencyKey: planKey})
+	task := seedHistoricalRunnerTask(t, engine, model.Task{ActorHash: actors[4], Service: foreign.Service, Action: foreign.Action, PlanID: foreign.ID, PlanDigest: foreign.Digest, IdempotencyKey: taskKey, State: model.TaskSucceeded})
+	raw := historicalRunnerDB(t, engine)
+	if _, err := raw.Exec("UPDATE release_plans SET state=?,task_id=?,approved_by_hash=? WHERE id=?", model.PlanCompleted, task.ID, actors[4], foreign.ID); err != nil {
 		t.Fatal(err)
 	}
-	foreign, err = engine.ApproveReleasePlan(ctx, actors[4], foreign.ID, model.ApprovePlanRequest{
-		Digest: foreign.Digest, Confirmation: foreign.ConfirmationPhrase,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := engine.ExecuteReleasePlan(ctx, actors[4], foreign.ID, model.ExecutePlanRequest{IdempotencyKey: taskKey}); err != nil {
-		t.Fatal(err)
-	}
-	engine.Wait()
 
 	if _, err := engine.ExecuteBatch(ctx, actors[0], op.ID, model.BatchExecuteRequest{IdempotencyKey: mustUUID(t)}); err != nil {
 		t.Fatal(err)
@@ -207,26 +188,21 @@ func TestMixedRiskBatchUsesPerChildApprovalPolicy(t *testing.T) {
 	}
 	engine.Wait()
 	finished, err := database.GetBatchOperation(ctx, op.ID)
-	if err != nil || finished.State != model.BatchSucceeded {
+	if err != nil || finished.State != model.BatchPaused {
 		t.Fatalf("mixed-risk batch=%+v err=%v", finished, err)
 	}
+
 	for _, item := range finished.Items {
-		plan, err := database.GetReleasePlan(ctx, item.PlanID)
+		if item.PlanID != "" || item.TaskID != "" {
+			t.Fatal("混合风险绕过B-P")
+		}
+		_, action, err := engine.resolveAction(item.Service, op.Action, op.Target)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if item.Service == "demo" {
-			if !plan.RequiresDualApproval || plan.ActorHash != actors[0] ||
-				plan.ApprovedByHash != actors[1] || plan.SecondApprovedByHash != "" ||
-				plan.ExecutedByHash != actors[0] {
-				t.Fatalf("high-risk child=%+v", plan)
-			}
-			continue
-		}
-		if plan.RequiresDualApproval || plan.ActorHash != actors[0] ||
-			plan.ApprovedByHash != actors[0] || plan.SecondApprovedByHash != "" ||
-			plan.ExecutedByHash != actors[0] {
-			t.Fatalf("medium-risk child=%+v", plan)
+		creator, executor, err := batchChildActors(op, action.Risk == model.RiskHigh)
+		if err != nil || creator != actors[0] || executor != actors[0] {
+			t.Fatal("子计划身份规则退化", err)
 		}
 	}
 }
@@ -273,29 +249,21 @@ func TestAreaForgeLifecycleBatchDoesNotInheritC2SingleActorException(t *testing.
 	item := model.BatchItem{ID: "item-c2-scope", Service: "areaforge", State: model.BatchNodeReady}
 	engine.startBatchItem(ctx, op, item)
 	engine.Wait()
+
 	plan, found, err := database.GetReleasePlanByRequest(ctx, batchItemIdempotencyKey(op.ID, item.ID, "plan"))
-	if err != nil || !found {
-		t.Fatalf("child plan=%+v found=%v err=%v", plan, found, err)
+	if err != nil || found {
+		t.Fatal("批量C2创建新子计划", plan.ID, err)
 	}
-	if plan.ExecutedByHash == "" {
-		if _, _, err := engine.ExecuteReleasePlan(ctx, op.ExecutedByHash, plan.ID, model.ExecutePlanRequest{
-			IdempotencyKey: batchItemIdempotencyKey(op.ID, item.ID, "execute"),
-		}); err != nil {
-			t.Fatalf("execute C2 batch child: %v", err)
-		}
-		engine.Wait()
-		plan, err = database.GetReleasePlan(ctx, plan.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+	service := engine.catalog.Services["areaforge"]
+	_, action, err := engine.resolveAction("areaforge", "stop", "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !plan.RequiresDualApproval || plan.ApprovalSummary.ApprovalException != "" ||
-		plan.ActorHash != op.ActorHash || plan.ApprovedByHash != op.ApprovedByHash ||
-		plan.SecondApprovedByHash != "" || plan.ExecutedByHash != op.ActorHash {
-		t.Fatalf("C2 batch child inherited direct-plan exception: %+v", plan)
+	dual := requiredDualApproval(service, "production", action, true)
+	if !dual || approvalExceptionFor(service, "production", "stop", dual) != "" {
+		t.Fatal("批量错误继承C2单人例外")
 	}
 }
-
 func createSecurityBatch(
 	t *testing.T,
 	engine *Engine,

@@ -937,4 +937,79 @@ CREATE UNIQUE INDEX idx_credential_rotations_closure_key
 	 ALTER TABLE runner_fleet_update_plans ADD COLUMN approval_policy TEXT NOT NULL DEFAULT '';`,
 	`ALTER TABLE kubernetes_plans ADD COLUMN plan_digest TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE kubernetes_plans ADD COLUMN preview_json TEXT NOT NULL DEFAULT 'null';`,
+	`ALTER TABLE tenants ADD COLUMN lifecycle_generation INTEGER NOT NULL DEFAULT 0
+	 CHECK (typeof(lifecycle_generation) = 'integer' AND lifecycle_generation >= 0);`,
+	`CREATE TABLE work_admissions (
+    id TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),
+    kind TEXT NOT NULL CHECK (kind = 'release_plan_v1'),
+    work_id TEXT NOT NULL CHECK (length(work_id) > 0),
+    idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) > 0),
+    approval_digest TEXT NOT NULL CHECK (length(approval_digest)=64 AND approval_digest NOT GLOB '*[^0-9a-f]*'),
+    actor_hash TEXT NOT NULL CHECK (length(actor_hash)=64 AND actor_hash NOT GLOB '*[^0-9a-f]*'),
+    request_digest TEXT NOT NULL CHECK (length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+    request_json TEXT NOT NULL CHECK (length(request_json)>0),
+    owner_token_hash TEXT NOT NULL CHECK (length(owner_token_hash)=64 AND owner_token_hash NOT GLOB '*[^0-9a-f]*'),
+    state TEXT NOT NULL DEFAULT 'admitted' CHECK (state IN ('admitted','preparing','task_bound','uncertain','closed')),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (typeof(revision)='integer' AND revision>0),
+    task_id TEXT REFERENCES tasks(id) ON DELETE RESTRICT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT,
+    close_kind TEXT NOT NULL DEFAULT '' CHECK (close_kind IN ('','no_work','settled')),
+    close_digest TEXT NOT NULL DEFAULT '' CHECK (close_digest='' OR (length(close_digest)=64 AND close_digest NOT GLOB '*[^0-9a-f]*')),
+    close_evidence_json TEXT NOT NULL DEFAULT '',
+    UNIQUE(kind,work_id),
+    CHECK (task_id IS NULL OR length(task_id)>0),
+    CHECK (state NOT IN ('admitted','preparing') OR task_id IS NULL),
+    CHECK (state<>'task_bound' OR task_id IS NOT NULL),
+    CHECK ((state='closed' AND closed_at IS NOT NULL AND close_kind<>'' AND close_digest<>'' AND close_evidence_json<>'')
+        OR (state<>'closed' AND closed_at IS NULL AND close_kind='' AND close_digest='' AND close_evidence_json='')),
+    CHECK (close_kind<>'no_work' OR task_id IS NULL),
+    CHECK (close_kind<>'settled' OR task_id IS NOT NULL)
+);
+CREATE UNIQUE INDEX idx_work_admissions_task ON work_admissions(task_id) WHERE task_id IS NOT NULL;
+CREATE TABLE work_admission_targets (
+    admission_id TEXT NOT NULL REFERENCES work_admissions(id) ON DELETE RESTRICT,
+    tenant_id TEXT NOT NULL CHECK (length(tenant_id)>0 AND tenant_id=lower(trim(tenant_id))),
+    expected_generation INTEGER NOT NULL CHECK (typeof(expected_generation)='integer' AND expected_generation>0),
+    PRIMARY KEY(admission_id,tenant_id)
+);
+CREATE INDEX idx_work_admission_targets_tenant ON work_admission_targets(tenant_id,admission_id);`,
+	`CREATE TABLE release_plan_preparations (
+    id TEXT PRIMARY KEY NOT NULL CHECK (length(id)>0),
+    kind TEXT NOT NULL CHECK (kind='release_plan_preparation_v1'),
+    plan_id TEXT NOT NULL UNIQUE CHECK (length(plan_id)>0),
+    idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key)>0),
+    actor_hash TEXT NOT NULL CHECK (length(actor_hash)=64 AND actor_hash NOT GLOB '*[^0-9a-f]*'),
+    authority_digest TEXT NOT NULL CHECK (length(authority_digest)=64 AND authority_digest NOT GLOB '*[^0-9a-f]*'),
+    request_digest TEXT NOT NULL CHECK (length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+    request_json TEXT NOT NULL CHECK (length(request_json)>0),
+    owner_token_hash TEXT NOT NULL CHECK (length(owner_token_hash)=64 AND owner_token_hash NOT GLOB '*[^0-9a-f]*'),
+    state TEXT NOT NULL DEFAULT 'admitted' CHECK (state IN ('admitted','preparing','inspection_done','uncertain','closed')),
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (typeof(revision)='integer' AND revision>0),
+    result_json TEXT NOT NULL DEFAULT '',
+    result_digest TEXT NOT NULL DEFAULT '' CHECK (result_digest='' OR (length(result_digest)=64 AND result_digest NOT GLOB '*[^0-9a-f]*')),
+    produced_plan_id TEXT REFERENCES release_plans(id) ON DELETE RESTRICT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT,
+    close_kind TEXT NOT NULL DEFAULT '' CHECK (close_kind IN ('','no_work','inspection_settled')),
+    close_evidence_json TEXT NOT NULL DEFAULT '',
+    close_digest TEXT NOT NULL DEFAULT '' CHECK (close_digest='' OR (length(close_digest)=64 AND close_digest NOT GLOB '*[^0-9a-f]*')),
+    CHECK (produced_plan_id IS NULL OR (produced_plan_id=plan_id AND state='closed' AND close_kind='inspection_settled')),
+    CHECK ((result_json='' AND result_digest='') OR (length(result_json)>0 AND length(result_digest)=64)),
+    CHECK (state<>'inspection_done' OR result_digest<>''),
+    CHECK ((state='closed' AND closed_at IS NOT NULL AND close_kind<>'' AND close_evidence_json<>'' AND close_digest<>'')
+        OR (state<>'closed' AND closed_at IS NULL AND close_kind='' AND close_evidence_json='' AND close_digest='')),
+    CHECK (close_kind<>'no_work' OR (produced_plan_id IS NULL AND result_digest='')),
+    CHECK (close_kind<>'inspection_settled' OR result_digest<>'')
+);
+CREATE TABLE release_plan_preparation_targets (
+    preparation_id TEXT NOT NULL REFERENCES release_plan_preparations(id) ON DELETE RESTRICT,
+    tenant_id TEXT NOT NULL CHECK (length(tenant_id)>0 AND tenant_id=lower(trim(tenant_id))),
+    expected_generation INTEGER NOT NULL CHECK (typeof(expected_generation)='integer' AND expected_generation>0),
+    PRIMARY KEY(preparation_id,tenant_id)
+);
+CREATE INDEX idx_release_plan_preparation_targets_tenant
+    ON release_plan_preparation_targets(tenant_id,preparation_id);`,
 }

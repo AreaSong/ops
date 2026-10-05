@@ -92,6 +92,11 @@ func RecoverAutomaticRollbackReceipts(ctx context.Context, catalog *config.Catal
 }
 
 func (engine *Engine) recoverAutomaticRollbackReceipts(ctx context.Context) (int, error) {
+	// 持久化回执不包含本次 owner，不能自动接管后续终态/静默清理。
+	return 0, nil
+}
+
+func (engine *Engine) recoverLegacyAutomaticRollbackReceipts(ctx context.Context) (int, error) {
 	tasks, err := engine.store.AutomaticRollbackPendingTasks(ctx)
 	if err != nil {
 		return 0, err

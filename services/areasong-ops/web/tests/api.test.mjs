@@ -153,3 +153,29 @@ test('提案详情 GET 不缓存、绑定响应身份且不重试', async (t) =>
   await assert.rejects(api.accessChangeDetail('proposal', 'creator'), /会话身份已变化/)
   assert.equal(calls.length, 2)
 })
+
+test('收口仅匹配已结束阻断允许下次人工新键；网络和未知响应保留原键', async (t) => {
+  const bodies = []
+  let mode = 'network'
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    const body = JSON.parse(options.body); bodies.push(body)
+    if (mode === 'network') throw new Error('response lost')
+    return Response.json({ error: '告警阻断', code: 'plan_closure_blocked',
+      attemptId: mode === 'mismatch' ? 'wrong' : body.idempotencyKey,
+      attemptState: mode === 'running' ? 'running' : 'finished', newAttemptAllowed: true,
+    }, { status: 409 })
+  })
+  const api = new OpsAPI()
+  for (mode of ['network', 'network', 'mismatch', 'running']) {
+    await assert.rejects(api.closePlan('p'), error => !error.newClosureAttemptAllowed)
+  }
+  assert.equal(new Set(bodies.map(b => b.idempotencyKey)).size, 1)
+  mode = 'finished'
+  await assert.rejects(api.closePlan('p'), error => error.newClosureAttemptAllowed)
+  assert.equal(bodies.length, 5, '没有自动重试')
+  mode = 'network'
+  await assert.rejects(api.closePlan('p'))
+  assert.notEqual(bodies[4].idempotencyKey, bodies[5].idempotencyKey)
+  await assert.rejects(api.closePlan('p'))
+  assert.equal(bodies[5].idempotencyKey, bodies[6].idempotencyKey)
+})

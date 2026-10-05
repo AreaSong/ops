@@ -17,34 +17,13 @@ func (store *Store) UpsertTenant(ctx context.Context, tenant model.Tenant) error
 	return store.upsertTenant(ctx, store.db, tenant)
 }
 
-func (store *Store) upsertTenant(ctx context.Context, db accessExecer, tenant model.Tenant) error {
-	if tenant.ID == "" || tenant.DisplayName == "" {
-		return errors.New("租户标识或名称不能为空")
-	}
-	if tenant.Status == "" {
-		tenant.Status = "active"
-	}
-	if tenant.CreatedAt.IsZero() {
-		tenant.CreatedAt = store.now()
-	}
-	tenant.UpdatedAt = store.now()
-	if tenant.CreatedBy == "" {
-		tenant.CreatedBy = "bootstrap"
-	}
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO tenants(id,display_name,status,created_at,updated_at,created_by) VALUES(?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,status=excluded.status,updated_at=excluded.updated_at`,
-		tenant.ID, tenant.DisplayName, tenant.Status, timeText(tenant.CreatedAt), timeText(tenant.UpdatedAt), tenant.CreatedBy)
-	return err
-}
-
 // EnsureAccessDefaults seeds only inert metadata. It never grants a binding;
 // deployments opt into enforcement explicitly through the catalog policy.
 func (store *Store) EnsureAccessDefaults(ctx context.Context) error {
 	now := store.now()
 	if _, err := store.db.ExecContext(ctx, `
-		INSERT INTO tenants(id,display_name,status,created_at,updated_at,created_by)
-		VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
+		INSERT INTO tenants(id,display_name,status,created_at,updated_at,created_by,lifecycle_generation)
+		VALUES(?,?,?,?,?,?,1) ON CONFLICT(id) DO NOTHING`,
 		"default", "Default", "active", timeText(now), timeText(now), "bootstrap"); err != nil {
 		return err
 	}
@@ -326,7 +305,7 @@ func (store *Store) ReconcileBootstrapAccess(
 		} else if found && createdBy != "bootstrap" {
 			return errors.New("动态租户不可被 bootstrap 配置覆盖")
 		}
-		if err := store.upsertTenant(ctx, tx, tenant); err != nil {
+		if err := store.seedTenant(ctx, tx, tenant); err != nil {
 			return err
 		}
 	}

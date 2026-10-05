@@ -189,10 +189,13 @@ func (engine *Engine) EvaluateAutoUpdates(ctx context.Context, actor string) ([]
 				return nil, getErr
 			}
 			if getErr == nil && autoUpdatePlanIsStale(plan, planPolicy) {
-				if err := engine.store.InvalidateReleasePlan(ctx, plan.ID, actor, "自动更新策略已变化，需要重新评估"); err != nil {
+				// B-P 拒绝新的普通工作，不借评估清空旧计划的批准事实。
+				evaluation.Reason = "自动更新策略已变化；B-P 保留历史计划，暂不创建新工作"
+				if err := engine.store.MarkAutoUpdateEvaluation(ctx, policy.Service, &now, autoTimePtr(now.Add(autoUpdateEvaluationInterval)), policy.LastPlanID, evaluation.Reason); err != nil {
 					return nil, err
 				}
-				plan.State = model.PlanInvalidated
+				result = append(result, evaluation)
+				continue
 			}
 			retryInvalidated = plan.State == model.PlanInvalidated
 			if getErr == nil && plan.State != model.PlanCompleted && !retryInvalidated {

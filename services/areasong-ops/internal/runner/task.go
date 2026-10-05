@@ -13,7 +13,10 @@ import (
 	"github.com/AreaSong/ops/services/areasong-ops/internal/model"
 )
 
-func (engine *Engine) run(task model.Task) {
+// B-P 不接管排队旧任务，不创建目录，也不伪造失败终态。
+func (engine *Engine) run(task model.Task) {}
+
+func (engine *Engine) runLegacy(task model.Task) {
 	service, action, err := engine.resolveAction(task.Service, task.Action, task.Target)
 	if err != nil {
 		engine.failBeforeRun(task, err)

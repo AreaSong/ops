@@ -60,15 +60,13 @@ func createComposeRecoveryPoint(
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, _, err := database.StartTask(context.Background(), preview.ActorHash, model.StartTaskRequest{
+	task, _, err := seedRunnerPreviewTask(t, engine, context.Background(), preview.ActorHash, model.StartTaskRequest{
 		PreviewID: preview.ID, Confirmation: "confirm", IdempotencyKey: mustUUID(t),
 	}, mustUUID(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.MarkRunningOwned(context.Background(), task.ID, "backup", engine.owner); err != nil {
-		t.Fatal(err)
-	}
+	// task 已由显式历史夹具写为 running。
 	point, err := engine.persistRecoveryPoint(context.Background(), task, service, &model.RecoveryPointEvidence{
 		SchemaVersion: 1, Service: service.Name, TaskID: task.ID, CreatedAt: now,
 		Artifacts: []model.RecoveryArtifact{{Role: "compose", Path: artifactPath,

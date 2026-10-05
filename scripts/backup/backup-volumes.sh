@@ -2,10 +2,15 @@
 set -euo pipefail
 
 umask 077
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ "${OPS_BACKUP_JOB_WRAPPED:-0}" != 1 ]; then
-  exec "$SCRIPT_DIR/run-backup-job.sh" volumes "$@"
+SCRIPT_DIR="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd -P)"
+# WRAPPED 只保留兼容标记；实际入口必须持有同一物理锁和内部合同。
+if [[ "${1:-}" != --backup-internal-v1 ]]; then
+  [[ "$#" -eq 0 && "${OPS_BACKUP_JOB_WRAPPED:-0}" != 1 ]] || { printf 'ERROR: internal_contract_required\n' >&2; exit 2; }
+  exec "$SCRIPT_DIR/run-backup-job.sh" volumes
 fi
+[[ "$#" -eq 4 && "$2" == volumes ]] || { printf 'ERROR: internal_contract_rejected\n' >&2; exit 2; }
+python3 -B "$SCRIPT_DIR/sub2api_backup_contract.py" shared "$2" "$3" "$4" 9 || exit 75
+shift 4
 
 BACKUP_ROOT="${BACKUP_VOLUME_BACKUP_ROOT:-/var/backups/ops/volumes}"
 LOG_DIR="${BACKUP_VOLUME_LOG_DIR:-/var/log/backup}"

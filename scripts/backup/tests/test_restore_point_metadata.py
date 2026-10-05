@@ -105,9 +105,9 @@ class RestorePointMetadataTests(unittest.TestCase):
             path.write_text(script)
             path.chmod(0o755)
         environment = dict(os.environ, PATH=str(fake_bin) + os.pathsep + os.environ["PATH"],
-                           BACKUP_ROOT=str(self.backups), SUB2API_RESTORE_ENV_FILE="/missing-env",
-                           SUB2API_RESTORE_BACKUP_POSTGRES="/must-not-run", SUB2API_RESTORE_BACKUP_REDIS="/must-not-run",
-                           SUB2API_RESTORE_BACKUP_VOLUMES="/must-not-run")
+                           BACKUP_ROOT=str(self.backups), SUB2API_RESTORE_ENV_FILE=str(self.root / "missing-env"),
+                           SUB2API_RESTORE_BACKUP_POSTGRES=str(self.root / "must-not-run"), SUB2API_RESTORE_BACKUP_REDIS=str(self.root / "must-not-run"),
+                           SUB2API_RESTORE_BACKUP_VOLUMES=str(self.root / "must-not-run"))
         for phase in ("preflight", "backup"):
             result = subprocess.run(
                 ["bash", str(SCRIPT_DIR / "restore-sub2api-isolated.sh"), "restore-drill", phase,

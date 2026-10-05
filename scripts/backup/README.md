@@ -57,3 +57,13 @@ Sensitive Redis note:
 
 R2 compatibility note:
 - `rclone v1.60.1-DEV` can upload to Cloudflare R2 successfully while returning `NotImplemented` on post-upload HEAD checks. Keep `--s3-no-head` in `sync-r2.sh` unless a future rclone/R2 compatibility test proves it is no longer needed.
+
+Sub2API 服务限定合同（B2a，本地实现，尚未启用）：
+
+- 限定入口是 `run-backup-job.sh sub2api-set --request <operation>/backup-request.json --request-sha256 <64hex> --result <operation>/backup-result.json`。仅私有协调器的 `update:backup` 显式传递，三层适配器不从 catalog、环境或文件存在性选择该模式；无共享备用路径。
+- 包内 `backup-control.json` 默认 `shared-only`，缺失／损坏即拒绝。旧无参数共享作业保留备份对象、格式、输出和全量指标；PG／Redis／卷额外核验继承 FD9 的同一物理锁。`OPS_BACKUP_JOB_WRAPPED` 单独存在不能跳过验证。coordinated 模式下，当前旧 shell 缺少可信终结后端，保持拒绝；不能据本地测试启用共存运行。
+- 限定启动使用同包 `tools/python3` 和隔离解释器参数，PATH/HOME/TMPDIR 绑定受控 bundle 与临时根。真实后端、不可替换资源、Linux 启动环境及工具依赖仍待 B3；请求或 `synthetic` 标记不能装配命令行后端。
+- 新集合顺序为 PG cluster SQL gzip、Redis RDB＋必需 ACL、应用数据、两份 Compose＋完整 env，最后生成 runtime v2。PG 保留 `pg_dumpall` 与角色密码哈希；专属／DDL 排他／bootstrap 兼容／精确版本恢复证据缺失就拒绝。Redis 无本次接受、运行与终结归因时保留不确定；不凭秒级时间戳推断成功。
+- 输出在独立 backupRoot 的 `<taskId>/<callId>/`，新目录0700、文件0600。`.incomplete/`、失败子回执、私有诊断及非终态协调记录保留。协调根必须预先获批初始化；追加账本先登记再创建调用记录，记录缺失／损坏／非终态均阻断，不自动初始化、接管或清理。限定指标仅写 `sub2api-backup-set.prom`。
+- 四产物及四子回执 → runtime v2 → 五产物集合回执，避免循环摘要；外层恢复点仍是 v1。私有 profile 必须声明精确五 role 的恢复消费者策略，旧三 role 策略在限定链路拒绝，旧共享策略不变。v2 验证成员、格式、字节和本次来源绑定；暂存三配置均复读、全树复验权限。CLI 缺少独立可信恢复目标映射时拒绝 v2，不回退 v1、不覆盖当前秘密、不忽略 SQL 错误。格式验证、`completed` 和 Ops `verified` 均不是恢复演练通过。
+- 同版本 helper／控制文件／工具打包、真实持久根初始化与启用须另批。本次未修改发行安装清单，不能只安装新 wrapper。具体批准范围、合成证据与未完成项见[批准台账](../../services/areasong-ops/deploy/production-change-packages.md)。

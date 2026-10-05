@@ -15,7 +15,7 @@ RUNNER = REPO_ROOT / "scripts" / "backup" / "run-backup-job.sh"
 class BackupJobRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
+        self.root = Path(self.temp_dir.name).resolve()
         self.scripts = self.root / "scripts"
         self.bin_dir = self.root / "bin"
         self.metrics = self.root / "metrics"
@@ -33,28 +33,8 @@ class BackupJobRunnerTests(unittest.TestCase):
         path.chmod(0o755)
 
     def _write_test_commands(self) -> None:
-        flock = self.bin_dir / "flock"
-        flock.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        flock.chmod(0o755)
-        timeout = self.bin_dir / "timeout"
-        timeout.write_text(
-            f"""#!{sys.executable}
-import subprocess
-import sys
-
-args = sys.argv[1:]
-while args and args[0].startswith("--"):
-    args.pop(0)
-seconds = int(args.pop(0).removesuffix("s"))
-try:
-    result = subprocess.run(args, timeout=seconds, check=False)
-except subprocess.TimeoutExpired:
-    raise SystemExit(124)
-raise SystemExit(result.returncode)
-""",
-            encoding="utf-8",
-        )
-        timeout.chmod(0o755)
+        from scripts.backup.tests.recovery_fixture import backup_test_tools
+        backup_test_tools(self.bin_dir)
 
     def _run(self, job: str, **overrides: str) -> subprocess.CompletedProcess[str]:
         environment = os.environ.copy()
