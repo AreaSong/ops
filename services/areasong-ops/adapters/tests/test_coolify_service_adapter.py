@@ -26,11 +26,34 @@ class CoolifyServiceAdapterTests(unittest.TestCase):
         self.token_file.write_text("test-token-abc123def456", encoding="utf-8")
         self.token_file.chmod(0o400)
 
+        # Create trusted endpoints configuration
+        self.trusted_config = self.root / "coolify-trusted-endpoints.json"
+        self.trusted_config.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "trustedEndpoints": {
+                        "test-endpoint": {
+                            "id": "test-endpoint",
+                            "endpoint": "https://coolify.example.com",
+                            "description": "Test Coolify instance",
+                            "allowedServices": ["*"],
+                            "tokenFile": str(self.token_file),
+                        }
+                    },
+                    "allowedServiceUuids": {
+                        "6oqw6kcjzweijv6r9ux71zoe": "areasong-ops"
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        # Make trusted config root-owned (we can't actually change owner in test, so we'll patch stat)
+
         # Create service catalog with Coolify configuration
         runtime = {
-            "coolifyEndpoint": "https://coolify.example.com",
+            "trustedEndpointId": "test-endpoint",
             "serviceUuid": "6oqw6kcjzweijv6r9ux71zoe",
-            "tokenFile": str(self.token_file),
             "healthUrl": "http://127.0.0.1:3200/health",
             "latestAllowed": False,
             "dependencyServiceUuids": [],
@@ -104,15 +127,44 @@ class CoolifyServiceAdapterTests(unittest.TestCase):
         curl.write_text("\n".join(script_lines) + "\n", encoding="utf-8")
         curl.chmod(0o755)
 
+    def _create_mock_stat(self) -> None:
+        """Create a mock stat command that reports root ownership for trusted config."""
+        stat = self.bin_dir / "stat"
+        stat.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env bash",
+                    f"trusted_config={str(self.trusted_config)!r}",
+                    'if [[ "$*" == *"$trusted_config"* ]]; then',
+                    '  if [[ "$*" == *"%u"* ]]; then',
+                    '    echo "0"  # root uid',
+                    '  elif [[ "$*" == *"%a"* ]]; then',
+                    '    echo "644"  # mode',
+                    "  fi",
+                    "  exit 0",
+                    "fi",
+                    # For token file
+                    'if [[ "$*" == *"%u"* ]]; then echo "0"; fi',
+                    'if [[ "$*" == *"%a"* ]]; then echo "400"; fi',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        stat.chmod(0o755)
+
     def run_adapter(
-        self, action: str, phase: str, expect_success: bool = True
+        self, action: str, phase: str, expect_success: bool = True, skip_default_stat: bool = False
     ) -> subprocess.CompletedProcess[str]:
+        if not skip_default_stat and not (self.bin_dir / "stat").exists():
+            self._create_mock_stat()
         environment = os.environ.copy()
         environment.update(
             {
                 "PATH": f"{self.bin_dir}:{environment['PATH']}",
                 "OPS_SERVICE_NAME": "areasong-ops",
                 "OPS_SERVICE_CATALOG": str(self.catalog),
+                "COOLIFY_TRUSTED_CONFIG": str(self.trusted_config),
             }
         )
         result = subprocess.run(
@@ -131,8 +183,26 @@ class CoolifyServiceAdapterTests(unittest.TestCase):
     def test_token_file_must_be_secure(self) -> None:
         """Token file must have mode 0[0-7]00 (not readable by group/others)."""
         self.token_file.chmod(0o644)
+        # Create custom stat that returns insecure permissions for token file
+        stat = self.bin_dir / "stat"
+        stat.write_text(
+            "\n".join([
+                "#!/usr/bin/env bash",
+                f"trusted_config={str(self.trusted_config)!r}",
+                f"token_file={str(self.token_file)!r}",
+                'if [[ "$*" == *"$trusted_config"* ]]; then',
+                '  if [[ "$*" == *"%u"* ]]; then echo "0"; fi',
+                '  if [[ "$*" == *"%a"* ]]; then echo "644"; fi',
+                'elif [[ "$*" == *"$token_file"* ]]; then',
+                '  if [[ "$*" == *"%u"* ]]; then echo "0"; fi',  # root
+                '  if [[ "$*" == *"%a"* ]]; then echo "644"; fi',  # insecure!
+                "fi",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        stat.chmod(0o755)
         self._create_mock_curl({"/api/v1/services/": '{"status":"running"}'})
-        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        result = self.run_adapter("inspect", "inspect", expect_success=False, skip_default_stat=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("token file must have mode", result.stderr)
 
@@ -332,16 +402,21 @@ class CoolifyServiceAdapterTests(unittest.TestCase):
         self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
         result = self.run_adapter("inspect", "inspect", expect_success=False)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("service UUID format is invalid", result.stderr)
+        # Can fail on allowlist check or format check
+        self.assertTrue(
+            "not in trusted allowlist" in result.stderr or
+            "service UUID format is invalid" in result.stderr
+        )
 
     def test_http_endpoint_scheme_validation(self) -> None:
-        """Coolify endpoint must use http or https."""
-        catalog = json.loads(self.catalog.read_text(encoding="utf-8"))
-        catalog["services"]["areasong-ops"]["runtime"]["coolifyEndpoint"] = "ftp://bad.com"
-        self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
+        """Coolify endpoint must use https or localhost http."""
+        # Try to use ftp:// scheme
+        trusted_config = json.loads(self.trusted_config.read_text(encoding="utf-8"))
+        trusted_config["trustedEndpoints"]["test-endpoint"]["endpoint"] = "ftp://bad.com"
+        self.trusted_config.write_text(json.dumps(trusted_config), encoding="utf-8")
         result = self.run_adapter("inspect", "inspect", expect_success=False)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must use http or https scheme", result.stderr)
+        self.assertIn("must be https://", result.stderr)
 
     def test_wait_service_state_has_bounded_timeout(self) -> None:
         """State waiting must not hang indefinitely."""
@@ -350,6 +425,121 @@ class CoolifyServiceAdapterTests(unittest.TestCase):
         result = self.run_adapter("start", "health", expect_success=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("timeout waiting for service", result.stderr)
+
+    def test_ssrf_protection_userinfo_rejected(self) -> None:
+        """Endpoint with @ (userinfo) must be rejected to prevent SSRF."""
+        # Try to inject userinfo to redirect authorization
+        trusted_config = json.loads(self.trusted_config.read_text(encoding="utf-8"))
+        trusted_config["trustedEndpoints"]["test-endpoint"]["endpoint"] = \
+            "https://attacker.com@victim.com/api"
+        self.trusted_config.write_text(json.dumps(trusted_config), encoding="utf-8")
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        # URL validation should reject this (either as invalid format or explicit @ check)
+        self.assertTrue(
+            "must not contain @" in result.stderr or
+            "must be https://" in result.stderr
+        )
+
+    def test_trusted_endpoint_must_be_in_allowlist(self) -> None:
+        """Service can only use endpoints from trusted configuration."""
+        # Try to use non-existent endpoint
+        catalog = json.loads(self.catalog.read_text(encoding="utf-8"))
+        catalog["services"]["areasong-ops"]["runtime"]["trustedEndpointId"] = "non-existent"
+        self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not found in configuration", result.stderr)
+
+    def test_uuid_must_be_in_allowlist(self) -> None:
+        """Service UUID must be in trusted allowlist."""
+        # Try to use UUID not in allowlist
+        catalog = json.loads(self.catalog.read_text(encoding="utf-8"))
+        catalog["services"]["areasong-ops"]["runtime"]["serviceUuid"] = "abcdefghijklmnopqrstuvwx"
+        self.catalog.write_text(json.dumps(catalog), encoding="utf-8")
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not in trusted allowlist", result.stderr)
+
+    def test_service_must_be_allowed_for_endpoint(self) -> None:
+        """Service must be in endpoint's allowedServices list."""
+        # Create endpoint that doesn't allow this service
+        trusted_config = json.loads(self.trusted_config.read_text(encoding="utf-8"))
+        trusted_config["trustedEndpoints"]["test-endpoint"]["allowedServices"] = ["other-service"]
+        self.trusted_config.write_text(json.dumps(trusted_config), encoding="utf-8")
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("is not allowed for endpoint", result.stderr)
+
+    def test_token_file_owner_must_be_root(self) -> None:
+        """Token file must be owned by root (uid 0)."""
+        # Create custom stat that returns non-root owner for token file
+        stat = self.bin_dir / "stat"
+        stat.write_text(
+            "\n".join([
+                "#!/usr/bin/env bash",
+                f"trusted_config={str(self.trusted_config)!r}",
+                f"token_file={str(self.token_file)!r}",
+                'if [[ "$*" == *"$trusted_config"* ]]; then',
+                '  if [[ "$*" == *"%u"* ]]; then echo "0"; fi',  # trusted config: root
+                '  if [[ "$*" == *"%a"* ]]; then echo "644"; fi',
+                'elif [[ "$*" == *"$token_file"* ]]; then',
+                '  if [[ "$*" == *"%u"* ]]; then echo "1000"; fi',  # token file: non-root!
+                '  if [[ "$*" == *"%a"* ]]; then echo "400"; fi',
+                "fi",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        stat.chmod(0o755)
+        self._create_mock_curl({"/api/v1/services/": '{"status":"running"}'})
+        result = self.run_adapter("inspect", "inspect", expect_success=False, skip_default_stat=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be owned by root", result.stderr)
+
+    def test_401_authentication_error_has_clear_message(self) -> None:
+        """401 errors should have clear authentication failure message."""
+        curl = self.bin_dir / "curl"
+        curl.write_text("#!/bin/sh\nexit 22\n", encoding="utf-8")
+        curl.chmod(0o755)
+        # Create a curl that returns 401
+        curl.write_text(
+            "\n".join([
+                "#!/bin/sh",
+                "out=''",
+                "while [ $# -gt 0 ]; do",
+                "  case $1 in -o) out=$2; shift 2 ;; *) shift ;; esac",
+                "done",
+                '[ -n "$out" ] && echo \'{"error":"unauthorized"}\' >"$out"',
+                "echo '401'",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("authentication failed", result.stderr)
+
+    def test_large_error_body_is_truncated(self) -> None:
+        """Large error bodies should be truncated to prevent log flooding."""
+        curl = self.bin_dir / "curl"
+        large_body = "ERROR" * 200  # 1000 characters
+        curl.write_text(
+            "\n".join([
+                "#!/bin/sh",
+                "out=''",
+                "while [ $# -gt 0 ]; do",
+                "  case $1 in -o) out=$2; shift 2 ;; *) shift ;; esac",
+                "done",
+                f'[ -n "$out" ] && echo \'{large_body}\' >"$out"',
+                "echo '500'",
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+        result = self.run_adapter("inspect", "inspect", expect_success=False)
+        self.assertNotEqual(result.returncode, 0)
+        # Error should be truncated
+        self.assertIn("[truncated]", result.stderr)
 
 
 if __name__ == "__main__":

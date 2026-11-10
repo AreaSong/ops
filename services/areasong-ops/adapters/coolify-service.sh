@@ -46,17 +46,62 @@ esac
 spec="$(jq -cer --arg service "$service" '.services[$service] | select(.template == "coolify-service-v1") | .runtime' "$catalog")"
 value() { jq -er "$1" <<<"$spec"; }
 
-# Coolify runtime configuration
-coolify_endpoint="$(value '.coolifyEndpoint')"
+# Service configuration (must reference trusted endpoint)
+trusted_endpoint_id="$(value '.trustedEndpointId')"
 service_uuid="$(value '.serviceUuid')"
-token_file="$(value '.tokenFile')"
 health_url="$(value '.healthUrl')"
 latest_allowed="$(jq -r '.latestAllowed // false' <<<"$spec")"
 
+# Load trusted endpoints configuration (root-only)
+# Allow override for testing, but default to system location
+trusted_config="${COOLIFY_TRUSTED_CONFIG:-/etc/areasong-ops/coolify-trusted-endpoints.json}"
+[[ -f "$trusted_config" && ! -L "$trusted_config" ]] || fail "trusted endpoints configuration is missing or unsafe"
+
+# Verify trusted config is root-owned and not world-writable
+trusted_config_owner="$(stat -c '%u' "$trusted_config" 2>/dev/null || stat -f '%u' "$trusted_config" 2>/dev/null)"
+trusted_config_mode="$(stat -c '%a' "$trusted_config" 2>/dev/null || stat -f '%Lp' "$trusted_config" 2>/dev/null)"
+[[ "$trusted_config_owner" == "0" ]] || fail "trusted endpoints configuration must be owned by root"
+[[ ! "${trusted_config_mode: -1}" =~ [2367] ]] || fail "trusted endpoints configuration must not be world-writable"
+
+# Resolve trusted endpoint
+trusted_spec="$(jq -r --arg id "$trusted_endpoint_id" '.trustedEndpoints[$id] // empty' "$trusted_config")"
+[[ -n "$trusted_spec" && "$trusted_spec" != "null" ]] || fail "trusted endpoint '$trusted_endpoint_id' not found in configuration"
+
+coolify_endpoint="$(jq -r '.endpoint' <<<"$trusted_spec")"
+token_file="$(jq -r '.tokenFile' <<<"$trusted_spec")"
+allowed_services="$(jq -r '.allowedServices[]' <<<"$trusted_spec")"
+
+# Verify service is allowed for this endpoint
+service_allowed=false
+while IFS= read -r allowed; do
+  if [[ "$allowed" == "*" || "$allowed" == "$service" ]]; then
+    service_allowed=true
+    break
+  fi
+done <<<"$allowed_services"
+[[ "$service_allowed" == "true" ]] || fail "service '$service' is not allowed for endpoint '$trusted_endpoint_id'"
+
+# Validate UUID is in allowlist
+uuid_service="$(jq -r --arg uuid "$service_uuid" '.allowedServiceUuids[$uuid] // empty' "$trusted_config")"
+[[ -n "$uuid_service" ]] || fail "service UUID '$service_uuid' is not in trusted allowlist"
+[[ "$uuid_service" == "$service" ]] || fail "service UUID '$service_uuid' is registered to '$uuid_service', not '$service'"
+
 # Validate configuration
 [[ "$service_uuid" =~ ^[a-z0-9]{24}$ ]] || fail "service UUID format is invalid"
-[[ "$coolify_endpoint" =~ ^https?:// ]] || fail "Coolify endpoint must use http or https scheme"
 [[ "$latest_allowed" == "true" || "$latest_allowed" == "false" ]] || fail "latestAllowed must be boolean"
+
+# Validate endpoint URL (strict parsing, no userinfo, no redirects, safe schemes only)
+if [[ "$coolify_endpoint" =~ ^https://([a-zA-Z0-9.-]+)(:[0-9]+)?(/.*)?$ ]]; then
+  endpoint_host="${BASH_REMATCH[1]}"
+  # Reject dangerous patterns
+  [[ ! "$endpoint_host" =~ [@] ]] || fail "endpoint URL must not contain @ (userinfo)"
+elif [[ "$coolify_endpoint" =~ ^http://127\.0\.0\.1(:[0-9]+)?(/.*)?$ ]] || \
+     [[ "$coolify_endpoint" =~ ^http://localhost(:[0-9]+)?(/.*)?$ ]]; then
+  # Allow localhost for testing
+  endpoint_host="localhost"
+else
+  fail "endpoint URL must be https:// with valid hostname, or http://127.0.0.1 / http://localhost for testing"
+fi
 
 # Dependency configuration (optional)
 dependency_uuids=()
@@ -70,27 +115,42 @@ require_regular_file() {
 
 # Read token from secure file (never from environment or argv)
 read_token() {
-  local token mode group_perm other_perm
+  local token mode group_perm other_perm owner
   require_regular_file "$token_file"
+  
+  # Check file is not a symlink (require_regular_file checks -L but be explicit)
+  [[ ! -L "$token_file" ]] || fail "token file must not be a symbolic link"
+  
+  # Check owner is root (uid 0)
+  owner="$(stat -c '%u' "$token_file" 2>/dev/null || stat -f '%u' "$token_file" 2>/dev/null)"
+  [[ "$owner" == "0" ]] || fail "token file must be owned by root (currently uid $owner)"
+  
+  # Check permissions
   mode="$(stat -c '%a' "$token_file" 2>/dev/null || stat -f '%Lp' "$token_file" 2>/dev/null)"
-  # Extract group and other permissions (last two digits)
   group_perm="${mode: -2:1}"
   other_perm="${mode: -1}"
-  # Both must be 0 (no read, write, or execute for group or others)
   [[ "$group_perm" == "0" && "$other_perm" == "0" ]] || \
     fail "token file must have mode 0[0-7]00 (currently ${mode}, readable by group or others)"
+  
+  # Read token
   token="$(cat "$token_file")"
   [[ -n "$token" && ! "$token" =~ [[:space:]] ]] || fail "token is empty or contains whitespace"
   printf '%s' "$token"
 }
 
-# Sanitize error output to prevent token leakage
+# Sanitize error output to prevent token and sensitive data leakage
 sanitize_error() {
   local message="$1"
-  # Redact anything that looks like a bearer token
-  message="${message//Bearer [A-Za-z0-9_-]*/Bearer [REDACTED]}"
-  # Redact authorization headers
-  message="${message//Authorization: [^[:space:]]*/Authorization: [REDACTED]}"
+  # Redact bearer tokens (case insensitive)
+  message="$(echo "$message" | sed -E 's/Bearer[[:space:]]+[A-Za-z0-9_-]+/Bearer [REDACTED]/gi')"
+  # Redact authorization headers (full header value)
+  message="$(echo "$message" | sed -E 's/Authorization:[[:space:]]*[^[:space:]]+/Authorization: [REDACTED]/gi')"
+  # Redact cookie headers
+  message="$(echo "$message" | sed -E 's/Cookie:[[:space:]]*[^[:space:]]+/Cookie: [REDACTED]/gi')"
+  # Limit message length to prevent leaking large upstream bodies
+  if [[ "${#message}" -gt 500 ]]; then
+    message="${message:0:500}... [truncated]"
+  fi
   printf '%s' "$message"
 }
 
@@ -142,10 +202,14 @@ call_coolify_api() {
     fail "API call failed: $(sanitize_error "$error_msg")"
   fi
   
-  # Handle HTTP status - anything 2xx is success
+  # Handle HTTP status
   if [[ ! "$http_code" =~ ^2[0-9][0-9]$ ]]; then
     local error_body="$(cat "$temp_out" 2>/dev/null || echo '{}')"
     rm -f "$temp_out" "$temp_err"
+    # For auth errors (401/403), explicitly fail without retry hint
+    if [[ "$http_code" =~ ^(401|403)$ ]]; then
+      fail "API authentication failed (HTTP $http_code): check token validity and permissions"
+    fi
     fail "API returned HTTP $http_code: $(sanitize_error "$error_body")"
   fi
   
@@ -163,11 +227,12 @@ get_service_status() {
 }
 
 # Wait for service to reach desired state with bounded timeout
+# For "running" state, also check service is not in degraded/unhealthy state
 wait_service_state() {
   local uuid="$1"
   local desired_state="$2"
   local timeout_seconds="${3:-120}"
-  local start_time elapsed current_state status_data
+  local start_time elapsed current_state status_data health_status
   
   start_time="$(date +%s)"
   while true; do
@@ -178,8 +243,24 @@ wait_service_state() {
     
     status_data="$(get_service_status "$uuid")" || return $?
     current_state="$(jq -r '.status // "unknown"' <<<"$status_data")"
+    
+    # Check if state matches
     if [[ "$current_state" == "$desired_state" ]]; then
+      # For running state, verify service is not unhealthy
+      if [[ "$desired_state" == "running" ]]; then
+        health_status="$(jq -r '.health_status // "healthy"' <<<"$status_data")"
+        if [[ "$health_status" == "unhealthy" ]]; then
+          # Service is running but unhealthy, keep waiting
+          sleep 3
+          continue
+        fi
+      fi
       return 0
+    fi
+    
+    # Check for error states
+    if [[ "$current_state" =~ ^(error|failed)$ ]]; then
+      fail "service entered error state: $current_state"
     fi
     
     sleep 3
@@ -265,8 +346,11 @@ case "$action:$phase" in
     ;;
     
   restart:restart)
-    call_coolify_api POST "/api/v1/services/$service_uuid/restart" "" 30 >/dev/null || exit $?
-    result "Coolify 服务重启已触发" '{"productionChanged":true}'
+    # Coolify API: restart with latest flag
+    # latest=false means pull image only if not present (fixed digest behavior)
+    restart_body="$(jq -cn --argjson latest "$latest_allowed" '{latest:$latest}')"
+    call_coolify_api POST "/api/v1/services/$service_uuid/restart" "$restart_body" 30 >/dev/null || exit $?
+    result "Coolify 服务重启已触发（latest=$latest_allowed）" '{"productionChanged":true}'
     ;;
     
   restart:health|restart:smoke)
@@ -300,10 +384,11 @@ case "$action:$phase" in
     ;;
     
   stop:health)
-    # After stop, Coolify may delete the container - verify service is not running
+    # After stop, Coolify may delete the container
+    # We verify service reached stopped state, but container may not exist
     wait_service_state "$service_uuid" "stopped" 180
     assert_dependencies_unchanged
-    result "服务已停止且依赖服务身份未变化"
+    result "服务已停止（容器可能已删除）且依赖服务身份未变化"
     ;;
     
   *)

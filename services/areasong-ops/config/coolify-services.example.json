@@ -37,12 +37,12 @@
         "autoReconcile": false
       },
       "runtime": {
-        "coolifyEndpoint": "https://coolify.losangeles.internal",
+        "trustedEndpointId": "losangeles-internal",
         "serviceUuid": "6oqw6kcjzweijv6r9ux71zoe",
-        "tokenFile": "/etc/areasong-ops/secrets/coolify.token",
         "healthUrl": "http://127.0.0.1:3200/health",
         "latestAllowed": false,
-        "dependencyServiceUuids": []
+        "dependencyServiceUuids": [],
+        "_note": "endpoint和tokenFile由trustedEndpointId在/etc/areasong-ops/coolify-trusted-endpoints.json中解析"
       },
       "actions": {
         "inspect": {
@@ -123,16 +123,16 @@
         "autoReconcile": false
       },
       "runtime": {
-        "coolifyEndpoint": "https://coolify.losangeles.internal",
+        "trustedEndpointId": "losangeles-internal",
         "serviceUuid": "wu3zblpkvdjncfrlkqiavfrc",
-        "tokenFile": "/etc/areasong-ops/secrets/coolify.token",
         "healthUrl": "http://127.0.0.1:8082/health",
         "latestAllowed": false,
         "dependencyServiceUuids": [],
         "_notes": [
           "使用 external 卷 jadeai-data（uid 1000）",
           "只能一个 writer，旧容器 resume-jadeai-app-1 已停止 restart=no",
-          "备份需要考虑 SQLite 卷的原子性"
+          "备份需要考虑 SQLite 卷的原子性",
+          "当前适配器不包含同卷writer排他保护，需确认旧容器已完全停止"
         ]
       },
       "actions": {
@@ -166,16 +166,16 @@
         "autoReconcile": false
       },
       "runtime": {
-        "coolifyEndpoint": "https://coolify.losangeles.internal",
+        "trustedEndpointId": "losangeles-internal",
         "serviceUuid": "cmajwelgaiyouyev0pzqk2j2",
-        "tokenFile": "/etc/areasong-ops/secrets/coolify.token",
         "healthUrl": "http://127.0.0.1:5432",
         "latestAllowed": false,
         "dependencyServiceUuids": [],
         "_critical_notes": [
           "使用 external 卷 sorryiossearch_pgdata",
           "绝不能同时运行两个 PG 实例在同一卷上",
-          "启动顺序：先 PG 后 Web；停止顺序：先 Web 后 PG"
+          "启动顺序：先 PG 后 Web；停止顺序：先 Web 后 PG",
+          "当前适配器不包含多资源编排，整栈操作需上层orchestrator或人工顺序执行"
         ]
       },
       "actions": {
@@ -209,16 +209,16 @@
         "autoReconcile": false
       },
       "runtime": {
-        "coolifyEndpoint": "https://coolify.losangeles.internal",
+        "trustedEndpointId": "losangeles-internal",
         "serviceUuid": "da5yxpvxkprxivcbkc9g27id",
-        "tokenFile": "/etc/areasong-ops/secrets/coolify.token",
         "healthUrl": "http://127.0.0.1:3392/health",
         "latestAllowed": false,
         "dependencyServiceUuids": ["cmajwelgaiyouyev0pzqk2j2"],
         "_dependency_notes": [
           "依赖 account-vault-pg",
-          "操作期间会验证 PG 状态未变化",
-          "如果 PG 重启，操作会失败并报错"
+          "操作期间会验证 PG 状态未变化（快照对比，不是启动顺序编排）",
+          "如果 PG 重启，操作会失败并报错",
+          "多资源整栈操作需上层orchestrator保证顺序"
         ]
       },
       "actions": {
