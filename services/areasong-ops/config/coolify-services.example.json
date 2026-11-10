@@ -1,0 +1,269 @@
+{
+  "_comment": "Coolify 托管服务示例配置 - 注册已迁移服务到 ops 系统",
+  "_security_warning": "tokenFile 必须设置为 0400 权限，不要将 token 提交到 Git",
+  
+  "schemaVersion": 4,
+  
+  "adapters": {
+    "coolify-service-v1": {
+      "path": "/usr/local/libexec/areasong-ops/adapters/coolify-service.sh",
+      "allowedTypes": ["service"]
+    }
+  },
+  
+  "services": {
+    "areasong-ops": {
+      "name": "areasong-ops",
+      "objectId": "service:areasong-ops",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "important",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "AreaSong Ops Web",
+      "description": "Ops 管理面板（已托管在 Coolify）",
+      "template": "coolify-service-v1",
+      "adapterRef": "coolify-service-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "maintenanceTtlSeconds": 14400,
+        "drainTimeoutSeconds": 300,
+        "autoReconcile": false
+      },
+      "runtime": {
+        "trustedEndpointId": "losangeles-internal",
+        "serviceUuid": "6oqw6kcjzweijv6r9ux71zoe",
+        "healthUrl": "http://127.0.0.1:3200/health",
+        "latestAllowed": false,
+        "dependencyServiceUuids": [],
+        "_note": "endpoint和tokenFile由trustedEndpointId在/etc/areasong-ops/coolify-trusted-endpoints.json中解析"
+      },
+      "actions": {
+        "inspect": {
+          "name": "inspect",
+          "displayName": "执行前检查",
+          "enabled": true,
+          "risk": "read_only",
+          "targetMode": "none",
+          "steps": ["inspect"],
+          "timeoutSeconds": 30,
+          "impact": "仅读取 Coolify 服务状态。",
+          "rollback": "没有变更，无需回滚。",
+          "scope": "AreaSong Ops Web 运行状态"
+        },
+        "restart": {
+          "name": "restart",
+          "displayName": "重启服务",
+          "enabled": true,
+          "risk": "medium",
+          "targetMode": "none",
+          "steps": ["preflight", "restart", "health"],
+          "observationSeconds": 120,
+          "timeoutSeconds": 300,
+          "confirmationTemplate": "重启 {service}",
+          "impact": "通过 Coolify API 重启服务，预计产生短暂请求中断。",
+          "rollback": "重启失败时停止自动处理并进入人工核对。",
+          "scope": "仅 Ops Web 容器，Runner 和 SQLite 不受影响"
+        },
+        "start": {
+          "name": "start",
+          "displayName": "启动服务",
+          "enabled": true,
+          "risk": "medium",
+          "targetMode": "none",
+          "steps": ["preflight", "start", "health"],
+          "timeoutSeconds": 300,
+          "confirmationTemplate": "启动 {service}",
+          "impact": "通过 Coolify API 启动服务。",
+          "rollback": "启动失败时保持停止状态。",
+          "scope": "仅 Ops Web 容器"
+        },
+        "stop": {
+          "name": "stop",
+          "displayName": "停止服务",
+          "enabled": true,
+          "risk": "medium",
+          "targetMode": "none",
+          "steps": ["preflight", "stop", "health"],
+          "timeoutSeconds": 180,
+          "confirmationTemplate": "停止 {service}",
+          "impact": "通过 Coolify API 停止服务，容器可能被删除。",
+          "rollback": "停止失败时保持运行状态。",
+          "scope": "仅 Ops Web 容器"
+        }
+      }
+    },
+    
+    "resume-jadeai": {
+      "name": "resume-jadeai",
+      "objectId": "service:resume-jadeai",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "normal",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "Resume JadeAI",
+      "description": "AI 简历生成服务（已托管在 Coolify）",
+      "template": "coolify-service-v1",
+      "adapterRef": "coolify-service-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "autoReconcile": false
+      },
+      "runtime": {
+        "trustedEndpointId": "losangeles-internal",
+        "serviceUuid": "wu3zblpkvdjncfrlkqiavfrc",
+        "healthUrl": "http://127.0.0.1:8082/health",
+        "latestAllowed": false,
+        "dependencyServiceUuids": [],
+        "_notes": [
+          "使用 external 卷 jadeai-data（uid 1000）",
+          "只能一个 writer，旧容器 resume-jadeai-app-1 已停止 restart=no",
+          "备份需要考虑 SQLite 卷的原子性",
+          "当前适配器不包含同卷writer排他保护，需确认旧容器已完全停止"
+        ]
+      },
+      "actions": {
+        "inspect": { "enabled": true, "risk": "read_only" },
+        "restart": { "enabled": true, "risk": "medium" },
+        "start": { "enabled": true, "risk": "medium" },
+        "stop": { "enabled": true, "risk": "medium" }
+      }
+    },
+    
+    "account-vault-pg": {
+      "name": "account-vault-pg",
+      "objectId": "service:account-vault-pg",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "critical",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "Account Vault PostgreSQL",
+      "description": "账户数据库（必须先于 Web 启动）",
+      "template": "coolify-service-v1",
+      "adapterRef": "coolify-service-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "autoReconcile": false
+      },
+      "runtime": {
+        "trustedEndpointId": "losangeles-internal",
+        "serviceUuid": "cmajwelgaiyouyev0pzqk2j2",
+        "healthUrl": "http://127.0.0.1:5432",
+        "latestAllowed": false,
+        "dependencyServiceUuids": [],
+        "_critical_notes": [
+          "使用 external 卷 sorryiossearch_pgdata",
+          "绝不能同时运行两个 PG 实例在同一卷上",
+          "启动顺序：先 PG 后 Web；停止顺序：先 Web 后 PG",
+          "当前适配器不包含多资源编排，整栈操作需上层orchestrator或人工顺序执行"
+        ]
+      },
+      "actions": {
+        "inspect": { "enabled": true, "risk": "read_only" },
+        "restart": { "enabled": true, "risk": "high" },
+        "start": { "enabled": true, "risk": "high" },
+        "stop": { "enabled": true, "risk": "high" }
+      }
+    },
+    
+    "account-vault-web": {
+      "name": "account-vault-web",
+      "objectId": "service:account-vault-web",
+      "metadata": {
+        "type": "service",
+        "environment": "production",
+        "owner": "operations",
+        "criticality": "critical",
+        "lifecycle": "active",
+        "maturity": "manual_approval"
+      },
+      "displayName": "Account Vault Web",
+      "description": "账户管理前端（依赖 PostgreSQL）",
+      "template": "coolify-service-v1",
+      "adapterRef": "coolify-service-v1",
+      "tenantId": "production",
+      "serverId": "losangeles",
+      "capabilities": ["lifecycle"],
+      "statePolicy": {
+        "defaultDesired": "running",
+        "autoReconcile": false
+      },
+      "runtime": {
+        "trustedEndpointId": "losangeles-internal",
+        "serviceUuid": "da5yxpvxkprxivcbkc9g27id",
+        "healthUrl": "http://127.0.0.1:3392/health",
+        "latestAllowed": false,
+        "dependencyServiceUuids": ["cmajwelgaiyouyev0pzqk2j2"],
+        "_dependency_notes": [
+          "依赖 account-vault-pg",
+          "操作期间会验证 PG 状态未变化（快照对比，不是启动顺序编排）",
+          "如果 PG 重启，操作会失败并报错",
+          "多资源整栈操作需上层orchestrator保证顺序"
+        ]
+      },
+      "actions": {
+        "inspect": { "enabled": true, "risk": "read_only" },
+        "restart": {
+          "enabled": true,
+          "risk": "medium",
+          "steps": ["preflight", "restart", "health"],
+          "confirmationTemplate": "重启 {service}（依赖 PostgreSQL 保持运行）",
+          "impact": "重启 Web，期间会验证 PostgreSQL 状态未变化。"
+        },
+        "start": { "enabled": true, "risk": "medium" },
+        "stop": { "enabled": true, "risk": "medium" }
+      }
+    }
+  },
+  
+  "_migration_status": {
+    "migrated_to_coolify": [
+      "areasong-ops (UUID: 6oqw6kcjzweijv6r9ux71zoe)",
+      "resume-jadeai (UUID: wu3zblpkvdjncfrlkqiavfrc)",
+      "account-vault-web (UUID: da5yxpvxkprxivcbkc9g27id)",
+      "account-vault-pg (UUID: cmajwelgaiyouyev0pzqk2j2)"
+    ],
+    "keep_original_adapter": [
+      "areaforge (签名发布链、每分钟 update-agent、不兼容 Coolify)",
+      "sub2api (计划仅迁移 Web，PG18+Redis 保留原栈)"
+    ],
+    "old_containers_stopped": [
+      "areasong-ops-web-3200-1 (restart=no)",
+      "resume-jadeai-app-1 (restart=no)",
+      "account-vault-web-1 (restart=no)",
+      "account-vault-postgres-1 (restart=no)"
+    ]
+  },
+  
+  "_deployment_checklist": [
+    "1. 在 Coolify UI 验证所有服务 UUID 正确",
+    "2. 创建 /etc/areasong-ops/secrets/coolify.token（权限 0400）",
+    "3. 停止旧 docker-compose 容器并设置 restart=no",
+    "4. 更新 /etc/areasong-ops/services.json 注册服务",
+    "5. 测试只读操作：sudo /usr/local/libexec/areasong-ops/cli service inspect <name>",
+    "6. 在维护窗口测试重启操作",
+    "7. 验证健康检查和依赖保护机制",
+    "8. 配置监控告警（操作失败通知）",
+    "9. 更新 runbook 文档记录迁移日期和配置"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "_comment": "受信 Coolify 端点配置 - 由 root 管理，服务配置只能引用这些预定义端点",
+  "schemaVersion": 1,
+  "trustedEndpoints": {
+    "losangeles-internal": {
+      "id": "losangeles-internal",
+      "endpoint": "https://coolify.losangeles.internal",
+      "description": "LosAngeles 主机内部 Coolify 实例",
+      "allowedServices": ["areasong-ops", "resume-jadeai", "account-vault-web", "account-vault-pg"],
+      "tokenFile": "/etc/areasong-ops/secrets/coolify.token"
+    },
+    "localhost-test": {
+      "id": "localhost-test",
+      "endpoint": "http://127.0.0.1:8000",
+      "description": "本地测试 Coolify 实例（仅用于开发）",
+      "allowedServices": ["*"],
+      "tokenFile": "/etc/areasong-ops/secrets/coolify-test.token"
+    }
+  },
+  "allowedServiceUuids": {
+    "6oqw6kcjzweijv6r9ux71zoe": "areasong-ops",
+    "wu3zblpkvdjncfrlkqiavfrc": "resume-jadeai",
+    "da5yxpvxkprxivcbkc9g27id": "account-vault-web",
+    "cmajwelgaiyouyev0pzqk2j2": "account-vault-pg"
+  }
+}
